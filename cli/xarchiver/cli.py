@@ -11,6 +11,7 @@ from xarchiver.importer import import_jsonl, import_urls
 from xarchiver.media import backfill_media_assets
 from xarchiver.migrations import migrate
 from xarchiver.status import get_media_count, get_status_counts
+from xarchiver.verifier import verify_media_assets
 
 app = typer.Typer(help="Local-first X/Twitter media archiver.")
 db_app = typer.Typer(help="Database commands.")
@@ -98,8 +99,11 @@ def backfill_media_command(
 
 
 @app.command("verify")
-def verify_command() -> None:
-    console.print("verify is planned for V0.1 after downloader output contract is validated.")
+def verify_command(
+    limit: int | None = typer.Option(None, help="Maximum media assets to verify."),
+) -> None:
+    result = verify_media_assets(limit)
+    console.print(result)
 
 
 @app.command("export")
