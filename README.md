@@ -27,6 +27,7 @@ Then replace `examples/tweet_urls.example.txt` with real tweet URLs and run:
 docker compose run --rm xarchiver download --engine gallery-dl
 docker compose run --rm xarchiver retry --engine yt-dlp
 docker compose run --rm xarchiver verify
+docker compose run --rm xarchiver export --format csv
 ```
 
 If media files already exist under `archive/media`, rebuild `media_assets` from downloader metadata with:

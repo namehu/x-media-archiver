@@ -21,7 +21,9 @@ CSV_FIELDS = [
     "media_status",
     "source_engine",
     "local_path",
+    "media_relative_path",
     "metadata_path",
+    "metadata_relative_path",
     "original_filename",
     "file_ext",
     "file_size",
@@ -46,7 +48,7 @@ def export_media_csv(
         writer = csv.DictWriter(file, fieldnames=CSV_FIELDS)
         writer.writeheader()
         for row in rows:
-            writer.writerow({field: normalize_csv_value(row.get(field)) for field in CSV_FIELDS})
+            writer.writerow(format_export_row(row, archive_dir))
 
     return {"path": target_path.as_posix(), "rows": len(rows), "status": status or "all"}
 
@@ -100,3 +102,23 @@ def normalize_csv_value(value: object) -> object:
     if isinstance(value, datetime):
         return value.isoformat()
     return value
+
+
+def format_export_row(row: dict[str, object], archive_dir: Path) -> dict[str, object]:
+    values = {field: normalize_csv_value(row.get(field)) for field in CSV_FIELDS}
+    values["media_relative_path"] = relative_archive_path(row.get("local_path"), archive_dir)
+    values["metadata_relative_path"] = relative_archive_path(row.get("metadata_path"), archive_dir)
+    return values
+
+
+def relative_archive_path(value: object, archive_dir: Path) -> str:
+    if not value:
+        return ""
+    path_text = str(value)
+    archive_text = archive_dir.as_posix().rstrip("/")
+    if path_text.startswith(f"{archive_text}/"):
+        return path_text[len(archive_text) + 1 :]
+    marker = "/archive/"
+    if marker in path_text:
+        return path_text.split(marker, 1)[1]
+    return path_text

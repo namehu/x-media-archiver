@@ -7,6 +7,7 @@ from rich.table import Table
 from xarchiver.archive import ensure_archive_dirs
 from xarchiver.config import get_settings
 from xarchiver.downloader import download as run_download
+from xarchiver.exporter import export_media_csv
 from xarchiver.importer import import_jsonl, import_urls
 from xarchiver.media import backfill_media_assets
 from xarchiver.migrations import migrate
@@ -107,8 +108,16 @@ def verify_command(
 
 
 @app.command("export")
-def export_command(format: str = typer.Option("csv", help="Export format.")) -> None:
-    console.print(f"export --format {format} is planned for V0.1.")
+def export_command(
+    format: str = typer.Option("csv", help="Export format. Currently only csv is supported."),
+    output: Path | None = typer.Option(None, help="Output CSV path."),
+    status: str | None = typer.Option("verified", help="Media status to export. Use 'all' to export every status."),
+) -> None:
+    if format != "csv":
+        raise typer.BadParameter("Only csv export is supported in V0.")
+    settings = get_settings()
+    result = export_media_csv(settings.archive_dir, output, None if status == "all" else status)
+    console.print(result)
 
 
 if __name__ == "__main__":
