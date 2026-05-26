@@ -9,6 +9,7 @@ import orjson
 from xarchiver.archive import ensure_archive_dirs, normalize_path
 from xarchiver.config import Settings
 from xarchiver.db import connect
+from xarchiver.media import backfill_media_assets
 
 
 SUPPORTED_ENGINES = {"gallery-dl", "yt-dlp"}
@@ -41,6 +42,7 @@ def download(engine: str, settings: Settings, limit: int | None, dry_run: bool) 
 
     if result.returncode == 0:
         downloaded_ids = detect_downloaded_tweet_ids(settings.archive_dir, tweets)
+        backfill_result = backfill_media_assets(settings.archive_dir)
         downloaded = [tweet for tweet in tweets if tweet["tweet_id"] in downloaded_ids]
         missing = [tweet for tweet in tweets if tweet["tweet_id"] not in downloaded_ids]
 
@@ -74,6 +76,7 @@ def download(engine: str, settings: Settings, limit: int | None, dry_run: bool) 
         "input_path": input_path,
         "count": len(tweets),
         "exit_code": result.returncode,
+        "media_backfill": backfill_result if result.returncode == 0 else None,
     }
 
 

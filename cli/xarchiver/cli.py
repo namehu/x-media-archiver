@@ -8,6 +8,7 @@ from xarchiver.archive import ensure_archive_dirs
 from xarchiver.config import get_settings
 from xarchiver.downloader import download as run_download
 from xarchiver.importer import import_jsonl, import_urls
+from xarchiver.media import backfill_media_assets
 from xarchiver.migrations import migrate
 from xarchiver.status import get_media_count, get_status_counts
 
@@ -84,6 +85,15 @@ def retry_command(
     settings = get_settings()
     selected_engine = engine or "yt-dlp"
     result = run_download(selected_engine, settings, limit, dry_run)
+    console.print(result)
+
+
+@app.command("backfill-media")
+def backfill_media_command(
+    no_normalize: bool = typer.Option(False, help="Do not move yt-dlp files into the canonical tweet directory."),
+) -> None:
+    settings = get_settings()
+    result = backfill_media_assets(settings.archive_dir, normalize_files=not no_normalize)
     console.print(result)
 
 
