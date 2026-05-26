@@ -1,0 +1,17 @@
+.env
+.env.*
+!.env.example
+
+archive/*
+!archive/.gitkeep
+
+secrets/*
+!secrets/.gitkeep
+
+__pycache__/
+*.py[cod]
+.pytest_cache/
+.ruff_cache/
+
+pg_data/
+

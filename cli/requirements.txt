@@ -1,0 +1,10 @@
+typer
+rich
+pydantic
+pydantic-settings
+orjson
+psycopg[binary]
+python-dotenv
+gallery-dl
+yt-dlp
+
