@@ -4,6 +4,8 @@ import shutil
 import subprocess
 from pathlib import Path
 
+import orjson
+
 from xarchiver.archive import ensure_archive_dirs, normalize_path
 from xarchiver.config import Settings
 from xarchiver.db import connect
@@ -38,9 +40,28 @@ def download(engine: str, settings: Settings, limit: int | None, dry_run: bool) 
     stderr_excerpt = result.stderr[-4000:] if result.stderr else None
 
     if result.returncode == 0:
-        mark_attempts(job_id, tweets, engine, "downloaded", 0, None, stderr_excerpt)
-        mark_tweets_downloaded([tweet["tweet_id"] for tweet in tweets])
-        finish_job(job_id, "finished", len(tweets), 0, None)
+        downloaded_ids = detect_downloaded_tweet_ids(settings.archive_dir, tweets)
+        downloaded = [tweet for tweet in tweets if tweet["tweet_id"] in downloaded_ids]
+        missing = [tweet for tweet in tweets if tweet["tweet_id"] not in downloaded_ids]
+
+        mark_attempts(job_id, downloaded, engine, "downloaded", 0, None, stderr_excerpt)
+        mark_attempts(
+            job_id,
+            missing,
+            engine,
+            "failed_retryable",
+            0,
+            "no_downloaded_files",
+            stderr_excerpt,
+        )
+        mark_tweets_downloaded([tweet["tweet_id"] for tweet in downloaded])
+        mark_tweets_failed(
+            [tweet["tweet_id"] for tweet in missing],
+            "failed_retryable",
+            "no_downloaded_files",
+        )
+        status = "finished" if not missing else "partial"
+        finish_job(job_id, status, len(downloaded), len(missing), None if not missing else "no_downloaded_files")
     else:
         category = classify_error(result.returncode, stderr_excerpt)
         status = "failed_permanent" if category in {"not_found", "forbidden"} else "failed_retryable"
@@ -84,8 +105,10 @@ def build_command(engine: str, settings: Settings, input_path: Path) -> list[str
     if engine == "gallery-dl":
         return [
             "gallery-dl",
-            "--cookies",
-            str(settings.cookie_file),
+            "--config",
+            "/app/gallery-dl.conf",
+            "--destination",
+            str(settings.archive_dir / "media"),
             "--write-metadata",
             "--download-archive",
             str(settings.archive_dir / "state" / "gallery-dl-downloaded.txt"),
@@ -93,10 +116,13 @@ def build_command(engine: str, settings: Settings, input_path: Path) -> list[str
             str(input_path),
         ]
 
+    runtime_cookie_file = settings.archive_dir / "state" / "yt-dlp-cookies.txt"
+    shutil.copyfile(settings.cookie_file, runtime_cookie_file)
+
     return [
         "yt-dlp",
         "--cookies",
-        str(settings.cookie_file),
+        str(runtime_cookie_file),
         "--write-info-json",
         "--write-thumbnail",
         "--download-archive",
@@ -251,3 +277,40 @@ def classify_error(exit_code: int, stderr: str | None) -> str:
     if "timeout" in text or "timed out" in text:
         return "timeout"
     return f"exit_{exit_code}"
+
+
+def detect_downloaded_tweet_ids(archive_dir: Path, tweets: list[dict[str, str]]) -> set[str]:
+    tweet_ids = {tweet["tweet_id"] for tweet in tweets}
+    found: set[str] = set()
+    media_dir = archive_dir / "media"
+    if not media_dir.exists():
+        return found
+
+    for path in media_dir.rglob("*"):
+        if not path.is_file():
+            continue
+
+        path_text = path.as_posix()
+        for tweet_id in tweet_ids:
+            if tweet_id in path_text:
+                found.add(tweet_id)
+
+        if path.suffix != ".json":
+            continue
+
+        try:
+            data = orjson.loads(path.read_bytes())
+        except orjson.JSONDecodeError:
+            continue
+
+        candidate_values = {
+            str(data.get("tweet_id") or ""),
+            str(data.get("display_id") or ""),
+            str(data.get("webpage_url_basename") or ""),
+            str(data.get("webpage_url") or ""),
+        }
+        for tweet_id in tweet_ids:
+            if any(tweet_id and tweet_id in value for value in candidate_values):
+                found.add(tweet_id)
+
+    return found

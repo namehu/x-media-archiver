@@ -31,7 +31,8 @@ services:
       - ./secrets:/app/secrets:ro
       - ./sql:/app/sql:ro
       - ./docs:/app/docs:ro
-      - ./cli:/app
+      - ./cli/xarchiver:/app/xarchiver
+      - ./cli/gallery-dl.conf:/app/gallery-dl.conf:ro
     working_dir: /app
     depends_on:
       postgres:
