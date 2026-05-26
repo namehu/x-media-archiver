@@ -3,6 +3,7 @@ from __future__ import annotations
 import hashlib
 import shutil
 from dataclasses import dataclass
+from datetime import UTC, datetime
 from pathlib import Path
 from typing import Any
 
@@ -22,6 +23,8 @@ class MediaAsset:
     tweet_id: str
     author_username: str | None
     author_display_name: str | None
+    tweet_text: str | None
+    published_at: str | None
     media_index: int | None
     media_type: str | None
     local_path: Path
@@ -91,6 +94,8 @@ def asset_from_gallery_dl_metadata(metadata_path: Path, metadata: dict[str, Any]
         tweet_id=tweet_id,
         author_username=value_as_str(author.get("name")),
         author_display_name=value_as_str(author.get("nick")),
+        tweet_text=value_as_str(metadata.get("content")) or value_as_str(metadata.get("description")),
+        published_at=parse_gallery_dl_datetime(metadata.get("date")),
         media_index=media_index,
         media_type=media_type,
         local_path=media_path,
@@ -142,6 +147,8 @@ def asset_from_yt_dlp_metadata(
         tweet_id=tweet_id,
         author_username=author,
         author_display_name=value_as_str(metadata.get("uploader")),
+        tweet_text=value_as_str(metadata.get("description")) or value_as_str(metadata.get("title")),
+        published_at=parse_yt_dlp_datetime(metadata),
         media_index=media_index,
         media_type=media_type,
         local_path=local_path,
@@ -203,6 +210,8 @@ def build_asset(
     tweet_id: str,
     author_username: str | None,
     author_display_name: str | None,
+    tweet_text: str | None,
+    published_at: str | None,
     media_index: int | None,
     media_type: str | None,
     local_path: Path,
@@ -218,6 +227,8 @@ def build_asset(
         tweet_id=tweet_id,
         author_username=author_username,
         author_display_name=author_display_name,
+        tweet_text=tweet_text,
+        published_at=published_at,
         media_index=media_index,
         media_type=media_type,
         local_path=local_path,
@@ -274,7 +285,10 @@ def upsert_media_assets(assets: list[MediaAsset]) -> None:
                         height = excluded.height,
                         duration_ms = excluded.duration_ms,
                         metadata_path = excluded.metadata_path,
-                        download_status = 'downloaded',
+                        download_status = case
+                            when media_assets.download_status = 'verified' then 'verified'
+                            else 'downloaded'
+                        end,
                         error_message = null,
                         raw_metadata = excluded.raw_metadata,
                         updated_at = now()
@@ -310,10 +324,18 @@ def update_tweets_from_assets(assets: list[MediaAsset]) -> None:
                     update tweets
                     set author_username = coalesce(author_username, %s),
                         author_display_name = coalesce(author_display_name, %s),
+                        text = coalesce(text, %s),
+                        published_at = coalesce(published_at, %s),
                         updated_at = now()
                     where tweet_id = %s
                     """,
-                    (asset.author_username, asset.author_display_name, asset.tweet_id),
+                    (
+                        asset.author_username,
+                        asset.author_display_name,
+                        asset.tweet_text,
+                        asset.published_at,
+                        asset.tweet_id,
+                    ),
                 )
         conn.commit()
 
@@ -368,6 +390,34 @@ def value_as_str(value: object) -> str | None:
         return None
     text = str(value).strip()
     return text or None
+
+
+def parse_gallery_dl_datetime(value: object) -> str | None:
+    text = value_as_str(value)
+    if not text:
+        return None
+    try:
+        parsed = datetime.strptime(text, "%Y-%m-%d %H:%M:%S").replace(tzinfo=UTC)
+    except ValueError:
+        return text
+    return parsed.isoformat()
+
+
+def parse_yt_dlp_datetime(metadata: dict[str, Any]) -> str | None:
+    timestamp = metadata.get("timestamp")
+    if timestamp is not None:
+        try:
+            return datetime.fromtimestamp(float(timestamp), tz=UTC).isoformat()
+        except (TypeError, ValueError, OSError):
+            pass
+
+    upload_date = value_as_str(metadata.get("upload_date"))
+    if upload_date and len(upload_date) == 8 and upload_date.isdigit():
+        try:
+            return datetime.strptime(upload_date, "%Y%m%d").replace(tzinfo=UTC).isoformat()
+        except ValueError:
+            return None
+    return None
 
 
 def tweet_id_from_url(url: str | None) -> str | None:

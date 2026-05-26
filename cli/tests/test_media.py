@@ -19,6 +19,8 @@ class MediaMetadataTests(unittest.TestCase):
                 "num": 1,
                 "width": 1200,
                 "height": 800,
+                "content": "tweet body",
+                "date": "2026-05-24 07:16:12",
                 "author": {"name": "author", "nick": "Author Name"},
             }
             metadata_path.write_bytes(orjson.dumps(metadata))
@@ -33,6 +35,8 @@ class MediaMetadataTests(unittest.TestCase):
             self.assertEqual(asset.media_index, 1)
             self.assertEqual(asset.width, 1200)
             self.assertEqual(asset.height, 800)
+            self.assertEqual(asset.tweet_text, "tweet body")
+            self.assertEqual(asset.published_at, "2026-05-24T07:16:12+00:00")
             self.assertEqual(asset.source_engine, "gallery-dl")
 
     def test_yt_dlp_metadata_uses_display_id_for_tweet_id(self) -> None:
@@ -48,10 +52,12 @@ class MediaMetadataTests(unittest.TestCase):
                 "display_id": "tweet-id",
                 "uploader_id": "author",
                 "uploader": "Author Name",
+                "description": "video tweet body",
                 "_type": "video",
                 "width": 1920,
                 "height": 1080,
                 "duration": 1.5,
+                "timestamp": 1779727042,
             }
             metadata_path.write_bytes(orjson.dumps(metadata))
 
@@ -63,6 +69,8 @@ class MediaMetadataTests(unittest.TestCase):
             self.assertEqual(asset.author_username, "author")
             self.assertEqual(asset.media_type, "video")
             self.assertEqual(asset.duration_ms, 1500)
+            self.assertEqual(asset.tweet_text, "video tweet body")
+            self.assertEqual(asset.published_at, "2026-05-25T16:37:22+00:00")
             self.assertEqual(asset.source_engine, "yt-dlp")
             self.assertEqual(asset.local_path, media_dir / "author" / "tweet-id" / "tweet-id--m1.mp4")
             self.assertTrue(asset.local_path.exists())
