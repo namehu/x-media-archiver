@@ -57,6 +57,14 @@ archive/exports/     CSV exports
 archive/state/       downloader state and runtime cookie copy
 ```
 
+Recommended one-command workflow after exporting URLs from the browser extension:
+
+```bash
+docker-compose run --rm xarchiver archive-urls /app/examples/tweet_urls.example.txt
+```
+
+This command imports the URL file, runs gallery-dl, runs yt-dlp fallback, rebuilds media metadata, verifies files, exports media CSV, and exports failures CSV.
+
 ## Commands
 
 Dry-run a download job without calling the downloader:
@@ -87,6 +95,12 @@ Export every media status:
 
 ```bash
 docker-compose run --rm xarchiver export --format csv --status all
+```
+
+Export failures:
+
+```bash
+docker-compose run --rm xarchiver export-failures
 ```
 
 ## State Rules

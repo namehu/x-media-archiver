@@ -52,25 +52,25 @@ Goal: make plugin-exported tweet URLs reliably become local media files, verifie
 
 ### V0.3 One-Command Workflow
 
-- [~] Implement archive-urls command.
-- [ ] Import URL file inside archive-urls.
-- [ ] Run gallery-dl first pass inside archive-urls.
-- [ ] Run yt-dlp fallback inside archive-urls.
-- [ ] Run backfill-media inside archive-urls.
-- [ ] Run verify inside archive-urls.
-- [ ] Export media CSV inside archive-urls.
-- [ ] Generate failures CSV inside archive-urls.
-- [ ] Print a compact run summary.
-- [ ] Add README usage for archive-urls.
-- [ ] Add tests for workflow summary and failure export helpers.
+- [x] Implement archive-urls command.
+- [x] Import URL file inside archive-urls.
+- [x] Run gallery-dl first pass inside archive-urls.
+- [x] Run yt-dlp fallback inside archive-urls.
+- [x] Run backfill-media inside archive-urls.
+- [x] Run verify inside archive-urls.
+- [x] Export media CSV inside archive-urls.
+- [x] Generate failures CSV inside archive-urls.
+- [x] Print a compact run summary.
+- [x] Add README usage for archive-urls.
+- [x] Add tests for workflow summary and failure export helpers.
 
 ### V0 Self-Check
 
 - [x] Plugin-exported tweet_urls.txt imports successfully.
 - [x] End-to-end sample reached verified 5 / media_assets 5.
 - [x] CSV export includes tweet_text for downloaded metadata.
-- [ ] One-command archive workflow validated on the current examples file.
-- [ ] Failure report validated with an empty-success case and a synthetic failure case.
+- [x] One-command archive workflow validated on the current examples file.
+- [x] Failure report validated with an empty-success case and a synthetic failure case.
 
 ## V1 - Productized Archive Management
 

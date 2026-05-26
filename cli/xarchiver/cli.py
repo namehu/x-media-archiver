@@ -13,6 +13,7 @@ from xarchiver.media import backfill_media_assets
 from xarchiver.migrations import migrate
 from xarchiver.status import get_media_count, get_status_counts
 from xarchiver.verifier import verify_media_assets
+from xarchiver.workflow import archive_urls
 
 app = typer.Typer(help="Local-first X/Twitter media archiver.")
 db_app = typer.Typer(help="Database commands.")
@@ -50,6 +51,16 @@ def import_command(path: Path = typer.Argument(..., help="Path to tweets JSONL."
 def import_urls_command(path: Path = typer.Argument(..., help="Path to tweet_urls.txt.")) -> None:
     count = import_urls(path)
     console.print(f"Imported {count} tweet URLs from {path}")
+
+
+@app.command("archive-urls")
+def archive_urls_command(
+    path: Path = typer.Argument(..., help="Path to tweet_urls.txt."),
+    limit: int | None = typer.Option(None, help="Maximum pending tweets per downloader pass."),
+) -> None:
+    settings = get_settings()
+    result = archive_urls(path, settings, limit)
+    console.print(result)
 
 
 @app.command("status")
@@ -117,6 +128,17 @@ def export_command(
         raise typer.BadParameter("Only csv export is supported in V0.")
     settings = get_settings()
     result = export_media_csv(settings.archive_dir, output, None if status == "all" else status)
+    console.print(result)
+
+
+@app.command("export-failures")
+def export_failures_command(
+    output: Path | None = typer.Option(None, help="Output failures CSV path."),
+) -> None:
+    from xarchiver.exporter import export_failures_csv
+
+    settings = get_settings()
+    result = export_failures_csv(settings.archive_dir, output)
     console.print(result)
 
 
