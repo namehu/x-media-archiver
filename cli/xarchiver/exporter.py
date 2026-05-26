@@ -1,8 +1,11 @@
 from __future__ import annotations
 
 import csv
+import os
 from datetime import UTC, datetime
+from html import escape
 from pathlib import Path
+from urllib.parse import quote
 
 from xarchiver.archive import ensure_archive_dirs
 from xarchiver.db import connect
@@ -48,6 +51,9 @@ FAILURE_CSV_FIELDS = [
     "latest_finished_at",
 ]
 
+IMAGE_EXTENSIONS = {"avif", "gif", "jpeg", "jpg", "png", "webp"}
+VIDEO_EXTENSIONS = {"m4v", "mov", "mp4", "webm"}
+
 
 def export_media_csv(
     archive_dir: Path,
@@ -71,6 +77,27 @@ def export_media_csv(
 def default_export_path(archive_dir: Path) -> Path:
     timestamp = datetime.now(UTC).strftime("%Y%m%dT%H%M%SZ")
     return archive_dir / "exports" / f"media-{timestamp}.csv"
+
+
+def export_media_gallery(
+    archive_dir: Path,
+    output_path: Path | None = None,
+    status: str | None = "verified",
+) -> dict[str, object]:
+    ensure_archive_dirs(archive_dir)
+    target_path = output_path or default_gallery_export_path(archive_dir)
+    target_path.parent.mkdir(parents=True, exist_ok=True)
+
+    rows = fetch_export_rows(status)
+    html = render_gallery_html(rows, archive_dir, target_path, status)
+    target_path.write_text(html, encoding="utf-8")
+
+    return {"path": target_path.as_posix(), "rows": len(rows), "status": status or "all"}
+
+
+def default_gallery_export_path(archive_dir: Path) -> Path:
+    timestamp = datetime.now(UTC).strftime("%Y%m%dT%H%M%SZ")
+    return archive_dir / "exports" / f"gallery-{timestamp}.html"
 
 
 def export_failures_csv(archive_dir: Path, output_path: Path | None = None) -> dict[str, object]:
@@ -176,6 +203,116 @@ def format_export_row(row: dict[str, object], archive_dir: Path) -> dict[str, ob
     values["media_relative_path"] = relative_archive_path(row.get("local_path"), archive_dir)
     values["metadata_relative_path"] = relative_archive_path(row.get("metadata_path"), archive_dir)
     return values
+
+
+def render_gallery_html(
+    rows: list[dict[str, object]],
+    archive_dir: Path,
+    target_path: Path,
+    status: str | None,
+) -> str:
+    cards = "\n".join(render_gallery_card(row, archive_dir, target_path) for row in rows)
+    selection = html_text(status or "all")
+    return f"""<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>X Media Gallery</title>
+  <style>
+    :root {{ color-scheme: dark; font-family: system-ui, sans-serif; }}
+    body {{ margin: 0; background: #101216; color: #f1f3f4; }}
+    header {{ padding: 2rem clamp(1rem, 4vw, 3rem) 1rem; }}
+    h1 {{ margin: 0 0 .5rem; font-size: clamp(1.6rem, 4vw, 2.25rem); }}
+    header p {{ margin: 0; color: #aeb5c0; }}
+    main {{ display: grid; grid-template-columns: repeat(auto-fill, minmax(270px, 1fr)); gap: 1rem; padding: 1rem clamp(1rem, 4vw, 3rem) 3rem; }}
+    article {{ overflow: hidden; border: 1px solid #292e36; border-radius: .7rem; background: #181c22; }}
+    .preview {{ display: block; width: 100%; height: 260px; object-fit: contain; background: #090b0d; }}
+    .no-preview {{ display: grid; place-content: center; color: #87909e; }}
+    .details {{ padding: .85rem 1rem 1rem; }}
+    .author {{ color: #d6dcff; font-weight: 600; }}
+    .text {{ white-space: pre-wrap; overflow-wrap: anywhere; margin: .65rem 0; color: #d6dae0; }}
+    .meta {{ color: #98a1ae; font-size: .86rem; margin-bottom: .7rem; }}
+    a {{ color: #91bbff; }}
+    .links {{ display: flex; gap: 1rem; flex-wrap: wrap; }}
+  </style>
+</head>
+<body>
+  <header>
+    <h1>X Media Gallery</h1>
+    <p>{len(rows)} media item(s) &middot; status: {selection}</p>
+  </header>
+  <main>
+{cards}
+  </main>
+</body>
+</html>
+"""
+
+
+def render_gallery_card(row: dict[str, object], archive_dir: Path, target_path: Path) -> str:
+    media_href = gallery_media_href(row.get("local_path"), archive_dir, target_path)
+    escaped_href = html_attr(media_href)
+    media_type = str(row.get("media_type") or "").lower()
+    file_ext = str(row.get("file_ext") or "").lower().lstrip(".")
+    if media_href and (media_type in {"photo", "image"} or file_ext in IMAGE_EXTENSIONS):
+        preview = (
+            f'    <a href="{escaped_href}">'
+            f'<img class="preview" src="{escaped_href}" loading="lazy" alt=""></a>'
+        )
+    elif media_href and (media_type == "video" or file_ext in VIDEO_EXTENSIONS):
+        preview = (
+            f'    <video class="preview" src="{escaped_href}" '
+            'controls preload="metadata"></video>'
+        )
+    else:
+        preview = '    <div class="preview no-preview">No preview available</div>'
+
+    author = row.get("author_display_name") or row.get("author_username") or "Unknown author"
+    username = row.get("author_username")
+    author_label = html_text(author)
+    if username and str(username) != str(author):
+        author_label += f" (@{html_text(username)})"
+    tweet_url = html_attr(row.get("tweet_url"))
+    media_link = f'<a href="{escaped_href}">Open media</a>' if media_href else ""
+    tweet_link = f'<a href="{tweet_url}">Open post</a>' if row.get("tweet_url") else ""
+    links = " ".join(part for part in (media_link, tweet_link) if part)
+    meta_parts = [
+        row.get("published_at"),
+        row.get("media_type"),
+        row.get("media_status"),
+    ]
+    metadata = " | ".join(html_text(part) for part in meta_parts if part is not None)
+    return f"""  <article>
+{preview}
+    <div class="details">
+      <div class="author">{author_label}</div>
+      <div class="text">{html_text(row.get("tweet_text"))}</div>
+      <div class="meta">{metadata}</div>
+      <div class="links">{links}</div>
+    </div>
+  </article>"""
+
+
+def gallery_media_href(value: object, archive_dir: Path, target_path: Path) -> str:
+    relative_path = relative_archive_path(value, archive_dir)
+    if not relative_path:
+        return ""
+    media_path = archive_dir / relative_path
+    href = Path(os.path.relpath(media_path, target_path.parent)).as_posix()
+    return quote(href, safe="/:")
+
+
+def html_text(value: object) -> str:
+    if value is None:
+        return ""
+    if isinstance(value, datetime):
+        value = value.isoformat()
+    return escape(str(value))
+
+
+def html_attr(value: object) -> str:
+    return escape(str(value or ""), quote=True)
 
 
 def relative_archive_path(value: object, archive_dir: Path) -> str:

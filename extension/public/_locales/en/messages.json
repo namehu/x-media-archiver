@@ -41,8 +41,23 @@
   "buttonExportJsonl": {
     "message": "Export JSONL"
   },
+  "buttonExportStats": {
+    "message": "Export stats"
+  },
   "buttonClear": {
     "message": "Clear"
+  },
+  "autoSettingsTitle": {
+    "message": "Auto-scroll settings"
+  },
+  "labelMaxScrollCount": {
+    "message": "Max scrolls"
+  },
+  "labelMaxEmptyRounds": {
+    "message": "Empty rounds"
+  },
+  "labelIntervalMs": {
+    "message": "Interval (ms)"
   },
   "statusScanned": {
     "message": "Scanned $COUNT$ unique tweets",
@@ -76,6 +91,9 @@
         "content": "$1"
       }
     }
+  },
+  "statusExportedStats": {
+    "message": "Exported scan stats"
   },
   "errorNoActiveTab": {
     "message": "No active tab"

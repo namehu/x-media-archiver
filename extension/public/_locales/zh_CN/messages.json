@@ -41,8 +41,23 @@
   "buttonExportJsonl": {
     "message": "导出 JSONL"
   },
+  "buttonExportStats": {
+    "message": "导出统计"
+  },
   "buttonClear": {
     "message": "清空"
+  },
+  "autoSettingsTitle": {
+    "message": "自动滚动参数"
+  },
+  "labelMaxScrollCount": {
+    "message": "最大滚动数"
+  },
+  "labelMaxEmptyRounds": {
+    "message": "空轮数上限"
+  },
+  "labelIntervalMs": {
+    "message": "间隔 (ms)"
   },
   "statusScanned": {
     "message": "已扫描 $COUNT$ 条去重推文",
@@ -76,6 +91,9 @@
         "content": "$1"
       }
     }
+  },
+  "statusExportedStats": {
+    "message": "已导出扫描统计"
   },
   "errorNoActiveTab": {
     "message": "没有可用的当前标签页"

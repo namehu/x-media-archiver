@@ -7,7 +7,7 @@ from rich.table import Table
 from xarchiver.archive import ensure_archive_dirs
 from xarchiver.config import get_settings
 from xarchiver.downloader import download as run_download
-from xarchiver.exporter import export_media_csv
+from xarchiver.exporter import export_media_csv, export_media_gallery
 from xarchiver.importer import import_jsonl, import_urls
 from xarchiver.media import backfill_media_assets
 from xarchiver.migrations import migrate
@@ -35,7 +35,7 @@ def db_migrate() -> None:
     settings = get_settings()
     files = migrate(settings.sql_dir)
     if not files:
-        console.print(f"No migration files found in {settings.sql_dir}")
+        console.print(f"No pending migrations in {settings.sql_dir}")
         return
     for file in files:
         console.print(f"Applied migration: {file}")
@@ -139,6 +139,18 @@ def export_failures_command(
 
     settings = get_settings()
     result = export_failures_csv(settings.archive_dir, output)
+    console.print(result)
+
+
+@app.command("export-gallery")
+def export_gallery_command(
+    output: Path | None = typer.Option(None, help="Output HTML path."),
+    status: str | None = typer.Option(
+        "verified", help="Media status to export. Use 'all' to export every status."
+    ),
+) -> None:
+    settings = get_settings()
+    result = export_media_gallery(settings.archive_dir, output, None if status == "all" else status)
     console.print(result)
 
 

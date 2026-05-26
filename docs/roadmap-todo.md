@@ -87,24 +87,26 @@ Goal: make the tool suitable for recurring large archive runs and long-term mana
 ### V1.1 Search And Review
 
 - [ ] Local search by author, text, media type, and status.
-- [ ] HTML gallery export for quick review.
+- [x] HTML gallery export for quick review.
 - [ ] Open local media from CSV or generated index.
 - [ ] Deduplicate identical files across tweets by sha256.
 
 ### V1.2 Extension Improvements
 
-- [ ] Export scan_stats.json.
-- [ ] Configurable auto-scroll limits in UI.
+- [x] Export scan_stats.json.
+- [x] Configurable auto-scroll limits in UI.
 - [ ] Pause and resume long scans.
 - [ ] Better scan quality for quoted tweets and replies.
 - [ ] Optional direct handoff to local CLI or local service.
 
 ### V1.3 Production Database
 
-- [ ] Supabase connection guide.
-- [ ] Supabase migration validation.
-- [ ] Backup and restore instructions.
-- [ ] Optional read-only dashboard queries.
+- [x] Supabase connection guide.
+- [x] Migration history tracking and applied-file checksum protection.
+- [x] Supabase migration validation runbook.
+- [ ] Run migration validation against an owned Supabase project.
+- [x] Backup and restore instructions.
+- [x] Optional read-only dashboard queries.
 
 ## Maintenance Rules
 

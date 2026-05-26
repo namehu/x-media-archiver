@@ -103,6 +103,17 @@ Export failures:
 docker-compose run --rm xarchiver export-failures
 ```
 
+Export a static HTML gallery for verified media:
+
+```bash
+docker-compose run --rm xarchiver export-gallery
+docker-compose run --rm xarchiver export-gallery --status all
+```
+
+Production metadata storage in Supabase, including connection selection and migration checks, is
+documented in [`docs/supabase-deployment.md`](docs/supabase-deployment.md). Backup and restore
+procedures are documented in [`docs/backup-restore.md`](docs/backup-restore.md).
+
 ## State Rules
 
 `verify` checks each `media_assets.local_path`:
@@ -189,7 +200,11 @@ Exports:
 ```text
 tweet_urls_<timestamp>.txt    one concrete /status/<tweet_id> URL per line
 tweets_<timestamp>.jsonl      richer records for xarchiver import
+scan_stats_<timestamp>.json   scan source, timing, counts, and auto-scroll outcome
 ```
+
+The popup also lets you set the maximum scroll rounds, consecutive empty rounds, and scan
+interval before starting a long auto-scroll scan.
 
 Popup UI strings live in:
 
