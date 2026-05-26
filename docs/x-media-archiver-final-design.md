@@ -198,8 +198,9 @@ xarchiver download
 ```text
 Manifest V3
 TypeScript
-Vite
-React 可选
+WXT
+React
+Chrome extension native i18n (_locales)
 chrome.scripting
 chrome.downloads 仅用于导出文件，不负责媒体下载
 ```
@@ -1165,20 +1166,25 @@ x-media-archiver/
   .env.example
 
   extension/
-    manifest.json
     package.json
-    vite.config.ts
+    tsconfig.json
+    wxt.config.ts
+    entrypoints/
+      content.ts
+      popup/
+        index.html
+        main.tsx
+    public/
+      _locales/
+        en/messages.json
+        zh_CN/messages.json
     src/
-      content/
-        scanTweets.ts
-        extractTweet.ts
       popup/
         Popup.tsx
-      background/
-        serviceWorker.ts
-      utils/
-        exportJsonl.ts
-        exportTxt.ts
+        i18n.ts
+        popup.css
+      shared/
+        types.ts
 
   cli/
     Dockerfile
@@ -1227,18 +1233,25 @@ x-media-archiver/
 
 ```text
 extension/
+  entrypoints/
+    content.ts
+    popup/
+      index.html
+      main.tsx
   src/
-    content/
-      scanTweets.ts
-      extractTweet.ts
     popup/
       Popup.tsx
-    utils/
-      exportJsonl.ts
-      exportTxt.ts
+      i18n.ts
+      popup.css
+    shared/
+      types.ts
+  public/
+    _locales/
+      en/messages.json
+      zh_CN/messages.json
 ```
 
-### 23.1 scanTweets.ts 职责
+### 23.1 content.ts 职责
 
 ```text
 1. 查找 article
@@ -1264,7 +1277,17 @@ extension/
 [Clear]
 ```
 
-### 23.3 自动滚动扫描边界
+### 23.3 国际化
+
+```text
+1. manifest 文案使用 __MSG_*__
+2. popup 文案通过 WXT 的 browser.i18n.getMessage 调用原生 i18n
+3. 默认语言 en
+4. 已内置 en / zh_CN
+5. 新增语言时只需要增加 public/_locales/<locale>/messages.json
+```
+
+### 23.4 自动滚动扫描边界
 
 ```text
 1. 每轮滚动后等待 article 数量或页面高度稳定
@@ -1391,11 +1414,12 @@ cli:
 任务：
 
 ```text
-1. 建立 extension 项目
-2. 实现 scanTweets
+1. 建立 WXT + React extension 项目
+2. 实现 content.ts 扫描逻辑
 3. 实现 auto scroll
 4. 实现导出 tweet_urls.txt
 5. 实现导出 tweets.jsonl
+6. 使用 _locales 支持 en / zh_CN
 ```
 
 验收标准：

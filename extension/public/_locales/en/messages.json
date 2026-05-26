@@ -1,0 +1,101 @@
+{
+  "extensionName": {
+    "message": "X Media Archiver Collector"
+  },
+  "extensionDescription": {
+    "message": "Collect visible X/Twitter tweet URLs for x-media-archiver."
+  },
+  "extensionActionTitle": {
+    "message": "X Media Archiver"
+  },
+  "extensionEyebrow": {
+    "message": "Collector"
+  },
+  "extensionTitle": {
+    "message": "X Media Archiver"
+  },
+  "pageDisconnected": {
+    "message": "Open an X/Twitter page"
+  },
+  "metricUnique": {
+    "message": "unique"
+  },
+  "metricScrolls": {
+    "message": "scrolls"
+  },
+  "metricDuplicates": {
+    "message": "duplicates"
+  },
+  "buttonScanVisible": {
+    "message": "Scan visible"
+  },
+  "buttonAutoScroll": {
+    "message": "Auto scroll"
+  },
+  "buttonStop": {
+    "message": "Stop"
+  },
+  "buttonExportUrls": {
+    "message": "Export URLs"
+  },
+  "buttonExportJsonl": {
+    "message": "Export JSONL"
+  },
+  "buttonClear": {
+    "message": "Clear"
+  },
+  "statusScanned": {
+    "message": "Scanned $COUNT$ unique tweets",
+    "placeholders": {
+      "count": {
+        "content": "$1"
+      }
+    }
+  },
+  "statusAutoStarted": {
+    "message": "Auto scroll started"
+  },
+  "statusAutoStopped": {
+    "message": "Auto scroll stopped"
+  },
+  "statusCleared": {
+    "message": "Cleared"
+  },
+  "statusExportedUrls": {
+    "message": "Exported $COUNT$ URLs",
+    "placeholders": {
+      "count": {
+        "content": "$1"
+      }
+    }
+  },
+  "statusExportedJsonl": {
+    "message": "Exported $COUNT$ JSONL rows",
+    "placeholders": {
+      "count": {
+        "content": "$1"
+      }
+    }
+  },
+  "errorNoActiveTab": {
+    "message": "No active tab"
+  },
+  "errorActionFailed": {
+    "message": "Action failed"
+  },
+  "ariaRunning": {
+    "message": "Auto scroll running"
+  },
+  "ariaIdle": {
+    "message": "Auto scroll idle"
+  },
+  "ariaScanStats": {
+    "message": "Scan stats"
+  },
+  "ariaScanControls": {
+    "message": "Scan controls"
+  },
+  "ariaExportControls": {
+    "message": "Export controls"
+  }
+}

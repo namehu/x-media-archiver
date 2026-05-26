@@ -125,3 +125,70 @@ yt-dlp metadata parsing and normalization
 verify aggregation rules
 missing/corrupt/recovery integration flow
 ```
+
+## Browser Extension V0
+
+The extension is a WXT + React project with TypeScript and native Chrome extension i18n.
+
+Install dependencies:
+
+```bash
+cd extension
+npm install
+```
+
+Run the extension in WXT development mode:
+
+```bash
+npm run dev
+```
+
+Build a Chrome/Edge production bundle:
+
+```bash
+npm run build
+npm run zip
+```
+
+Load the production build in Chrome or Edge:
+
+```text
+1. Open chrome://extensions
+2. Enable Developer mode
+3. Click Load unpacked
+4. Select extension/.output/chrome-mv3/
+```
+
+Use it on an X/Twitter page such as likes, bookmarks, profile, search, or home:
+
+```text
+1. Open the target page on x.com or twitter.com
+2. Click the X Media Archiver extension icon
+3. Click Scan visible to collect currently mounted tweets
+4. Click Auto scroll to keep scrolling and scanning
+5. Click Stop when enough tweets are collected
+6. Export URLs or JSONL
+```
+
+Exports:
+
+```text
+tweet_urls_<timestamp>.txt    one concrete /status/<tweet_id> URL per line
+tweets_<timestamp>.jsonl      richer records for xarchiver import
+```
+
+Popup UI strings live in:
+
+```text
+extension/public/_locales/en/messages.json
+extension/public/_locales/zh_CN/messages.json
+```
+
+Import extension output into the CLI:
+
+```bash
+docker-compose run --rm xarchiver import-urls /app/examples/tweet_urls.example.txt
+docker-compose run --rm xarchiver import /app/examples/tweets.example.jsonl
+```
+
+After exporting from the browser, place the downloaded file under `examples/` or another mounted directory before importing it in Docker.

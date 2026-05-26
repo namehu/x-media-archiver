@@ -1,0 +1,101 @@
+{
+  "extensionName": {
+    "message": "X Media Archiver 采集器"
+  },
+  "extensionDescription": {
+    "message": "为 x-media-archiver 采集当前可见的 X/Twitter 推文链接。"
+  },
+  "extensionActionTitle": {
+    "message": "X Media Archiver"
+  },
+  "extensionEyebrow": {
+    "message": "采集器"
+  },
+  "extensionTitle": {
+    "message": "X Media Archiver"
+  },
+  "pageDisconnected": {
+    "message": "打开一个 X/Twitter 页面"
+  },
+  "metricUnique": {
+    "message": "去重"
+  },
+  "metricScrolls": {
+    "message": "滚动"
+  },
+  "metricDuplicates": {
+    "message": "重复"
+  },
+  "buttonScanVisible": {
+    "message": "扫描可见"
+  },
+  "buttonAutoScroll": {
+    "message": "自动滚动"
+  },
+  "buttonStop": {
+    "message": "停止"
+  },
+  "buttonExportUrls": {
+    "message": "导出 URL"
+  },
+  "buttonExportJsonl": {
+    "message": "导出 JSONL"
+  },
+  "buttonClear": {
+    "message": "清空"
+  },
+  "statusScanned": {
+    "message": "已扫描 $COUNT$ 条去重推文",
+    "placeholders": {
+      "count": {
+        "content": "$1"
+      }
+    }
+  },
+  "statusAutoStarted": {
+    "message": "已开始自动滚动"
+  },
+  "statusAutoStopped": {
+    "message": "已停止自动滚动"
+  },
+  "statusCleared": {
+    "message": "已清空"
+  },
+  "statusExportedUrls": {
+    "message": "已导出 $COUNT$ 条 URL",
+    "placeholders": {
+      "count": {
+        "content": "$1"
+      }
+    }
+  },
+  "statusExportedJsonl": {
+    "message": "已导出 $COUNT$ 行 JSONL",
+    "placeholders": {
+      "count": {
+        "content": "$1"
+      }
+    }
+  },
+  "errorNoActiveTab": {
+    "message": "没有可用的当前标签页"
+  },
+  "errorActionFailed": {
+    "message": "操作失败"
+  },
+  "ariaRunning": {
+    "message": "自动滚动运行中"
+  },
+  "ariaIdle": {
+    "message": "自动滚动空闲"
+  },
+  "ariaScanStats": {
+    "message": "扫描统计"
+  },
+  "ariaScanControls": {
+    "message": "扫描控制"
+  },
+  "ariaExportControls": {
+    "message": "导出控制"
+  }
+}

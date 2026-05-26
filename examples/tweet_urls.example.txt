@@ -1,3 +1,6 @@
 # Replace with real tweet URLs before running download.
+https://x.com/amazing_physics/status/2058446952715657503
+https://x.com/veritasium/status/2058499139621601631
 https://x.com/PhysInHistory/status/2058554692586885322
+https://x.com/_6signxxx/status/2058950563711111236
 https://x.com/dpoddolphinpro/status/2059072547585433944
