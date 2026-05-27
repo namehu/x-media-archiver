@@ -94,6 +94,7 @@ class SourceStatusRequest(BaseModel):
 
 class SourceScanRequest(BaseModel):
     limit: int = Field(default=20, ge=1, le=200)
+    restart: bool = False
 
 
 class SourceSubmitDiscoveredRequest(BaseModel):
@@ -132,6 +133,16 @@ def create_app() -> FastAPI:
     @app.get("/api/summary")
     def summary() -> dict[str, object]:
         return get_summary(get_settings())
+
+    @app.get("/api/settings/download-policy")
+    def download_policy() -> dict[str, object]:
+        settings = get_settings()
+        return {
+            "queue_batch_size": settings.queue_batch_size,
+            "downloader_sleep_min_seconds": settings.downloader_sleep_min_seconds,
+            "downloader_sleep_max_seconds": settings.downloader_sleep_max_seconds,
+            "default_download_engine": settings.default_download_engine,
+        }
 
     @app.get("/api/media")
     def media(
@@ -321,7 +332,7 @@ def create_app() -> FastAPI:
     @app.post("/api/sources/{source_id}/scan", status_code=status.HTTP_202_ACCEPTED)
     def scan_archive_source(source_id: int, request: SourceScanRequest) -> dict[str, object]:
         try:
-            return execute_write_action("source-scan", lambda: scan_source(source_id, request.limit))
+            return execute_write_action("source-scan", lambda: scan_source(source_id, request.limit, restart=request.restart))
         except ValueError as exc:
             detail = str(exc)
             code = 404 if detail == "source_not_found" else 409 if detail == "source_paused" else 400

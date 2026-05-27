@@ -172,44 +172,41 @@ def claim_next_items(retry_limit: int, batch_size: int = 20) -> list[dict[str, o
         with conn.cursor() as cur:
             cur.execute(
                 """
-                select archive_run_id
-                from archive_run_items
-                where status in ('pending', 'failed_retryable')
-                  and retry_count < %s
-                  and (next_attempt_at is null or next_attempt_at <= now())
-                order by created_at asc, id asc
-                for update skip locked
-                limit 1
-                """,
-                (retry_limit,),
-            )
-            row = cur.fetchone()
-            if row is None:
-                return []
-            run_id = int(row["archive_run_id"])
-            cur.execute(
-                """
-                update archive_run_items
-                set status = 'processing', last_attempt_at = now(), updated_at = now()
-                where id in (
-                  select id from archive_run_items
-                  where archive_run_id = %s
-                  and status in ('pending', 'failed_retryable')
-                  and retry_count < %s
-                  and (next_attempt_at is null or next_attempt_at <= now())
-                  order by id asc
+                with candidate_run as (
+                  select archive_run_id
+                  from archive_run_items
+                  where status in ('pending', 'failed_retryable')
+                    and retry_count < %s
+                    and (next_attempt_at is null or next_attempt_at <= now())
+                  order by created_at asc, id asc
+                  for update skip locked
+                  limit 1
+                ),
+                candidate_items as materialized (
+                  select i.id
+                  from archive_run_items i
+                  join candidate_run r on r.archive_run_id = i.archive_run_id
+                  where i.status in ('pending', 'failed_retryable')
+                    and i.retry_count < %s
+                    and (i.next_attempt_at is null or i.next_attempt_at <= now())
+                  order by i.id asc
                   limit %s
                   for update skip locked
                 )
+                update archive_run_items
+                set status = 'processing', last_attempt_at = now(), updated_at = now()
+                where id in (select id from candidate_items)
                 returning id, archive_run_id, tweet_id, retry_count
                 """,
-                (run_id, retry_limit, batch_size),
+                (retry_limit, retry_limit, batch_size),
             )
             rows = list(cur.fetchall())
-            cur.execute(
-                "update archive_runs set status = 'running', finished_at = null where id = %s",
-                (run_id,),
-            )
+            if rows:
+                run_id = int(rows[0]["archive_run_id"])
+                cur.execute(
+                    "update archive_runs set status = 'running', finished_at = null where id = %s",
+                    (run_id,),
+                )
         conn.commit()
     return rows
 

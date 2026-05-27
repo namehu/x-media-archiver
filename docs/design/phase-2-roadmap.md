@@ -291,7 +291,7 @@ P2.8.0 source collector foundation
 - [x] WebUI/API/CLI 支持小批量扫描来源并只记录发现结果。
 - [x] WebUI/API/CLI 支持显式提交未入队发现项，避免扫描与下载请求叠加。
 - [x] 下载队列增加每轮 batch size 限制，下载器增加请求/下载随机延迟参数。
-- [ ] 将枚举器接入 `archive_sources.cursor_state`，支持分页 checkpoint 和恢复。
+- [x] 将枚举器接入 `archive_sources.cursor_state`，支持分页 checkpoint 和恢复。
 - [ ] 增加来源扫描 worker，按批次发现并提交 tweet，避免一次性大任务。
 - [ ] 为限流、鉴权失败和网络错误补充来源级失败分类。
 

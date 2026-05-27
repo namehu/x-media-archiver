@@ -2,7 +2,9 @@ import unittest
 
 from xarchiver.services.sources import (
     build_gallery_dl_scan_url,
+    build_scan_range,
     infer_author_username,
+    is_source_scan_complete,
     normalize_source_type,
     normalize_source_url,
     parse_gallery_dl_records,
@@ -34,6 +36,8 @@ class SourceServiceTests(unittest.TestCase):
                "author": {"name": "alice", "nick": "Alice"}}],
           [3, "https://pbs.twimg.com/media/test.jpg", {"tweet_id": 123,
                "author": {"name": "alice", "nick": "Alice"}, "type": "photo"}],
+          [3, "https://video.twimg.com/ext_tw_video/test.mp4", {"tweet_id": 123,
+               "author": {"name": "alice", "nick": "Alice"}, "type": "video"}],
           [2, {"tweet_id": 456, "author": {"name": "bob"}}]
         ]
         """
@@ -43,12 +47,35 @@ class SourceServiceTests(unittest.TestCase):
         self.assertEqual([row["tweet_id"] for row in rows], ["123", "456"])
         self.assertEqual(rows[0]["url"], "https://x.com/alice/status/123")
         self.assertEqual(rows[0]["text"], "hello")
+        self.assertIn("collected_at", rows[0])
+        self.assertEqual(rows[0]["media_count"], 2)
+        self.assertEqual(rows[0]["media_types"], ["photo", "video"])
+        self.assertTrue(rows[0]["has_photo"])
+        self.assertTrue(rows[0]["has_video"])
+        self.assertEqual(rows[1]["media_count"], 0)
 
     def test_build_gallery_dl_scan_url_uses_timeline_for_profile(self) -> None:
         self.assertEqual(
             build_gallery_dl_scan_url("profile", "https://x.com/earthcurated"),
             "https://x.com/earthcurated/timeline",
         )
+
+    def test_build_scan_range_advances_from_cursor(self) -> None:
+        self.assertEqual(
+            build_scan_range({"next_start_index": 21}, 20),
+            {"start": 21, "end": 40, "limit": 20},
+        )
+
+    def test_build_scan_range_can_restart_from_latest(self) -> None:
+        self.assertEqual(
+            build_scan_range({"next_start_index": 101}, 10, restart=True),
+            {"start": 1, "end": 10, "limit": 10},
+        )
+
+    def test_scan_complete_when_successful_result_is_smaller_than_range(self) -> None:
+        self.assertTrue(is_source_scan_complete({"exit_code": 0}, {"limit": 20}, 14))
+        self.assertFalse(is_source_scan_complete({"exit_code": 0}, {"limit": 20}, 20))
+        self.assertFalse(is_source_scan_complete({"exit_code": 1}, {"limit": 20}, 0))
 
 
 if __name__ == "__main__":

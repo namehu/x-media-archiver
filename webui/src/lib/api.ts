@@ -176,6 +176,19 @@ export type ArchiveSource = {
   oldest_seen_tweet_id?: string | null;
   error_category?: string | null;
   error_message?: string | null;
+  cursor_state?: {
+    next_start_index?: number;
+    last_range_start?: number;
+    last_range_end?: number;
+    last_limit?: number;
+    last_scan_url?: string | null;
+    last_raw_record_count?: number;
+    last_discovered_count?: number;
+    last_new_discovered_count?: number;
+    last_duplicate_count?: number;
+    last_reached_known_region?: boolean;
+    last_completed?: boolean;
+  } | null;
   created_at?: string | null;
   updated_at?: string | null;
   discovered?: Array<{
@@ -186,7 +199,20 @@ export type ArchiveSource = {
     download_status?: string | null;
     author_username?: string | null;
     text?: string | null;
+    raw_payload?: {
+      media_count?: number;
+      media_types?: string[];
+      has_photo?: boolean;
+      has_video?: boolean;
+    } | null;
   }>;
+};
+
+export type DownloadPolicy = {
+  queue_batch_size: number;
+  downloader_sleep_min_seconds: number;
+  downloader_sleep_max_seconds: number;
+  default_download_engine: string;
 };
 
 export function mediaQueryString(params: Record<string, string>) {

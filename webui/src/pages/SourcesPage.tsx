@@ -1,6 +1,6 @@
 import { useState } from "react";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
-import { apiGet, apiPost, type ArchiveSource, type ArchiveSubmission } from "../lib/api";
+import { apiGet, apiPost, type ArchiveSource, type ArchiveSubmission, type DownloadPolicy } from "../lib/api";
 import { useFormatters, useI18n } from "../lib/i18n";
 import { formatDateTime } from "../lib/utils";
 import { Badge } from "../components/ui/Badge";
@@ -33,6 +33,10 @@ export function SourcesPage() {
     queryFn: () => apiGet<ArchiveSource>(`/api/sources/${selectedSourceId}`),
     enabled: selectedSourceId !== null,
     refetchInterval: 5000,
+  });
+  const policyQuery = useQuery({
+    queryKey: ["download-policy"],
+    queryFn: () => apiGet<DownloadPolicy>("/api/settings/download-policy"),
   });
 
   const refresh = async (sourceId?: number) => {
@@ -74,9 +78,10 @@ export function SourcesPage() {
     onSuccess: async (source) => refresh(source.id),
   });
   const scanMutation = useMutation({
-    mutationFn: ({ sourceId, limit }: { sourceId: number; limit: number }) =>
-      apiPost<Record<string, unknown>>(`/api/sources/${sourceId}/scan`, { limit }),
-    onSuccess: async (result) => {
+    mutationFn: ({ sourceId, limit, restart }: { sourceId: number; limit: number; restart?: boolean }) =>
+      apiPost<Record<string, unknown>>(`/api/sources/${sourceId}/scan`, { limit, restart }),
+    onSuccess: async (response) => {
+      const result = unwrapActionResult(response);
       setScanFeedback(result);
       await refresh(Number(result.source_id) || selectedSourceId || undefined);
     },
@@ -106,18 +111,28 @@ export function SourcesPage() {
           <CardTitle>{t("sources.createTitle")}</CardTitle>
         </CardHeader>
         <CardContent className="grid gap-3 lg:grid-cols-[180px_1fr_220px_auto]">
-          <Select value={sourceType} onChange={(event) => setSourceType(event.target.value)}>
-            <option value="profile">{t("sources.type.profile")}</option>
-            <option value="user_media">{t("sources.type.user_media")}</option>
-            <option value="likes">{t("sources.type.likes")}</option>
-            <option value="bookmarks">{t("sources.type.bookmarks")}</option>
-            <option value="search">{t("sources.type.search")}</option>
-            <option value="manual">{t("sources.type.manual")}</option>
-          </Select>
+          <label className="space-y-1">
+            <Select value={sourceType} onChange={(event) => setSourceType(event.target.value)}>
+              <option value="profile">{t("sources.type.profile")}</option>
+              <option value="user_media">{t("sources.type.user_media")}</option>
+              <option value="likes">{t("sources.type.likes")}</option>
+              <option value="bookmarks">{t("sources.type.bookmarks")}</option>
+              <option value="search">{t("sources.type.search")}</option>
+              <option value="manual">{t("sources.type.manual")}</option>
+            </Select>
+            <span className="block text-xs text-muted-foreground" title={t("sources.typeHelpTooltip")}>
+              {t("sources.typeHelp")}
+            </span>
+          </label>
           <Input
             placeholder="https://x.com/username/media"
             value={sourceUrl}
-            onChange={(event) => setSourceUrl(event.target.value)}
+            onChange={(event) => {
+              const nextUrl = event.target.value;
+              setSourceUrl(nextUrl);
+              const inferred = inferSourceType(nextUrl);
+              if (inferred) setSourceType(inferred);
+            }}
           />
           <Input placeholder={t("sources.label")} value={label} onChange={(event) => setLabel(event.target.value)} />
           <Button type="button" disabled={!canCreate} onClick={() => createMutation.mutate()}>
@@ -166,6 +181,24 @@ export function SourcesPage() {
           <CardContent className="space-y-4">
             {selected ? (
               <>
+                {policyQuery.data ? (
+                  <div className="grid gap-2 rounded-md border border-border p-3 text-sm sm:grid-cols-3">
+                    <div>
+                      <div className="text-xs text-muted-foreground">{t("sources.policyBatch")}</div>
+                      <div>{policyQuery.data.queue_batch_size}</div>
+                    </div>
+                    <div>
+                      <div className="text-xs text-muted-foreground">{t("sources.policyDelay")}</div>
+                      <div>
+                        {policyQuery.data.downloader_sleep_min_seconds}-{policyQuery.data.downloader_sleep_max_seconds}s
+                      </div>
+                    </div>
+                    <div>
+                      <div className="text-xs text-muted-foreground">{t("sources.policyEngine")}</div>
+                      <div>{policyQuery.data.default_download_engine}</div>
+                    </div>
+                  </div>
+                ) : null}
                 <div className="space-y-2 rounded-md bg-muted p-3 text-sm">
                   <div className="flex justify-between gap-3">
                     <span className="text-muted-foreground">{t("sources.url")}</span>
@@ -182,6 +215,22 @@ export function SourcesPage() {
                   <div className="flex justify-between gap-3">
                     <span className="text-muted-foreground">{t("sources.unsubmitted")}</span>
                     <span>{selected.unsubmitted_tweet_count ?? 0}</span>
+                  </div>
+                  <div className="flex justify-between gap-3">
+                    <span className="text-muted-foreground">{t("sources.nextRange")}</span>
+                    <span>{formatNextRange(selected.cursor_state, Number(scanLimit) || 20)}</span>
+                  </div>
+                  {selected.cursor_state?.last_range_start ? (
+                    <div className="flex justify-between gap-3">
+                      <span className="text-muted-foreground">{t("sources.lastRange")}</span>
+                      <span>
+                        {selected.cursor_state.last_range_start}-{selected.cursor_state.last_range_end}
+                      </span>
+                    </div>
+                  ) : null}
+                  <div className="flex justify-between gap-3">
+                    <span className="text-muted-foreground">{t("sources.scanState")}</span>
+                    <span>{formatScanState(selected.cursor_state, t)}</span>
                   </div>
                 </div>
 
@@ -206,7 +255,23 @@ export function SourcesPage() {
                       }
                     }}
                   >
-                    {t("sources.scan")}
+                    {t("sources.scanNext")}
+                  </Button>
+                  <Button
+                    type="button"
+                    variant="secondary"
+                    disabled={!canScan}
+                    onClick={() => {
+                      if (selectedSourceId) {
+                        scanMutation.mutate({
+                          sourceId: selectedSourceId,
+                          limit: Math.max(1, Math.min(200, Number(scanLimit) || 20)),
+                          restart: true,
+                        });
+                      }
+                    }}
+                  >
+                    {t("sources.scanLatest")}
                   </Button>
                   <Button
                     type="button"
@@ -231,6 +296,8 @@ export function SourcesPage() {
                     {t("sources.scanFeedback", {
                       discovered: Number(scanFeedback.discovered_count || 0),
                       fresh: Number(scanFeedback.new_discovered_count || 0),
+                      duplicate: Number(scanFeedback.duplicate_count || 0),
+                      state: scanFeedback.completed ? t("sources.scanCompleted") : "",
                     })}
                   </p>
                 ) : null}
@@ -297,8 +364,18 @@ export function SourcesPage() {
                   <div className="text-sm font-medium">{t("sources.recentDiscovered")}</div>
                   {selected.discovered?.map((tweet) => (
                     <div key={tweet.id} className="rounded-md border border-border p-3 text-sm">
-                      <div className="flex justify-between gap-3">
-                        <span className="break-all">{tweet.tweet_id}</span>
+                      <div className="flex items-start justify-between gap-3">
+                        <div className="min-w-0 space-y-1">
+                          <div className="text-xs text-muted-foreground">
+                            @{tweet.author_username || selected.author_username || "-"} · {tweet.tweet_id}
+                          </div>
+                          <div className="whitespace-pre-wrap break-words text-sm leading-6">
+                            {tweet.text || t("tweet.noText")}
+                          </div>
+                          <div className="flex flex-wrap gap-2 text-xs text-muted-foreground">
+                            {formatDiscoveredMedia(tweet.raw_payload, t)}
+                          </div>
+                        </div>
                         <Badge>{statusLabel(tweet.download_status)}</Badge>
                       </div>
                       <div className="mt-1 text-xs text-muted-foreground">
@@ -339,4 +416,58 @@ function parseRecordUrls(value: string) {
 
 function sourceTypeLabel(type: string, t: (key: string) => string) {
   return t(`sources.type.${type}`);
+}
+
+function inferSourceType(url: string) {
+  try {
+    const parsed = new URL(url.trim());
+    const parts = parsed.pathname.split("/").filter(Boolean);
+    if (parts.includes("search")) return "search";
+    if (parts.includes("bookmarks")) return "bookmarks";
+    if (parts.includes("likes")) return "likes";
+    if (parts[1] === "media") return "user_media";
+    if (parts.length === 1 && !["home", "i"].includes(parts[0])) return "profile";
+  } catch (_error) {
+    return null;
+  }
+  return null;
+}
+
+function unwrapActionResult(response: Record<string, unknown>) {
+  const result = response.result;
+  return result && typeof result === "object" ? (result as Record<string, unknown>) : response;
+}
+
+function formatNextRange(cursorState: ArchiveSource["cursor_state"], fallbackLimit: number) {
+  if (isLikelyCompleted(cursorState)) return "-";
+  const start = Math.max(1, Number(cursorState?.next_start_index) || 1);
+  const limit = Math.max(1, Math.min(200, fallbackLimit));
+  return `${start}-${start + limit - 1}`;
+}
+
+function formatScanState(cursorState: ArchiveSource["cursor_state"], t: (key: string) => string) {
+  if (isLikelyCompleted(cursorState)) return t("sources.scanCompleted");
+  if (cursorState?.last_reached_known_region) return t("sources.scanKnownRegion");
+  return t("sources.scanContinuing");
+}
+
+function isLikelyCompleted(cursorState: ArchiveSource["cursor_state"]) {
+  if (!cursorState) return false;
+  if (cursorState.last_completed) return true;
+  const rawCount = Number(cursorState.last_raw_record_count ?? cursorState.last_discovered_count ?? 0);
+  const limit = Number(cursorState.last_limit || 0);
+  return limit > 0 && rawCount >= 0 && rawCount < limit;
+}
+
+function formatDiscoveredMedia(
+  payload: NonNullable<ArchiveSource["discovered"]>[number]["raw_payload"],
+  t: (key: string, params?: Record<string, string | number>) => string,
+) {
+  const count = Number(payload?.media_count || 0);
+  if (!count) return t("sources.mediaUnknown");
+  const types = new Set(payload?.media_types || []);
+  if (types.has("photo") && types.has("video")) return t("sources.mediaMixed", { count });
+  if (types.has("video")) return t("sources.mediaVideo", { count });
+  if (types.has("photo")) return t("sources.mediaPhoto", { count });
+  return t("sources.mediaCount", { count });
 }

@@ -57,6 +57,15 @@ archive/exports/     CSV exports
 archive/state/       downloader state and runtime cookie copy
 ```
 
+Media files are stored under stable path segments:
+
+```text
+archive/media/<author_id>/<tweet_id>/<tweet_id>--p<media_index>.<ext>
+```
+
+Usernames are kept in Postgres metadata for search and display, but are not used as the primary
+filesystem directory name.
+
 Recommended one-command workflow after exporting URLs from the browser extension:
 
 ```bash
@@ -253,8 +262,9 @@ same Archive Queue while preserving source-to-tweet traceability. The current im
 the recoverable source model, manual discovered-URL submission, and small-batch `gallery-dl` scanning
 for profile timelines and user media pages. Source scanning records discovered tweets only; it does
 not automatically submit them to the download queue. Use the explicit submit action when you are ready
-to download a controlled batch. Large historical backfills should be run in small batches until
-cursor-based checkpoint scanning is added.
+to download a controlled batch. Each scan advances `archive_sources.cursor_state` with the last
+`gallery-dl --range` window, duplicate/new counts, and the next range start, so large historical
+backfills can continue in small recoverable batches instead of restarting from the first page.
 
 ## Archive Queue
 

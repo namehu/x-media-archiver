@@ -39,9 +39,9 @@ download archive behavior: --download-archive writes a SQLite file at archive/st
 建议输出模板：
 
 ```text
-directory: configured through cli/gallery-dl.conf as ["{author[name]}", "{tweet_id}"]
+directory: configured through cli/gallery-dl.conf as ["{author[id]}", "{tweet_id}"]
 destination: /app/archive/media
-filename: {tweet_id}--m{num}.{extension}
+filename: {tweet_id}--p{num}.{extension}
 ```
 
 验证结果：
@@ -90,8 +90,12 @@ notes:
 最终 CLI 实现必须能把下载结果归一到：
 
 ```text
-archive/media/<author_username>/<tweet_id>/<tweet_id>--m<media_index>.<ext>
+archive/media/<author_id>/<tweet_id>/<tweet_id>--p<media_index>.<ext>
 ```
+
+`author_username` remains metadata in Postgres for display/search. Filesystem paths should use stable
+ID-like segments, not usernames, because usernames can change and path-unsafe characters should not
+control archive layout.
 
 如果下载器无法直接生成该结构，CLI 负责下载后移动或重命名。
 

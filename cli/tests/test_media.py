@@ -4,7 +4,7 @@ from pathlib import Path
 
 import orjson
 
-from xarchiver.media import asset_from_gallery_dl_metadata, asset_from_yt_dlp_metadata, iter_metadata_paths
+from xarchiver.media import asset_from_gallery_dl_metadata, asset_from_yt_dlp_metadata, iter_metadata_paths, safe_path_segment
 
 
 class MediaMetadataTests(unittest.TestCase):
@@ -86,8 +86,12 @@ class MediaMetadataTests(unittest.TestCase):
             self.assertEqual(asset.tweet_text, "video tweet body")
             self.assertEqual(asset.published_at, "2026-05-25T16:37:22+00:00")
             self.assertEqual(asset.source_engine, "yt-dlp")
-            self.assertEqual(asset.local_path, media_dir / "author" / "tweet-id" / "tweet-id--m1.mp4")
+            self.assertEqual(asset.local_path, media_dir / "author" / "tweet-id" / "tweet-id--p1.mp4")
             self.assertTrue(asset.local_path.exists())
+
+    def test_safe_path_segment_removes_path_unsafe_characters(self) -> None:
+        self.assertEqual(safe_path_segment("user/name:with*chars"), "user_name_with_chars")
+        self.assertEqual(safe_path_segment(""), "_unknown")
 
 
 if __name__ == "__main__":

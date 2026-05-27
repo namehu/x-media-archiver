@@ -145,6 +145,7 @@ def asset_from_yt_dlp_metadata(
     media_index = 1
     media_type = value_as_str(metadata.get("_type")) or infer_media_type(source_media_path)
     author = value_as_str(metadata.get("uploader_id")) or source_media_path.parent.parent.name
+    author_storage_id = value_as_str(metadata.get("uploader_id")) or source_media_path.parent.parent.name
 
     local_path = source_media_path
     normalized_metadata_path = metadata_path
@@ -153,7 +154,7 @@ def asset_from_yt_dlp_metadata(
             media_dir=media_dir,
             source_media_path=source_media_path,
             source_metadata_path=metadata_path,
-            author=author,
+            author_storage_id=safe_path_segment(author_storage_id),
             tweet_id=tweet_id,
             media_index=media_index,
         )
@@ -192,14 +193,14 @@ def normalize_yt_dlp_files(
     media_dir: Path,
     source_media_path: Path,
     source_metadata_path: Path,
-    author: str,
+    author_storage_id: str,
     tweet_id: str,
     media_index: int,
 ) -> tuple[Path, Path]:
-    target_dir = media_dir / author / tweet_id
+    target_dir = media_dir / author_storage_id / safe_path_segment(tweet_id)
     target_dir.mkdir(parents=True, exist_ok=True)
 
-    stem = f"{tweet_id}--m{media_index}"
+    stem = f"{safe_path_segment(tweet_id)}--p{media_index}"
     target_media_path = target_dir / f"{stem}{source_media_path.suffix.lower()}"
     target_metadata_path = target_dir / f"{stem}.info.json"
 
@@ -211,6 +212,13 @@ def normalize_yt_dlp_files(
         move_if_needed(thumbnail, target_dir / f"{stem}.thumb.jpg")
 
     return target_media_path, target_metadata_path
+
+
+def safe_path_segment(value: str | None) -> str:
+    text = (value or "").strip()
+    safe = "".join(char if char.isalnum() or char in {"_", "-"} else "_" for char in text)
+    safe = safe.strip("._-")
+    return safe or "_unknown"
 
 
 def move_if_needed(source: Path, target: Path) -> None:

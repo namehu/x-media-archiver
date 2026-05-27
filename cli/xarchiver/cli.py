@@ -152,8 +152,9 @@ def source_resume_command(source_id: int = typer.Argument(..., help="Archive sou
 def source_scan_command(
     source_id: int = typer.Argument(..., help="Archive source id."),
     limit: int = typer.Option(20, help="Maximum posts to discover in this scan."),
+    restart: bool = typer.Option(False, help="Start again from the latest posts instead of the saved cursor."),
 ) -> None:
-    result = scan_source(source_id, limit)
+    result = scan_source(source_id, limit, restart=restart)
     console.print(result)
     console.print("Discovered tweets were recorded. Submit them explicitly when you are ready to download.")
 
