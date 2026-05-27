@@ -7,4 +7,5 @@ psycopg[binary]
 python-dotenv
 gallery-dl
 yt-dlp
-
+fastapi
+uvicorn[standard]

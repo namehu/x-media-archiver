@@ -12,9 +12,12 @@ __pycache__/
 *.py[cod]
 .pytest_cache/
 .ruff_cache/
+*.log
+.*.log
 
 pg_data/
 
 node_modules/
 extension/.output/
 extension/.wxt/
+webui/dist/

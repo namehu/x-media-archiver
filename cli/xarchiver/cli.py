@@ -6,16 +6,23 @@ from rich.table import Table
 
 from xarchiver.archive import ensure_archive_dirs
 from xarchiver.config import get_settings
-from xarchiver.downloader import download as run_download
-from xarchiver.exporter import export_duplicates_csv, export_media_csv, export_media_gallery, fetch_duplicate_rows
+from xarchiver.exporter import export_media_gallery
 from xarchiver.importer import import_jsonl, import_urls
-from xarchiver.media import backfill_media_assets
 from xarchiver.migrations import migrate
-from xarchiver.recovery import recover_interrupted_runs, requeue_tweets
 from xarchiver.search import compact_text, search_media
+from xarchiver.services.library import list_duplicates
+from xarchiver.services.runs import (
+    run_archive_urls,
+    run_backfill,
+    run_download,
+    run_export_duplicates,
+    run_export_failures,
+    run_export_media,
+    run_recover_interrupted,
+    run_requeue,
+    run_verify,
+)
 from xarchiver.status import get_media_count, get_status_counts
-from xarchiver.verifier import verify_media_assets
-from xarchiver.workflow import archive_urls
 
 app = typer.Typer(help="Local-first X/Twitter media archiver.")
 db_app = typer.Typer(help="Database commands.")
@@ -61,7 +68,7 @@ def archive_urls_command(
     limit: int | None = typer.Option(None, help="Maximum pending tweets per downloader pass."),
 ) -> None:
     settings = get_settings()
-    result = archive_urls(path, settings, limit)
+    result = run_archive_urls(path, settings, limit)
     console.print(result)
 
 
@@ -116,7 +123,8 @@ def search_command(
 
 @app.command("duplicates")
 def duplicates_command() -> None:
-    rows = fetch_duplicate_rows()
+    result = list_duplicates(get_settings())
+    rows = result["rows"]
     groups = {row.get("sha256") for row in rows if row.get("sha256")}
     table = Table(title=f"x-media-archiver duplicates ({len(groups)} group(s), {len(rows)} file(s))")
     table.add_column("SHA256")
@@ -169,7 +177,7 @@ def requeue_command(
     ),
     limit: int | None = typer.Option(None, help="Maximum tweets to requeue."),
 ) -> None:
-    result = requeue_tweets(status, limit)
+    result = run_requeue(status, limit)
     console.print(result)
 
 
@@ -181,7 +189,7 @@ def recover_interrupted_command(
     ),
 ) -> None:
     settings = get_settings()
-    result = recover_interrupted_runs(timeout_minutes or settings.stuck_timeout_minutes)
+    result = run_recover_interrupted(settings, timeout_minutes)
     console.print(result)
 
 
@@ -190,7 +198,7 @@ def backfill_media_command(
     no_normalize: bool = typer.Option(False, help="Do not move yt-dlp files into the canonical tweet directory."),
 ) -> None:
     settings = get_settings()
-    result = backfill_media_assets(settings.archive_dir, normalize_files=not no_normalize)
+    result = run_backfill(settings, normalize_files=not no_normalize)
     console.print(result)
 
 
@@ -198,7 +206,7 @@ def backfill_media_command(
 def verify_command(
     limit: int | None = typer.Option(None, help="Maximum media assets to verify."),
 ) -> None:
-    result = verify_media_assets(limit)
+    result = run_verify(limit)
     console.print(result)
 
 
@@ -211,7 +219,7 @@ def export_command(
     if format != "csv":
         raise typer.BadParameter("Only csv export is supported in V0.")
     settings = get_settings()
-    result = export_media_csv(settings.archive_dir, output, None if status == "all" else status)
+    result = run_export_media(settings, output, None if status == "all" else status)
     console.print(result)
 
 
@@ -219,10 +227,8 @@ def export_command(
 def export_failures_command(
     output: Path | None = typer.Option(None, help="Output failures CSV path."),
 ) -> None:
-    from xarchiver.exporter import export_failures_csv
-
     settings = get_settings()
-    result = export_failures_csv(settings.archive_dir, output)
+    result = run_export_failures(settings, output)
     console.print(result)
 
 
@@ -231,7 +237,7 @@ def export_duplicates_command(
     output: Path | None = typer.Option(None, help="Output duplicate media CSV path."),
 ) -> None:
     settings = get_settings()
-    result = export_duplicates_csv(settings.archive_dir, output)
+    result = run_export_duplicates(settings, output)
     console.print(result)
 
 
@@ -245,6 +251,23 @@ def export_gallery_command(
     settings = get_settings()
     result = export_media_gallery(settings.archive_dir, output, None if status == "all" else status)
     console.print(result)
+
+
+@app.command("serve")
+def serve_command(
+    host: str | None = typer.Option(None, help="API host. Defaults to API_HOST or 127.0.0.1."),
+    port: int | None = typer.Option(None, help="API port. Defaults to API_PORT or 8000."),
+    reload: bool = typer.Option(False, help="Enable uvicorn reload for local development."),
+) -> None:
+    import uvicorn
+
+    settings = get_settings()
+    uvicorn.run(
+        "xarchiver.api.app:app",
+        host=host or settings.api_host,
+        port=port or settings.api_port,
+        reload=reload,
+    )
 
 
 if __name__ == "__main__":

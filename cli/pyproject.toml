@@ -12,9 +12,10 @@ dependencies = [
   "python-dotenv",
   "gallery-dl",
   "yt-dlp",
+  "fastapi",
+  "uvicorn[standard]",
 ]
 
 [tool.ruff]
 line-length = 100
 target-version = "py312"
-

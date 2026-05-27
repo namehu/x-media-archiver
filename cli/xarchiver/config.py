@@ -15,6 +15,8 @@ class Settings(BaseSettings):
     retry_limit: int = Field(default=3, alias="RETRY_LIMIT")
     retry_backoff_minutes: int = Field(default=15, alias="RETRY_BACKOFF_MINUTES")
     stuck_timeout_minutes: int = Field(default=120, alias="STUCK_TIMEOUT_MINUTES")
+    api_host: str = Field(default="127.0.0.1", alias="API_HOST")
+    api_port: int = Field(default=8000, alias="API_PORT")
 
     sql_dir: Path = Path("/app/sql")
 

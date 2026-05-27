@@ -155,7 +155,53 @@ Retry behavior is controlled by environment variables:
 RETRY_LIMIT=3
 RETRY_BACKOFF_MINUTES=15
 STUCK_TIMEOUT_MINUTES=120
+API_HOST=0.0.0.0
+API_PORT=8000
 ```
+
+## Local API and WebUI
+
+Phase 2 adds a local FastAPI service and a React WebUI on top of the same Python archive core used by the CLI.
+
+Start the API in Docker:
+
+```bash
+docker-compose run --rm --service-ports xarchiver serve
+```
+
+The compose file maps the API to the host loopback address:
+
+```text
+http://127.0.0.1:8000
+```
+
+Available read-only API endpoints:
+
+```text
+GET /health
+GET /api/summary
+GET /api/media
+GET /api/tweets/{tweet_id}
+GET /api/failures
+GET /api/duplicates
+GET /api/media-file/{relative_path}
+```
+
+Run the WebUI:
+
+```bash
+cd webui
+npm install
+npm run dev
+```
+
+Open:
+
+```text
+http://127.0.0.1:5173
+```
+
+The WebUI uses React, TanStack Query, React Router, Tailwind, and local shadcn-style UI components under `webui/src/components/ui`. The first WebUI milestone is read-only: Dashboard, Library, Tweet detail, Failures, and Duplicates.
 
 ## State Rules
 

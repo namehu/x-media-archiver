@@ -1,7 +1,7 @@
 # x-media-archiver Phase 2 Roadmap
 
 > 日期：2026-05-27  
-> 状态：第二阶段启动规划  
+> 状态：P2.0 / P2.1 / P2.2 首版已落地，等待运行验收  
 > 阶段目标：在第一阶段已完成的 CLI 归档内核之上，建设本地 WebUI / API 管理后台能力。
 
 ---
@@ -58,12 +58,12 @@ docs/design/archive/roadmap-todo.md
 
 目标：把 CLI 已有能力整理成可被 CLI 和 Web API 共同调用的 service 层。
 
-- [ ] 建立 `cli/xarchiver/services/` 或等价服务模块边界。
-- [ ] 抽取 library 查询服务：tweet/media/search/duplicates。
-- [ ] 抽取 run 执行服务：archive-urls/requeue/verify/export。
-- [ ] 抽取 failure 查询服务：failures/latest attempts。
-- [ ] 保持现有 CLI 命令行为不变。
-- [ ] 为服务层补单元测试。
+- [x] 建立 `cli/xarchiver/services/` 服务模块边界。
+- [x] 抽取 library 查询服务：tweet/media/search/duplicates。
+- [x] 抽取 run 执行服务：archive-urls/requeue/verify/export。
+- [x] 抽取 failure 查询服务：failures/latest attempts。
+- [x] 保持现有 CLI 命令行为不变。
+- [x] 为服务层补单元测试。
 
 验收：
 
@@ -75,16 +75,17 @@ docker-compose run --rm --entrypoint python xarchiver -m unittest discover -s /a
 
 目标：提供 WebUI 可调用的本地 HTTP API。
 
-- [ ] 选择并落地 API 框架，优先 FastAPI。
-- [ ] 新增 `xarchiver serve` 命令。
-- [ ] API 默认绑定 `127.0.0.1`。
-- [ ] 实现健康检查：`GET /health`。
-- [ ] 实现 dashboard 摘要：`GET /api/summary`。
-- [ ] 实现媒体列表：`GET /api/media`。
-- [ ] 实现 tweet/detail 查询：`GET /api/tweets/{tweet_id}`。
-- [ ] 实现失败列表：`GET /api/failures`。
-- [ ] 实现重复媒体列表：`GET /api/duplicates`。
-- [ ] 写入型接口先不开放，或只提供明确手动触发接口。
+- [x] 选择并落地 API 框架：FastAPI。
+- [x] 新增 `xarchiver serve` 命令。
+- [x] Docker Compose 将 API 暴露到宿主机 `127.0.0.1:${API_PORT:-8000}`。
+- [x] 实现健康检查：`GET /health`。
+- [x] 实现 dashboard 摘要：`GET /api/summary`。
+- [x] 实现媒体列表：`GET /api/media`。
+- [x] 实现 tweet/detail 查询：`GET /api/tweets/{tweet_id}`。
+- [x] 实现失败列表：`GET /api/failures`。
+- [x] 实现重复媒体列表：`GET /api/duplicates`。
+- [x] 写入型接口本阶段不开放。
+- [x] 实现媒体文件只读预览入口：`GET /api/media-file/{relative_path}`。
 
 验收：
 
@@ -99,14 +100,14 @@ docker-compose run --rm --entrypoint python xarchiver -m unittest discover -s /a
 
 目标：做一个可日常浏览归档内容的本地管理后台。
 
-- [ ] 确定前端技术栈。
-- [ ] 新增 WebUI 目录和构建脚本。
-- [ ] Dashboard：状态分布、媒体总数、失败数、最近导出。
-- [ ] Library：图片/视频网格，支持作者、文本、状态、媒体类型筛选。
-- [ ] Media detail：tweet 文本、作者、发布时间、本地路径、tweet 链接。
-- [ ] Failures：失败列表、错误分类、最近 attempt。
-- [ ] Duplicates：重复组查看。
-- [ ] 页面不提供删除媒体文件功能。
+- [x] 确定前端技术栈：React + TanStack Query + React Router + shadcn/ui 风格组件 + Tailwind。
+- [x] 新增 WebUI 目录和构建脚本：`webui/`。
+- [x] Dashboard：状态分布、媒体总数、失败数、最近导出。
+- [x] Library：图片/视频网格，支持作者、文本、状态、媒体类型筛选。
+- [x] Media detail：tweet 文本、作者、发布时间、本地路径、tweet 链接。
+- [x] Failures：失败列表、错误分类、最近 attempt。
+- [x] Duplicates：重复组查看。
+- [x] 页面不提供删除媒体文件功能。
 
 验收：
 
@@ -176,19 +177,20 @@ docker-compose run --rm --entrypoint python xarchiver -m unittest discover -s /a
 
 ## 4. Phase 2 当前下一步
 
-推荐立即执行：
+当前已完成：
 
 ```text
-P2.0 应用服务层整理
+P2.0 service layer
+P2.1 read-only local API
+P2.2 read-only WebUI MVP
 ```
 
-原因：
+推荐下一步：
 
 ```text
-1. 当前 CLI 逻辑已经可用，但 WebUI/API 不能直接依赖命令行输出。
-2. 服务层整理后，CLI 和 API 可以复用同一套查询、归档、失败处理逻辑。
-3. 这一步风险低，不需要先决定完整前端技术栈。
-4. 能为 P2.1 FastAPI API 打好边界。
+1. 运行 Docker API 与 WebUI build 验收。
+2. 用当前 5 条 verified 样本做页面人工验收。
+3. 再进入 P2.3 写入型操作，不提前加入删除能力。
 ```
 
 ---
