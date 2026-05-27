@@ -2,7 +2,8 @@ import tempfile
 import unittest
 from pathlib import Path
 
-from xarchiver.downloader import classify_error, validate_cookie_file
+from xarchiver.downloader import classify_error, fetch_download_candidates, validate_cookie_file
+from xarchiver.db import connect
 
 
 class DownloaderTests(unittest.TestCase):
@@ -25,6 +26,56 @@ class DownloaderTests(unittest.TestCase):
     def test_classify_error_detects_cookie_and_no_media(self) -> None:
         self.assertEqual(classify_error(1, "cookies file is invalid"), "cookie_invalid")
         self.assertEqual(classify_error(0, "No results for this tweet"), "no_media")
+
+
+class DownloadCandidateIntegrationTests(unittest.TestCase):
+    tweet_ids = ["candidate-fixture-pending", "candidate-fixture-over-limit", "candidate-fixture-backoff"]
+
+    def setUp(self) -> None:
+        self.cleanup_db()
+        with connect() as conn:
+            with conn.cursor() as cur:
+                cur.execute(
+                    """
+                    insert into tweets (tweet_id, url, download_status, retry_count)
+                    values (%s, %s, 'pending', 0)
+                    """,
+                    (self.tweet_ids[0], f"https://x.com/test/status/{self.tweet_ids[0]}"),
+                )
+                cur.execute(
+                    """
+                    insert into tweets (tweet_id, url, download_status, retry_count, last_attempt_at)
+                    values (%s, %s, 'failed_retryable', 3, now() - interval '1 day')
+                    """,
+                    (self.tweet_ids[1], f"https://x.com/test/status/{self.tweet_ids[1]}"),
+                )
+                cur.execute(
+                    """
+                    insert into tweets (tweet_id, url, download_status, retry_count, last_attempt_at)
+                    values (%s, %s, 'failed_retryable', 1, now())
+                    """,
+                    (self.tweet_ids[2], f"https://x.com/test/status/{self.tweet_ids[2]}"),
+                )
+            conn.commit()
+
+    def tearDown(self) -> None:
+        self.cleanup_db()
+
+    def cleanup_db(self) -> None:
+        with connect() as conn:
+            with conn.cursor() as cur:
+                cur.execute("delete from tweets where tweet_id = any(%s)", (self.tweet_ids,))
+            conn.commit()
+
+    def test_fetch_download_candidates_respects_retry_limit_and_backoff(self) -> None:
+        tweet_ids = {
+            row["tweet_id"]
+            for row in fetch_download_candidates(limit=None, retry_limit=3, retry_backoff_minutes=15)
+        }
+
+        self.assertIn(self.tweet_ids[0], tweet_ids)
+        self.assertNotIn(self.tweet_ids[1], tweet_ids)
+        self.assertNotIn(self.tweet_ids[2], tweet_ids)
 
 
 if __name__ == "__main__":

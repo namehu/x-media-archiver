@@ -110,6 +110,13 @@ docker-compose run --rm xarchiver requeue
 docker-compose run --rm xarchiver requeue --status failed_retryable --status missing
 ```
 
+Recover interrupted runs that left jobs or tweets in running/downloading states:
+
+```bash
+docker-compose run --rm xarchiver recover-interrupted
+docker-compose run --rm xarchiver recover-interrupted --timeout-minutes 30
+```
+
 Export a static HTML gallery for verified media:
 
 ```bash
@@ -125,6 +132,14 @@ If local port 5432 is already in use, override the development Postgres host por
 
 ```bash
 POSTGRES_PORT=5434 docker-compose up -d postgres
+```
+
+Retry behavior is controlled by environment variables:
+
+```text
+RETRY_LIMIT=3
+RETRY_BACKOFF_MINUTES=15
+STUCK_TIMEOUT_MINUTES=120
 ```
 
 ## State Rules

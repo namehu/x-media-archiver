@@ -7,10 +7,12 @@ from xarchiver.downloader import download
 from xarchiver.exporter import export_failures_csv, export_media_csv
 from xarchiver.importer import import_urls
 from xarchiver.media import backfill_media_assets
+from xarchiver.recovery import recover_interrupted_runs
 from xarchiver.verifier import verify_media_assets
 
 
 def archive_urls(path: Path, settings: Settings, limit: int | None = None) -> dict[str, object]:
+    recovery_result = recover_interrupted_runs(settings.stuck_timeout_minutes)
     imported_count = import_urls(path)
     gallery_result = download("gallery-dl", settings, limit, dry_run=False)
     fallback_result = download("yt-dlp", settings, limit, dry_run=False)
@@ -21,6 +23,7 @@ def archive_urls(path: Path, settings: Settings, limit: int | None = None) -> di
 
     return {
         "input_path": path.as_posix(),
+        "recovery": recovery_result,
         "imported": imported_count,
         "gallery_dl": summarize_download_result(gallery_result),
         "yt_dlp": summarize_download_result(fallback_result),

@@ -25,6 +25,8 @@ services:
       COOKIE_FILE: ${COOKIE_FILE:-/app/secrets/cookies.txt}
       DEFAULT_DOWNLOAD_ENGINE: ${DEFAULT_DOWNLOAD_ENGINE:-gallery-dl}
       RETRY_LIMIT: ${RETRY_LIMIT:-3}
+      RETRY_BACKOFF_MINUTES: ${RETRY_BACKOFF_MINUTES:-15}
+      STUCK_TIMEOUT_MINUTES: ${STUCK_TIMEOUT_MINUTES:-120}
     volumes:
       - ./archive:/app/archive
       - ./examples:/app/examples

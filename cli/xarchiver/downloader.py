@@ -20,7 +20,7 @@ def download(engine: str, settings: Settings, limit: int | None, dry_run: bool) 
         raise ValueError(f"Unsupported engine: {engine}")
 
     ensure_archive_dirs(settings.archive_dir)
-    tweets = fetch_download_candidates(limit)
+    tweets = fetch_download_candidates(limit, settings.retry_limit, settings.retry_backoff_minutes)
     input_path = write_input_file(settings.archive_dir, engine, [tweet["url"] for tweet in tweets])
 
     job_id = create_job(engine, input_path, len(tweets), "dry_run" if dry_run else "running")
@@ -87,21 +87,31 @@ def download(engine: str, settings: Settings, limit: int | None, dry_run: bool) 
     }
 
 
-def fetch_download_candidates(limit: int | None) -> list[dict[str, str]]:
+def fetch_download_candidates(
+    limit: int | None,
+    retry_limit: int | None = None,
+    retry_backoff_minutes: int = 0,
+) -> list[dict[str, str]]:
     sql = """
         select tweet_id, url
         from tweets
         where download_status in ('pending', 'failed_retryable', 'missing', 'corrupt')
+          and (%s is null or retry_count < %s)
+          and (
+              download_status = 'pending'
+              or last_attempt_at is null
+              or last_attempt_at <= now() - make_interval(mins => %s * greatest(retry_count, 1))
+          )
         order by imported_at asc
     """
-    params: tuple[int, ...] = ()
+    params: list[int | None] = [retry_limit, retry_limit, retry_backoff_minutes]
     if limit:
         sql += " limit %s"
-        params = (limit,)
+        params.append(limit)
 
     with connect() as conn:
         with conn.cursor() as cur:
-            cur.execute(sql, params)
+            cur.execute(sql, tuple(params))
             return list(cur.fetchall())
 
 

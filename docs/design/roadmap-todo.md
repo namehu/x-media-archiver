@@ -78,9 +78,9 @@ Goal: make the tool suitable for recurring large archive runs and long-term mana
 
 ### V1.0 Reliability And Recovery
 
-- [ ] Resume interrupted archive runs.
+- [x] Resume interrupted archive runs.
 - [x] Separate permanent failures from retryable failures with stronger classification.
-- [ ] Retry with configurable max attempts and backoff.
+- [x] Retry with configurable max attempts and backoff.
 - [x] Detect cookie/auth failures explicitly.
 - [x] Add command to requeue missing/corrupt assets.
 

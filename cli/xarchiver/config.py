@@ -13,6 +13,8 @@ class Settings(BaseSettings):
     cookie_file: Path = Field(default=Path("/app/secrets/cookies.txt"), alias="COOKIE_FILE")
     default_download_engine: str = Field(default="gallery-dl", alias="DEFAULT_DOWNLOAD_ENGINE")
     retry_limit: int = Field(default=3, alias="RETRY_LIMIT")
+    retry_backoff_minutes: int = Field(default=15, alias="RETRY_BACKOFF_MINUTES")
+    stuck_timeout_minutes: int = Field(default=120, alias="STUCK_TIMEOUT_MINUTES")
 
     sql_dir: Path = Path("/app/sql")
 
@@ -20,4 +22,3 @@ class Settings(BaseSettings):
 @lru_cache
 def get_settings() -> Settings:
     return Settings()
-
