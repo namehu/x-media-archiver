@@ -1,4 +1,5 @@
 import { defineConfig } from "wxt";
+import path from "node:path";
 
 export default defineConfig({
   modules: ["@wxt-dev/module-react"],
@@ -13,5 +14,16 @@ export default defineConfig({
     },
     permissions: ["activeTab", "scripting"],
     host_permissions: ["https://x.com/*", "https://twitter.com/*"]
+  },
+  hooks: {
+    "vite:build:extendConfig": (_entrypoints, viteConfig) => {
+      const input = viteConfig.build?.rollupOptions?.input;
+      if (!input || Array.isArray(input) || typeof input === "string") return;
+
+      for (const [name, value] of Object.entries(input)) {
+        if (typeof value !== "string" || !path.isAbsolute(value)) continue;
+        input[name] = path.relative(process.cwd(), value).replaceAll("\\", "/");
+      }
+    }
   }
 });

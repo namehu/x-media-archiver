@@ -11,6 +11,7 @@ from xarchiver.exporter import export_media_csv, export_media_gallery
 from xarchiver.importer import import_jsonl, import_urls
 from xarchiver.media import backfill_media_assets
 from xarchiver.migrations import migrate
+from xarchiver.recovery import requeue_tweets
 from xarchiver.status import get_media_count, get_status_counts
 from xarchiver.verifier import verify_media_assets
 from xarchiver.workflow import archive_urls
@@ -98,6 +99,19 @@ def retry_command(
     settings = get_settings()
     selected_engine = engine or "yt-dlp"
     result = run_download(selected_engine, settings, limit, dry_run)
+    console.print(result)
+
+
+@app.command("requeue")
+def requeue_command(
+    status: list[str] | None = typer.Option(
+        None,
+        "--status",
+        help="Tweet status to requeue. Repeat for multiple statuses.",
+    ),
+    limit: int | None = typer.Option(None, help="Maximum tweets to requeue."),
+) -> None:
+    result = requeue_tweets(status, limit)
     console.print(result)
 
 

@@ -79,10 +79,10 @@ Goal: make the tool suitable for recurring large archive runs and long-term mana
 ### V1.0 Reliability And Recovery
 
 - [ ] Resume interrupted archive runs.
-- [ ] Separate permanent failures from retryable failures with stronger classification.
+- [x] Separate permanent failures from retryable failures with stronger classification.
 - [ ] Retry with configurable max attempts and backoff.
-- [ ] Detect cookie/auth failures explicitly.
-- [ ] Add command to requeue missing/corrupt assets.
+- [x] Detect cookie/auth failures explicitly.
+- [x] Add command to requeue missing/corrupt assets.
 
 ### V1.1 Search And Review
 
@@ -113,3 +113,10 @@ Goal: make the tool suitable for recurring large archive runs and long-term mana
 - Update this file whenever a roadmap item is completed or the plan changes.
 - Keep completed items checked only after code, docs, and verification are done.
 - Add new tasks under the smallest relevant phase instead of keeping them only in chat.
+
+## Verification Gates
+
+- [x] Docker Postgres host port is configurable with POSTGRES_PORT.
+- [x] CLI test suite passes after the current V1.0 reliability changes.
+- [x] Extension typecheck passes after the current WXT build fix.
+- [x] Extension production build passes after the current WXT build fix.

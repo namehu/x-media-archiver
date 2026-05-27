@@ -103,6 +103,13 @@ Export failures:
 docker-compose run --rm xarchiver export-failures
 ```
 
+Requeue retryable, missing, or corrupt tweets:
+
+```bash
+docker-compose run --rm xarchiver requeue
+docker-compose run --rm xarchiver requeue --status failed_retryable --status missing
+```
+
 Export a static HTML gallery for verified media:
 
 ```bash
@@ -113,6 +120,12 @@ docker-compose run --rm xarchiver export-gallery --status all
 Production metadata storage in Supabase, including connection selection and migration checks, is
 documented in [`docs/supabase-deployment.md`](docs/supabase-deployment.md). Backup and restore
 procedures are documented in [`docs/backup-restore.md`](docs/backup-restore.md).
+
+If local port 5432 is already in use, override the development Postgres host port:
+
+```bash
+POSTGRES_PORT=5434 docker-compose up -d postgres
+```
 
 ## State Rules
 

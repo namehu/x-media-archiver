@@ -28,6 +28,13 @@ def download(engine: str, settings: Settings, limit: int | None, dry_run: bool) 
         finish_job(job_id, "dry_run", 0, 0, None)
         return {"job_id": job_id, "input_path": input_path, "count": len(tweets), "dry_run": True}
 
+    cookie_error = validate_cookie_file(engine, settings.cookie_file)
+    if cookie_error:
+        mark_attempts(job_id, tweets, engine, "failed_retryable", 0, cookie_error, cookie_error)
+        mark_tweets_failed([tweet["tweet_id"] for tweet in tweets], "failed_retryable", cookie_error)
+        finish_job(job_id, "failed", 0, len(tweets), cookie_error)
+        return {"job_id": job_id, "input_path": input_path, "count": len(tweets), "exit_code": 0}
+
     command = build_command(engine, settings, input_path)
     executable = command[0]
     if shutil.which(executable) is None:
@@ -135,6 +142,16 @@ def build_command(engine: str, settings: Settings, input_path: Path) -> list[str
         "-o",
         str(settings.archive_dir / "media" / "%(uploader_id)s" / "%(id)s" / "%(id)s.%(ext)s"),
     ]
+
+
+def validate_cookie_file(engine: str, cookie_file: Path) -> str | None:
+    if engine != "yt-dlp":
+        return None
+    if not cookie_file.exists():
+        return "cookie_missing"
+    if cookie_file.stat().st_size == 0:
+        return "cookie_empty"
+    return None
 
 
 def create_job(engine: str, input_path: Path, total_count: int, status: str) -> int:
@@ -271,12 +288,18 @@ def mark_attempts(
 
 def classify_error(exit_code: int, stderr: str | None) -> str:
     text = (stderr or "").lower()
+    if "cookies" in text and any(pattern in text for pattern in ("not found", "could not", "invalid", "empty")):
+        return "cookie_invalid"
+    if any(pattern in text for pattern in ("login required", "sign in", "not logged in", "authentication", "auth")):
+        return "auth_required"
     if "404" in text or "not found" in text:
         return "not_found"
     if "403" in text or "forbidden" in text or "unauthorized" in text:
         return "forbidden"
     if "429" in text or "rate" in text:
         return "rate_limited"
+    if "no results" in text or "no video" in text or "no media" in text:
+        return "no_media"
     if "timeout" in text or "timed out" in text:
         return "timeout"
     return f"exit_{exit_code}"
