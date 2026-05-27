@@ -80,6 +80,12 @@ class VerifierIntegrationTests(unittest.TestCase):
         verify_media_assets()
         self.assert_statuses("verified", "verified")
 
+    def test_empty_incremental_scope_does_not_verify_existing_media(self) -> None:
+        result = verify_media_assets(media_ids=[])
+
+        self.assertEqual(result["checked"], 0)
+        self.assert_statuses("downloaded", "downloaded")
+
     def assert_statuses(self, tweet_status: str, media_status: str) -> None:
         with connect() as conn:
             with conn.cursor() as cur:

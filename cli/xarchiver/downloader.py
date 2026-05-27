@@ -4,8 +4,6 @@ import shutil
 import subprocess
 from pathlib import Path
 
-import orjson
-
 from xarchiver.archive import ensure_archive_dirs, normalize_path
 from xarchiver.config import Settings
 from xarchiver.db import connect
@@ -15,18 +13,30 @@ from xarchiver.media import backfill_media_assets
 SUPPORTED_ENGINES = {"gallery-dl", "yt-dlp"}
 
 
-def download(engine: str, settings: Settings, limit: int | None, dry_run: bool) -> dict[str, object]:
+def download(
+    engine: str,
+    settings: Settings,
+    limit: int | None,
+    dry_run: bool,
+    tweet_ids: list[str] | None = None,
+) -> dict[str, object]:
     if engine not in SUPPORTED_ENGINES:
         raise ValueError(f"Unsupported engine: {engine}")
 
     ensure_archive_dirs(settings.archive_dir)
-    tweets = fetch_download_candidates(limit, settings.retry_limit, settings.retry_backoff_minutes)
+    tweets = fetch_download_candidates(limit, settings.retry_limit, settings.retry_backoff_minutes, tweet_ids)
     input_path = write_input_file(settings.archive_dir, engine, [tweet["url"] for tweet in tweets])
 
     job_id = create_job(engine, input_path, len(tweets), "dry_run" if dry_run else "running")
     if dry_run or not tweets:
         finish_job(job_id, "dry_run", 0, 0, None)
-        return {"job_id": job_id, "input_path": input_path, "count": len(tweets), "dry_run": True}
+        return {
+            "job_id": job_id,
+            "input_path": input_path,
+            "count": len(tweets),
+            "dry_run": True,
+            "media_backfill": empty_backfill_result(),
+        }
 
     cookie_error = validate_cookie_file(engine, settings.cookie_file)
     if cookie_error:
@@ -48,8 +58,11 @@ def download(engine: str, settings: Settings, limit: int | None, dry_run: bool) 
     stderr_excerpt = result.stderr[-4000:] if result.stderr else None
 
     if result.returncode == 0:
-        downloaded_ids = detect_downloaded_tweet_ids(settings.archive_dir, tweets)
-        backfill_result = backfill_media_assets(settings.archive_dir)
+        backfill_result = backfill_media_assets(
+            settings.archive_dir,
+            tweet_ids=[tweet["tweet_id"] for tweet in tweets],
+        )
+        downloaded_ids = set(backfill_result["tweet_ids"])
         downloaded = [tweet for tweet in tweets if tweet["tweet_id"] in downloaded_ids]
         missing = [tweet for tweet in tweets if tweet["tweet_id"] not in downloaded_ids]
 
@@ -91,6 +104,7 @@ def fetch_download_candidates(
     limit: int | None,
     retry_limit: int | None = None,
     retry_backoff_minutes: int = 0,
+    tweet_ids: list[str] | None = None,
 ) -> list[dict[str, str]]:
     sql = """
         select tweet_id, url
@@ -102,9 +116,12 @@ def fetch_download_candidates(
               or last_attempt_at is null
               or last_attempt_at <= now() - make_interval(mins => %s * greatest(retry_count, 1))
           )
-        order by imported_at asc
     """
-    params: list[int | None] = [retry_limit, retry_limit, retry_backoff_minutes]
+    params: list[object] = [retry_limit, retry_limit, retry_backoff_minutes]
+    if tweet_ids is not None:
+        sql += " and tweet_id = any(%s)"
+        params.append(tweet_ids)
+    sql += " order by imported_at asc"
     if limit:
         sql += " limit %s"
         params.append(limit)
@@ -150,7 +167,7 @@ def build_command(engine: str, settings: Settings, input_path: Path) -> list[str
         "-a",
         str(input_path),
         "-o",
-        str(settings.archive_dir / "media" / "%(uploader_id)s" / "%(id)s" / "%(id)s.%(ext)s"),
+        str(settings.archive_dir / "media" / "%(uploader_id)s" / "%(display_id)s" / "%(display_id)s.%(ext)s"),
     ]
 
 
@@ -315,38 +332,5 @@ def classify_error(exit_code: int, stderr: str | None) -> str:
     return f"exit_{exit_code}"
 
 
-def detect_downloaded_tweet_ids(archive_dir: Path, tweets: list[dict[str, str]]) -> set[str]:
-    tweet_ids = {tweet["tweet_id"] for tweet in tweets}
-    found: set[str] = set()
-    media_dir = archive_dir / "media"
-    if not media_dir.exists():
-        return found
-
-    for path in media_dir.rglob("*"):
-        if not path.is_file():
-            continue
-
-        path_text = path.as_posix()
-        for tweet_id in tweet_ids:
-            if tweet_id in path_text:
-                found.add(tweet_id)
-
-        if path.suffix != ".json":
-            continue
-
-        try:
-            data = orjson.loads(path.read_bytes())
-        except orjson.JSONDecodeError:
-            continue
-
-        candidate_values = {
-            str(data.get("tweet_id") or ""),
-            str(data.get("display_id") or ""),
-            str(data.get("webpage_url_basename") or ""),
-            str(data.get("webpage_url") or ""),
-        }
-        for tweet_id in tweet_ids:
-            if any(tweet_id and tweet_id in value for value in candidate_values):
-                found.add(tweet_id)
-
-    return found
+def empty_backfill_result() -> dict[str, object]:
+    return {"scanned": 0, "upserted": 0, "skipped": 0, "media_ids": [], "tweet_ids": []}

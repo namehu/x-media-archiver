@@ -25,6 +25,7 @@ from xarchiver.services.inbox import (
 from xarchiver.services.library import get_summary, get_tweet_detail, list_duplicates, list_media
 from xarchiver.services.runs import (
     run_archive_urls,
+    run_backfill,
     run_export_duplicates,
     run_export_failures,
     run_export_media,
@@ -39,6 +40,12 @@ stop_scheduler = Event()
 
 class VerifyRequest(BaseModel):
     limit: int | None = Field(default=None, ge=1)
+    confirm_full_scan: bool = False
+
+
+class BackfillRequest(BaseModel):
+    confirm_full_scan: bool = False
+    normalize_files: bool = True
 
 
 class RequeueRequest(BaseModel):
@@ -148,6 +155,7 @@ def create_app() -> FastAPI:
 
     @app.post("/api/actions/verify")
     def verify_action(request: VerifyRequest) -> dict[str, object]:
+        require_full_scan_confirmation(request.confirm_full_scan)
         return execute_write_action("verify", lambda: run_verify(request.limit))
 
     @app.post("/api/actions/requeue")
@@ -174,6 +182,20 @@ def create_app() -> FastAPI:
             return run_export_media(settings, status=None if request.status == "all" else request.status)
 
         return execute_write_action(f"export-{request.kind}", run_export)
+
+    @app.post("/api/maintenance/backfill")
+    def maintenance_backfill(request: BackfillRequest) -> dict[str, object]:
+        require_full_scan_confirmation(request.confirm_full_scan)
+        settings = get_settings()
+        return execute_write_action(
+            "maintenance-backfill",
+            lambda: run_backfill(settings, request.normalize_files),
+        )
+
+    @app.post("/api/maintenance/verify")
+    def maintenance_verify(request: VerifyRequest) -> dict[str, object]:
+        require_full_scan_confirmation(request.confirm_full_scan)
+        return execute_write_action("maintenance-verify", lambda: run_verify(request.limit))
 
     @app.post("/api/runs/archive-urls")
     def archive_urls_run(request: ArchiveUrlsRequest) -> dict[str, object]:
@@ -254,6 +276,11 @@ def execute_write_action(name: str, action: Callable[[], dict[str, object]]) -> 
         return {"action": name, "status": "completed", "result": result}
     finally:
         write_action_lock.release()
+
+
+def require_full_scan_confirmation(confirmed: bool) -> None:
+    if not confirmed:
+        raise HTTPException(status_code=400, detail="full_scan_confirmation_required")
 
 
 def resolve_archive_file(archive_dir: Path, relative_path: str) -> Path:

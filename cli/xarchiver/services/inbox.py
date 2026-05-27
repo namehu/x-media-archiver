@@ -3,6 +3,7 @@ from __future__ import annotations
 from datetime import UTC, datetime, timedelta
 from hashlib import sha256
 from pathlib import Path
+import shutil
 
 from psycopg.types.json import Jsonb
 
@@ -20,6 +21,7 @@ def scan_inbox(settings: Settings) -> dict[str, object]:
     inbox_dir = settings.archive_dir / "inbox"
     discovered = 0
     known = 0
+    duplicates = 0
     unsupported = 0
 
     for path in sorted(inbox_dir.iterdir()):
@@ -29,8 +31,11 @@ def scan_inbox(settings: Settings) -> dict[str, object]:
         if not file_type:
             unsupported += 1
             continue
-        if register_file(path, file_type):
+        result = register_file(path, file_type)
+        if result == "registered":
             discovered += 1
+        elif result == "duplicate":
+            duplicates += 1
         else:
             known += 1
 
@@ -39,12 +44,23 @@ def scan_inbox(settings: Settings) -> dict[str, object]:
         "inbox_dir": inbox_dir.as_posix(),
         "discovered": discovered,
         "known": known,
+        "duplicates": duplicates,
         "unsupported": unsupported,
     }
 
 
-def register_file(path: Path, file_type: str) -> bool:
+def register_file(path: Path, file_type: str) -> str:
     file_hash = file_sha256(path)
+    existing = find_import_by_hash(file_hash)
+    if existing:
+        if str(existing["file_path"]) == normalize_path(path):
+            target = move_inbox_file(path, "registered", file_hash)
+            update_import_file_path(int(existing["id"]), target)
+            return "known"
+        move_inbox_file(path, "duplicates", file_hash)
+        return "duplicate"
+
+    target = move_inbox_file(path, "registered", file_hash)
     with connect() as conn:
         with conn.cursor() as cur:
             cur.execute(
@@ -54,11 +70,41 @@ def register_file(path: Path, file_type: str) -> bool:
                 on conflict (sha256) do nothing
                 returning id
                 """,
-                (normalize_path(path), path.name, file_type, path.stat().st_size, file_hash),
+                (normalize_path(target), target.name, file_type, target.stat().st_size, file_hash),
             )
             inserted = cur.fetchone() is not None
         conn.commit()
-    return inserted
+    return "registered" if inserted else "duplicate"
+
+
+def find_import_by_hash(file_hash: str) -> dict[str, object] | None:
+    with connect() as conn:
+        with conn.cursor() as cur:
+            cur.execute("select id, file_path from inbox_imports where sha256 = %s", (file_hash,))
+            return cur.fetchone()
+
+
+def update_import_file_path(import_id: int, path: Path) -> None:
+    with connect() as conn:
+        with conn.cursor() as cur:
+            cur.execute(
+                "update inbox_imports set file_path = %s, filename = %s where id = %s",
+                (normalize_path(path), path.name, import_id),
+            )
+        conn.commit()
+
+
+def move_inbox_file(path: Path, bucket: str, file_hash: str) -> Path:
+    month = datetime.now(UTC).strftime("%Y-%m")
+    target_dir = path.parent / bucket / month
+    target_dir.mkdir(parents=True, exist_ok=True)
+    target = target_dir / path.name
+    if target.exists():
+        target = target_dir / f"{path.stem}--{file_hash[:12]}{path.suffix}"
+    if target.exists():
+        target = target_dir / f"{path.stem}--{datetime.now(UTC).strftime('%Y%m%dT%H%M%S%fZ')}{path.suffix}"
+    shutil.move(str(path), str(target))
+    return target
 
 
 def file_sha256(path: Path) -> str:

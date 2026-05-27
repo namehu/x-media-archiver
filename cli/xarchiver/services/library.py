@@ -7,7 +7,7 @@ from xarchiver.config import Settings
 from xarchiver.db import connect
 from xarchiver.exporter import count_duplicate_groups, fetch_duplicate_rows, fetch_export_rows
 from xarchiver.search import search_media
-from xarchiver.status import get_media_count, get_status_counts
+from xarchiver.status import get_media_count, get_media_status_counts, get_status_counts
 
 
 def get_summary(settings: Settings) -> dict[str, object]:
@@ -25,6 +25,14 @@ def get_summary(settings: Settings) -> dict[str, object]:
         "failure_count": failures,
         "archive_dir": settings.archive_dir.as_posix(),
         "exports": list_recent_exports(settings.archive_dir),
+    }
+
+
+def get_library_snapshot() -> dict[str, int]:
+    media_status_counts = get_media_status_counts()
+    return {
+        "media_total": sum(media_status_counts.values()),
+        "verified_total": media_status_counts.get("verified", 0),
     }
 
 
@@ -173,4 +181,3 @@ def archive_relative_path(value: object, archive_dir: Path) -> str:
     if marker in path_text:
         return path_text.split(marker, 1)[1]
     return path_text
-

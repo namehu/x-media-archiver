@@ -144,9 +144,7 @@ export function InboxPage() {
               </pre>
             ) : null}
             {operationResult ? (
-              <pre className="max-h-56 overflow-auto rounded-md bg-muted p-3 text-xs">
-                {JSON.stringify(operationResult, null, 2)}
-              </pre>
+              <OperationResult result={operationResult} />
             ) : null}
           </CardContent>
         </Card>
@@ -184,6 +182,7 @@ export function InboxPage() {
               {item.error_message ? (
                 <div className="mt-2 text-sm text-destructive">{item.error_message}</div>
               ) : null}
+              {item.status === "completed" && item.result ? <PipelineSummary result={item.result} /> : null}
               <div className="mt-3 flex flex-wrap items-center gap-3">
                 {(item.status === "pending" || item.status === "failed") && (
                   <Button
@@ -213,4 +212,59 @@ export function InboxPage() {
 function positiveInteger(value: string, fallback: number) {
   const parsed = Number(value.trim());
   return Number.isInteger(parsed) && parsed >= 1 && parsed <= 1440 ? parsed : fallback;
+}
+
+function OperationResult({ result }: { result: ActionResponse }) {
+  const pipeline = extractPipelineResult(result.result);
+  if (pipeline) return <PipelineSummary result={pipeline} />;
+  return (
+    <pre className="max-h-56 overflow-auto rounded-md bg-muted p-3 text-xs">
+      {JSON.stringify(result, null, 2)}
+    </pre>
+  );
+}
+
+function extractPipelineResult(result: Record<string, unknown>) {
+  const nested = result.result;
+  if (nested && typeof nested === "object" && !Array.isArray(nested)) {
+    return nested as Record<string, unknown>;
+  }
+  return null;
+}
+
+function PipelineSummary({ result }: { result: Record<string, unknown> }) {
+  if (result.pipeline_version !== "incremental-v1") {
+    return (
+      <div className="mt-3 rounded-md bg-muted p-3 text-xs text-muted-foreground">
+        Legacy full-library run. Counts may include media outside this input file.
+      </div>
+    );
+  }
+  const input = result.input as Record<string, number>;
+  const download = result.download as Record<string, number>;
+  const media = result.media as Record<string, number>;
+  const library = result.library_snapshot as Record<string, number>;
+  const metrics = [
+    ["Input tweets", input.unique_tweet_count],
+    ["New tweets", input.new_tweet_count],
+    ["Already archived", input.skipped_existing_count],
+    ["Download candidates", download.download_candidate_count],
+    ["Newly downloaded media", media.backfilled_media_count],
+    ["Newly verified media", media.verified_media_count],
+  ];
+  return (
+    <div className="mt-3 space-y-3 rounded-md bg-muted p-3">
+      <div className="grid gap-2 sm:grid-cols-2">
+        {metrics.map(([label, value]) => (
+          <div key={String(label)} className="flex justify-between gap-3 text-sm">
+            <span className="text-muted-foreground">{label}</span>
+            <span className="font-medium">{value}</span>
+          </div>
+        ))}
+      </div>
+      <div className="border-t border-border pt-2 text-xs text-muted-foreground">
+        Library total media: {library.media_total} · Library verified media: {library.verified_total}
+      </div>
+    </div>
+  );
 }

@@ -40,27 +40,42 @@ class MediaAsset:
     raw_metadata: dict[str, Any]
 
 
-def backfill_media_assets(archive_dir: Path, normalize_files: bool = True) -> dict[str, int]:
+def backfill_media_assets(
+    archive_dir: Path,
+    normalize_files: bool = True,
+    tweet_ids: list[str] | None = None,
+) -> dict[str, object]:
     media_dir = archive_dir / "media"
     if not media_dir.exists():
-        return {"scanned": 0, "upserted": 0, "skipped": 0}
+        return {"scanned": 0, "upserted": 0, "skipped": 0, "media_ids": [], "tweet_ids": []}
 
     assets: list[MediaAsset] = []
     skipped = 0
-    for metadata_path in iter_metadata_paths(media_dir):
+    for metadata_path in iter_metadata_paths(media_dir, tweet_ids):
         asset = asset_from_metadata(media_dir, metadata_path, normalize_files)
         if asset is None:
             skipped += 1
             continue
         assets.append(asset)
 
-    upsert_media_assets(assets)
+    media_ids = upsert_media_assets(assets)
     update_tweets_from_assets(assets)
     mark_tweets_with_assets_downloaded([asset.tweet_id for asset in assets])
-    return {"scanned": len(assets) + skipped, "upserted": len(assets), "skipped": skipped}
+    return {
+        "scanned": len(assets) + skipped,
+        "upserted": len(assets),
+        "skipped": skipped,
+        "media_ids": media_ids,
+        "tweet_ids": list(dict.fromkeys(asset.tweet_id for asset in assets)),
+    }
 
 
-def iter_metadata_paths(media_dir: Path) -> list[Path]:
+def iter_metadata_paths(media_dir: Path, tweet_ids: list[str] | None = None) -> list[Path]:
+    if tweet_ids is not None:
+        paths: set[Path] = set()
+        for tweet_id in tweet_ids:
+            paths.update(path for path in media_dir.glob(f"*/{tweet_id}/*.json") if path.is_file())
+        return sorted(paths)
     return sorted(path for path in media_dir.rglob("*.json") if path.is_file())
 
 
@@ -245,9 +260,10 @@ def build_asset(
     )
 
 
-def upsert_media_assets(assets: list[MediaAsset]) -> None:
+def upsert_media_assets(assets: list[MediaAsset]) -> list[int]:
     if not assets:
-        return
+        return []
+    media_ids: list[int] = []
     with connect() as conn:
         with conn.cursor() as cur:
             for asset in assets:
@@ -292,6 +308,7 @@ def upsert_media_assets(assets: list[MediaAsset]) -> None:
                         error_message = null,
                         raw_metadata = excluded.raw_metadata,
                         updated_at = now()
+                    returning id
                     """,
                     (
                         asset.tweet_id,
@@ -310,7 +327,9 @@ def upsert_media_assets(assets: list[MediaAsset]) -> None:
                         Jsonb(asset.raw_metadata),
                     ),
                 )
+                media_ids.append(int(cur.fetchone()["id"]))
         conn.commit()
+    return media_ids
 
 
 def update_tweets_from_assets(assets: list[MediaAsset]) -> None:

@@ -77,6 +77,16 @@ class DownloadCandidateIntegrationTests(unittest.TestCase):
         self.assertNotIn(self.tweet_ids[1], tweet_ids)
         self.assertNotIn(self.tweet_ids[2], tweet_ids)
 
+    def test_fetch_download_candidates_limits_query_to_scope(self) -> None:
+        rows = fetch_download_candidates(
+            limit=None,
+            retry_limit=3,
+            retry_backoff_minutes=15,
+            tweet_ids=[self.tweet_ids[1]],
+        )
+
+        self.assertEqual(rows, [])
+
 
 if __name__ == "__main__":
     unittest.main()

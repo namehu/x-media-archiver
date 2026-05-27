@@ -5,7 +5,14 @@ from tempfile import TemporaryDirectory
 from types import SimpleNamespace
 from unittest.mock import patch
 
-from xarchiver.services.inbox import file_sha256, process_inbox_import, scan_inbox, scheduler_due
+from xarchiver.services.inbox import (
+    file_sha256,
+    move_inbox_file,
+    process_inbox_import,
+    register_file,
+    scan_inbox,
+    scheduler_due,
+)
 
 
 class InboxTests(unittest.TestCase):
@@ -30,15 +37,47 @@ class InboxTests(unittest.TestCase):
 
             with (
                 patch("xarchiver.services.inbox.ensure_archive_dirs"),
-                patch("xarchiver.services.inbox.register_file", side_effect=[True, False]) as register,
+                patch("xarchiver.services.inbox.register_file", side_effect=["registered", "duplicate"]) as register,
                 patch("xarchiver.services.inbox.mark_scheduler_scan"),
             ):
                 result = scan_inbox(settings)
 
         self.assertEqual(result["discovered"], 1)
-        self.assertEqual(result["known"], 1)
+        self.assertEqual(result["duplicates"], 1)
+        self.assertEqual(result["known"], 0)
         self.assertEqual(result["unsupported"], 1)
         self.assertEqual(register.call_count, 2)
+
+    def test_move_inbox_file_moves_registered_input_out_of_root(self) -> None:
+        with TemporaryDirectory() as tmp:
+            inbox_dir = Path(tmp) / "inbox"
+            inbox_dir.mkdir()
+            source = inbox_dir / "tweets.txt"
+            source.write_text("urls", encoding="utf-8")
+
+            target = move_inbox_file(source, "registered", "abcd")
+
+            self.assertFalse(source.exists())
+            self.assertEqual(target.parent.parent, inbox_dir / "registered")
+            self.assertTrue(target.exists())
+
+    def test_register_duplicate_moves_file_without_inserting_task(self) -> None:
+        with TemporaryDirectory() as tmp:
+            inbox_dir = Path(tmp) / "inbox"
+            inbox_dir.mkdir()
+            source = inbox_dir / "tweets.txt"
+            source.write_text("same content", encoding="utf-8")
+
+            with patch(
+                "xarchiver.services.inbox.find_import_by_hash",
+                return_value={"id": 3, "file_path": "/archive/inbox/registered/2026-05/original.txt"},
+            ):
+                result = register_file(source, "urls")
+
+            self.assertEqual(result, "duplicate")
+            self.assertFalse(source.exists())
+            targets = list((inbox_dir / "duplicates").rglob("tweets.txt"))
+            self.assertEqual(len(targets), 1)
 
     def test_scheduler_due_honors_enabled_and_next_scan(self) -> None:
         now = datetime.now(UTC)

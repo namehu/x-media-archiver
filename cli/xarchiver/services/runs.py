@@ -37,12 +37,16 @@ def run_download(
     return download(engine, settings, limit, dry_run)
 
 
-def run_backfill(settings: Settings, normalize_files: bool = True) -> dict[str, object]:
-    return backfill_media_assets(settings.archive_dir, normalize_files=normalize_files)
+def run_backfill(
+    settings: Settings,
+    normalize_files: bool = True,
+    tweet_ids: list[str] | None = None,
+) -> dict[str, object]:
+    return backfill_media_assets(settings.archive_dir, normalize_files=normalize_files, tweet_ids=tweet_ids)
 
 
-def run_verify(limit: int | None = None) -> dict[str, int]:
-    return verify_media_assets(limit)
+def run_verify(limit: int | None = None, media_ids: list[int] | None = None) -> dict[str, int]:
+    return verify_media_assets(limit, media_ids)
 
 
 def run_requeue(statuses: list[str] | None = None, limit: int | None = None) -> dict[str, object]:

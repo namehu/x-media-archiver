@@ -53,16 +53,20 @@ Inbox
 Operations can trigger:
 
 ```text
-verify
 requeue
 recover-interrupted
-export
-archive-urls
+export database snapshot
+incremental archive-urls
+full backfill / full verify under Maintenance only
 ```
 
 Write actions are serialized by the local API. The WebUI does not expose destructive file deletion.
 
 The Inbox page scans `archive/inbox/`, de-duplicates exported files by SHA-256, processes pending
-TXT/JSONL files, displays the linked archive run id, and exposes persisted auto-processing
-settings. Automatic processing is disabled by default and requires the API process to remain
-running.
+TXT/JSONL files incrementally, displays the linked archive run id, and exposes persisted
+auto-processing settings. Registered source files are moved to `registered/YYYY-MM/`, duplicate
+content is moved to `duplicates/YYYY-MM/`, and the inbox root remains a new-file drop zone.
+Automatic processing is disabled by default and requires the API process to remain running.
+
+The Operations page separates full-disk maintenance from routine actions. Full media backfill and
+full file verification require explicit confirmation because they scan the entire archive.

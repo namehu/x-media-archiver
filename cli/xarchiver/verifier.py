@@ -20,8 +20,8 @@ class VerificationResult:
     error_message: str | None
 
 
-def verify_media_assets(limit: int | None = None) -> dict[str, int]:
-    assets = fetch_verifiable_assets(limit)
+def verify_media_assets(limit: int | None = None, media_ids: list[int] | None = None) -> dict[str, int]:
+    assets = fetch_verifiable_assets(limit, media_ids)
     results = [verify_asset(asset) for asset in assets]
     update_media_results(results)
     update_tweet_statuses(sorted({result.tweet_id for result in results}))
@@ -32,14 +32,17 @@ def verify_media_assets(limit: int | None = None) -> dict[str, int]:
     return counts
 
 
-def fetch_verifiable_assets(limit: int | None) -> list[dict[str, object]]:
+def fetch_verifiable_assets(limit: int | None, media_ids: list[int] | None = None) -> list[dict[str, object]]:
     sql = """
         select id, tweet_id, local_path, sha256
         from media_assets
         where download_status = any(%s)
-        order by updated_at asc, id asc
     """
     params: list[object] = [list(VERIFY_MEDIA_STATUSES)]
+    if media_ids is not None:
+        sql += " and id = any(%s)"
+        params.append(media_ids)
+    sql += " order by updated_at asc, id asc"
     if limit:
         sql += " limit %s"
         params.append(limit)

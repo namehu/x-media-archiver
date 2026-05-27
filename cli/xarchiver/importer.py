@@ -10,7 +10,22 @@ from xarchiver.db import connect
 
 
 def import_urls(path: Path, source_type: str = "url_list", source_url: str | None = None) -> int:
-    rows = []
+    rows = parse_url_rows(path, source_type, source_url)
+    upsert_tweets(rows)
+    return len(rows)
+
+
+def import_urls_scoped(
+    path: Path,
+    source_type: str = "url_list",
+    source_url: str | None = None,
+) -> dict[str, object]:
+    rows = parse_url_rows(path, source_type, source_url)
+    return import_scoped_rows(rows)
+
+
+def parse_url_rows(path: Path, source_type: str, source_url: str | None) -> list[dict[str, Any]]:
+    rows: list[dict[str, Any]] = []
     for line in path.read_text(encoding="utf-8").splitlines():
         url = line.strip()
         if not url or url.startswith("#"):
@@ -30,11 +45,20 @@ def import_urls(path: Path, source_type: str = "url_list", source_url: str | Non
                 "raw_import": {"url": url},
             }
         )
+    return rows
+
+
+def import_jsonl(path: Path) -> int:
+    rows = parse_jsonl_rows(path)
     upsert_tweets(rows)
     return len(rows)
 
 
-def import_jsonl(path: Path) -> int:
+def import_jsonl_scoped(path: Path) -> dict[str, object]:
+    return import_scoped_rows(parse_jsonl_rows(path))
+
+
+def parse_jsonl_rows(path: Path) -> list[dict[str, Any]]:
     rows: list[dict[str, Any]] = []
     for index, line in enumerate(path.read_text(encoding="utf-8").splitlines(), start=1):
         line = line.strip()
@@ -60,8 +84,35 @@ def import_jsonl(path: Path) -> int:
                 "raw_import": data,
             }
         )
+    return rows
+
+
+def import_scoped_rows(rows: list[dict[str, Any]]) -> dict[str, object]:
+    tweet_ids = list(dict.fromkeys(str(row["tweet_id"]) for row in rows))
+    existing_statuses = fetch_existing_tweet_statuses(tweet_ids)
+    existing_ids = set(existing_statuses)
     upsert_tweets(rows)
-    return len(rows)
+    return {
+        "input_record_count": len(rows),
+        "unique_tweet_count": len(tweet_ids),
+        "tweet_ids": tweet_ids,
+        "new_tweet_count": len(set(tweet_ids) - existing_ids),
+        "existing_tweet_count": len(existing_ids),
+        "skipped_existing_count": sum(1 for status in existing_statuses.values() if status == "verified"),
+        "duplicate_input_count": len(rows) - len(tweet_ids),
+    }
+
+
+def fetch_existing_tweet_statuses(tweet_ids: list[str]) -> dict[str, str]:
+    if not tweet_ids:
+        return {}
+    with connect() as conn:
+        with conn.cursor() as cur:
+            cur.execute(
+                "select tweet_id, download_status from tweets where tweet_id = any(%s)",
+                (tweet_ids,),
+            )
+            return {str(row["tweet_id"]): str(row["download_status"]) for row in cur.fetchall()}
 
 
 def upsert_tweets(rows: list[dict[str, Any]]) -> None:

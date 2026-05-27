@@ -3,7 +3,15 @@ from pathlib import Path
 
 from fastapi import HTTPException
 
-from xarchiver.api.app import execute_write_action, resolve_archive_file, write_action_lock
+from xarchiver.api.app import (
+    BackfillRequest,
+    VerifyRequest,
+    create_app,
+    execute_write_action,
+    require_full_scan_confirmation,
+    resolve_archive_file,
+    write_action_lock,
+)
 
 
 class ApiAppTests(unittest.TestCase):
@@ -36,6 +44,30 @@ class ApiAppTests(unittest.TestCase):
             resolve_archive_file(Path("/tmp/archive"), "../secrets/cookies.txt")
 
         self.assertEqual(error.exception.status_code, 400)
+
+    def test_full_scan_requires_confirmation(self) -> None:
+        with self.assertRaises(HTTPException) as error:
+            require_full_scan_confirmation(False)
+
+        self.assertEqual(error.exception.status_code, 400)
+        self.assertEqual(error.exception.detail, "full_scan_confirmation_required")
+
+    def test_full_scan_endpoints_reject_unconfirmed_requests(self) -> None:
+        endpoints = {
+            route.path: route.endpoint
+            for route in create_app().routes
+            if route.path in {"/api/maintenance/backfill", "/api/maintenance/verify", "/api/actions/verify"}
+        }
+
+        for path, request in (
+            ("/api/maintenance/backfill", BackfillRequest()),
+            ("/api/maintenance/verify", VerifyRequest()),
+            ("/api/actions/verify", VerifyRequest()),
+        ):
+            with self.assertRaises(HTTPException) as error:
+                endpoints[path](request)
+            self.assertEqual(error.exception.status_code, 400)
+            self.assertEqual(error.exception.detail, "full_scan_confirmation_required")
 
 
 if __name__ == "__main__":

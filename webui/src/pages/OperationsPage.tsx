@@ -11,6 +11,7 @@ export function OperationsPage() {
   const [archivePath, setArchivePath] = useState("/app/examples/tweet_urls.example.txt");
   const [archiveLimit, setArchiveLimit] = useState("");
   const [verifyLimit, setVerifyLimit] = useState("");
+  const [confirmFullScan, setConfirmFullScan] = useState(false);
   const [requeueStatuses, setRequeueStatuses] = useState("failed_retryable,missing,corrupt");
   const [requeueLimit, setRequeueLimit] = useState("");
   const [recoverTimeout, setRecoverTimeout] = useState("");
@@ -56,27 +57,6 @@ export function OperationsPage() {
               }
             >
               Run archive
-            </Button>
-          </CardContent>
-        </Card>
-
-        <Card>
-          <CardHeader>
-            <CardTitle>Verify</CardTitle>
-          </CardHeader>
-          <CardContent className="space-y-3">
-            <Input
-              placeholder="Limit"
-              inputMode="numeric"
-              value={verifyLimit}
-              onChange={(event) => setVerifyLimit(event.target.value)}
-            />
-            <Button
-              type="button"
-              disabled={mutation.isPending}
-              onClick={() => run("/api/actions/verify", { limit: numberOrNull(verifyLimit) })}
-            >
-              Run verify
             </Button>
           </CardContent>
         </Card>
@@ -155,11 +135,67 @@ export function OperationsPage() {
               disabled={mutation.isPending}
               onClick={() => run("/api/actions/export", { kind: exportKind, status: exportStatus })}
             >
-              Export
+              Export database snapshot
             </Button>
           </CardContent>
         </Card>
       </section>
+
+      <Card>
+        <CardHeader>
+          <CardTitle>Maintenance</CardTitle>
+        </CardHeader>
+        <CardContent className="space-y-4">
+          <p className="text-sm text-destructive">
+            These operations scan files across the entire archive and may cause heavy disk I/O on large libraries.
+          </p>
+          <label className="flex items-center gap-2 text-sm">
+            <input
+              type="checkbox"
+              checked={confirmFullScan}
+              onChange={(event) => setConfirmFullScan(event.target.checked)}
+            />
+            I understand this is a full archive disk scan.
+          </label>
+          <div className="grid gap-3 md:grid-cols-[1fr_auto_auto]">
+            <Input
+              placeholder="Verify limit (optional)"
+              inputMode="numeric"
+              value={verifyLimit}
+              onChange={(event) => setVerifyLimit(event.target.value)}
+            />
+            <Button
+              type="button"
+              variant="secondary"
+              disabled={mutation.isPending || !confirmFullScan}
+              onClick={() =>
+                run("/api/maintenance/verify", {
+                  limit: numberOrNull(verifyLimit),
+                  confirm_full_scan: confirmFullScan,
+                })
+              }
+            >
+              Full file verification
+            </Button>
+            <Button
+              type="button"
+              variant="secondary"
+              disabled={mutation.isPending || !confirmFullScan}
+              onClick={() =>
+                run("/api/maintenance/backfill", {
+                  confirm_full_scan: confirmFullScan,
+                  normalize_files: true,
+                })
+              }
+            >
+              Full media backfill
+            </Button>
+          </div>
+          <p className="text-xs text-muted-foreground">
+            CSV export above reads the database snapshot and does not scan media file contents.
+          </p>
+        </CardContent>
+      </Card>
 
       <Card>
         <CardHeader>

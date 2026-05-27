@@ -4,10 +4,24 @@ from pathlib import Path
 
 import orjson
 
-from xarchiver.media import asset_from_gallery_dl_metadata, asset_from_yt_dlp_metadata
+from xarchiver.media import asset_from_gallery_dl_metadata, asset_from_yt_dlp_metadata, iter_metadata_paths
 
 
 class MediaMetadataTests(unittest.TestCase):
+    def test_scoped_metadata_paths_only_include_selected_tweet(self) -> None:
+        with tempfile.TemporaryDirectory() as tmp:
+            media_dir = Path(tmp) / "media"
+            first = media_dir / "author" / "tweet-1" / "one.json"
+            second = media_dir / "author" / "tweet-2" / "two.json"
+            first.parent.mkdir(parents=True)
+            second.parent.mkdir(parents=True)
+            first.write_text("{}", encoding="utf-8")
+            second.write_text("{}", encoding="utf-8")
+
+            paths = iter_metadata_paths(media_dir, ["tweet-1"])
+
+            self.assertEqual(paths, [first])
+
     def test_gallery_dl_metadata_maps_to_media_asset(self) -> None:
         with tempfile.TemporaryDirectory() as tmp:
             metadata_path = Path(tmp) / "123--m1.jpg.json"

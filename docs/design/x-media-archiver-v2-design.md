@@ -117,7 +117,7 @@ webui/
     pages/                 Dashboard / Library / Detail / Failures / Duplicates
 ```
 
-当前 WebUI 已进入 P2.3，提供非破坏性写入操作：verify、requeue、recover-interrupted、export、archive-urls。写入型操作由 API 进程内锁串行化；如果已有写入操作运行，后续请求返回 busy。
+当前 WebUI 已进入 P2.4.1，提供增量 archive-urls / Inbox、requeue、recover-interrupted、数据库快照 export，以及必须显式确认的 full backfill / full verify 维护操作。写入型操作由 API 进程内锁串行化；如果已有写入操作运行，后续请求返回 busy。
 
 ### 3.3 自动归档从导入收件箱开始
 
@@ -291,6 +291,10 @@ archive/
 4. 定时配置持久化保存 enabled 与 interval_minutes，默认 enabled=false。
 5. 定时循环运行于本地 API 服务内部；API 停止后不会继续后台归档。
 6. 手动处理与定时处理共享写入锁，同一时间只运行一次写入流程。
+7. Inbox 根目录只扫描新投递文件，登记后将源文件移动至 `registered/YYYY-MM/`；
+   重复内容移动至 `duplicates/YYYY-MM/`，避免定时扫描遍历历史文件。
+8. Inbox 与 archive-urls 的日常 pipeline 仅 backfill/verify 本次 scope；
+   资料库总量由数据库查询返回，不通过全量磁盘扫描计算。
 ```
 
 控制台配置能力：
@@ -355,8 +359,11 @@ Action API
   - import
   - retry
   - requeue
-  - verify
   - export
+
+Maintenance API
+  - full backfill（必须确认全量磁盘扫描）
+  - full verify（必须确认全量磁盘扫描）
 
 Inbox API
   - 查看已发现和已处理的导入文件
@@ -377,8 +384,8 @@ Extension Handoff API
 
 ```text
 用途：记录一次完整业务流程，而不是单个下载器 invocation。
-内容：触发方式、运行状态、开始/结束时间、导入数、成功数、失败数、
-      verify/export 结果、失败摘要。
+内容：触发方式、运行状态、开始/结束时间、输入 scope、下载/媒体增量结果、
+      数据库资料库快照、失败摘要。
 ```
 
 `inbox_imports`：
@@ -480,7 +487,7 @@ Extension Handoff API
 1. 可按作者、tweet 文本、媒体类型和状态检索媒体。
 2. 可预览本地图片和视频并打开对应 tweet 链接。
 3. 可查看运行、job、attempt 和失败摘要。
-4. 可完成导入、归档、重试、重新入队、verify 和 export 操作。
+4. 可完成导入、增量归档、重试、重新入队和数据库快照 export 操作，并可显式触发全量 backfill/verify 维护。
 5. 并发提交写入任务时不会启动冲突的下载流程。
 6. 页面和 API 不泄露 cookies 或连接凭据。
 ```
@@ -488,9 +495,9 @@ Extension Handoff API
 ### 9.3 收件箱自动归档
 
 ```text
-1. 新的 TXT/JSONL 导入文件可以按计划触发完整归档流程。
+1. 新的 TXT/JSONL 导入文件可以按计划触发输入范围内的增量归档流程。
 2. 相同文件不会重复处理或重复创建 run。
-3. 每次运行都保存可查看的摘要、失败信息和导出结果。
+3. 每次运行都保存输入 scope、增量媒体结果、失败信息和数据库资料库快照。
 4. 认证失败时能够停止无意义的自动重试并提示用户处理。
 ```
 
@@ -530,7 +537,8 @@ Extension Handoff API
 3. P2.2 React WebUI 首版已落地在 webui/。
 4. P2.3 非破坏性写入操作已落地在 API 与 WebUI Operations 页面。
 5. P2.4 Inbox 手动/定时处理已落地在 `archive/inbox/`、`inbox_imports` 与 `archive_runs`。
-6. 新增 `002_inbox_automation.sql` 和 `003_archive_runs.sql` 数据库迁移。
-7. 当前未修改插件行为。
-8. 当前未开放 WebUI 删除能力。
+6. P2.4.1 增量归档与显式全量维护已落地：日常流程按 input scope，磁盘全量检查需要人工确认。
+7. 新增 `002_inbox_automation.sql` 和 `003_archive_runs.sql` 数据库迁移。
+8. 当前未修改插件行为。
+9. 当前未开放 WebUI 删除能力。
 ```

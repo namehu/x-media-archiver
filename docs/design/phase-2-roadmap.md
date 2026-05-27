@@ -151,6 +151,20 @@ docker-compose run --rm --entrypoint python xarchiver -m unittest discover -s /a
 - [x] WebUI 展示 inbox 文件处理状态和关联 run。
 - [x] 新增持久化定时设置：启停、扫描间隔、最近/下次扫描时间。
 - [x] API 服务内运行定时自动扫描/处理，默认关闭。
+- [x] Inbox 根目录仅接受新文件，登记后移动至 `registered/` 或 `duplicates/`。
+
+### P2.4.1 增量归档与显式全量维护
+
+目标：归档量增长后，日常处理耗时只随本次输入增长，不随全库媒体数量线性增长。
+
+- [x] `archive-urls` 与 Inbox workflow 仅处理本次输入涉及的 tweet。
+- [x] downloader candidate 查询支持 `tweet_ids` scope。
+- [x] backfill 仅解析本次下载涉及的 metadata 目录。
+- [x] verify 仅读取本次新增或更新的 media 文件。
+- [x] 自动 workflow 不再生成全库 CSV；导出由数据库快照手动触发。
+- [x] `archive_runs.result` 按 input/download/media/library_snapshot 分区返回。
+- [x] 全量 backfill / hash verify 仅通过显式 Maintenance 入口触发。
+- [x] WebUI 区分本次增量结果与数据库资料库总量。
 
 验收：
 
@@ -190,6 +204,7 @@ P2.1 read-only local API
 P2.2 read-only WebUI MVP
 P2.3 serialized write actions
 P2.4 inbox manual and timed processing
+P2.4.1 incremental archive and explicit full-disk maintenance
 ```
 
 推荐下一步：

@@ -3,7 +3,7 @@
 Local-first X/Twitter media archiver. V0 focuses on a Dockerized CLI pipeline:
 
 ```text
-tweet URLs -> download -> media_assets backfill -> verify -> CSV export
+tweet URLs -> scoped download -> scoped media_assets backfill -> scoped verify
 ```
 
 ## V0 Quick Start
@@ -45,7 +45,7 @@ Run the real download flow:
 ```bash
 docker-compose run --rm xarchiver download --engine gallery-dl
 docker-compose run --rm xarchiver retry --engine yt-dlp
-docker-compose run --rm xarchiver verify
+docker-compose run --rm xarchiver verify --full
 docker-compose run --rm xarchiver export --format csv
 ```
 
@@ -63,7 +63,7 @@ Recommended one-command workflow after exporting URLs from the browser extension
 docker-compose run --rm xarchiver archive-urls /app/examples/tweet_urls.example.txt
 ```
 
-This command imports the URL file, runs gallery-dl, runs yt-dlp fallback, rebuilds media metadata, verifies files, exports media CSV, and exports failures CSV.
+This command imports the URL file, runs gallery-dl and yt-dlp fallback only for input-scoped candidates, then backfills and verifies only media affected by that run. It reports current library totals from Postgres. Run export commands separately when a database snapshot is needed.
 
 ## Commands
 
@@ -73,16 +73,16 @@ Dry-run a download job without calling the downloader:
 docker-compose run --rm xarchiver download --engine gallery-dl --dry-run
 ```
 
-Rebuild `media_assets` from existing files under `archive/media`:
+Rebuild `media_assets` from all existing files under `archive/media` (explicit full-disk maintenance):
 
 ```bash
-docker-compose run --rm xarchiver backfill-media
+docker-compose run --rm xarchiver backfill-media --full
 ```
 
-Verify file existence and hashes:
+Verify file existence and hashes for the entire media library (explicit full-disk maintenance):
 
 ```bash
-docker-compose run --rm xarchiver verify
+docker-compose run --rm xarchiver verify --full
 ```
 
 Export verified media:
@@ -202,6 +202,8 @@ POST /api/inbox/scan
 POST /api/inbox/process-pending
 POST /api/inbox/{id}/process
 POST /api/inbox/settings
+POST /api/maintenance/backfill
+POST /api/maintenance/verify
 ```
 
 Run the WebUI:
@@ -231,7 +233,7 @@ Duplicates
 Operations
 ```
 
-Operations can trigger verify, requeue, recover-interrupted, export, and archive-urls. The WebUI still does not expose destructive file deletion.
+Operations can trigger requeue, recover-interrupted, database snapshot export, and incremental archive-urls. Full backfill and full verify are isolated under Maintenance and require explicit disk-scan confirmation. The WebUI still does not expose destructive file deletion.
 
 ## Inbox Automation
 
@@ -241,6 +243,8 @@ The browser extension export can be handled from a watched local inbox:
 archive/inbox/
   tweet_urls_*.txt
   tweets_*.jsonl
+  registered/YYYY-MM/   registered source files
+  duplicates/YYYY-MM/   duplicate-content source files
 ```
 
 Run migrations before first use:
@@ -263,12 +267,23 @@ Inbox behavior:
 
 ```text
 1. File content is identified by SHA-256; identical content is only registered once.
-2. TXT input performs the URL archive workflow.
-3. JSONL input first preserves richer tweet metadata, then performs the same download/verify/export workflow.
-4. Each processed file is linked to an archive_runs record.
-5. Automatic processing is disabled by default and only runs while the local API service is running.
-6. Automatic and manual writes share the P2.3 single-operation lock.
+2. New files are moved out of the inbox root after registration; duplicate-content files are retained under `duplicates/`.
+3. TXT input performs an input-scoped URL archive workflow.
+4. JSONL input preserves richer tweet metadata, then performs the same input-scoped download and verification workflow.
+5. Each processed file is linked to an archive_runs record.
+6. Incremental runs verify only newly affected media and report full-library totals from Postgres.
+7. Automatic processing is disabled by default and only runs while the local API service is running.
+8. Automatic and manual writes share the P2.3 single-operation lock.
 ```
+
+Full-disk maintenance is explicit:
+
+```bash
+docker-compose run --rm xarchiver backfill-media --full
+docker-compose run --rm xarchiver verify --full
+```
+
+These maintenance commands traverse archived files and can generate significant disk I/O on large libraries. CSV export reads the database snapshot and does not perform a media-file hash scan.
 
 ## State Rules
 

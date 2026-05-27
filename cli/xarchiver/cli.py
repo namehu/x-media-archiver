@@ -195,8 +195,11 @@ def recover_interrupted_command(
 
 @app.command("backfill-media")
 def backfill_media_command(
+    full: bool = typer.Option(False, "--full", help="Confirm a full archive media scan."),
     no_normalize: bool = typer.Option(False, help="Do not move yt-dlp files into the canonical tweet directory."),
 ) -> None:
+    if not full:
+        raise typer.BadParameter("This scans the entire archive. Re-run with --full to confirm.")
     settings = get_settings()
     result = run_backfill(settings, normalize_files=not no_normalize)
     console.print(result)
@@ -205,7 +208,10 @@ def backfill_media_command(
 @app.command("verify")
 def verify_command(
     limit: int | None = typer.Option(None, help="Maximum media assets to verify."),
+    full: bool = typer.Option(False, "--full", help="Confirm full archive file hash verification."),
 ) -> None:
+    if not full:
+        raise typer.BadParameter("This reads files across the entire archive. Re-run with --full to confirm.")
     result = run_verify(limit)
     console.print(result)
 
