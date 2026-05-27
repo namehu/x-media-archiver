@@ -110,6 +110,8 @@ class ApiAppTests(unittest.TestCase):
         self.assertIn("/api/sources/{source_id}/records", post_paths)
         self.assertIn("/api/sources/{source_id}/status", post_paths)
         self.assertIn("/api/sources/{source_id}/scan", post_paths)
+        self.assertIn("/api/sources/{source_id}/history-scan", post_paths)
+        self.assertIn("/api/sources/{source_id}/history-scan/stop", post_paths)
 
         with self.assertRaises(HTTPException) as error:
             post_paths["/api/sources"](

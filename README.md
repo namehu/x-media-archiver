@@ -172,6 +172,9 @@ RETRY_BACKOFF_MINUTES=15
 QUEUE_BATCH_SIZE=20
 DOWNLOADER_SLEEP_MIN_SECONDS=2
 DOWNLOADER_SLEEP_MAX_SECONDS=6
+SOURCE_SCAN_BATCH_SIZE=20
+SOURCE_SCAN_SLEEP_MIN_SECONDS=20
+SOURCE_SCAN_SLEEP_MAX_SECONDS=45
 STUCK_TIMEOUT_MINUTES=120
 API_HOST=0.0.0.0
 API_PORT=8000
@@ -179,7 +182,8 @@ API_PORT=8000
 
 `QUEUE_BATCH_SIZE` limits how many queued tweets the API worker claims in one pass. The downloader
 sleep settings are passed through to `gallery-dl` / `yt-dlp` so large batches do not hammer X/Twitter
-with back-to-back requests.
+with back-to-back requests. `SOURCE_SCAN_BATCH_SIZE` and `SOURCE_SCAN_SLEEP_*` control historical
+source discovery separately from downloading.
 
 ## Local API and WebUI
 
@@ -265,6 +269,12 @@ not automatically submit them to the download queue. Use the explicit submit act
 to download a controlled batch. Each scan advances `archive_sources.cursor_state` with the last
 `gallery-dl --range` window, duplicate/new counts, and the next range start, so large historical
 backfills can continue in small recoverable batches instead of restarting from the first page.
+The Sources page can run this as a background history scan with random gaps between batches, pause
+and resume it, and stop it explicitly. It only records discoveries; it never submits downloads
+automatically, and it waits while the download queue has work.
+
+See [`docs/source-scanning-workflow.md`](docs/source-scanning-workflow.md) for the button meanings,
+checkpoint behavior, and the complete scan-to-download business flow.
 
 ## Archive Queue
 

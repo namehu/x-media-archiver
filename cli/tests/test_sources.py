@@ -3,8 +3,10 @@ import unittest
 from xarchiver.services.sources import (
     build_gallery_dl_scan_url,
     build_scan_range,
+    format_sleep_range,
     infer_author_username,
     is_source_scan_complete,
+    merge_discovery_payload,
     normalize_source_type,
     normalize_source_url,
     parse_gallery_dl_records,
@@ -72,10 +74,24 @@ class SourceServiceTests(unittest.TestCase):
             {"start": 1, "end": 10, "limit": 10},
         )
 
-    def test_scan_complete_when_successful_result_is_smaller_than_range(self) -> None:
-        self.assertTrue(is_source_scan_complete({"exit_code": 0}, {"limit": 20}, 14))
+    def test_scan_complete_only_when_successful_range_returns_no_tweets(self) -> None:
+        self.assertFalse(is_source_scan_complete({"exit_code": 0}, {"limit": 20}, 14))
         self.assertFalse(is_source_scan_complete({"exit_code": 0}, {"limit": 20}, 20))
+        self.assertTrue(is_source_scan_complete({"exit_code": 0}, {"limit": 20}, 0))
         self.assertFalse(is_source_scan_complete({"exit_code": 1}, {"limit": 20}, 0))
+
+    def test_format_sleep_range_normalizes_values(self) -> None:
+        self.assertEqual(format_sleep_range(20, 45), "20-45")
+        self.assertEqual(format_sleep_range(45, 20), "20-45")
+
+    def test_merge_discovery_payload_retains_media_across_ranges(self) -> None:
+        merged = merge_discovery_payload(
+            {"media_items": [{"type": "photo", "url": "photo-1"}]},
+            {"media_items": [{"type": "photo", "url": "photo-2"}], "tweet_id": "123"},
+        )
+
+        self.assertEqual(merged["media_count"], 2)
+        self.assertEqual(merged["media_types"], ["photo"])
 
 
 if __name__ == "__main__":

@@ -150,6 +150,20 @@ def fetch_tweet_statuses(tweet_ids: list[str]) -> dict[str, str]:
             return {str(row["tweet_id"]): str(row["download_status"]) for row in cur.fetchall()}
 
 
+def has_pending_download_work() -> bool:
+    with connect() as conn:
+        with conn.cursor() as cur:
+            cur.execute(
+                """
+                select exists (
+                  select 1 from archive_run_items
+                  where status in ('pending', 'processing', 'failed_retryable')
+                ) as pending
+                """
+            )
+            return bool(cur.fetchone()["pending"])
+
+
 def process_next_queued_run(settings: Settings) -> dict[str, object] | None:
     claimed = claim_next_items(settings.retry_limit, getattr(settings, "queue_batch_size", 20))
     if not claimed:

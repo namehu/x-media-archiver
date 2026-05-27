@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import json
+import random
 import shutil
 import subprocess
 from typing import Any
@@ -8,9 +9,10 @@ from urllib.parse import urlparse
 
 from psycopg.types.json import Jsonb
 
+from xarchiver.config import Settings, get_settings
 from xarchiver.db import connect
 from xarchiver.importer import extract_tweet_id, upsert_tweets
-from xarchiver.services.queue import submit_archive_batch
+from xarchiver.services.queue import has_pending_download_work, submit_archive_batch
 
 VALID_SOURCE_TYPES = {"profile", "user_media", "likes", "bookmarks", "search", "manual"}
 VALID_SOURCE_STATUSES = {"active", "paused", "completed", "failed"}
@@ -62,6 +64,7 @@ def list_sources(
                 select s.*,
                        count(d.id)::int as discovered_tweet_count,
                        count(d.id) filter (where d.archive_run_id is null)::int as unsubmitted_tweet_count,
+                       coalesce(sum(coalesce((d.raw_payload->>'media_count')::int, 0)), 0)::int as discovered_media_count,
                        max(d.discovered_at) as latest_discovered_at
                 from archive_sources s
                 left join source_discovered_tweets d on d.source_id = s.id
@@ -83,6 +86,7 @@ def get_source(source_id: int) -> dict[str, object] | None:
                 select s.*,
                        count(d.id)::int as discovered_tweet_count,
                        count(d.id) filter (where d.archive_run_id is null)::int as unsubmitted_tweet_count,
+                       coalesce(sum(coalesce((d.raw_payload->>'media_count')::int, 0)), 0)::int as discovered_media_count,
                        max(d.discovered_at) as latest_discovered_at
                 from archive_sources s
                 left join source_discovered_tweets d on d.source_id = s.id
@@ -112,25 +116,187 @@ def get_source(source_id: int) -> dict[str, object] | None:
 
 def update_source_status(source_id: int, status: str) -> dict[str, object]:
     status = normalize_source_status(status)
+    source = get_source(source_id)
+    if source is None:
+        raise ValueError("source_not_found")
+    cursor_state = source.get("cursor_state") if isinstance(source.get("cursor_state"), dict) else {}
+    automation_enabled = bool(cursor_state.get("automation_enabled"))
+    if automation_enabled and status == "paused":
+        cursor_state = {**cursor_state, "automation_state": "paused"}
+    elif automation_enabled and status == "active":
+        cursor_state = {**cursor_state, "automation_state": "running"}
     with connect() as conn:
         with conn.cursor() as cur:
             cur.execute(
                 """
                 update archive_sources
-                set status = %s, updated_at = now()
+                set status = %s,
+                    cursor_state = %s,
+                    next_scan_at = case when %s then now() else null end,
+                    updated_at = now()
                 where id = %s
                 returning *
                 """,
-                (status, source_id),
+                (status, Jsonb(cursor_state), automation_enabled and status == "active", source_id),
             )
             row = cur.fetchone()
-            if row is None:
-                raise ValueError("source_not_found")
         conn.commit()
     return dict(row)
 
 
-def scan_source(source_id: int, limit: int = 20, restart: bool = False) -> dict[str, object]:
+def start_source_history_scan(source_id: int, limit: int = 20, restart: bool = False) -> dict[str, object]:
+    source = get_source(source_id)
+    if source is None:
+        raise ValueError("source_not_found")
+    if str(source.get("source_type")) not in {"profile", "user_media"}:
+        raise ValueError("source_scan_not_supported")
+    if limit < 1:
+        raise ValueError("scan_limit_required")
+    cursor_state = source.get("cursor_state") if isinstance(source.get("cursor_state"), dict) else {}
+    cursor_state = {
+        **cursor_state,
+        "automation_enabled": True,
+        "automation_state": "running",
+        "automation_limit": limit,
+        "last_completed": False,
+    }
+    if restart:
+        cursor_state["next_start_index"] = 1
+    with connect() as conn:
+        with conn.cursor() as cur:
+            cur.execute(
+                """
+                update archive_sources
+                set status = 'active',
+                    cursor_state = %s,
+                    next_scan_at = now(),
+                    error_category = null,
+                    error_message = null,
+                    updated_at = now()
+                where id = %s
+                """,
+                (Jsonb(cursor_state), source_id),
+            )
+        conn.commit()
+    return get_source(source_id) or {}
+
+
+def stop_source_history_scan(source_id: int) -> dict[str, object]:
+    source = get_source(source_id)
+    if source is None:
+        raise ValueError("source_not_found")
+    cursor_state = source.get("cursor_state") if isinstance(source.get("cursor_state"), dict) else {}
+    cursor_state = {**cursor_state, "automation_enabled": False, "automation_state": "stopped"}
+    with connect() as conn:
+        with conn.cursor() as cur:
+            cur.execute(
+                """
+                update archive_sources
+                set cursor_state = %s, next_scan_at = null, updated_at = now()
+                where id = %s
+                """,
+                (Jsonb(cursor_state), source_id),
+            )
+        conn.commit()
+    return get_source(source_id) or {}
+
+
+def process_next_source_history_scan(settings: Settings) -> dict[str, object] | None:
+    source = fetch_due_history_source()
+    if source is None:
+        return None
+    source_id = int(source["id"])
+    if has_pending_download_work():
+        schedule_next_history_scan(source_id, settings, "waiting_downloads")
+        return {"source_id": source_id, "deferred": "download_queue_active"}
+    cursor_state = source.get("cursor_state") if isinstance(source.get("cursor_state"), dict) else {}
+    limit = parse_positive_int(cursor_state.get("automation_limit"), settings.source_scan_batch_size)
+    result = scan_source(source_id, limit, settings=settings)
+    error_category = result.get("scanner", {}).get("error_category") if isinstance(result.get("scanner"), dict) else None
+    if error_category in {"rate_limited", "auth_required"}:
+        pause_history_scan_for_error(source_id, str(error_category))
+    elif result.get("completed"):
+        finish_history_scan(source_id)
+    else:
+        schedule_next_history_scan(source_id, settings, "running" if not error_category else "retry_wait")
+    return result
+
+
+def fetch_due_history_source() -> dict[str, object] | None:
+    with connect() as conn:
+        with conn.cursor() as cur:
+            cur.execute(
+                """
+                select *
+                from archive_sources
+                where status = 'active'
+                  and cursor_state->>'automation_enabled' = 'true'
+                  and (next_scan_at is null or next_scan_at <= now())
+                order by coalesce(next_scan_at, now()), id
+                limit 1
+                """
+            )
+            row = cur.fetchone()
+            return dict(row) if row else None
+
+
+def schedule_next_history_scan(source_id: int, settings: Settings, state: str) -> None:
+    delay = random.uniform(
+        min(settings.source_scan_sleep_min_seconds, settings.source_scan_sleep_max_seconds),
+        max(settings.source_scan_sleep_min_seconds, settings.source_scan_sleep_max_seconds),
+    )
+    update_history_scan_state(source_id, state, delay_seconds=delay)
+
+
+def pause_history_scan_for_error(source_id: int, error_category: str) -> None:
+    update_history_scan_state(source_id, error_category, enabled=True, status="paused")
+
+
+def finish_history_scan(source_id: int) -> None:
+    update_history_scan_state(source_id, "completed", enabled=False, status="completed")
+
+
+def update_history_scan_state(
+    source_id: int,
+    state: str,
+    *,
+    delay_seconds: float | None = None,
+    enabled: bool | None = None,
+    status: str | None = None,
+) -> None:
+    source = get_source(source_id)
+    if source is None:
+        return
+    cursor_state = source.get("cursor_state") if isinstance(source.get("cursor_state"), dict) else {}
+    cursor_state = {**cursor_state, "automation_state": state}
+    if enabled is not None:
+        cursor_state["automation_enabled"] = enabled
+    with connect() as conn:
+        with conn.cursor() as cur:
+            cur.execute(
+                """
+                update archive_sources
+                set cursor_state = %s,
+                    status = coalesce(%s, status),
+                    next_scan_at = case
+                      when %s is null then null
+                      else now() + make_interval(secs => %s)
+                    end,
+                    updated_at = now()
+                where id = %s
+                """,
+                (Jsonb(cursor_state), status, delay_seconds, delay_seconds, source_id),
+            )
+        conn.commit()
+
+
+def scan_source(
+    source_id: int,
+    limit: int = 20,
+    restart: bool = False,
+    settings: Settings | None = None,
+) -> dict[str, object]:
+    settings = settings or get_settings()
     source = get_source(source_id)
     if source is None:
         raise ValueError("source_not_found")
@@ -140,7 +306,13 @@ def scan_source(source_id: int, limit: int = 20, restart: bool = False) -> dict[
     scan_url = build_gallery_dl_scan_url(str(source.get("source_type") or ""), source_url)
     cursor_state = source.get("cursor_state") if isinstance(source.get("cursor_state"), dict) else {}
     scan_range = build_scan_range(cursor_state, limit, restart=restart)
-    records, scan_meta = discover_records_with_gallery_dl(scan_url, scan_range["start"], scan_range["end"])
+    records, scan_meta = discover_records_with_gallery_dl(
+        scan_url,
+        scan_range["start"],
+        scan_range["end"],
+        settings.source_scan_sleep_min_seconds,
+        settings.source_scan_sleep_max_seconds,
+    )
     if not records:
         update_source_cursor(
             source_id,
@@ -162,6 +334,7 @@ def scan_source(source_id: int, limit: int = 20, restart: bool = False) -> dict[
             "discovered_count": 0,
             "new_discovered_count": 0,
             "duplicate_count": 0,
+            "completed": completed,
             "submitted": None,
             "scanner": scan_meta,
         }
@@ -187,7 +360,13 @@ def scan_source(source_id: int, limit: int = 20, restart: bool = False) -> dict[
     }
 
 
-def discover_records_with_gallery_dl(source_url: str, start: int, end: int) -> tuple[list[dict[str, Any]], dict[str, object]]:
+def discover_records_with_gallery_dl(
+    source_url: str,
+    start: int,
+    end: int,
+    sleep_min_seconds: float = 20.0,
+    sleep_max_seconds: float = 45.0,
+) -> tuple[list[dict[str, Any]], dict[str, object]]:
     if start < 1 or end < start:
         raise ValueError("scan_limit_required")
     if shutil.which("gallery-dl") is None:
@@ -197,6 +376,8 @@ def discover_records_with_gallery_dl(source_url: str, start: int, end: int) -> t
         "--config",
         "/app/gallery-dl.conf",
         "--dump-json",
+        "--sleep-request",
+        format_sleep_range(sleep_min_seconds, sleep_max_seconds),
         "--range",
         f"{start}-{end}",
         source_url,
@@ -220,6 +401,14 @@ def discover_records_with_gallery_dl(source_url: str, start: int, end: int) -> t
     }
 
 
+def format_sleep_range(min_seconds: float, max_seconds: float) -> str:
+    start = min(min_seconds, max_seconds)
+    end = max(min_seconds, max_seconds)
+    start_text = f"{start:g}"
+    end_text = f"{end:g}"
+    return start_text if start == end else f"{start_text}-{end_text}"
+
+
 def build_scan_range(cursor_state: dict[str, Any], limit: int, restart: bool = False) -> dict[str, int]:
     if limit < 1:
         raise ValueError("scan_limit_required")
@@ -231,7 +420,7 @@ def build_scan_range(cursor_state: dict[str, Any], limit: int, restart: bool = F
 def is_source_scan_complete(scan_meta: dict[str, object], scan_range: dict[str, int], discovered_count: int) -> bool:
     if scan_meta.get("exit_code") != 0:
         return False
-    return discovered_count < scan_range["limit"]
+    return discovered_count == 0
 
 
 def parse_positive_int(value: object, default: int) -> int:
@@ -421,6 +610,12 @@ def record_source_discoveries(
         with conn.cursor() as cur:
             for record, tweet_id in zip(normalized_records, tweet_ids, strict=True):
                 cur.execute(
+                    "select raw_payload from source_discovered_tweets where source_id = %s and tweet_id = %s",
+                    (source_id, tweet_id),
+                )
+                existing = cur.fetchone()
+                payload = merge_discovery_payload(existing["raw_payload"] if existing else None, record)
+                cur.execute(
                     """
                     insert into source_discovered_tweets (
                         source_id, tweet_id, raw_payload
@@ -431,7 +626,7 @@ def record_source_discoveries(
                         discovered_at = now()
                     returning (xmax = 0) as inserted
                     """,
-                    (source_id, tweet_id, Jsonb(record)),
+                    (source_id, tweet_id, Jsonb(payload)),
                 )
                 if cur.fetchone()["inserted"]:
                     inserted += 1
@@ -472,6 +667,31 @@ def record_source_discoveries(
         "discovered_count": len(unique_tweet_ids),
         "new_discovered_count": inserted,
         "duplicate_count": max(len(unique_tweet_ids) - inserted, 0),
+    }
+
+
+def merge_discovery_payload(existing: dict[str, Any] | None, current: dict[str, Any]) -> dict[str, Any]:
+    if not existing:
+        return current
+    items: list[dict[str, Any]] = []
+    seen: set[tuple[str, str]] = set()
+    for item in [*(existing.get("media_items") or []), *(current.get("media_items") or [])]:
+        if not isinstance(item, dict):
+            continue
+        key = (str(item.get("type") or "media"), str(item.get("url") or ""))
+        if key in seen:
+            continue
+        seen.add(key)
+        items.append(item)
+    media_types = sorted({str(item.get("type") or "media") for item in items})
+    return {
+        **existing,
+        **current,
+        "media_items": items,
+        "media_count": len(items),
+        "media_types": media_types,
+        "has_photo": "photo" in media_types,
+        "has_video": "video" in media_types,
     }
 
 

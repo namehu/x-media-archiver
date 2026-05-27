@@ -94,6 +94,15 @@ export function SourcesPage() {
       await refresh(result.source_id);
     },
   });
+  const historyScanMutation = useMutation({
+    mutationFn: ({ sourceId, limit, restart = false }: { sourceId: number; limit: number; restart?: boolean }) =>
+      apiPost<ArchiveSource>(`/api/sources/${sourceId}/history-scan`, { limit, restart }),
+    onSuccess: async (source) => refresh(source.id),
+  });
+  const stopHistoryScanMutation = useMutation({
+    mutationFn: (sourceId: number) => apiPost<ArchiveSource>(`/api/sources/${sourceId}/history-scan/stop`, {}),
+    onSuccess: async (source) => refresh(source.id),
+  });
 
   const selected = detailQuery.data;
   const sourceRecords = parseRecordUrls(recordUrls);
@@ -103,6 +112,8 @@ export function SourcesPage() {
   const canSubmitDiscovered = Boolean(
     selectedSourceId && (selected?.unsubmitted_tweet_count || 0) > 0 && !submitDiscoveredMutation.isPending,
   );
+  const historyEnabled = Boolean(selected?.cursor_state?.automation_enabled);
+  const historyBusy = historyScanMutation.isPending || stopHistoryScanMutation.isPending;
 
   return (
     <div className="space-y-5">
@@ -162,7 +173,8 @@ export function SourcesPage() {
                   <div className="truncate text-sm font-medium">{source.label || source.source_url}</div>
                   <div className="text-xs text-muted-foreground">
                     {sourceTypeLabel(source.source_type, t)} · {source.author_username || "-"} ·{" "}
-                    {t("sources.discovered")}: {source.discovered_tweet_count ?? source.discovered_count ?? 0}
+                    {t("sources.discovered")}: {source.discovered_tweet_count ?? source.discovered_count ?? 0} /{" "}
+                    {source.discovered_media_count ?? 0} {t("sources.mediaUnit")}
                   </div>
                 </div>
                 <Badge>{statusLabel(source.status)}</Badge>
@@ -182,7 +194,7 @@ export function SourcesPage() {
             {selected ? (
               <>
                 {policyQuery.data ? (
-                  <div className="grid gap-2 rounded-md border border-border p-3 text-sm sm:grid-cols-3">
+                  <div className="grid gap-2 rounded-md border border-border p-3 text-sm sm:grid-cols-2 lg:grid-cols-4">
                     <div>
                       <div className="text-xs text-muted-foreground">{t("sources.policyBatch")}</div>
                       <div>{policyQuery.data.queue_batch_size}</div>
@@ -196,6 +208,13 @@ export function SourcesPage() {
                     <div>
                       <div className="text-xs text-muted-foreground">{t("sources.policyEngine")}</div>
                       <div>{policyQuery.data.default_download_engine}</div>
+                    </div>
+                    <div>
+                      <div className="text-xs text-muted-foreground">{t("sources.policyScan")}</div>
+                      <div>
+                        {policyQuery.data.source_scan_batch_size} / {policyQuery.data.source_scan_sleep_min_seconds}-
+                        {policyQuery.data.source_scan_sleep_max_seconds}s
+                      </div>
                     </div>
                   </div>
                 ) : null}
@@ -211,6 +230,14 @@ export function SourcesPage() {
                   <div className="flex justify-between gap-3">
                     <span className="text-muted-foreground">{t("sources.lastSeen")}</span>
                     <span>{selected.last_seen_tweet_id || "-"}</span>
+                  </div>
+                  <div className="flex justify-between gap-3">
+                    <span className="text-muted-foreground">{t("sources.discoveredTweets")}</span>
+                    <span>{selected.discovered_tweet_count ?? selected.discovered_count ?? 0}</span>
+                  </div>
+                  <div className="flex justify-between gap-3">
+                    <span className="text-muted-foreground">{t("sources.discoveredMedia")}</span>
+                    <span>{selected.discovered_media_count ?? 0}</span>
                   </div>
                   <div className="flex justify-between gap-3">
                     <span className="text-muted-foreground">{t("sources.unsubmitted")}</span>
@@ -232,77 +259,55 @@ export function SourcesPage() {
                     <span className="text-muted-foreground">{t("sources.scanState")}</span>
                     <span>{formatScanState(selected.cursor_state, t)}</span>
                   </div>
+                  <div className="flex justify-between gap-3">
+                    <span className="text-muted-foreground">{t("sources.historyState")}</span>
+                    <span>{formatHistoryState(selected, t)}</span>
+                  </div>
+                  {historyEnabled && selected.next_scan_at ? (
+                    <div className="flex justify-between gap-3">
+                      <span className="text-muted-foreground">{t("sources.nextScheduled")}</span>
+                      <span>{formatDateTime(selected.next_scan_at)}</span>
+                    </div>
+                  ) : null}
                 </div>
 
-                <div className="flex flex-wrap gap-2">
-                  <Input
-                    className="w-28"
-                    type="number"
-                    min={1}
-                    max={200}
-                    value={scanLimit}
-                    onChange={(event) => setScanLimit(event.target.value)}
-                  />
+                <div className="space-y-3 rounded-md border border-border p-3">
+                  <div className="text-sm font-medium">{t("sources.primaryActions")}</div>
+                  <div className="flex flex-wrap gap-2">
                   <Button
                     type="button"
-                    disabled={!canScan}
+                    disabled={historyBusy || (historyEnabled && selected.status === "active")}
                     onClick={() => {
                       if (selectedSourceId) {
-                        scanMutation.mutate({
+                        historyScanMutation.mutate({
                           sourceId: selectedSourceId,
                           limit: Math.max(1, Math.min(200, Number(scanLimit) || 20)),
                         });
                       }
                     }}
                   >
-                    {t("sources.scanNext")}
+                    {historyEnabled ? t("sources.historyContinue") : t("sources.historyStart")}
                   </Button>
                   <Button
                     type="button"
                     variant="secondary"
-                    disabled={!canScan}
-                    onClick={() => {
-                      if (selectedSourceId) {
-                        scanMutation.mutate({
-                          sourceId: selectedSourceId,
-                          limit: Math.max(1, Math.min(200, Number(scanLimit) || 20)),
-                          restart: true,
-                        });
-                      }
-                    }}
-                  >
-                    {t("sources.scanLatest")}
-                  </Button>
-                  <Button
-                    type="button"
-                    variant="secondary"
-                    disabled={statusMutation.isPending || selected.status === "paused"}
+                    disabled={statusMutation.isPending || selected.status === "paused" || !historyEnabled}
                     onClick={() => statusMutation.mutate({ sourceId: selected.id, status: "paused" })}
                   >
-                    {t("sources.pause")}
+                    {t("sources.pauseHistory")}
                   </Button>
-                  <Button
-                    type="button"
-                    variant="secondary"
-                    disabled={statusMutation.isPending || selected.status === "active"}
-                    onClick={() => statusMutation.mutate({ sourceId: selected.id, status: "active" })}
-                  >
-                    {t("sources.resume")}
-                  </Button>
+                  {historyScanMutation.error || stopHistoryScanMutation.error ? (
+                    <p className="basis-full text-sm text-destructive">
+                      {String(historyScanMutation.error || stopHistoryScanMutation.error)}
+                    </p>
+                  ) : null}
+                  </div>
+                  <p className="basis-full text-xs text-muted-foreground">{t("sources.historyHint")}</p>
                 </div>
-                {scanMutation.error ? <p className="text-sm text-destructive">{String(scanMutation.error)}</p> : null}
-                {scanFeedback ? (
-                  <p className="rounded-md bg-muted p-3 text-sm">
-                    {t("sources.scanFeedback", {
-                      discovered: Number(scanFeedback.discovered_count || 0),
-                      fresh: Number(scanFeedback.new_discovered_count || 0),
-                      duplicate: Number(scanFeedback.duplicate_count || 0),
-                      state: scanFeedback.completed ? t("sources.scanCompleted") : "",
-                    })}
-                  </p>
-                ) : null}
 
-                <div className="flex flex-wrap gap-2 rounded-md border border-border p-3">
+                <div className="space-y-3 rounded-md border border-border p-3">
+                  <div className="text-sm font-medium">{t("sources.downloadActions")}</div>
+                  <div className="flex flex-wrap gap-2">
                   <Input
                     className="w-28"
                     type="number"
@@ -329,9 +334,82 @@ export function SourcesPage() {
                   {submitDiscoveredMutation.error ? (
                     <p className="basis-full text-sm text-destructive">{String(submitDiscoveredMutation.error)}</p>
                   ) : null}
+                  </div>
+                  <p className="text-xs text-muted-foreground">{t("sources.downloadHint")}</p>
                 </div>
 
-                <div className="space-y-3">
+                <details className="rounded-md border border-border p-3">
+                  <summary className="cursor-pointer text-sm font-medium">{t("sources.advancedActions")}</summary>
+                  <div className="mt-3 space-y-3">
+                    <div className="flex flex-wrap gap-2">
+                      <Input
+                        className="w-28"
+                        type="number"
+                        min={1}
+                        max={200}
+                        value={scanLimit}
+                        onChange={(event) => setScanLimit(event.target.value)}
+                      />
+                      <Button
+                        type="button"
+                        variant="secondary"
+                        disabled={!canScan}
+                        onClick={() => {
+                          if (selectedSourceId) {
+                            scanMutation.mutate({
+                              sourceId: selectedSourceId,
+                              limit: Math.max(1, Math.min(200, Number(scanLimit) || 20)),
+                            });
+                          }
+                        }}
+                      >
+                        {t("sources.scanNext")}
+                      </Button>
+                      <Button
+                        type="button"
+                        variant="secondary"
+                        disabled={!canScan}
+                        onClick={() => {
+                          if (selectedSourceId) {
+                            scanMutation.mutate({
+                              sourceId: selectedSourceId,
+                              limit: Math.max(1, Math.min(200, Number(scanLimit) || 20)),
+                              restart: true,
+                            });
+                          }
+                        }}
+                      >
+                        {t("sources.scanLatest")}
+                      </Button>
+                      <Button
+                        type="button"
+                        variant="secondary"
+                        disabled={!historyEnabled || historyBusy}
+                        onClick={() => {
+                          if (selectedSourceId) stopHistoryScanMutation.mutate(selectedSourceId);
+                        }}
+                      >
+                        {t("sources.historyStop")}
+                      </Button>
+                    </div>
+                    {scanMutation.error ? <p className="text-sm text-destructive">{String(scanMutation.error)}</p> : null}
+                    {scanFeedback ? (
+                      <p className="rounded-md bg-muted p-3 text-sm">
+                        {t("sources.scanFeedback", {
+                          discovered: Number(scanFeedback.discovered_count || 0),
+                          fresh: Number(scanFeedback.new_discovered_count || 0),
+                          duplicate: Number(scanFeedback.duplicate_count || 0),
+                          state: scanFeedback.completed ? t("sources.scanCompleted") : "",
+                        })}
+                      </p>
+                    ) : null}
+                    <p className="text-xs text-muted-foreground">{t("sources.advancedHint")}</p>
+                  </div>
+                </details>
+
+                <details className="rounded-md border border-border p-3">
+                  <summary className="cursor-pointer text-sm font-medium">{t("sources.manualImport")}</summary>
+                  <div className="mt-3 space-y-3">
                   <textarea
                     className="min-h-24 w-full resize-y rounded-md border border-border bg-white px-3 py-2 text-sm outline-none focus:border-primary"
                     placeholder="https://x.com/user/status/123"
@@ -358,7 +436,8 @@ export function SourcesPage() {
                       })}
                     </p>
                   ) : null}
-                </div>
+                  </div>
+                </details>
 
                 <div className="space-y-2">
                   <div className="text-sm font-medium">{t("sources.recentDiscovered")}</div>
@@ -439,24 +518,27 @@ function unwrapActionResult(response: Record<string, unknown>) {
 }
 
 function formatNextRange(cursorState: ArchiveSource["cursor_state"], fallbackLimit: number) {
-  if (isLikelyCompleted(cursorState)) return "-";
+  if (cursorState?.last_completed) return "-";
   const start = Math.max(1, Number(cursorState?.next_start_index) || 1);
   const limit = Math.max(1, Math.min(200, fallbackLimit));
   return `${start}-${start + limit - 1}`;
 }
 
 function formatScanState(cursorState: ArchiveSource["cursor_state"], t: (key: string) => string) {
-  if (isLikelyCompleted(cursorState)) return t("sources.scanCompleted");
+  if (cursorState?.last_completed) return t("sources.scanCompleted");
   if (cursorState?.last_reached_known_region) return t("sources.scanKnownRegion");
   return t("sources.scanContinuing");
 }
 
-function isLikelyCompleted(cursorState: ArchiveSource["cursor_state"]) {
-  if (!cursorState) return false;
-  if (cursorState.last_completed) return true;
-  const rawCount = Number(cursorState.last_raw_record_count ?? cursorState.last_discovered_count ?? 0);
-  const limit = Number(cursorState.last_limit || 0);
-  return limit > 0 && rawCount >= 0 && rawCount < limit;
+function formatHistoryState(source: ArchiveSource, t: (key: string) => string) {
+  const state = source.cursor_state?.automation_state;
+  if (!source.cursor_state?.automation_enabled) return t("sources.historyIdle");
+  if (source.status === "paused" || state === "paused") return t("sources.historyPaused");
+  if (state === "waiting_downloads") return t("sources.historyWaitingDownloads");
+  if (state === "retry_wait") return t("sources.historyRetryWait");
+  if (state === "rate_limited") return t("sources.historyRateLimited");
+  if (state === "auth_required") return t("sources.historyAuthRequired");
+  return t("sources.historyRunning");
 }
 
 function formatDiscoveredMedia(

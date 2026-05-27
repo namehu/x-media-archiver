@@ -27,7 +27,10 @@ from xarchiver.services.sources import (
     create_source,
     get_source,
     list_sources,
+    process_next_source_history_scan,
     scan_source,
+    start_source_history_scan,
+    stop_source_history_scan,
     submit_discovered_tweets,
     submit_source_records,
     update_source_status,
@@ -101,16 +104,26 @@ class SourceSubmitDiscoveredRequest(BaseModel):
     limit: int | None = Field(default=None, ge=1, le=500)
 
 
+class SourceHistoryScanRequest(BaseModel):
+    limit: int = Field(default=20, ge=1, le=200)
+    restart: bool = False
+
+
 @asynccontextmanager
 async def app_lifespan(_: FastAPI):
     stop_worker.clear()
-    worker = Thread(target=queue_worker_loop, name="archive-queue-worker", daemon=True)
-    worker.start()
+    workers = [
+        Thread(target=queue_worker_loop, name="archive-queue-worker", daemon=True),
+        Thread(target=source_worker_loop, name="source-scan-worker", daemon=True),
+    ]
+    for worker in workers:
+        worker.start()
     try:
         yield
     finally:
         stop_worker.set()
-        worker.join(timeout=2)
+        for worker in workers:
+            worker.join(timeout=2)
 
 
 def create_app() -> FastAPI:
@@ -142,6 +155,9 @@ def create_app() -> FastAPI:
             "downloader_sleep_min_seconds": settings.downloader_sleep_min_seconds,
             "downloader_sleep_max_seconds": settings.downloader_sleep_max_seconds,
             "default_download_engine": settings.default_download_engine,
+            "source_scan_batch_size": settings.source_scan_batch_size,
+            "source_scan_sleep_min_seconds": settings.source_scan_sleep_min_seconds,
+            "source_scan_sleep_max_seconds": settings.source_scan_sleep_max_seconds,
         }
 
     @app.get("/api/media")
@@ -338,6 +354,22 @@ def create_app() -> FastAPI:
             code = 404 if detail == "source_not_found" else 409 if detail == "source_paused" else 400
             raise HTTPException(status_code=code, detail=detail) from exc
 
+    @app.post("/api/sources/{source_id}/history-scan", status_code=status.HTTP_202_ACCEPTED)
+    def start_archive_source_history_scan(source_id: int, request: SourceHistoryScanRequest) -> dict[str, object]:
+        try:
+            return start_source_history_scan(source_id, request.limit, request.restart)
+        except ValueError as exc:
+            detail = str(exc)
+            code = 404 if detail == "source_not_found" else 400
+            raise HTTPException(status_code=code, detail=detail) from exc
+
+    @app.post("/api/sources/{source_id}/history-scan/stop")
+    def stop_archive_source_history_scan(source_id: int) -> dict[str, object]:
+        try:
+            return stop_source_history_scan(source_id)
+        except ValueError as exc:
+            raise HTTPException(status_code=404, detail=str(exc)) from exc
+
     return app
 
 
@@ -348,6 +380,19 @@ def queue_worker_loop() -> None:
                 continue
             try:
                 process_next_queued_run(get_settings())
+            finally:
+                write_action_lock.release()
+        except Exception:
+            continue
+
+
+def source_worker_loop() -> None:
+    while not stop_worker.wait(2):
+        try:
+            if not write_action_lock.acquire(blocking=False):
+                continue
+            try:
+                process_next_source_history_scan(get_settings())
             finally:
                 write_action_lock.release()
         except Exception:

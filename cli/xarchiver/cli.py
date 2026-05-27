@@ -26,6 +26,8 @@ from xarchiver.services.sources import (
     create_source,
     list_sources,
     scan_source,
+    start_source_history_scan,
+    stop_source_history_scan,
     submit_discovered_tweets,
     submit_source_records,
     update_source_status,
@@ -167,6 +169,21 @@ def source_submit_discovered_command(
     result = submit_discovered_tweets(source_id, limit=limit)
     console.print(result)
     console.print("Queued for processing while `xarchiver serve` is running.")
+
+
+@sources_app.command("history-start")
+def source_history_start_command(
+    source_id: int = typer.Argument(..., help="Archive source id."),
+    limit: int = typer.Option(20, help="Media range size to scan per batch."),
+    restart: bool = typer.Option(False, help="Restart enumeration from the newest range."),
+) -> None:
+    console.print(start_source_history_scan(source_id, limit, restart=restart))
+    console.print("Background discovery started. It records discoveries only and never queues downloads.")
+
+
+@sources_app.command("history-stop")
+def source_history_stop_command(source_id: int = typer.Argument(..., help="Archive source id.")) -> None:
+    console.print(stop_source_history_scan(source_id))
 
 
 @app.command("status")

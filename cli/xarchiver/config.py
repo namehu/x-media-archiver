@@ -18,6 +18,9 @@ class Settings(BaseSettings):
     queue_batch_size: int = Field(default=20, alias="QUEUE_BATCH_SIZE")
     downloader_sleep_min_seconds: float = Field(default=2.0, alias="DOWNLOADER_SLEEP_MIN_SECONDS")
     downloader_sleep_max_seconds: float = Field(default=6.0, alias="DOWNLOADER_SLEEP_MAX_SECONDS")
+    source_scan_batch_size: int = Field(default=20, alias="SOURCE_SCAN_BATCH_SIZE")
+    source_scan_sleep_min_seconds: float = Field(default=20.0, alias="SOURCE_SCAN_SLEEP_MIN_SECONDS")
+    source_scan_sleep_max_seconds: float = Field(default=45.0, alias="SOURCE_SCAN_SLEEP_MAX_SECONDS")
     api_host: str = Field(default="127.0.0.1", alias="API_HOST")
     api_port: int = Field(default=8000, alias="API_PORT")
 

@@ -169,6 +169,7 @@ export type ArchiveSource = {
   discovered_count?: number | null;
   submitted_count?: number | null;
   discovered_tweet_count?: number | null;
+  discovered_media_count?: number | null;
   unsubmitted_tweet_count?: number | null;
   latest_discovered_at?: string | null;
   last_seen_tweet_id?: string | null;
@@ -176,6 +177,7 @@ export type ArchiveSource = {
   oldest_seen_tweet_id?: string | null;
   error_category?: string | null;
   error_message?: string | null;
+  next_scan_at?: string | null;
   cursor_state?: {
     next_start_index?: number;
     last_range_start?: number;
@@ -188,6 +190,9 @@ export type ArchiveSource = {
     last_duplicate_count?: number;
     last_reached_known_region?: boolean;
     last_completed?: boolean;
+    automation_enabled?: boolean;
+    automation_state?: string;
+    automation_limit?: number;
   } | null;
   created_at?: string | null;
   updated_at?: string | null;
@@ -213,6 +218,9 @@ export type DownloadPolicy = {
   downloader_sleep_min_seconds: number;
   downloader_sleep_max_seconds: number;
   default_download_engine: string;
+  source_scan_batch_size: number;
+  source_scan_sleep_min_seconds: number;
+  source_scan_sleep_max_seconds: number;
 };
 
 export function mediaQueryString(params: Record<string, string>) {
