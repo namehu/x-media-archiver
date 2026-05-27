@@ -47,6 +47,7 @@ Tweet detail
 Failures
 Duplicates
 Operations
+Inbox
 ```
 
 Operations can trigger:
@@ -60,3 +61,8 @@ archive-urls
 ```
 
 Write actions are serialized by the local API. The WebUI does not expose destructive file deletion.
+
+The Inbox page scans `archive/inbox/`, de-duplicates exported files by SHA-256, processes pending
+TXT/JSONL files, displays the linked archive run id, and exposes persisted auto-processing
+settings. Automatic processing is disabled by default and requires the API process to remain
+running.

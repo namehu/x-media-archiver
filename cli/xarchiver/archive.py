@@ -8,6 +8,7 @@ ARCHIVE_SUBDIRS = (
     "state",
     "logs",
     "exports",
+    "inbox",
 )
 
 
@@ -19,4 +20,3 @@ def ensure_archive_dirs(archive_dir: Path) -> None:
 
 def normalize_path(path: Path) -> str:
     return path.as_posix()
-

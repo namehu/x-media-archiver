@@ -92,6 +92,30 @@ export type ActionResponse = {
   result: Record<string, unknown>;
 };
 
+export type InboxImport = {
+  id: number;
+  file_path: string;
+  filename: string;
+  file_type: "urls" | "jsonl";
+  file_size: number;
+  sha256: string;
+  status: "pending" | "processing" | "completed" | "failed";
+  discovered_at: string;
+  processing_started_at?: string | null;
+  processed_at?: string | null;
+  error_message?: string | null;
+  result?: Record<string, unknown> | null;
+  archive_run_id?: number | null;
+};
+
+export type InboxSettings = {
+  enabled: boolean;
+  interval_minutes: number;
+  last_scan_at?: string | null;
+  next_scan_at?: string | null;
+  updated_at: string;
+};
+
 export function mediaQueryString(params: Record<string, string>) {
   const search = new URLSearchParams();
   for (const [key, value] of Object.entries(params)) {

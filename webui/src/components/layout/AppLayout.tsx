@@ -7,6 +7,7 @@ const navItems = [
   { to: "/failures", label: "Failures" },
   { to: "/duplicates", label: "Duplicates" },
   { to: "/operations", label: "Operations" },
+  { to: "/inbox", label: "Inbox" },
 ];
 
 export function AppLayout() {

@@ -282,6 +282,17 @@ archive/
 6. 同一导入文件再次出现时不会重复创建归档任务。
 ```
 
+实施决策：
+
+```text
+1. archive/inbox/ 支持 tweet_urls_*.txt 和 tweets_*.jsonl。
+2. inbox_imports 按 SHA-256 唯一登记文件内容。
+3. archive_runs 记录每次实际处理结果，inbox_imports 关联 archive_run_id。
+4. 定时配置持久化保存 enabled 与 interval_minutes，默认 enabled=false。
+5. 定时循环运行于本地 API 服务内部；API 停止后不会继续后台归档。
+6. 手动处理与定时处理共享写入锁，同一时间只运行一次写入流程。
+```
+
 控制台配置能力：
 
 ```text
@@ -518,7 +529,8 @@ Extension Handoff API
 2. P2.1 本地 FastAPI API 已落地在 cli/xarchiver/api/。
 3. P2.2 React WebUI 首版已落地在 webui/。
 4. P2.3 非破坏性写入操作已落地在 API 与 WebUI Operations 页面。
-5. 当前未新增数据库迁移。
-6. 当前未修改插件行为。
-7. 当前未开放 WebUI 删除能力。
+5. P2.4 Inbox 手动/定时处理已落地在 `archive/inbox/`、`inbox_imports` 与 `archive_runs`。
+6. 新增 `002_inbox_automation.sql` 和 `003_archive_runs.sql` 数据库迁移。
+7. 当前未修改插件行为。
+8. 当前未开放 WebUI 删除能力。
 ```

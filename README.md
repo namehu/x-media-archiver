@@ -185,6 +185,8 @@ GET /api/tweets/{tweet_id}
 GET /api/failures
 GET /api/duplicates
 GET /api/media-file/{relative_path}
+GET /api/inbox
+GET /api/inbox/settings
 ```
 
 Available write API endpoints are serialized by a process-local lock. If one write action is already
@@ -196,6 +198,10 @@ POST /api/actions/requeue
 POST /api/actions/recover-interrupted
 POST /api/actions/export
 POST /api/runs/archive-urls
+POST /api/inbox/scan
+POST /api/inbox/process-pending
+POST /api/inbox/{id}/process
+POST /api/inbox/settings
 ```
 
 Run the WebUI:
@@ -226,6 +232,43 @@ Operations
 ```
 
 Operations can trigger verify, requeue, recover-interrupted, export, and archive-urls. The WebUI still does not expose destructive file deletion.
+
+## Inbox Automation
+
+The browser extension export can be handled from a watched local inbox:
+
+```text
+archive/inbox/
+  tweet_urls_*.txt
+  tweets_*.jsonl
+```
+
+Run migrations before first use:
+
+```bash
+docker-compose run --rm xarchiver db migrate
+```
+
+Open the WebUI `Inbox` page to:
+
+```text
+1. Scan files without processing them.
+2. Process pending files manually.
+3. Retry a failed file.
+4. Enable or disable timed automatic processing.
+5. Configure the automatic scan interval in minutes.
+```
+
+Inbox behavior:
+
+```text
+1. File content is identified by SHA-256; identical content is only registered once.
+2. TXT input performs the URL archive workflow.
+3. JSONL input first preserves richer tweet metadata, then performs the same download/verify/export workflow.
+4. Each processed file is linked to an archive_runs record.
+5. Automatic processing is disabled by default and only runs while the local API service is running.
+6. Automatic and manual writes share the P2.3 single-operation lock.
+```
 
 ## State Rules
 

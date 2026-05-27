@@ -1,7 +1,7 @@
 # x-media-archiver Phase 2 Roadmap
 
 > 日期：2026-05-27  
-> 状态：P2.0 / P2.1 / P2.2 / P2.3 首版已落地，等待运行验收  
+> 状态：P2.0 / P2.1 / P2.2 / P2.3 / P2.4 首版已落地，等待运行验收<br>
 > 阶段目标：在第一阶段已完成的 CLI 归档内核之上，建设本地 WebUI / API 管理后台能力。
 
 ---
@@ -143,12 +143,14 @@ docker-compose run --rm --entrypoint python xarchiver -m unittest discover -s /a
 
 目标：用户把插件导出的文件放入 inbox 后，系统可自动处理。
 
-- [ ] 新增 `archive/inbox/` 目录规范。
-- [ ] 设计 `inbox_imports` 或等价追踪表。
-- [ ] 基于文件 hash 做幂等。
-- [ ] API 支持扫描 inbox。
-- [ ] WebUI 展示 inbox 文件处理状态。
-- [ ] 后续再决定是否做定时任务。
+- [x] 新增 `archive/inbox/` 目录规范。
+- [x] 新增 `inbox_imports` 表记录文件、hash、状态和结果。
+- [x] 新增 `archive_runs` 表并将 inbox 处理结果关联到 run。
+- [x] 基于文件 SHA-256 做幂等登记。
+- [x] API 支持扫描、处理 pending 和单项重试。
+- [x] WebUI 展示 inbox 文件处理状态和关联 run。
+- [x] 新增持久化定时设置：启停、扫描间隔、最近/下次扫描时间。
+- [x] API 服务内运行定时自动扫描/处理，默认关闭。
 
 验收：
 
@@ -156,6 +158,8 @@ docker-compose run --rm --entrypoint python xarchiver -m unittest discover -s /a
 1. 同一个 tweet_urls 文件重复放入 inbox 不会重复处理。
 2. 处理结果能关联到 archive run。
 3. 失败项能在 WebUI 中查看。
+4. 启用定时处理后，API 存活期间按配置间隔处理 pending 文件。
+5. 自动处理与手动写入动作不会并发执行。
 ```
 
 ### P2.5 插件直接投递预研
@@ -185,13 +189,14 @@ P2.0 service layer
 P2.1 read-only local API
 P2.2 read-only WebUI MVP
 P2.3 serialized write actions
+P2.4 inbox manual and timed processing
 ```
 
 推荐下一步：
 
 ```text
-1. 用当前 5 条 verified 样本做页面人工验收。
-2. 进入 P2.4 Inbox 自动归档设计与实现。
+1. 用新导出的 TXT 或 JSONL 文件做 Inbox 人工验收。
+2. 在实际使用反馈后评估 P2.5 插件直接投递。
 3. 不提前加入删除能力。
 ```
 

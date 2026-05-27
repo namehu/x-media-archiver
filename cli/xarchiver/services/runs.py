@@ -9,10 +9,16 @@ from xarchiver.importer import import_jsonl, import_urls
 from xarchiver.media import backfill_media_assets
 from xarchiver.recovery import recover_interrupted_runs, requeue_tweets
 from xarchiver.verifier import verify_media_assets
-from xarchiver.workflow import archive_urls
+from xarchiver.workflow import archive_jsonl, archive_urls
 
 
 def run_archive_urls(path: Path, settings: Settings, limit: int | None = None) -> dict[str, object]:
+    return archive_urls(path, settings, limit)
+
+
+def run_archive_file(path: Path, settings: Settings, limit: int | None = None) -> dict[str, object]:
+    if path.suffix.lower() == ".jsonl":
+        return archive_jsonl(path, settings, limit)
     return archive_urls(path, settings, limit)
 
 

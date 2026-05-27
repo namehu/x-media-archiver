@@ -3,6 +3,11 @@ import { defineConfig } from "vite";
 
 export default defineConfig({
   plugins: [react()],
+  build: {
+    rollupOptions: {
+      input: "index.html",
+    },
+  },
   server: {
     port: 5173,
     proxy: {
@@ -11,4 +16,3 @@ export default defineConfig({
     },
   },
 });
-
