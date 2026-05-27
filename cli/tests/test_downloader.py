@@ -1,8 +1,10 @@
 import tempfile
 import unittest
 from pathlib import Path
+from types import SimpleNamespace
+from unittest.mock import patch
 
-from xarchiver.downloader import classify_error, fetch_download_candidates, validate_cookie_file
+from xarchiver.downloader import build_command, classify_error, fetch_download_candidates, format_sleep_range, validate_cookie_file
 from xarchiver.db import connect
 
 
@@ -32,6 +34,37 @@ class DownloaderTests(unittest.TestCase):
         self.assertEqual(classify_error(1, "HTTP Error 404: not found"), "invalid_url")
         self.assertEqual(classify_error(1, "Connection timed out"), "network_error")
         self.assertEqual(classify_error(2, "unexpected stderr"), "unknown")
+
+    def test_format_sleep_range_normalizes_values(self) -> None:
+        self.assertEqual(format_sleep_range(2, 6), "2-6")
+        self.assertEqual(format_sleep_range(6, 2), "6")
+
+    def test_gallery_dl_command_includes_request_sleep(self) -> None:
+        settings = SimpleNamespace(
+            archive_dir=Path("/app/archive"),
+            downloader_sleep_min_seconds=2,
+            downloader_sleep_max_seconds=6,
+        )
+
+        command = build_command("gallery-dl", settings, Path("/app/archive/raw/input.txt"))
+
+        self.assertIn("--sleep-request", command)
+        self.assertIn("2-6", command)
+
+    def test_yt_dlp_command_includes_sleep_options(self) -> None:
+        settings = SimpleNamespace(
+            archive_dir=Path("/app/archive"),
+            cookie_file=Path("/app/secrets/cookies.txt"),
+            downloader_sleep_min_seconds=2,
+            downloader_sleep_max_seconds=6,
+        )
+
+        with patch("xarchiver.downloader.shutil.copyfile"):
+            command = build_command("yt-dlp", settings, Path("/app/archive/raw/input.txt"))
+
+        self.assertIn("--sleep-requests", command)
+        self.assertIn("--sleep-interval", command)
+        self.assertIn("--max-sleep-interval", command)
 
 
 class DownloadCandidateIntegrationTests(unittest.TestCase):

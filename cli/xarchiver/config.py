@@ -15,6 +15,9 @@ class Settings(BaseSettings):
     retry_limit: int = Field(default=3, alias="RETRY_LIMIT")
     retry_backoff_minutes: int = Field(default=15, alias="RETRY_BACKOFF_MINUTES")
     stuck_timeout_minutes: int = Field(default=120, alias="STUCK_TIMEOUT_MINUTES")
+    queue_batch_size: int = Field(default=20, alias="QUEUE_BATCH_SIZE")
+    downloader_sleep_min_seconds: float = Field(default=2.0, alias="DOWNLOADER_SLEEP_MIN_SECONDS")
+    downloader_sleep_max_seconds: float = Field(default=6.0, alias="DOWNLOADER_SLEEP_MAX_SECONDS")
     api_host: str = Field(default="127.0.0.1", alias="API_HOST")
     api_port: int = Field(default=8000, alias="API_PORT")
 

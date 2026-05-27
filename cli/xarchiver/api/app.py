@@ -23,6 +23,15 @@ from xarchiver.services.runs import (
     run_requeue,
     run_verify,
 )
+from xarchiver.services.sources import (
+    create_source,
+    get_source,
+    list_sources,
+    scan_source,
+    submit_discovered_tweets,
+    submit_source_records,
+    update_source_status,
+)
 
 write_action_lock = Lock()
 stop_worker = Event()
@@ -66,6 +75,29 @@ class ArchiveRecord(BaseModel):
 class ArchiveSubmitRequest(BaseModel):
     trigger_type: str = "webui"
     records: list[ArchiveRecord]
+
+
+class SourceCreateRequest(BaseModel):
+    source_type: str = Field(pattern="^(profile|user_media|likes|bookmarks|search|manual)$")
+    source_url: str
+    label: str | None = None
+    author_username: str | None = None
+
+
+class SourceRecordsRequest(BaseModel):
+    records: list[ArchiveRecord]
+
+
+class SourceStatusRequest(BaseModel):
+    status: str = Field(pattern="^(active|paused|completed|failed)$")
+
+
+class SourceScanRequest(BaseModel):
+    limit: int = Field(default=20, ge=1, le=200)
+
+
+class SourceSubmitDiscoveredRequest(BaseModel):
+    limit: int | None = Field(default=None, ge=1, le=500)
 
 
 @asynccontextmanager
@@ -223,6 +255,76 @@ def create_app() -> FastAPI:
         except ValueError as exc:
             detail = str(exc)
             code = 404 if detail == "archive_run_not_found" else 409
+            raise HTTPException(status_code=code, detail=detail) from exc
+
+    @app.post("/api/sources", status_code=status.HTTP_201_CREATED)
+    def create_archive_source(request: SourceCreateRequest) -> dict[str, object]:
+        try:
+            return create_source(
+                request.source_type,
+                request.source_url,
+                label=request.label,
+                author_username=request.author_username,
+            )
+        except ValueError as exc:
+            raise HTTPException(status_code=400, detail=str(exc)) from exc
+
+    @app.get("/api/sources")
+    def archive_sources(
+        limit: int = Query(50, ge=1, le=200),
+        source_status: str | None = None,
+        source_type: str | None = None,
+    ) -> dict[str, object]:
+        try:
+            rows = list_sources(status=source_status, source_type=source_type, limit=limit)
+        except ValueError as exc:
+            raise HTTPException(status_code=400, detail=str(exc)) from exc
+        return {"rows": rows, "count": len(rows)}
+
+    @app.get("/api/sources/{source_id}")
+    def archive_source_detail(source_id: int) -> dict[str, object]:
+        result = get_source(source_id)
+        if result is None:
+            raise HTTPException(status_code=404, detail="source_not_found")
+        return result
+
+    @app.post("/api/sources/{source_id}/records", status_code=status.HTTP_202_ACCEPTED)
+    def submit_archive_source_records(source_id: int, request: SourceRecordsRequest) -> dict[str, object]:
+        try:
+            return submit_source_records(source_id, [record.model_dump() for record in request.records])
+        except ValueError as exc:
+            detail = str(exc)
+            code = 404 if detail == "source_not_found" else 400
+            raise HTTPException(status_code=code, detail=detail) from exc
+
+    @app.post("/api/sources/{source_id}/submit-discovered", status_code=status.HTTP_202_ACCEPTED)
+    def submit_archive_source_discovered(
+        source_id: int,
+        request: SourceSubmitDiscoveredRequest,
+    ) -> dict[str, object]:
+        try:
+            return submit_discovered_tweets(source_id, limit=request.limit)
+        except ValueError as exc:
+            detail = str(exc)
+            code = 404 if detail == "source_not_found" else 409
+            raise HTTPException(status_code=code, detail=detail) from exc
+
+    @app.post("/api/sources/{source_id}/status")
+    def update_archive_source_status(source_id: int, request: SourceStatusRequest) -> dict[str, object]:
+        try:
+            return update_source_status(source_id, request.status)
+        except ValueError as exc:
+            detail = str(exc)
+            code = 404 if detail == "source_not_found" else 400
+            raise HTTPException(status_code=code, detail=detail) from exc
+
+    @app.post("/api/sources/{source_id}/scan", status_code=status.HTTP_202_ACCEPTED)
+    def scan_archive_source(source_id: int, request: SourceScanRequest) -> dict[str, object]:
+        try:
+            return execute_write_action("source-scan", lambda: scan_source(source_id, request.limit))
+        except ValueError as exc:
+            detail = str(exc)
+            code = 404 if detail == "source_not_found" else 409 if detail == "source_paused" else 400
             raise HTTPException(status_code=code, detail=detail) from exc
 
     return app

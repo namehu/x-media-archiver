@@ -23,3 +23,11 @@ class CliQueueTests(unittest.TestCase):
 
         self.assertEqual(result.exit_code, 0)
         self.assertIn("serve", result.output)
+
+    def test_source_create_command(self) -> None:
+        with patch("xarchiver.cli.create_source", return_value={"id": 7, "source_type": "profile"}) as create:
+            result = CliRunner().invoke(app, ["sources", "create", "https://x.com/example"])
+
+        self.assertEqual(result.exit_code, 0)
+        create.assert_called_once_with("profile", "https://x.com/example", label=None, author_username=None)
+        self.assertIn("profile", result.output)

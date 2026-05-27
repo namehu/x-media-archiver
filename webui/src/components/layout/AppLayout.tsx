@@ -9,6 +9,7 @@ const navItems = [
   { to: "/duplicates", labelKey: "nav.duplicates" },
   { to: "/operations", labelKey: "nav.operations" },
   { to: "/queue", labelKey: "nav.queue" },
+  { to: "/sources", labelKey: "nav.sources" },
 ];
 
 export function AppLayout() {

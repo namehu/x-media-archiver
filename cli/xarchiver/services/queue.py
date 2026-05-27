@@ -151,7 +151,7 @@ def fetch_tweet_statuses(tweet_ids: list[str]) -> dict[str, str]:
 
 
 def process_next_queued_run(settings: Settings) -> dict[str, object] | None:
-    claimed = claim_next_items(settings.retry_limit)
+    claimed = claim_next_items(settings.retry_limit, getattr(settings, "queue_batch_size", 20))
     if not claimed:
         return None
     run_id = int(claimed[0]["archive_run_id"])
@@ -166,7 +166,8 @@ def process_next_queued_run(settings: Settings) -> dict[str, object] | None:
     return get_run_detail(run_id) or {}
 
 
-def claim_next_items(retry_limit: int) -> list[dict[str, object]]:
+def claim_next_items(retry_limit: int, batch_size: int = 20) -> list[dict[str, object]]:
+    batch_size = max(1, int(batch_size))
     with connect() as conn:
         with conn.cursor() as cur:
             cur.execute(
@@ -190,13 +191,19 @@ def claim_next_items(retry_limit: int) -> list[dict[str, object]]:
                 """
                 update archive_run_items
                 set status = 'processing', last_attempt_at = now(), updated_at = now()
-                where archive_run_id = %s
+                where id in (
+                  select id from archive_run_items
+                  where archive_run_id = %s
                   and status in ('pending', 'failed_retryable')
                   and retry_count < %s
                   and (next_attempt_at is null or next_attempt_at <= now())
+                  order by id asc
+                  limit %s
+                  for update skip locked
+                )
                 returning id, archive_run_id, tweet_id, retry_count
                 """,
-                (run_id, retry_limit),
+                (run_id, retry_limit, batch_size),
             )
             rows = list(cur.fetchall())
             cur.execute(

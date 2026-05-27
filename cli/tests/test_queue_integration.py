@@ -88,7 +88,7 @@ class QueueIntegrationTests(unittest.TestCase):
 
     def test_worker_processes_claimed_run_scope_and_completes_item(self) -> None:
         submitted = submit_archive_batch([self.record(self.tweet_ids[2])], "test_queue_worker")
-        settings = SimpleNamespace(retry_limit=3, retry_backoff_minutes=15)
+        settings = SimpleNamespace(retry_limit=3, retry_backoff_minutes=15, queue_batch_size=20)
         pipeline = {
             "media": {
                 "backfilled_media_count": 1,
@@ -107,6 +107,30 @@ class QueueIntegrationTests(unittest.TestCase):
         self.assertEqual(process.call_args.args[0], [self.tweet_ids[2]])
         self.assertEqual(detail["status"], "completed")
         self.assertEqual(detail["items"][0]["status"], "verified")
+
+    def test_worker_respects_queue_batch_size(self) -> None:
+        submitted = submit_archive_batch(
+            [self.record(self.tweet_ids[0]), self.record(self.tweet_ids[1])],
+            "test_queue_batch_size",
+        )
+        settings = SimpleNamespace(retry_limit=3, retry_backoff_minutes=15, queue_batch_size=1)
+        pipeline = {
+            "media": {
+                "backfilled_media_count": 1,
+                "verified_media_count": 1,
+                "missing_media_count": 0,
+                "corrupt_media_count": 0,
+            }
+        }
+        with (
+            patch("xarchiver.services.queue.process_tweet_scope", return_value=pipeline) as process,
+            patch("xarchiver.services.queue.fetch_tweet_statuses", return_value={self.tweet_ids[0]: "verified"}),
+        ):
+            process_next_queued_run(settings)
+
+        detail = get_run_detail(int(submitted["run_id"]))
+        self.assertEqual(process.call_args.args[0], [self.tweet_ids[0]])
+        self.assertEqual(detail["status"], "queued")
 
     def test_list_runs_filters_by_status_tweet_and_failed_items(self) -> None:
         matched = submit_archive_batch([self.record(self.tweet_ids[0])], "test_queue_filter_match")

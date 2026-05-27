@@ -154,6 +154,12 @@ def write_input_file(archive_dir: Path, engine: str, urls: list[str]) -> Path:
 
 
 def build_command(engine: str, settings: Settings, input_path: Path) -> list[str]:
+    sleep_min = format_sleep_seconds(getattr(settings, "downloader_sleep_min_seconds", 2.0))
+    sleep_max = format_sleep_seconds(getattr(settings, "downloader_sleep_max_seconds", 6.0))
+    sleep_range = format_sleep_range(
+        getattr(settings, "downloader_sleep_min_seconds", 2.0),
+        getattr(settings, "downloader_sleep_max_seconds", 6.0),
+    )
     if engine == "gallery-dl":
         return [
             "gallery-dl",
@@ -161,6 +167,10 @@ def build_command(engine: str, settings: Settings, input_path: Path) -> list[str
             "/app/gallery-dl.conf",
             "--destination",
             str(settings.archive_dir / "media"),
+            "--sleep-request",
+            sleep_range,
+            "--sleep",
+            sleep_range,
             "--write-metadata",
             "--download-archive",
             str(settings.archive_dir / "state" / "gallery-dl-downloaded.txt"),
@@ -175,6 +185,12 @@ def build_command(engine: str, settings: Settings, input_path: Path) -> list[str
         "yt-dlp",
         "--cookies",
         str(runtime_cookie_file),
+        "--sleep-requests",
+        sleep_min,
+        "--sleep-interval",
+        sleep_min,
+        "--max-sleep-interval",
+        sleep_max,
         "--write-info-json",
         "--write-thumbnail",
         "--download-archive",
@@ -184,6 +200,16 @@ def build_command(engine: str, settings: Settings, input_path: Path) -> list[str
         "-o",
         str(settings.archive_dir / "media" / "%(uploader_id)s" / "%(display_id)s" / "%(display_id)s.%(ext)s"),
     ]
+
+
+def format_sleep_range(min_seconds: float, max_seconds: float) -> str:
+    minimum = max(0.0, float(min_seconds))
+    maximum = max(minimum, float(max_seconds))
+    return f"{minimum:g}-{maximum:g}" if maximum > minimum else f"{minimum:g}"
+
+
+def format_sleep_seconds(seconds: float) -> str:
+    return f"{max(0.0, float(seconds)):g}"
 
 
 def validate_cookie_file(engine: str, cookie_file: Path) -> str | None:

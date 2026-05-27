@@ -265,16 +265,35 @@ P2.4.2 database archive queue
 P2.5.1/P2.5.2 queue observability and error categories
 P2.6 archive queue input preview
 P2.7 run history filters
+P2.8.0 source collector foundation
 ```
 
 推荐下一步：
 
 ```text
-1. 用新导出的 TXT 或 JSONL 通过 Archive Queue 页面做人工验收。
-2. 用失败 run 和 tweet_id 搜索验证 P2.7 筛选。
-3. 在实际使用反馈后评估 P2.5.4 插件直接投递。
-4. 不提前加入删除能力。
+1. 用新导出的 TXT 或 JSONL 通过 Source 页面挂到一个 profile/user_media 来源下做人工验收。
+2. 验证来源发现记录、Archive Queue run、tweet 下载状态三者是否能互相追踪。
+3. spike gallery-dl profile/user_media 枚举能力，只枚举 tweet_id/metadata，不直接下载。
+4. 在 source collector 稳定后再评估插件直接投递。
+5. 不提前加入删除能力。
 ```
+
+### P2.8 Source Collector
+
+目标：把“几千到上万条 tweet 的来源发现”从浏览器滚动临时采集，升级为可恢复、可审计、可暂停的来源模型。
+
+- [x] 新增 `archive_sources` 扩展字段：状态、cursor/checkpoint、最近发现、计数、错误信息。
+- [x] 新增 `source_discovered_tweets`，记录来源与 tweet 的发现关系。
+- [x] API 支持来源创建、列表、详情、暂停/恢复。
+- [x] API/CLI 支持把某个来源发现到的 tweet URL 批量提交到现有 Archive Queue。
+- [x] WebUI 新增 Sources 页面，支持来源登记和手动提交发现结果。
+- [x] 验证 gallery-dl 可通过 profile `/timeline` 与 user `/media` 枚举近期 tweet 元数据。
+- [x] WebUI/API/CLI 支持小批量扫描来源并只记录发现结果。
+- [x] WebUI/API/CLI 支持显式提交未入队发现项，避免扫描与下载请求叠加。
+- [x] 下载队列增加每轮 batch size 限制，下载器增加请求/下载随机延迟参数。
+- [ ] 将枚举器接入 `archive_sources.cursor_state`，支持分页 checkpoint 和恢复。
+- [ ] 增加来源扫描 worker，按批次发现并提交 tweet，避免一次性大任务。
+- [ ] 为限流、鉴权失败和网络错误补充来源级失败分类。
 
 ---
 

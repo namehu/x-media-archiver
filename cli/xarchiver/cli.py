@@ -22,11 +22,21 @@ from xarchiver.services.runs import (
     run_requeue,
     run_verify,
 )
+from xarchiver.services.sources import (
+    create_source,
+    list_sources,
+    scan_source,
+    submit_discovered_tweets,
+    submit_source_records,
+    update_source_status,
+)
 from xarchiver.status import get_media_count, get_status_counts
 
 app = typer.Typer(help="Local-first X/Twitter media archiver.")
 db_app = typer.Typer(help="Database commands.")
+sources_app = typer.Typer(help="Source collector commands.")
 app.add_typer(db_app, name="db")
+app.add_typer(sources_app, name="sources")
 
 console = Console()
 
@@ -76,6 +86,84 @@ def archive_jsonl_command(
     path: Path = typer.Argument(..., help="Path to tweets JSONL."),
 ) -> None:
     result = submit_jsonl_file(path)
+    console.print(result)
+    console.print("Queued for processing while `xarchiver serve` is running.")
+
+
+@sources_app.command("create")
+def source_create_command(
+    source_url: str = typer.Argument(..., help="X/Twitter source URL."),
+    source_type: str = typer.Option("profile", help="profile, user_media, likes, bookmarks, search, or manual."),
+    label: str | None = typer.Option(None, help="Human-readable label."),
+    author_username: str | None = typer.Option(None, help="Override inferred author username."),
+) -> None:
+    result = create_source(source_type, source_url, label=label, author_username=author_username)
+    console.print(result)
+
+
+@sources_app.command("list")
+def source_list_command(
+    status: str | None = typer.Option(None, help="Filter by source status."),
+    source_type: str | None = typer.Option(None, help="Filter by source type."),
+    limit: int = typer.Option(50, help="Maximum sources."),
+) -> None:
+    rows = list_sources(status=status, source_type=source_type, limit=limit)
+    table = Table(title=f"x-media-archiver sources ({len(rows)} result(s))")
+    table.add_column("ID", justify="right")
+    table.add_column("Type")
+    table.add_column("Status")
+    table.add_column("Author")
+    table.add_column("Discovered", justify="right")
+    table.add_column("URL")
+    for row in rows:
+        table.add_row(
+            str(row.get("id")),
+            str(row.get("source_type") or ""),
+            str(row.get("status") or ""),
+            str(row.get("author_username") or ""),
+            str(row.get("discovered_tweet_count") or row.get("discovered_count") or 0),
+            str(row.get("source_url") or ""),
+        )
+    console.print(table)
+
+
+@sources_app.command("submit-urls")
+def source_submit_urls_command(
+    source_id: int = typer.Argument(..., help="Archive source id."),
+    path: Path = typer.Argument(..., help="Path to tweet_urls.txt discovered for this source."),
+) -> None:
+    records = [{"url": line.strip()} for line in path.read_text(encoding="utf-8").splitlines() if line.strip()]
+    result = submit_source_records(source_id, records)
+    console.print(result)
+    console.print("Queued for processing while `xarchiver serve` is running.")
+
+
+@sources_app.command("pause")
+def source_pause_command(source_id: int = typer.Argument(..., help="Archive source id.")) -> None:
+    console.print(update_source_status(source_id, "paused"))
+
+
+@sources_app.command("resume")
+def source_resume_command(source_id: int = typer.Argument(..., help="Archive source id.")) -> None:
+    console.print(update_source_status(source_id, "active"))
+
+
+@sources_app.command("scan")
+def source_scan_command(
+    source_id: int = typer.Argument(..., help="Archive source id."),
+    limit: int = typer.Option(20, help="Maximum posts to discover in this scan."),
+) -> None:
+    result = scan_source(source_id, limit)
+    console.print(result)
+    console.print("Discovered tweets were recorded. Submit them explicitly when you are ready to download.")
+
+
+@sources_app.command("submit-discovered")
+def source_submit_discovered_command(
+    source_id: int = typer.Argument(..., help="Archive source id."),
+    limit: int | None = typer.Option(None, help="Maximum unsubmitted discovered tweets to queue."),
+) -> None:
+    result = submit_discovered_tweets(source_id, limit=limit)
     console.print(result)
     console.print("Queued for processing while `xarchiver serve` is running.")
 

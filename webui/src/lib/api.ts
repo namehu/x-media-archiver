@@ -145,6 +145,7 @@ export type ArchiveRunDetail = ArchiveRun & {
 
 export type ArchiveSubmission = {
   run_id: number;
+  source_id?: number;
   status: string;
   input: {
     input_record_count: number;
@@ -156,6 +157,36 @@ export type ArchiveSubmission = {
     skipped_verified_count: number;
     linked_pending_count: number;
   };
+};
+
+export type ArchiveSource = {
+  id: number;
+  source_type: string;
+  source_url?: string | null;
+  label?: string | null;
+  author_username?: string | null;
+  status: "active" | "paused" | "completed" | "failed";
+  discovered_count?: number | null;
+  submitted_count?: number | null;
+  discovered_tweet_count?: number | null;
+  unsubmitted_tweet_count?: number | null;
+  latest_discovered_at?: string | null;
+  last_seen_tweet_id?: string | null;
+  newest_seen_tweet_id?: string | null;
+  oldest_seen_tweet_id?: string | null;
+  error_category?: string | null;
+  error_message?: string | null;
+  created_at?: string | null;
+  updated_at?: string | null;
+  discovered?: Array<{
+    id: number;
+    tweet_id: string;
+    archive_run_id?: number | null;
+    discovered_at?: string | null;
+    download_status?: string | null;
+    author_username?: string | null;
+    text?: string | null;
+  }>;
 };
 
 export function mediaQueryString(params: Record<string, string>) {

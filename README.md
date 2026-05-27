@@ -160,10 +160,17 @@ Retry behavior is controlled by environment variables:
 ```text
 RETRY_LIMIT=3
 RETRY_BACKOFF_MINUTES=15
+QUEUE_BATCH_SIZE=20
+DOWNLOADER_SLEEP_MIN_SECONDS=2
+DOWNLOADER_SLEEP_MAX_SECONDS=6
 STUCK_TIMEOUT_MINUTES=120
 API_HOST=0.0.0.0
 API_PORT=8000
 ```
+
+`QUEUE_BATCH_SIZE` limits how many queued tweets the API worker claims in one pass. The downloader
+sleep settings are passed through to `gallery-dl` / `yt-dlp` so large batches do not hammer X/Twitter
+with back-to-back requests.
 
 ## Local API and WebUI
 
@@ -235,9 +242,19 @@ Failures
 Duplicates
 Operations
 Archive Queue
+Sources
 ```
 
 Archive Queue accepts pasted URLs or local TXT/JSONL files parsed in the browser and submits structured database tasks. Operations can trigger requeue, recover-interrupted, and database snapshot export. Full backfill and full verify are isolated under Maintenance and require explicit disk-scan confirmation. The WebUI does not expose destructive file deletion.
+
+Sources records long-lived X/Twitter origins such as profile pages, media tabs, likes,
+bookmarks, search pages, or manual collections. A source can submit discovered tweet URLs into the
+same Archive Queue while preserving source-to-tweet traceability. The current implementation provides
+the recoverable source model, manual discovered-URL submission, and small-batch `gallery-dl` scanning
+for profile timelines and user media pages. Source scanning records discovered tweets only; it does
+not automatically submit them to the download queue. Use the explicit submit action when you are ready
+to download a controlled batch. Large historical backfills should be run in small batches until
+cursor-based checkpoint scanning is added.
 
 ## Archive Queue
 

@@ -11,6 +11,7 @@ import { FailuresPage } from "./pages/FailuresPage";
 import { ArchiveQueuePage } from "./pages/ArchiveQueuePage";
 import { LibraryPage } from "./pages/LibraryPage";
 import { OperationsPage } from "./pages/OperationsPage";
+import { SourcesPage } from "./pages/SourcesPage";
 import { TweetDetailPage } from "./pages/TweetDetailPage";
 
 const queryClient = new QueryClient();
@@ -27,6 +28,7 @@ const router = createBrowserRouter([
       { path: "duplicates", element: <DuplicatesPage /> },
       { path: "operations", element: <OperationsPage /> },
       { path: "queue", element: <ArchiveQueuePage /> },
+      { path: "sources", element: <SourcesPage /> },
     ],
   },
 ]);
