@@ -36,5 +36,7 @@ export function useFormatters() {
   return {
     statusLabel: (status?: string | null) => (status ? t(`common.status.${status}`) : "-"),
     mediaTypeLabel: (mediaType?: string | null) => (mediaType ? t(`common.media.${mediaType}`) : t("common.media.media")),
+    errorLabel: (error?: string | null) => (error ? t(`common.error.${error}`) : "-"),
+    triggerLabel: (trigger?: string | null) => (trigger ? t(`common.trigger.${trigger}`) : "-"),
   };
 }

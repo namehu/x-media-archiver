@@ -1,7 +1,7 @@
 # x-media-archiver Phase 2 Roadmap
 
 > 日期：2026-05-27  
-> 状态：P2.0 - P2.4.2 已落地，P2.5.1/P2.5.2 推进中<br>
+> 状态：P2.0 - P2.5.2 已落地，P2.6/P2.7 推进中<br>
 > 阶段目标：在第一阶段已完成的 CLI 归档内核之上，建设本地 WebUI / API 管理后台能力。
 
 ---
@@ -207,10 +207,31 @@ docker-compose run --rm --entrypoint python xarchiver -m unittest discover -s /a
 
 #### P2.5.3 WebUI 国际化与中文优先
 
-- [~] 新增 WebUI i18n 基础设施。
-- [~] 默认语言为中文。
-- [~] 英文翻译表暂留空，缺失时回退中文。
-- [~] 当前页面可见文案切换为中文。
+- [x] 新增 WebUI i18n 基础设施。
+- [x] 默认语言为中文。
+- [x] 英文翻译表暂留空，缺失时回退中文。
+- [x] 当前页面可见文案切换为中文。
+- [x] 状态、触发来源、错误类别不再直接暴露内部枚举值。
+
+### P2.6 Archive Queue 输入体验增强
+
+目标：降低日常粘贴或上传 URL 文件时的误提交成本。
+
+- [x] 粘贴多行 URL 后在提交前展示解析预览。
+- [x] 展示总行数、有效 URL 数、重复 URL 数、无效行数。
+- [x] 存在无效行时禁止提交，并列出前几条无效行。
+- [x] 重复 URL 不重复提交，并在预览中展示。
+- [x] 上传 TXT / JSONL 后由浏览器解析为 URL 文本，再进入同一预览逻辑。
+
+### P2.7 Run 历史筛选
+
+目标：归档批次变多后，仍然可以快速定位失败批次和目标 tweet。
+
+- [x] API 支持按 run status 筛选批次。
+- [x] API 支持按 tweet_id 模糊搜索批次。
+- [x] API 支持只看包含失败 item 的批次。
+- [x] WebUI Archive Queue 增加状态筛选、tweet_id 搜索、只看失败。
+- [x] Run 列表中的触发来源显示为中文说明。
 
 #### P2.5.4 插件直接投递预研
 
@@ -241,14 +262,16 @@ P2.2 read-only WebUI MVP
 P2.3 serialized write actions
 P2.4.1 incremental archive and explicit full-disk maintenance
 P2.4.2 database archive queue
-P2.5.1/P2.5.2 queue observability and error categories in progress
+P2.5.1/P2.5.2 queue observability and error categories
+P2.6 archive queue input preview
+P2.7 run history filters
 ```
 
 推荐下一步：
 
 ```text
-1. 完成 Queue 可观测性与失败分类验收。
-2. 用新导出的 TXT 或 JSONL 通过 Archive Queue 页面做人工验收。
+1. 用新导出的 TXT 或 JSONL 通过 Archive Queue 页面做人工验收。
+2. 用失败 run 和 tweet_id 搜索验证 P2.7 筛选。
 3. 在实际使用反馈后评估 P2.5.4 插件直接投递。
 4. 不提前加入删除能力。
 ```

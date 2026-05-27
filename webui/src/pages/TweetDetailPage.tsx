@@ -8,7 +8,7 @@ import { Card, CardContent, CardHeader, CardTitle } from "../components/ui/Card"
 
 export function TweetDetailPage() {
   const { t } = useI18n();
-  const { mediaTypeLabel, statusLabel } = useFormatters();
+  const { errorLabel, mediaTypeLabel, statusLabel } = useFormatters();
   const { tweetId } = useParams();
   const { data, isLoading, error } = useQuery({
     queryKey: ["tweet", tweetId],
@@ -34,7 +34,7 @@ export function TweetDetailPage() {
             <div>{t("tweet.published")}: {formatDateTime(data.tweet.published_at)}</div>
             <div>{t("tweet.updated")}: {formatDateTime(data.tweet.updated_at)}</div>
             <div>{t("tweet.retryCount")}: {data.tweet.retry_count ?? 0}</div>
-            <div>{t("tweet.lastError")}: {data.tweet.last_error || "-"}</div>
+            <div>{t("tweet.lastError")}: {errorLabel(data.tweet.last_error)}</div>
           </div>
           {data.tweet.tweet_url ? (
             <a className="text-sm font-medium text-primary" href={data.tweet.tweet_url} target="_blank" rel="noreferrer">
@@ -80,11 +80,11 @@ export function TweetDetailPage() {
               <div key={attempt.id} className="rounded-md border border-border p-3 text-sm">
                 <div className="flex flex-wrap items-center gap-2">
                   <Badge>{attempt.engine || "-"}</Badge>
-                  <span>{attempt.status || "-"}</span>
+                  <span>{statusLabel(attempt.status)}</span>
                   <span className="text-muted-foreground">{formatDateTime(attempt.finished_at)}</span>
                 </div>
                 <div className="mt-1 text-muted-foreground">
-                  {attempt.error_category || attempt.error_message || "ok"}
+                  {attempt.error_category || attempt.error_message ? errorLabel(attempt.error_category || attempt.error_message) : "ok"}
                 </div>
               </div>
             ))

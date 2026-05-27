@@ -1,4 +1,4 @@
-import { useState } from "react";
+import { useMemo, useState } from "react";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { apiGet, apiPost, type ArchiveRun, type ArchiveRunDetail, type ArchiveSubmission } from "../lib/api";
 import { useFormatters, useI18n } from "../lib/i18n";
@@ -7,18 +7,38 @@ import { Badge } from "../components/ui/Badge";
 import { Button } from "../components/ui/Button";
 import { Card, CardContent, CardHeader, CardTitle } from "../components/ui/Card";
 import { Input } from "../components/ui/Input";
+import { Select } from "../components/ui/Select";
+
+type ParsedLine = {
+  line: number;
+  value: string;
+  url?: string;
+  tweetId?: string;
+  status: "valid" | "duplicate" | "invalid";
+};
 
 export function ArchiveQueuePage() {
   const { t } = useI18n();
-  const { statusLabel } = useFormatters();
+  const { statusLabel, errorLabel, triggerLabel } = useFormatters();
   const queryClient = useQueryClient();
   const [urls, setUrls] = useState("");
   const [selectedRunId, setSelectedRunId] = useState<number | null>(null);
   const [feedback, setFeedback] = useState<ArchiveSubmission | null>(null);
   const [parseError, setParseError] = useState<string | null>(null);
+  const [statusFilter, setStatusFilter] = useState("");
+  const [tweetFilter, setTweetFilter] = useState("");
+  const [failedOnly, setFailedOnly] = useState(false);
+
+  const preview = useMemo(() => parseUrlInput(urls), [urls]);
+  const validRecords = preview.rows
+    .filter((row) => row.status === "valid" && row.url)
+    .map((row) => ({ url: row.url as string }));
   const runsQuery = useQuery({
-    queryKey: ["archive-runs"],
-    queryFn: () => apiGet<{ rows: ArchiveRun[]; count: number }>("/api/archive-runs"),
+    queryKey: ["archive-runs", statusFilter, tweetFilter, failedOnly],
+    queryFn: () =>
+      apiGet<{ rows: ArchiveRun[]; count: number }>(
+        `/api/archive-runs?${runQueryString(statusFilter, tweetFilter, failedOnly)}`,
+      ),
     refetchInterval: 3000,
   });
   const detailQuery = useQuery({
@@ -57,9 +77,9 @@ export function ArchiveQueuePage() {
   });
 
   const pending = submitMutation.isPending || retryMutation.isPending;
+  const canSubmit = validRecords.length > 0 && preview.invalidCount === 0 && !pending;
   const submitUrls = () => {
-    const records = parseUrls(urls);
-    if (records.length) submitMutation.mutate(records);
+    if (canSubmit) submitMutation.mutate(validRecords);
   };
 
   return (
@@ -68,42 +88,54 @@ export function ArchiveQueuePage() {
         <CardHeader>
           <CardTitle>{t("queue.submitTitle")}</CardTitle>
         </CardHeader>
-        <CardContent className="grid gap-4 lg:grid-cols-[1fr_auto]">
-          <textarea
-            className="min-h-28 w-full resize-y rounded-md border border-border bg-white px-3 py-2 text-sm outline-none focus:border-primary"
-            placeholder="https://x.com/user/status/123"
-            value={urls}
-            onChange={(event) => setUrls(event.target.value)}
-          />
-          <div className="flex flex-col gap-3">
-            <Button type="button" disabled={pending || parseUrls(urls).length === 0} onClick={submitUrls}>
-              {t("queue.submitUrls")}
-            </Button>
-            <Input
-              type="file"
-              accept=".txt,.jsonl"
-              disabled={pending}
-              onChange={async (event) => {
-                const file = event.target.files?.[0];
-                if (!file) return;
-                try {
-                  submitMutation.mutate(parseFile(file.name, await file.text()));
-                } catch (error) {
-                  setFeedback(null);
-                  setParseError(String(error));
-                } finally {
-                  event.target.value = "";
-                }
-              }}
+        <CardContent className="space-y-4">
+          <div className="grid gap-4 lg:grid-cols-[1fr_260px]">
+            <textarea
+              className="min-h-28 w-full resize-y rounded-md border border-border bg-white px-3 py-2 text-sm outline-none focus:border-primary"
+              placeholder="https://x.com/user/status/123"
+              value={urls}
+              onChange={(event) => setUrls(event.target.value)}
             />
+            <div className="flex flex-col gap-3">
+              <Button type="button" disabled={!canSubmit} onClick={submitUrls}>
+                {t("queue.submitUrls")}
+              </Button>
+              <Input
+                type="file"
+                accept=".txt,.jsonl"
+                disabled={pending}
+                onChange={async (event) => {
+                  const file = event.target.files?.[0];
+                  if (!file) return;
+                  try {
+                    setUrls(parseFileToText(file.name, await file.text()));
+                    setFeedback(null);
+                    setParseError(null);
+                  } catch (error) {
+                    setFeedback(null);
+                    setParseError(`${t("queue.fileParseError")}: ${String(error)}`);
+                  } finally {
+                    event.target.value = "";
+                  }
+                }}
+              />
+            </div>
           </div>
+
+          <InputPreview preview={preview} />
+          {preview.invalidCount > 0 ? (
+            <p className="text-sm text-destructive">{t("queue.submitDisabledByInvalid")}</p>
+          ) : null}
+          {urls.trim() && validRecords.length === 0 ? (
+            <p className="text-sm text-muted-foreground">{t("queue.noValidUrls")}</p>
+          ) : null}
           {parseError || submitMutation.error || retryMutation.error ? (
-            <p className="text-sm text-destructive lg:col-span-2">
+            <p className="text-sm text-destructive">
               {parseError || String(submitMutation.error || retryMutation.error)}
             </p>
           ) : null}
           {feedback ? (
-            <div className="rounded-md bg-muted p-3 text-sm lg:col-span-2">
+            <div className="rounded-md bg-muted p-3 text-sm">
               {t("queue.feedback", {
                 runId: feedback.run_id,
                 status: statusLabel(feedback.status),
@@ -124,7 +156,39 @@ export function ArchiveQueuePage() {
               <Badge>{runsQuery.data?.count ?? 0}</Badge>
             </div>
           </CardHeader>
-          <CardContent className="space-y-2">
+          <CardContent className="space-y-3">
+            <div className="grid gap-2 md:grid-cols-[1fr_1fr_auto]">
+              <Select value={statusFilter} onChange={(event) => setStatusFilter(event.target.value)}>
+                <option value="">{t("queue.filterStatus")}</option>
+                <option value="queued">{statusLabel("queued")}</option>
+                <option value="running">{statusLabel("running")}</option>
+                <option value="completed">{statusLabel("completed")}</option>
+                <option value="completed_with_failures">{statusLabel("completed_with_failures")}</option>
+                <option value="failed">{statusLabel("failed")}</option>
+              </Select>
+              <Input
+                placeholder={t("queue.searchTweet")}
+                value={tweetFilter}
+                onChange={(event) => setTweetFilter(event.target.value)}
+              />
+              <label className="flex h-9 items-center gap-2 rounded-md border border-border px-3 text-sm">
+                <input type="checkbox" checked={failedOnly} onChange={(event) => setFailedOnly(event.target.checked)} />
+                {t("queue.onlyFailed")}
+              </label>
+            </div>
+            {(statusFilter || tweetFilter || failedOnly) ? (
+              <Button
+                type="button"
+                variant="secondary"
+                onClick={() => {
+                  setStatusFilter("");
+                  setTweetFilter("");
+                  setFailedOnly(false);
+                }}
+              >
+                {t("queue.clearFilters")}
+              </Button>
+            ) : null}
             {runsQuery.data?.rows.map((run) => (
               <button
                 type="button"
@@ -135,7 +199,7 @@ export function ArchiveQueuePage() {
                 <div>
                   <div className="text-sm font-medium">{t("queue.run", { id: run.id })}</div>
                   <div className="text-xs text-muted-foreground">
-                    {run.trigger_type} · {formatDateTime(run.started_at)}
+                    {triggerLabel(run.trigger_type)} · {formatDateTime(run.started_at)}
                   </div>
                 </div>
                 <Badge>{statusLabel(run.status)}</Badge>
@@ -165,8 +229,10 @@ export function ArchiveQueuePage() {
                           {item.last_attempt_at ? <span>{t("queue.lastAttempt")}: {formatDateTime(item.last_attempt_at)}</span> : null}
                           {item.next_attempt_at ? <span>{t("queue.nextAttempt")}: {formatDateTime(item.next_attempt_at)}</span> : null}
                         </div>
-                        {item.error_message ? (
-                          <div className="mt-1 text-xs text-destructive">{item.error_message}</div>
+                        {item.error_category || item.error_message ? (
+                          <div className="mt-1 text-xs text-destructive">
+                            {errorLabel(item.error_category || item.error_message)}
+                          </div>
                         ) : null}
                         {item.attempts?.length ? (
                           <div className="mt-2 space-y-1 text-xs text-muted-foreground">
@@ -174,7 +240,7 @@ export function ArchiveQueuePage() {
                             {item.attempts.map((attempt) => (
                               <div key={attempt.id}>
                                 {attempt.engine || "-"} · {statusLabel(attempt.status)} ·{" "}
-                                {attempt.error_category || attempt.error_message || "ok"} ·{" "}
+                                {errorLabel(attempt.error_category || attempt.error_message)} ·{" "}
                                 {formatDateTime(attempt.finished_at)}
                               </div>
                             ))}
@@ -206,22 +272,95 @@ export function ArchiveQueuePage() {
   );
 }
 
-function parseUrls(value: string) {
-  return value
-    .split(/\r?\n/)
-    .map((url) => url.trim())
-    .filter((url) => url && !url.startsWith("#"))
-    .map((url) => ({ url }));
+function InputPreview({ preview }: { preview: ReturnType<typeof parseUrlInput> }) {
+  const { t } = useI18n();
+  if (preview.totalLines === 0) return null;
+  return (
+    <div className="rounded-md bg-muted p-3 text-sm">
+      <div className="mb-2 font-medium">{t("queue.inputPreview")}</div>
+      <div className="grid gap-2 sm:grid-cols-4">
+        <Metric label={t("queue.totalLines")} value={preview.totalLines} />
+        <Metric label={t("queue.validUrls")} value={preview.validCount} />
+        <Metric label={t("queue.duplicateUrls")} value={preview.duplicateCount} />
+        <Metric label={t("queue.invalidLines")} value={preview.invalidCount} />
+      </div>
+      {preview.invalid.length ? <LineList title={t("queue.invalidLineList")} rows={preview.invalid} /> : null}
+      {preview.duplicates.length ? <LineList title={t("queue.duplicateLineList")} rows={preview.duplicates} /> : null}
+    </div>
+  );
 }
 
-function parseFile(filename: string, text: string) {
-  if (filename.toLowerCase().endsWith(".jsonl")) {
-    return text
-      .split(/\r?\n/)
-      .filter((line) => line.trim())
-      .map((line) => JSON.parse(line) as { url: string } & Record<string, unknown>);
-  }
-  return parseUrls(text);
+function Metric({ label, value }: { label: string; value: number }) {
+  return (
+    <div className="flex justify-between gap-3 rounded-md bg-white px-3 py-2">
+      <span className="text-muted-foreground">{label}</span>
+      <span className="font-medium">{value}</span>
+    </div>
+  );
+}
+
+function LineList({ title, rows }: { title: string; rows: ParsedLine[] }) {
+  return (
+    <div className="mt-3 space-y-1">
+      <div className="text-xs font-medium text-destructive">{title}</div>
+      {rows.slice(0, 5).map((row) => (
+        <div key={`${row.line}-${row.value}`} className="break-all text-xs text-muted-foreground">
+          #{row.line}: {row.value}
+        </div>
+      ))}
+    </div>
+  );
+}
+
+function parseUrlInput(value: string) {
+  const seen = new Set<string>();
+  const rows: ParsedLine[] = value
+    .split(/\r?\n/)
+    .map((line, index) => ({ line: index + 1, value: line.trim() }))
+    .filter((line) => line.value && !line.value.startsWith("#"))
+    .map((line) => {
+      const tweetId = extractTweetId(line.value);
+      if (!tweetId) return { ...line, status: "invalid" as const };
+      if (seen.has(tweetId)) return { ...line, url: line.value, tweetId, status: "duplicate" as const };
+      seen.add(tweetId);
+      return { ...line, url: line.value, tweetId, status: "valid" as const };
+    });
+  const invalid = rows.filter((row) => row.status === "invalid");
+  const duplicates = rows.filter((row) => row.status === "duplicate");
+  return {
+    rows,
+    invalid,
+    duplicates,
+    totalLines: rows.length,
+    validCount: rows.filter((row) => row.status === "valid").length,
+    duplicateCount: duplicates.length,
+    invalidCount: invalid.length,
+  };
+}
+
+function extractTweetId(url: string) {
+  return url.match(/(?:twitter\.com|x\.com)\/[^/\s]+\/status\/(\d+)/i)?.[1] ?? null;
+}
+
+function parseFileToText(filename: string, text: string) {
+  if (!filename.toLowerCase().endsWith(".jsonl")) return text;
+  return text
+    .split(/\r?\n/)
+    .filter((line) => line.trim())
+    .map((line) => {
+      const record = JSON.parse(line) as { url?: string };
+      if (!record.url) throw new Error("missing url");
+      return record.url;
+    })
+    .join("\n");
+}
+
+function runQueryString(status: string, tweetId: string, failedOnly: boolean) {
+  const search = new URLSearchParams({ limit: "50" });
+  if (status) search.set("run_status", status);
+  if (tweetId.trim()) search.set("tweet_id", tweetId.trim());
+  if (failedOnly) search.set("failed_only", "true");
+  return search.toString();
 }
 
 function hasFailure(run: ArchiveRunDetail) {

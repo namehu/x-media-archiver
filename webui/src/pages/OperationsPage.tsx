@@ -12,7 +12,7 @@ export function OperationsPage() {
   const queryClient = useQueryClient();
   const [verifyLimit, setVerifyLimit] = useState("");
   const [confirmFullScan, setConfirmFullScan] = useState(false);
-  const [requeueStatuses, setRequeueStatuses] = useState("failed_retryable,missing,corrupt");
+  const [requeueStatuses, setRequeueStatuses] = useState(["failed_retryable", "missing", "corrupt"]);
   const [requeueLimit, setRequeueLimit] = useState("");
   const [recoverTimeout, setRecoverTimeout] = useState("");
   const [exportKind, setExportKind] = useState("media");
@@ -39,7 +39,23 @@ export function OperationsPage() {
             <CardTitle>{t("operations.requeue")}</CardTitle>
           </CardHeader>
           <CardContent className="space-y-3">
-            <Input value={requeueStatuses} onChange={(event) => setRequeueStatuses(event.target.value)} />
+            <div className="space-y-2">
+              <div className="text-sm font-medium">{t("operations.requeueStatuses")}</div>
+              {["failed_retryable", "missing", "corrupt", "failed_permanent"].map((status) => (
+                <label key={status} className="flex items-center gap-2 text-sm">
+                  <input
+                    type="checkbox"
+                    checked={requeueStatuses.includes(status)}
+                    onChange={(event) => {
+                      setRequeueStatuses((current) =>
+                        event.target.checked ? [...current, status] : current.filter((item) => item !== status),
+                      );
+                    }}
+                  />
+                  {t(`common.status.${status}`)}
+                </label>
+              ))}
+            </div>
             <Input
               placeholder={t("operations.limit")}
               inputMode="numeric"
@@ -51,7 +67,7 @@ export function OperationsPage() {
               disabled={mutation.isPending}
               onClick={() =>
                 run("/api/actions/requeue", {
-                  statuses: listOrNull(requeueStatuses),
+                  statuses: requeueStatuses.length ? requeueStatuses : null,
                   limit: numberOrNull(requeueLimit),
                 })
               }
@@ -200,12 +216,4 @@ function numberOrNull(value: string) {
   if (!trimmed) return null;
   const parsed = Number(trimmed);
   return Number.isFinite(parsed) && parsed > 0 ? parsed : null;
-}
-
-function listOrNull(value: string) {
-  const items = value
-    .split(",")
-    .map((item) => item.trim())
-    .filter(Boolean);
-  return items.length ? items : null;
 }

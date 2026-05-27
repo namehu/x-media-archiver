@@ -391,15 +391,39 @@ def build_run_result(
     }
 
 
-def list_runs(limit: int = 50) -> list[dict[str, object]]:
+def list_runs(
+    limit: int = 50,
+    status: str | None = None,
+    tweet_id: str | None = None,
+    failed_only: bool = False,
+) -> list[dict[str, object]]:
+    filters: list[str] = []
+    params: list[object] = []
+    if status:
+        filters.append("r.status = %s")
+        params.append(status)
+    if tweet_id:
+        filters.append("exists (select 1 from archive_run_items i where i.archive_run_id = r.id and i.tweet_id like %s)")
+        params.append(f"%{tweet_id}%")
+    if failed_only:
+        filters.append(
+            "exists (select 1 from archive_run_items i where i.archive_run_id = r.id "
+            "and i.status in ('failed_retryable', 'failed_permanent'))"
+        )
+    where = f"where {' and '.join(filters)}" if filters else ""
+    params.append(limit)
     with connect() as conn:
         with conn.cursor() as cur:
             cur.execute(
-                """
-                select id, trigger_type, input_path, status, started_at, finished_at, result, error_message
-                from archive_runs order by started_at desc, id desc limit %s
+                f"""
+                select r.id, r.trigger_type, r.input_path, r.status, r.started_at, r.finished_at,
+                       r.result, r.error_message
+                from archive_runs r
+                {where}
+                order by r.started_at desc, r.id desc
+                limit %s
                 """,
-                (limit,),
+                tuple(params),
             )
             return list(cur.fetchall())
 

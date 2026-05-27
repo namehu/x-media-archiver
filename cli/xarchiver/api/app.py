@@ -200,8 +200,13 @@ def create_app() -> FastAPI:
             raise HTTPException(status_code=400, detail=str(exc)) from exc
 
     @app.get("/api/archive-runs")
-    def archive_runs(limit: int = Query(50, ge=1, le=200)) -> dict[str, object]:
-        rows = list_runs(limit)
+    def archive_runs(
+        limit: int = Query(50, ge=1, le=200),
+        run_status: str | None = None,
+        tweet_id: str | None = None,
+        failed_only: bool = False,
+    ) -> dict[str, object]:
+        rows = list_runs(limit, status=run_status, tweet_id=tweet_id, failed_only=failed_only)
         return {"rows": rows, "count": len(rows)}
 
     @app.get("/api/archive-runs/{run_id}")
