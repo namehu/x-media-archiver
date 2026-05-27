@@ -1,12 +1,14 @@
 import { useState } from "react";
 import { useMutation, useQueryClient } from "@tanstack/react-query";
 import { apiPost, type ActionResponse } from "../lib/api";
+import { useI18n } from "../lib/i18n";
 import { Button } from "../components/ui/Button";
 import { Card, CardContent, CardHeader, CardTitle } from "../components/ui/Card";
 import { Input } from "../components/ui/Input";
 import { Select } from "../components/ui/Select";
 
 export function OperationsPage() {
+  const { t } = useI18n();
   const queryClient = useQueryClient();
   const [verifyLimit, setVerifyLimit] = useState("");
   const [confirmFullScan, setConfirmFullScan] = useState(false);
@@ -34,12 +36,12 @@ export function OperationsPage() {
       <section className="grid gap-4 lg:grid-cols-2">
         <Card>
           <CardHeader>
-            <CardTitle>Requeue</CardTitle>
+            <CardTitle>{t("operations.requeue")}</CardTitle>
           </CardHeader>
           <CardContent className="space-y-3">
             <Input value={requeueStatuses} onChange={(event) => setRequeueStatuses(event.target.value)} />
             <Input
-              placeholder="Limit"
+              placeholder={t("operations.limit")}
               inputMode="numeric"
               value={requeueLimit}
               onChange={(event) => setRequeueLimit(event.target.value)}
@@ -54,18 +56,18 @@ export function OperationsPage() {
                 })
               }
             >
-              Requeue
+              {t("operations.requeue")}
             </Button>
           </CardContent>
         </Card>
 
         <Card>
           <CardHeader>
-            <CardTitle>Recover Interrupted</CardTitle>
+            <CardTitle>{t("operations.recoverInterrupted")}</CardTitle>
           </CardHeader>
           <CardContent className="space-y-3">
             <Input
-              placeholder="Timeout minutes"
+              placeholder={t("operations.timeoutMinutes")}
               inputMode="numeric"
               value={recoverTimeout}
               onChange={(event) => setRecoverTimeout(event.target.value)}
@@ -79,34 +81,34 @@ export function OperationsPage() {
                 })
               }
             >
-              Recover
+              {t("operations.recover")}
             </Button>
           </CardContent>
         </Card>
 
         <Card>
           <CardHeader>
-            <CardTitle>Export</CardTitle>
+            <CardTitle>{t("operations.export")}</CardTitle>
           </CardHeader>
           <CardContent className="space-y-3">
             <Select value={exportKind} onChange={(event) => setExportKind(event.target.value)}>
-              <option value="media">media CSV</option>
-              <option value="failures">failures CSV</option>
-              <option value="duplicates">duplicates CSV</option>
+              <option value="media">{t("operations.exportMedia")}</option>
+              <option value="failures">{t("operations.exportFailures")}</option>
+              <option value="duplicates">{t("operations.exportDuplicates")}</option>
             </Select>
             <Select value={exportStatus} onChange={(event) => setExportStatus(event.target.value)}>
-              <option value="verified">verified</option>
-              <option value="all">all statuses</option>
-              <option value="downloaded">downloaded</option>
-              <option value="missing">missing</option>
-              <option value="corrupt">corrupt</option>
+              <option value="verified">{t("common.status.verified")}</option>
+              <option value="all">{t("common.status.all")}</option>
+              <option value="downloaded">{t("common.status.downloaded")}</option>
+              <option value="missing">{t("common.status.missing")}</option>
+              <option value="corrupt">{t("common.status.corrupt")}</option>
             </Select>
             <Button
               type="button"
               disabled={mutation.isPending}
               onClick={() => run("/api/actions/export", { kind: exportKind, status: exportStatus })}
             >
-              Export database snapshot
+              {t("operations.exportSnapshot")}
             </Button>
           </CardContent>
         </Card>
@@ -114,11 +116,11 @@ export function OperationsPage() {
 
       <Card>
         <CardHeader>
-          <CardTitle>Maintenance</CardTitle>
+          <CardTitle>{t("operations.maintenance")}</CardTitle>
         </CardHeader>
         <CardContent className="space-y-4">
           <p className="text-sm text-destructive">
-            These operations scan files across the entire archive and may cause heavy disk I/O on large libraries.
+            {t("operations.fullScanWarning")}
           </p>
           <label className="flex items-center gap-2 text-sm">
             <input
@@ -126,11 +128,11 @@ export function OperationsPage() {
               checked={confirmFullScan}
               onChange={(event) => setConfirmFullScan(event.target.checked)}
             />
-            I understand this is a full archive disk scan.
+            {t("operations.confirmFullScan")}
           </label>
           <div className="grid gap-3 md:grid-cols-[1fr_auto_auto]">
             <Input
-              placeholder="Verify limit (optional)"
+              placeholder={t("operations.verifyLimit")}
               inputMode="numeric"
               value={verifyLimit}
               onChange={(event) => setVerifyLimit(event.target.value)}
@@ -146,7 +148,7 @@ export function OperationsPage() {
                 })
               }
             >
-              Full file verification
+              {t("operations.fullVerify")}
             </Button>
             <Button
               type="button"
@@ -159,18 +161,18 @@ export function OperationsPage() {
                 })
               }
             >
-              Full media backfill
+              {t("operations.fullBackfill")}
             </Button>
           </div>
           <p className="text-xs text-muted-foreground">
-            CSV export above reads the database snapshot and does not scan media file contents.
+            {t("operations.exportNote")}
           </p>
         </CardContent>
       </Card>
 
       <Card>
         <CardHeader>
-          <CardTitle>Result</CardTitle>
+          <CardTitle>{t("operations.result")}</CardTitle>
         </CardHeader>
         <CardContent>
           {mutation.error ? (
@@ -178,14 +180,14 @@ export function OperationsPage() {
               {String(mutation.error)}
             </pre>
           ) : null}
-          {mutation.isPending ? <p className="text-sm text-muted-foreground">Running...</p> : null}
+          {mutation.isPending ? <p className="text-sm text-muted-foreground">{t("operations.running")}</p> : null}
           {lastResult ? (
             <pre className="overflow-auto rounded-md bg-muted p-3 text-sm">
               {JSON.stringify(lastResult, null, 2)}
             </pre>
           ) : null}
           {!lastResult && !mutation.error && !mutation.isPending ? (
-            <p className="text-sm text-muted-foreground">No operation has run yet.</p>
+            <p className="text-sm text-muted-foreground">{t("operations.noResult")}</p>
           ) : null}
         </CardContent>
       </Card>

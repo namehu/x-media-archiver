@@ -24,8 +24,13 @@ class DownloaderTests(unittest.TestCase):
         self.assertEqual(classify_error(1, "HTTP Error 429: rate limited"), "rate_limited")
 
     def test_classify_error_detects_cookie_and_no_media(self) -> None:
-        self.assertEqual(classify_error(1, "cookies file is invalid"), "cookie_invalid")
-        self.assertEqual(classify_error(0, "No results for this tweet"), "no_media")
+        self.assertEqual(classify_error(1, "cookies file is invalid"), "auth_required")
+        self.assertEqual(classify_error(0, "No results for this tweet"), "unsupported_media")
+
+    def test_classify_error_uses_queue_category_contract(self) -> None:
+        self.assertEqual(classify_error(1, "HTTP Error 404: not found"), "invalid_url")
+        self.assertEqual(classify_error(1, "Connection timed out"), "network_error")
+        self.assertEqual(classify_error(2, "unexpected stderr"), "unknown")
 
 
 class DownloadCandidateIntegrationTests(unittest.TestCase):

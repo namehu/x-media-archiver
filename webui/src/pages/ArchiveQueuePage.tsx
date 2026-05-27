@@ -1,6 +1,7 @@
 import { useState } from "react";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { apiGet, apiPost, type ArchiveRun, type ArchiveRunDetail, type ArchiveSubmission } from "../lib/api";
+import { useFormatters, useI18n } from "../lib/i18n";
 import { formatDateTime } from "../lib/utils";
 import { Badge } from "../components/ui/Badge";
 import { Button } from "../components/ui/Button";
@@ -8,6 +9,8 @@ import { Card, CardContent, CardHeader, CardTitle } from "../components/ui/Card"
 import { Input } from "../components/ui/Input";
 
 export function ArchiveQueuePage() {
+  const { t } = useI18n();
+  const { statusLabel } = useFormatters();
   const queryClient = useQueryClient();
   const [urls, setUrls] = useState("");
   const [selectedRunId, setSelectedRunId] = useState<number | null>(null);
@@ -63,7 +66,7 @@ export function ArchiveQueuePage() {
     <div className="space-y-5">
       <Card>
         <CardHeader>
-          <CardTitle>Submit Archive Batch</CardTitle>
+          <CardTitle>{t("queue.submitTitle")}</CardTitle>
         </CardHeader>
         <CardContent className="grid gap-4 lg:grid-cols-[1fr_auto]">
           <textarea
@@ -74,7 +77,7 @@ export function ArchiveQueuePage() {
           />
           <div className="flex flex-col gap-3">
             <Button type="button" disabled={pending || parseUrls(urls).length === 0} onClick={submitUrls}>
-              Submit URLs
+              {t("queue.submitUrls")}
             </Button>
             <Input
               type="file"
@@ -101,8 +104,13 @@ export function ArchiveQueuePage() {
           ) : null}
           {feedback ? (
             <div className="rounded-md bg-muted p-3 text-sm lg:col-span-2">
-              Run #{feedback.run_id} · {feedback.status} · {feedback.tasks.queued_count} queued ·{" "}
-              {feedback.tasks.skipped_verified_count} already archived · {feedback.tasks.linked_pending_count} already queued
+              {t("queue.feedback", {
+                runId: feedback.run_id,
+                status: statusLabel(feedback.status),
+                queued: feedback.tasks.queued_count,
+                skipped: feedback.tasks.skipped_verified_count,
+                linked: feedback.tasks.linked_pending_count,
+              })}
             </div>
           ) : null}
         </CardContent>
@@ -112,7 +120,7 @@ export function ArchiveQueuePage() {
         <Card>
           <CardHeader>
             <div className="flex items-center justify-between gap-3">
-              <CardTitle>Runs</CardTitle>
+              <CardTitle>{t("queue.runs")}</CardTitle>
               <Badge>{runsQuery.data?.count ?? 0}</Badge>
             </div>
           </CardHeader>
@@ -125,23 +133,23 @@ export function ArchiveQueuePage() {
                 onClick={() => setSelectedRunId(run.id)}
               >
                 <div>
-                  <div className="text-sm font-medium">Run #{run.id}</div>
+                  <div className="text-sm font-medium">{t("queue.run", { id: run.id })}</div>
                   <div className="text-xs text-muted-foreground">
                     {run.trigger_type} · {formatDateTime(run.started_at)}
                   </div>
                 </div>
-                <Badge>{run.status}</Badge>
+                <Badge>{statusLabel(run.status)}</Badge>
               </button>
             ))}
             {runsQuery.data?.rows.length === 0 ? (
-              <p className="text-sm text-muted-foreground">No archive runs.</p>
+              <p className="text-sm text-muted-foreground">{t("queue.empty")}</p>
             ) : null}
           </CardContent>
         </Card>
 
         <Card>
           <CardHeader>
-            <CardTitle>Run Detail</CardTitle>
+            <CardTitle>{t("queue.detail")}</CardTitle>
           </CardHeader>
           <CardContent className="space-y-3">
             {detailQuery.data ? (
@@ -152,11 +160,28 @@ export function ArchiveQueuePage() {
                     <div key={item.id} className="flex items-start justify-between gap-3 rounded-md border border-border p-3">
                       <div className="min-w-0">
                         <div className="break-all text-sm">{item.tweet_id}</div>
+                        <div className="mt-1 flex flex-wrap gap-x-3 gap-y-1 text-xs text-muted-foreground">
+                          <span>{t("tweet.retryCount")}: {item.retry_count}</span>
+                          {item.last_attempt_at ? <span>{t("queue.lastAttempt")}: {formatDateTime(item.last_attempt_at)}</span> : null}
+                          {item.next_attempt_at ? <span>{t("queue.nextAttempt")}: {formatDateTime(item.next_attempt_at)}</span> : null}
+                        </div>
                         {item.error_message ? (
                           <div className="mt-1 text-xs text-destructive">{item.error_message}</div>
                         ) : null}
+                        {item.attempts?.length ? (
+                          <div className="mt-2 space-y-1 text-xs text-muted-foreground">
+                            <div className="font-medium text-foreground">{t("queue.itemAttempts")}</div>
+                            {item.attempts.map((attempt) => (
+                              <div key={attempt.id}>
+                                {attempt.engine || "-"} · {statusLabel(attempt.status)} ·{" "}
+                                {attempt.error_category || attempt.error_message || "ok"} ·{" "}
+                                {formatDateTime(attempt.finished_at)}
+                              </div>
+                            ))}
+                          </div>
+                        ) : null}
                       </div>
-                      <Badge>{item.status}</Badge>
+                      <Badge>{statusLabel(item.status)}</Badge>
                     </div>
                   ))}
                 </div>
@@ -167,12 +192,12 @@ export function ArchiveQueuePage() {
                     disabled={pending}
                     onClick={() => retryMutation.mutate(detailQuery.data.id)}
                   >
-                    Retry Failed Items
+                    {t("queue.retryFailed")}
                   </Button>
                 ) : null}
               </>
             ) : (
-              <p className="text-sm text-muted-foreground">Select a run.</p>
+              <p className="text-sm text-muted-foreground">{t("queue.selectRun")}</p>
             )}
           </CardContent>
         </Card>
@@ -204,14 +229,15 @@ function hasFailure(run: ArchiveRunDetail) {
 }
 
 function RunSummary({ run }: { run: ArchiveRunDetail }) {
+  const { t } = useI18n();
   const tasks = run.result?.tasks;
-  if (!tasks) return <Badge>legacy run</Badge>;
+  if (!tasks) return <Badge>{t("queue.legacy")}</Badge>;
   const metrics = [
-    ["Queued", tasks.queued_count],
-    ["Already archived", tasks.skipped_verified_count],
-    ["Already queued", tasks.linked_pending_count],
-    ["Verified", tasks.verified_count],
-    ["Failed", tasks.failed_count],
+    [t("queue.metric.queued"), tasks.queued_count],
+    [t("queue.metric.skipped"), tasks.skipped_verified_count],
+    [t("queue.metric.linked"), tasks.linked_pending_count],
+    [t("queue.metric.verified"), tasks.verified_count],
+    [t("queue.metric.failed"), tasks.failed_count],
   ];
   return (
     <div className="grid gap-2 rounded-md bg-muted p-3 sm:grid-cols-2">

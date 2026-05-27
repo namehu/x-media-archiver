@@ -1,11 +1,14 @@
 import { useQuery } from "@tanstack/react-query";
 import { useParams } from "react-router-dom";
 import { apiGet, type TweetDetail } from "../lib/api";
+import { useFormatters, useI18n } from "../lib/i18n";
 import { formatBytes, formatDateTime } from "../lib/utils";
 import { Badge } from "../components/ui/Badge";
 import { Card, CardContent, CardHeader, CardTitle } from "../components/ui/Card";
 
 export function TweetDetailPage() {
+  const { t } = useI18n();
+  const { mediaTypeLabel, statusLabel } = useFormatters();
   const { tweetId } = useParams();
   const { data, isLoading, error } = useQuery({
     queryKey: ["tweet", tweetId],
@@ -13,8 +16,8 @@ export function TweetDetailPage() {
     enabled: Boolean(tweetId),
   });
 
-  if (isLoading) return <State text="Loading tweet detail" />;
-  if (error || !data) return <State text={String(error || "Tweet not found")} />;
+  if (isLoading) return <State text={t("tweet.loading")} />;
+  if (error || !data) return <State text={String(error || t("tweet.notFound"))} />;
 
   return (
     <div className="space-y-5">
@@ -22,20 +25,20 @@ export function TweetDetailPage() {
         <CardHeader>
           <div className="flex flex-wrap items-center justify-between gap-3">
             <CardTitle>{data.tweet.author_display_name || data.tweet.author_username || data.tweet.tweet_id}</CardTitle>
-            <Badge>{data.tweet.tweet_status || "-"}</Badge>
+            <Badge>{statusLabel(data.tweet.tweet_status)}</Badge>
           </div>
         </CardHeader>
         <CardContent className="space-y-3">
-          <p className="whitespace-pre-wrap text-sm">{data.tweet.tweet_text || "No tweet text"}</p>
+          <p className="whitespace-pre-wrap text-sm">{data.tweet.tweet_text || t("tweet.noText")}</p>
           <div className="grid gap-2 text-sm text-muted-foreground sm:grid-cols-2">
-            <div>Published: {formatDateTime(data.tweet.published_at)}</div>
-            <div>Updated: {formatDateTime(data.tweet.updated_at)}</div>
-            <div>Retry count: {data.tweet.retry_count ?? 0}</div>
-            <div>Last error: {data.tweet.last_error || "-"}</div>
+            <div>{t("tweet.published")}: {formatDateTime(data.tweet.published_at)}</div>
+            <div>{t("tweet.updated")}: {formatDateTime(data.tweet.updated_at)}</div>
+            <div>{t("tweet.retryCount")}: {data.tweet.retry_count ?? 0}</div>
+            <div>{t("tweet.lastError")}: {data.tweet.last_error || "-"}</div>
           </div>
           {data.tweet.tweet_url ? (
             <a className="text-sm font-medium text-primary" href={data.tweet.tweet_url} target="_blank" rel="noreferrer">
-              Open tweet
+              {t("tweet.open")}
             </a>
           ) : null}
         </CardContent>
@@ -50,13 +53,13 @@ export function TweetDetailPage() {
               ) : media.media_url ? (
                 <img className="h-full w-full object-contain" src={media.media_url} alt="" />
               ) : (
-                <span className="text-sm text-muted-foreground">No preview</span>
+                <span className="text-sm text-muted-foreground">{t("common.noPreview")}</span>
               )}
             </div>
             <CardContent className="space-y-2 text-sm">
               <div className="flex justify-between gap-3">
-                <span>{media.media_type || "media"}</span>
-                <Badge>{media.media_status || "-"}</Badge>
+                <span>{mediaTypeLabel(media.media_type)}</span>
+                <Badge>{statusLabel(media.media_status)}</Badge>
               </div>
               <div className="text-muted-foreground">{formatBytes(media.file_size)}</div>
               <code className="block break-all text-xs text-muted-foreground">{media.local_path || "-"}</code>
@@ -67,11 +70,11 @@ export function TweetDetailPage() {
 
       <Card>
         <CardHeader>
-          <CardTitle>Recent attempts</CardTitle>
+          <CardTitle>{t("tweet.recentAttempts")}</CardTitle>
         </CardHeader>
         <CardContent className="space-y-2">
           {data.attempts.length === 0 ? (
-            <p className="text-sm text-muted-foreground">No attempts recorded.</p>
+            <p className="text-sm text-muted-foreground">{t("tweet.noAttempts")}</p>
           ) : (
             data.attempts.map((attempt) => (
               <div key={attempt.id} className="rounded-md border border-border p-3 text-sm">
@@ -99,4 +102,3 @@ function State({ text }: { text: string }) {
     </Card>
   );
 }
-

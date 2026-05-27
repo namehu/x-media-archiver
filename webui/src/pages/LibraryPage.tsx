@@ -2,6 +2,7 @@ import { useMemo, useState } from "react";
 import { useQuery } from "@tanstack/react-query";
 import { Link } from "react-router-dom";
 import { apiGet, mediaQueryString, type MediaRow } from "../lib/api";
+import { useFormatters, useI18n } from "../lib/i18n";
 import { formatBytes, formatDateTime } from "../lib/utils";
 import { Badge } from "../components/ui/Badge";
 import { Button } from "../components/ui/Button";
@@ -12,6 +13,7 @@ import { Select } from "../components/ui/Select";
 type MediaResponse = { rows: MediaRow[]; count: number };
 
 export function LibraryPage() {
+  const { t } = useI18n();
   const [filters, setFilters] = useState({
     author: "",
     text: "",
@@ -35,12 +37,12 @@ export function LibraryPage() {
         }}
       >
         <Input
-          placeholder="Author"
+          placeholder={t("library.author")}
           value={filters.author}
           onChange={(event) => setFilters({ ...filters, author: event.target.value })}
         />
         <Input
-          placeholder="Tweet text"
+          placeholder={t("library.tweetText")}
           value={filters.text}
           onChange={(event) => setFilters({ ...filters, text: event.target.value })}
         />
@@ -48,36 +50,38 @@ export function LibraryPage() {
           value={filters.media_status}
           onChange={(event) => setFilters({ ...filters, media_status: event.target.value })}
         >
-          <option value="verified">verified</option>
-          <option value="all">all statuses</option>
-          <option value="downloaded">downloaded</option>
-          <option value="missing">missing</option>
-          <option value="corrupt">corrupt</option>
+          <option value="verified">{t("common.status.verified")}</option>
+          <option value="all">{t("common.status.all")}</option>
+          <option value="downloaded">{t("common.status.downloaded")}</option>
+          <option value="missing">{t("common.status.missing")}</option>
+          <option value="corrupt">{t("common.status.corrupt")}</option>
         </Select>
         <Select
           value={filters.media_type}
           onChange={(event) => setFilters({ ...filters, media_type: event.target.value })}
         >
-          <option value="">all media</option>
-          <option value="photo">photo</option>
-          <option value="video">video</option>
+          <option value="">{t("common.media.all")}</option>
+          <option value="photo">{t("common.media.photo")}</option>
+          <option value="video">{t("common.media.video")}</option>
         </Select>
-        <Button type="submit">Search</Button>
+        <Button type="submit">{t("library.search")}</Button>
       </form>
 
-      {isLoading ? <State text="Loading media" /> : null}
+      {isLoading ? <State text={t("library.loading")} /> : null}
       {error ? <State text={String(error)} /> : null}
 
       <section className="grid gap-4 md:grid-cols-2 xl:grid-cols-3">
         {data?.rows.map((row) => <MediaCard key={`${row.tweet_id}-${row.media_index}`} row={row} />)}
       </section>
 
-      {data && data.rows.length === 0 ? <State text="No media matched the current filters." /> : null}
+      {data && data.rows.length === 0 ? <State text={t("library.noMatched")} /> : null}
     </div>
   );
 }
 
 function MediaCard({ row }: { row: MediaRow }) {
+  const { t } = useI18n();
+  const { statusLabel, mediaTypeLabel } = useFormatters();
   const isVideo = row.media_type === "video" || row.media_url?.match(/\.(mp4|mov|m4v|webm)$/i);
   return (
     <Card className="overflow-hidden">
@@ -89,30 +93,30 @@ function MediaCard({ row }: { row: MediaRow }) {
             <img className="h-full w-full object-contain" src={row.media_url} loading="lazy" alt="" />
           )
         ) : (
-          <span className="text-sm text-muted-foreground">No preview</span>
+          <span className="text-sm text-muted-foreground">{t("common.noPreview")}</span>
         )}
       </div>
       <CardContent className="space-y-3">
         <div className="flex items-start justify-between gap-3">
           <div className="min-w-0">
             <div className="truncate text-sm font-semibold">
-              {row.author_display_name || row.author_username || "Unknown author"}
+              {row.author_display_name || row.author_username || t("common.unknownAuthor")}
             </div>
             <div className="text-xs text-muted-foreground">@{row.author_username || "-"}</div>
           </div>
-          <Badge>{row.media_status || "-"}</Badge>
+          <Badge>{statusLabel(row.media_status)}</Badge>
         </div>
-        <p className="line-clamp-3 text-sm text-muted-foreground">{row.tweet_text || "No tweet text"}</p>
+        <p className="line-clamp-3 text-sm text-muted-foreground">{row.tweet_text || t("library.noTweetText")}</p>
         <div className="text-xs text-muted-foreground">
-          {row.media_type || "media"} · {formatBytes(row.file_size)} · {formatDateTime(row.published_at)}
+          {mediaTypeLabel(row.media_type)} · {formatBytes(row.file_size)} · {formatDateTime(row.published_at)}
         </div>
         <div className="flex flex-wrap gap-2">
           <Link className="text-sm font-medium text-primary" to={`/tweets/${row.tweet_id}`}>
-            Details
+            {t("library.details")}
           </Link>
           {row.tweet_url ? (
             <a className="text-sm font-medium text-primary" href={row.tweet_url} target="_blank" rel="noreferrer">
-              Open tweet
+              {t("library.openTweet")}
             </a>
           ) : null}
         </div>
@@ -128,4 +132,3 @@ function State({ text }: { text: string }) {
     </Card>
   );
 }
-

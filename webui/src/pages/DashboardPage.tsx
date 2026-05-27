@@ -1,40 +1,43 @@
 import { useQuery } from "@tanstack/react-query";
 import { apiGet, type Summary } from "../lib/api";
+import { useI18n, useFormatters } from "../lib/i18n";
 import { formatBytes, formatDateTime } from "../lib/utils";
 import { Badge } from "../components/ui/Badge";
 import { Card, CardContent, CardHeader, CardTitle } from "../components/ui/Card";
 
 export function DashboardPage() {
+  const { t } = useI18n();
+  const { statusLabel } = useFormatters();
   const { data, isLoading, error } = useQuery({
     queryKey: ["summary"],
     queryFn: () => apiGet<Summary>("/api/summary"),
   });
 
-  if (isLoading) return <PageState title="Loading archive summary" />;
-  if (error || !data) return <PageState title="API unavailable" detail={String(error)} />;
+  if (isLoading) return <PageState title={t("dashboard.loading")} />;
+  if (error || !data) return <PageState title={t("common.apiUnavailable")} detail={String(error)} />;
 
   const statusEntries = Object.entries(data.tweet_status_counts).sort(([a], [b]) => a.localeCompare(b));
 
   return (
     <div className="space-y-6">
       <section className="grid gap-4 md:grid-cols-3">
-        <MetricCard label="Media assets" value={data.media_count} />
-        <MetricCard label="Failure queue" value={data.failure_count} />
-        <MetricCard label="Tweet statuses" value={statusEntries.length} />
+        <MetricCard label={t("dashboard.mediaAssets")} value={data.media_count} />
+        <MetricCard label={t("dashboard.failureQueue")} value={data.failure_count} />
+        <MetricCard label={t("dashboard.tweetStatuses")} value={statusEntries.length} />
       </section>
 
       <section className="grid gap-4 lg:grid-cols-[1fr_1fr]">
         <Card>
           <CardHeader>
-            <CardTitle>Status distribution</CardTitle>
+            <CardTitle>{t("dashboard.statusDistribution")}</CardTitle>
           </CardHeader>
           <CardContent className="space-y-3">
             {statusEntries.length === 0 ? (
-              <p className="text-sm text-muted-foreground">No tweets imported yet.</p>
+              <p className="text-sm text-muted-foreground">{t("dashboard.noTweets")}</p>
             ) : (
               statusEntries.map(([status, count]) => (
                 <div key={status} className="flex items-center justify-between gap-3">
-                  <Badge>{status}</Badge>
+                  <Badge>{statusLabel(status)}</Badge>
                   <span className="text-sm font-medium">{count}</span>
                 </div>
               ))
@@ -44,11 +47,11 @@ export function DashboardPage() {
 
         <Card>
           <CardHeader>
-            <CardTitle>Recent exports</CardTitle>
+            <CardTitle>{t("dashboard.recentExports")}</CardTitle>
           </CardHeader>
           <CardContent className="space-y-3">
             {data.exports.length === 0 ? (
-              <p className="text-sm text-muted-foreground">No export files found.</p>
+              <p className="text-sm text-muted-foreground">{t("dashboard.noExports")}</p>
             ) : (
               data.exports.map((file) => (
                 <div key={file.path} className="rounded-md border border-border p-3">
@@ -65,7 +68,7 @@ export function DashboardPage() {
 
       <Card>
         <CardHeader>
-          <CardTitle>Archive directory</CardTitle>
+          <CardTitle>{t("dashboard.archiveDirectory")}</CardTitle>
         </CardHeader>
         <CardContent>
           <code className="break-all text-sm text-muted-foreground">{data.archive_dir}</code>
@@ -96,4 +99,3 @@ function PageState({ title, detail }: { title: string; detail?: string }) {
     </Card>
   );
 }
-

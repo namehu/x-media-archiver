@@ -214,6 +214,7 @@ def update_processed_items(
     pipeline: dict[str, object],
 ) -> None:
     tweet_statuses = fetch_tweet_statuses([str(row["tweet_id"]) for row in claimed])
+    item_errors = fetch_latest_item_errors([int(row["id"]) for row in claimed])
     with connect() as conn:
         with conn.cursor() as cur:
             for row in claimed:
@@ -227,6 +228,9 @@ def update_processed_items(
                 else:
                     item_status = "failed_retryable"
                 delay_minutes = settings.retry_backoff_minutes * retries
+                latest_error = item_errors.get(int(row["id"]), {})
+                error_category = latest_error.get("error_category") or tweet_status
+                error_message = latest_error.get("error_message") or latest_error.get("stderr_excerpt") or tweet_status
                 cur.execute(
                     """
                     update archive_run_items
@@ -244,9 +248,9 @@ def update_processed_items(
                         item_status,
                         delay_minutes,
                         item_status,
-                        tweet_status,
+                        error_category,
                         item_status,
-                        tweet_status,
+                        error_message,
                         int(row["id"]),
                     ),
                 )
@@ -339,6 +343,24 @@ def count_run_items(run_id: int) -> dict[str, int]:
     return counts
 
 
+def fetch_latest_item_errors(item_ids: list[int]) -> dict[int, dict[str, object]]:
+    if not item_ids:
+        return {}
+    with connect() as conn:
+        with conn.cursor() as cur:
+            cur.execute(
+                """
+                select distinct on (archive_run_item_id)
+                       archive_run_item_id, error_category, error_message, stderr_excerpt
+                from download_attempts
+                where archive_run_item_id = any(%s)
+                order by archive_run_item_id, finished_at desc nulls last, id desc
+                """,
+                (item_ids,),
+            )
+            return {int(row["archive_run_item_id"]): dict(row) for row in cur.fetchall()}
+
+
 def build_run_result(
     input_summary: dict[str, object],
     tasks: dict[str, int],
@@ -404,14 +426,29 @@ def get_run_detail(run_id: int) -> dict[str, object] | None:
             cur.execute(
                 """
                 select id, tweet_id, status, retry_count, error_category, error_message,
-                       linked_item_id, created_at, updated_at
+                       linked_item_id, last_attempt_at, next_attempt_at, created_at, updated_at
                 from archive_run_items
                 where archive_run_id = %s order by id
                 """,
                 (run_id,),
             )
             items = list(cur.fetchall())
-    return {**run, "items": items}
+            item_ids = [int(item["id"]) for item in items]
+            attempts_by_item: dict[int, list[dict[str, object]]] = {item_id: [] for item_id in item_ids}
+            if item_ids:
+                cur.execute(
+                    """
+                    select id, archive_run_item_id, job_id, tweet_id, engine, status, exit_code,
+                           error_category, error_message, started_at, finished_at
+                    from download_attempts
+                    where archive_run_item_id = any(%s)
+                    order by archive_run_item_id, id desc
+                    """,
+                    (item_ids,),
+                )
+                for attempt in cur.fetchall():
+                    attempts_by_item[int(attempt["archive_run_item_id"])].append(dict(attempt))
+    return {**run, "items": [{**dict(item), "attempts": attempts_by_item.get(int(item["id"]), [])} for item in items]}
 
 
 def retry_run(run_id: int) -> dict[str, object]:

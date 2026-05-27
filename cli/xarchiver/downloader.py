@@ -47,9 +47,10 @@ def download(
 
     cookie_error = validate_cookie_file(engine, settings.cookie_file)
     if cookie_error:
-        mark_attempts(job_id, tweets, engine, "failed_retryable", 0, cookie_error, cookie_error, run_item_ids)
-        mark_tweets_failed([tweet["tweet_id"] for tweet in tweets], "failed_retryable", cookie_error)
-        finish_job(job_id, "failed", 0, len(tweets), cookie_error)
+        category = "auth_required"
+        mark_attempts(job_id, tweets, engine, "failed_retryable", 0, category, cookie_error, run_item_ids)
+        mark_tweets_failed([tweet["tweet_id"] for tweet in tweets], "failed_retryable", category)
+        finish_job(job_id, "failed", 0, len(tweets), category)
         return {"job_id": job_id, "input_path": input_path, "count": len(tweets), "exit_code": 0}
 
     command = build_command(engine, settings, input_path)
@@ -80,7 +81,7 @@ def download(
             engine,
             "failed_retryable",
             0,
-            "no_downloaded_files",
+            "download_no_output",
             stderr_excerpt,
             run_item_ids,
         )
@@ -88,13 +89,13 @@ def download(
         mark_tweets_failed(
             [tweet["tweet_id"] for tweet in missing],
             "failed_retryable",
-            "no_downloaded_files",
+            "download_no_output",
         )
         status = "finished" if not missing else "partial"
-        finish_job(job_id, status, len(downloaded), len(missing), None if not missing else "no_downloaded_files")
+        finish_job(job_id, status, len(downloaded), len(missing), None if not missing else "download_no_output")
     else:
         category = classify_error(result.returncode, stderr_excerpt)
-        status = "failed_permanent" if category in {"not_found", "forbidden"} else "failed_retryable"
+        status = "failed_permanent" if category in {"invalid_url", "unsupported_media"} else "failed_retryable"
         mark_attempts(job_id, tweets, engine, status, result.returncode, category, stderr_excerpt, run_item_ids)
         mark_tweets_failed([tweet["tweet_id"] for tweet in tweets], status, category)
         finish_job(job_id, "failed", 0, len(tweets), category)
@@ -341,20 +342,20 @@ def mark_attempts(
 def classify_error(exit_code: int, stderr: str | None) -> str:
     text = (stderr or "").lower()
     if "cookies" in text and any(pattern in text for pattern in ("not found", "could not", "invalid", "empty")):
-        return "cookie_invalid"
+        return "auth_required"
     if any(pattern in text for pattern in ("login required", "sign in", "not logged in", "authentication", "auth")):
         return "auth_required"
     if "404" in text or "not found" in text:
-        return "not_found"
+        return "invalid_url"
     if "403" in text or "forbidden" in text or "unauthorized" in text:
-        return "forbidden"
+        return "auth_required"
     if "429" in text or "rate" in text:
         return "rate_limited"
-    if "no results" in text or "no video" in text or "no media" in text:
-        return "no_media"
-    if "timeout" in text or "timed out" in text:
-        return "timeout"
-    return f"exit_{exit_code}"
+    if any(pattern in text for pattern in ("no results", "no video", "no media", "unsupported", "not supported")):
+        return "unsupported_media"
+    if any(pattern in text for pattern in ("timeout", "timed out", "connection", "network", "temporary failure")):
+        return "network_error"
+    return "unknown"
 
 
 def empty_backfill_result() -> dict[str, object]:

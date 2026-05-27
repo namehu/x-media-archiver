@@ -1,23 +1,25 @@
 import { NavLink, Outlet } from "react-router-dom";
+import { useI18n } from "../../lib/i18n";
 import { cn } from "../../lib/utils";
 
 const navItems = [
-  { to: "/", label: "Dashboard", end: true },
-  { to: "/library", label: "Library" },
-  { to: "/failures", label: "Failures" },
-  { to: "/duplicates", label: "Duplicates" },
-  { to: "/operations", label: "Operations" },
-  { to: "/queue", label: "Archive Queue" },
+  { to: "/", labelKey: "nav.dashboard", end: true },
+  { to: "/library", labelKey: "nav.library" },
+  { to: "/failures", labelKey: "nav.failures" },
+  { to: "/duplicates", labelKey: "nav.duplicates" },
+  { to: "/operations", labelKey: "nav.operations" },
+  { to: "/queue", labelKey: "nav.queue" },
 ];
 
 export function AppLayout() {
+  const { t } = useI18n();
   return (
     <div className="min-h-screen bg-background">
       <header className="border-b border-border bg-white">
         <div className="mx-auto flex max-w-7xl flex-col gap-4 px-4 py-4 sm:flex-row sm:items-center sm:justify-between sm:px-6">
           <div>
             <h1 className="text-xl font-semibold tracking-normal">x-media-archiver</h1>
-            <p className="text-sm text-muted-foreground">Local archive console</p>
+            <p className="text-sm text-muted-foreground">{t("app.subtitle")}</p>
           </div>
           <nav className="flex flex-wrap gap-1">
             {navItems.map((item) => (
@@ -32,7 +34,7 @@ export function AppLayout() {
                   )
                 }
               >
-                {item.label}
+                {t(item.labelKey)}
               </NavLink>
             ))}
           </nav>

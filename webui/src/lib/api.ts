@@ -119,9 +119,24 @@ export type ArchiveRunItem = {
   tweet_id: string;
   status: string;
   retry_count: number;
+  last_attempt_at?: string | null;
+  next_attempt_at?: string | null;
+  created_at?: string | null;
+  updated_at?: string | null;
   error_category?: string | null;
   error_message?: string | null;
   linked_item_id?: number | null;
+  attempts?: Array<{
+    id: number;
+    job_id: number;
+    engine?: string | null;
+    status?: string | null;
+    exit_code?: number | null;
+    error_category?: string | null;
+    error_message?: string | null;
+    started_at?: string | null;
+    finished_at?: string | null;
+  }>;
 };
 
 export type ArchiveRunDetail = ArchiveRun & {

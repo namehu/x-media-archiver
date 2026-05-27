@@ -1,7 +1,7 @@
 # x-media-archiver Phase 2 Roadmap
 
 > 日期：2026-05-27  
-> 状态：P2.0 - P2.4.2 已落地，文件 Inbox 方案已由数据库任务队列替代<br>
+> 状态：P2.0 - P2.4.2 已落地，P2.5.1/P2.5.2 推进中<br>
 > 阶段目标：在第一阶段已完成的 CLI 归档内核之上，建设本地 WebUI / API 管理后台能力。
 
 ---
@@ -186,7 +186,33 @@ docker-compose run --rm --entrypoint python xarchiver -m unittest discover -s /a
 - [x] CLI TXT/JSONL 命令改为提交队列，执行依赖运行中的 API worker。
 - [x] `inbox_imports` 与 scheduler 表仅保留历史兼容，新流程不使用。
 
-### P2.5 插件直接投递预研
+### P2.5 队列体系验收增强与 WebUI 可用性补齐
+
+目标：在数据库归档队列成为主流程后，先补齐可观测性、错误分类和中文 WebUI，再评估更大的入口能力。
+
+#### P2.5.1 Queue 可观测性补齐
+
+- [~] Run 列表展示更清晰的状态、时间和任务统计。
+- [~] Run detail 展示每条 tweet item 的状态、重试次数、最近/下次尝试时间。
+- [~] Run detail 关联展示每条 item 的 download attempts。
+- [~] WebUI 自动刷新 Queue 结果，但保持轻量轮询。
+- [ ] 真实失败样本验收后补充 downloader contract。
+
+#### P2.5.2 真实下载失败分类
+
+- [~] 固定 downloader 错误类别：`invalid_url`、`download_no_output`、`auth_required`、`rate_limited`、`network_error`、`unsupported_media`、`unknown`。
+- [~] Queue item 失败原因优先来自最新 download attempt。
+- [ ] 用真实图片、视频、鉴权失败、无媒体、无效 URL 样本回归。
+- [ ] 根据真实样本确认哪些类别应自动重试，哪些应永久失败。
+
+#### P2.5.3 WebUI 国际化与中文优先
+
+- [~] 新增 WebUI i18n 基础设施。
+- [~] 默认语言为中文。
+- [~] 英文翻译表暂留空，缺失时回退中文。
+- [~] 当前页面可见文案切换为中文。
+
+#### P2.5.4 插件直接投递预研
 
 目标：评估插件向本地服务直接提交扫描结果的安全模型，不立即强行实现。
 
@@ -215,14 +241,16 @@ P2.2 read-only WebUI MVP
 P2.3 serialized write actions
 P2.4.1 incremental archive and explicit full-disk maintenance
 P2.4.2 database archive queue
+P2.5.1/P2.5.2 queue observability and error categories in progress
 ```
 
 推荐下一步：
 
 ```text
-1. 用新导出的 TXT 或 JSONL 通过 Archive Queue 页面做人工验收。
-2. 在实际使用反馈后评估 P2.5 插件直接投递。
-3. 不提前加入删除能力。
+1. 完成 Queue 可观测性与失败分类验收。
+2. 用新导出的 TXT 或 JSONL 通过 Archive Queue 页面做人工验收。
+3. 在实际使用反馈后评估 P2.5.4 插件直接投递。
+4. 不提前加入删除能力。
 ```
 
 ---
