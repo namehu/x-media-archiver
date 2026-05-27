@@ -124,6 +124,21 @@ docker-compose run --rm xarchiver export-gallery
 docker-compose run --rm xarchiver export-gallery --status all
 ```
 
+Search archived media:
+
+```bash
+docker-compose run --rm xarchiver search --author veritasium
+docker-compose run --rm xarchiver search --text chaos --media-type video
+docker-compose run --rm xarchiver search --media-status all --limit 50
+```
+
+Find duplicate media by sha256:
+
+```bash
+docker-compose run --rm xarchiver duplicates
+docker-compose run --rm xarchiver export-duplicates
+```
+
 Production metadata storage in Supabase, including connection selection and migration checks, is
 documented in [`docs/supabase-deployment.md`](docs/supabase-deployment.md). Backup and restore
 procedures are documented in [`docs/backup-restore.md`](docs/backup-restore.md).

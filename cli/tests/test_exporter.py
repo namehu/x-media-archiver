@@ -7,7 +7,7 @@ from unittest.mock import patch
 from typer.testing import CliRunner
 
 from xarchiver.cli import app
-from xarchiver.exporter import export_media_gallery, relative_archive_path
+from xarchiver.exporter import count_duplicate_groups, export_media_gallery, relative_archive_path
 
 
 class ExporterTests(unittest.TestCase):
@@ -88,6 +88,19 @@ class ExporterTests(unittest.TestCase):
             settings.archive_dir,
             Path("gallery.html"),
             None,
+        )
+
+    def test_count_duplicate_groups_counts_unique_hashes(self) -> None:
+        self.assertEqual(
+            count_duplicate_groups(
+                [
+                    {"sha256": "a"},
+                    {"sha256": "a"},
+                    {"sha256": "b"},
+                    {"sha256": None},
+                ]
+            ),
+            2,
         )
 
 

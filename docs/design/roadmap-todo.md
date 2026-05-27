@@ -86,10 +86,10 @@ Goal: make the tool suitable for recurring large archive runs and long-term mana
 
 ### V1.1 Search And Review
 
-- [ ] Local search by author, text, media type, and status.
+- [x] Local search by author, text, media type, and status.
 - [x] HTML gallery export for quick review.
 - [ ] Open local media from CSV or generated index.
-- [ ] Deduplicate identical files across tweets by sha256.
+- [x] Detect duplicate identical files across tweets by sha256.
 
 ### V1.2 Extension Improvements
 

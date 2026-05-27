@@ -51,6 +51,20 @@ FAILURE_CSV_FIELDS = [
     "latest_finished_at",
 ]
 
+DUPLICATE_CSV_FIELDS = [
+    "sha256",
+    "duplicate_count",
+    "total_size",
+    "tweet_id",
+    "tweet_url",
+    "author_username",
+    "media_type",
+    "media_status",
+    "local_path",
+    "media_relative_path",
+    "file_size",
+]
+
 IMAGE_EXTENSIONS = {"avif", "gif", "jpeg", "jpg", "png", "webp"}
 VIDEO_EXTENSIONS = {"m4v", "mov", "mp4", "webm"}
 
@@ -118,6 +132,28 @@ def export_failures_csv(archive_dir: Path, output_path: Path | None = None) -> d
 def default_failures_export_path(archive_dir: Path) -> Path:
     timestamp = datetime.now(UTC).strftime("%Y%m%dT%H%M%SZ")
     return archive_dir / "exports" / f"failures-{timestamp}.csv"
+
+
+def export_duplicates_csv(archive_dir: Path, output_path: Path | None = None) -> dict[str, object]:
+    ensure_archive_dirs(archive_dir)
+    target_path = output_path or default_duplicates_export_path(archive_dir)
+    target_path.parent.mkdir(parents=True, exist_ok=True)
+
+    rows = fetch_duplicate_rows()
+    with target_path.open("w", encoding="utf-8-sig", newline="") as file:
+        writer = csv.DictWriter(file, fieldnames=DUPLICATE_CSV_FIELDS)
+        writer.writeheader()
+        for row in rows:
+            values = {field: normalize_csv_value(row.get(field)) for field in DUPLICATE_CSV_FIELDS}
+            values["media_relative_path"] = relative_archive_path(row.get("local_path"), archive_dir)
+            writer.writerow(values)
+
+    return {"path": target_path.as_posix(), "rows": len(rows), "duplicate_groups": count_duplicate_groups(rows)}
+
+
+def default_duplicates_export_path(archive_dir: Path) -> Path:
+    timestamp = datetime.now(UTC).strftime("%Y%m%dT%H%M%SZ")
+    return archive_dir / "exports" / f"duplicates-{timestamp}.csv"
 
 
 def fetch_export_rows(status: str | None) -> list[dict[str, object]]:
@@ -188,6 +224,44 @@ def fetch_failure_rows() -> list[dict[str, object]]:
         with conn.cursor() as cur:
             cur.execute(sql)
             return list(cur.fetchall())
+
+
+def fetch_duplicate_rows() -> list[dict[str, object]]:
+    sql = """
+        with duplicate_hashes as (
+            select sha256,
+                   count(*) as duplicate_count,
+                   sum(coalesce(file_size, 0)) as total_size
+            from media_assets
+            where sha256 is not null
+              and download_status in ('downloaded', 'verified')
+            group by sha256
+            having count(*) > 1
+        )
+        select
+            d.sha256,
+            d.duplicate_count,
+            d.total_size,
+            t.tweet_id,
+            t.url as tweet_url,
+            t.author_username,
+            m.media_type,
+            m.download_status as media_status,
+            m.local_path,
+            m.file_size
+        from duplicate_hashes d
+        join media_assets m on m.sha256 = d.sha256
+        join tweets t on t.tweet_id = m.tweet_id
+        order by d.duplicate_count desc, d.sha256, t.tweet_id, m.media_index nulls last, m.id
+    """
+    with connect() as conn:
+        with conn.cursor() as cur:
+            cur.execute(sql)
+            return list(cur.fetchall())
+
+
+def count_duplicate_groups(rows: list[dict[str, object]]) -> int:
+    return len({row.get("sha256") for row in rows if row.get("sha256")})
 
 
 def normalize_csv_value(value: object) -> object:
