@@ -8,6 +8,7 @@ import { DashboardPage } from "./pages/DashboardPage";
 import { DuplicatesPage } from "./pages/DuplicatesPage";
 import { FailuresPage } from "./pages/FailuresPage";
 import { LibraryPage } from "./pages/LibraryPage";
+import { OperationsPage } from "./pages/OperationsPage";
 import { TweetDetailPage } from "./pages/TweetDetailPage";
 
 const queryClient = new QueryClient();
@@ -22,6 +23,7 @@ const router = createBrowserRouter([
       { path: "tweets/:tweetId", element: <TweetDetailPage /> },
       { path: "failures", element: <FailuresPage /> },
       { path: "duplicates", element: <DuplicatesPage /> },
+      { path: "operations", element: <OperationsPage /> },
     ],
   },
 ]);
@@ -33,4 +35,3 @@ ReactDOM.createRoot(document.getElementById("root")!).render(
     </QueryClientProvider>
   </React.StrictMode>,
 );
-

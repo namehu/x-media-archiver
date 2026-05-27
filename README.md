@@ -187,6 +187,17 @@ GET /api/duplicates
 GET /api/media-file/{relative_path}
 ```
 
+Available write API endpoints are serialized by a process-local lock. If one write action is already
+running, the API returns `409 write_action_in_progress`.
+
+```text
+POST /api/actions/verify
+POST /api/actions/requeue
+POST /api/actions/recover-interrupted
+POST /api/actions/export
+POST /api/runs/archive-urls
+```
+
 Run the WebUI:
 
 ```bash
@@ -201,7 +212,20 @@ Open:
 http://127.0.0.1:5173
 ```
 
-The WebUI uses React, TanStack Query, React Router, Tailwind, and local shadcn-style UI components under `webui/src/components/ui`. The first WebUI milestone is read-only: Dashboard, Library, Tweet detail, Failures, and Duplicates.
+The WebUI uses React, TanStack Query, React Router, Tailwind, and local shadcn-style UI components under `webui/src/components/ui`.
+
+Current pages:
+
+```text
+Dashboard
+Library
+Tweet detail
+Failures
+Duplicates
+Operations
+```
+
+Operations can trigger verify, requeue, recover-interrupted, export, and archive-urls. The WebUI still does not expose destructive file deletion.
 
 ## State Rules
 

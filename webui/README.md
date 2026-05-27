@@ -46,6 +46,17 @@ Library
 Tweet detail
 Failures
 Duplicates
+Operations
 ```
 
-The current milestone is read-only. Write actions such as verify, requeue, export, and archive runs are reserved for P2.3.
+Operations can trigger:
+
+```text
+verify
+requeue
+recover-interrupted
+export
+archive-urls
+```
+
+Write actions are serialized by the local API. The WebUI does not expose destructive file deletion.

@@ -1,7 +1,7 @@
 # x-media-archiver Phase 2 Roadmap
 
 > 日期：2026-05-27  
-> 状态：P2.0 / P2.1 / P2.2 首版已落地，等待运行验收  
+> 状态：P2.0 / P2.1 / P2.2 / P2.3 首版已落地，等待运行验收  
 > 阶段目标：在第一阶段已完成的 CLI 归档内核之上，建设本地 WebUI / API 管理后台能力。
 
 ---
@@ -122,13 +122,14 @@ docker-compose run --rm --entrypoint python xarchiver -m unittest discover -s /a
 
 目标：让 WebUI 可以触发安全的维护操作。
 
-- [ ] API 支持 `POST /api/actions/verify`。
-- [ ] API 支持 `POST /api/actions/requeue`。
-- [ ] API 支持 `POST /api/actions/recover-interrupted`。
-- [ ] API 支持 `POST /api/actions/export`。
-- [ ] API 支持 `POST /api/runs/archive-urls`。
-- [ ] 写入型操作串行化，避免并发下载互相覆盖状态。
-- [ ] 每次操作返回 run summary。
+- [x] API 支持 `POST /api/actions/verify`。
+- [x] API 支持 `POST /api/actions/requeue`。
+- [x] API 支持 `POST /api/actions/recover-interrupted`。
+- [x] API 支持 `POST /api/actions/export`。
+- [x] API 支持 `POST /api/runs/archive-urls`。
+- [x] 写入型操作串行化，避免并发下载互相覆盖状态。
+- [x] 每次操作返回 action summary。
+- [x] WebUI 新增 Operations 页面触发写入型操作。
 
 验收：
 
@@ -183,14 +184,15 @@ docker-compose run --rm --entrypoint python xarchiver -m unittest discover -s /a
 P2.0 service layer
 P2.1 read-only local API
 P2.2 read-only WebUI MVP
+P2.3 serialized write actions
 ```
 
 推荐下一步：
 
 ```text
-1. 运行 Docker API 与 WebUI build 验收。
-2. 用当前 5 条 verified 样本做页面人工验收。
-3. 再进入 P2.3 写入型操作，不提前加入删除能力。
+1. 用当前 5 条 verified 样本做页面人工验收。
+2. 进入 P2.4 Inbox 自动归档设计与实现。
+3. 不提前加入删除能力。
 ```
 
 ---

@@ -6,6 +6,7 @@ const navItems = [
   { to: "/library", label: "Library" },
   { to: "/failures", label: "Failures" },
   { to: "/duplicates", label: "Duplicates" },
+  { to: "/operations", label: "Operations" },
 ];
 
 export function AppLayout() {
@@ -42,4 +43,3 @@ export function AppLayout() {
     </div>
   );
 }
-

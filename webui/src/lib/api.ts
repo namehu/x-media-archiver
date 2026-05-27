@@ -74,6 +74,24 @@ export async function apiGet<T>(path: string): Promise<T> {
   return response.json() as Promise<T>;
 }
 
+export async function apiPost<T>(path: string, body: unknown): Promise<T> {
+  const response = await fetch(path, {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify(body),
+  });
+  if (!response.ok) {
+    throw new Error(`API ${response.status}: ${await response.text()}`);
+  }
+  return response.json() as Promise<T>;
+}
+
+export type ActionResponse = {
+  action: string;
+  status: string;
+  result: Record<string, unknown>;
+};
+
 export function mediaQueryString(params: Record<string, string>) {
   const search = new URLSearchParams();
   for (const [key, value] of Object.entries(params)) {
@@ -81,4 +99,3 @@ export function mediaQueryString(params: Record<string, string>) {
   }
   return search.toString();
 }
-

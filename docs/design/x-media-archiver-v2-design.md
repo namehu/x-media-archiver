@@ -117,7 +117,7 @@ webui/
     pages/                 Dashboard / Library / Detail / Failures / Duplicates
 ```
 
-当前 WebUI 首版只读。写入型操作统一排入后续 P2.3，避免在页面刚引入时同时扩大数据修改面。
+当前 WebUI 已进入 P2.3，提供非破坏性写入操作：verify、requeue、recover-interrupted、export、archive-urls。写入型操作由 API 进程内锁串行化；如果已有写入操作运行，后续请求返回 busy。
 
 ### 3.3 自动归档从导入收件箱开始
 
@@ -517,7 +517,8 @@ Extension Handoff API
 1. P2.0 service layer 已落地在 cli/xarchiver/services/。
 2. P2.1 本地 FastAPI API 已落地在 cli/xarchiver/api/。
 3. P2.2 React WebUI 首版已落地在 webui/。
-4. 当前未新增数据库迁移。
-5. 当前未修改插件行为。
-6. 当前未开放 WebUI 删除能力。
+4. P2.3 非破坏性写入操作已落地在 API 与 WebUI Operations 页面。
+5. 当前未新增数据库迁移。
+6. 当前未修改插件行为。
+7. 当前未开放 WebUI 删除能力。
 ```

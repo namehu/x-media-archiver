@@ -1,14 +1,51 @@
 from __future__ import annotations
 
+from collections.abc import Callable
 from pathlib import Path
+from threading import Lock
 
-from fastapi import FastAPI, HTTPException, Query
+from fastapi import FastAPI, HTTPException, Query, status
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import FileResponse
+from pydantic import BaseModel, Field
 
 from xarchiver.config import get_settings
 from xarchiver.services.failures import list_failures
 from xarchiver.services.library import get_summary, get_tweet_detail, list_duplicates, list_media
+from xarchiver.services.runs import (
+    run_archive_urls,
+    run_export_duplicates,
+    run_export_failures,
+    run_export_media,
+    run_recover_interrupted,
+    run_requeue,
+    run_verify,
+)
+
+write_action_lock = Lock()
+
+
+class VerifyRequest(BaseModel):
+    limit: int | None = Field(default=None, ge=1)
+
+
+class RequeueRequest(BaseModel):
+    statuses: list[str] | None = None
+    limit: int | None = Field(default=None, ge=1)
+
+
+class RecoverInterruptedRequest(BaseModel):
+    timeout_minutes: int | None = Field(default=None, ge=1)
+
+
+class ExportRequest(BaseModel):
+    kind: str = Field(default="media", pattern="^(media|failures|duplicates)$")
+    status: str | None = "verified"
+
+
+class ArchiveUrlsRequest(BaseModel):
+    path: str
+    limit: int | None = Field(default=None, ge=1)
 
 
 def create_app() -> FastAPI:
@@ -20,7 +57,7 @@ def create_app() -> FastAPI:
             "http://127.0.0.1:5173",
         ],
         allow_credentials=False,
-        allow_methods=["GET"],
+        allow_methods=["GET", "POST"],
         allow_headers=["*"],
     )
 
@@ -76,7 +113,57 @@ def create_app() -> FastAPI:
             raise HTTPException(status_code=404, detail="media_file_not_found")
         return FileResponse(target)
 
+    @app.post("/api/actions/verify")
+    def verify_action(request: VerifyRequest) -> dict[str, object]:
+        return execute_write_action("verify", lambda: run_verify(request.limit))
+
+    @app.post("/api/actions/requeue")
+    def requeue_action(request: RequeueRequest) -> dict[str, object]:
+        return execute_write_action("requeue", lambda: run_requeue(request.statuses, request.limit))
+
+    @app.post("/api/actions/recover-interrupted")
+    def recover_interrupted_action(request: RecoverInterruptedRequest) -> dict[str, object]:
+        settings = get_settings()
+        return execute_write_action(
+            "recover-interrupted",
+            lambda: run_recover_interrupted(settings, request.timeout_minutes),
+        )
+
+    @app.post("/api/actions/export")
+    def export_action(request: ExportRequest) -> dict[str, object]:
+        settings = get_settings()
+
+        def run_export() -> dict[str, object]:
+            if request.kind == "failures":
+                return run_export_failures(settings)
+            if request.kind == "duplicates":
+                return run_export_duplicates(settings)
+            return run_export_media(settings, status=None if request.status == "all" else request.status)
+
+        return execute_write_action(f"export-{request.kind}", run_export)
+
+    @app.post("/api/runs/archive-urls")
+    def archive_urls_run(request: ArchiveUrlsRequest) -> dict[str, object]:
+        settings = get_settings()
+        input_path = Path(request.path)
+        if not input_path.exists() or not input_path.is_file():
+            raise HTTPException(status_code=404, detail="input_file_not_found")
+        return execute_write_action("archive-urls", lambda: run_archive_urls(input_path, settings, request.limit))
+
     return app
+
+
+def execute_write_action(name: str, action: Callable[[], dict[str, object]]) -> dict[str, object]:
+    if not write_action_lock.acquire(blocking=False):
+        raise HTTPException(
+            status_code=status.HTTP_409_CONFLICT,
+            detail="write_action_in_progress",
+        )
+    try:
+        result = action()
+        return {"action": name, "status": "completed", "result": result}
+    finally:
+        write_action_lock.release()
 
 
 def resolve_archive_file(archive_dir: Path, relative_path: str) -> Path:
