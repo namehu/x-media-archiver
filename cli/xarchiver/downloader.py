@@ -351,7 +351,9 @@ def classify_error(exit_code: int, stderr: str | None) -> str:
         return "auth_required"
     if "429" in text or "rate" in text:
         return "rate_limited"
-    if any(pattern in text for pattern in ("no results", "no video", "no media", "unsupported", "not supported")):
+    if "no results" in text:
+        return "download_no_output"
+    if any(pattern in text for pattern in ("no video", "no media", "unsupported", "not supported")):
         return "unsupported_media"
     if any(pattern in text for pattern in ("timeout", "timed out", "connection", "network", "temporary failure")):
         return "network_error"

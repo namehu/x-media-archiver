@@ -119,3 +119,112 @@ archive/media/_unmatched/<job_id>/
 ```text
 unmatched_download_output
 ```
+
+## queue-v1 真实验收记录
+
+验证时间：
+
+```text
+date: 2026-05-27
+runner: local API worker
+pipeline_version: queue-v1
+run range: archive_runs 51-55
+```
+
+批次结果：
+
+```text
+run 51:
+  input: 1 tweet
+  tweet_id: 2058990987272458377
+  result: completed
+  item_status: verified
+  media: 1 photo
+  source_engine: gallery-dl
+  media_status: verified
+
+run 52:
+  input: 1 tweet
+  tweet_id: 2059323339655782695
+  result: completed
+  item_status: verified
+  media: 1 video
+  source_engine: gallery-dl
+  media_status: verified
+
+run 53:
+  input: repeat of tweet_id 2059323339655782695
+  result: completed
+  item_status: skipped_verified
+  media_backfill_count: 0
+  verified_media_count: 0
+
+run 54:
+  input: repeat of tweet_id 2058990987272458377
+  result: completed
+  item_status: skipped_verified
+  media_backfill_count: 0
+  verified_media_count: 0
+
+run 55:
+  input: 1 invalid / no downloadable media sample
+  tweet_id: 2058990187272458377
+  result: completed_with_failures
+  item_status: failed_permanent
+  attempts:
+    - gallery-dl: failed_retryable, error_category=download_no_output
+    - yt-dlp: failed_permanent, error_category=unsupported_media
+  final_item_error_category: unsupported_media
+```
+
+验收结论：
+
+```text
+1. 新图片 tweet 可完成 download -> scoped backfill -> scoped verify -> verified。
+2. 新视频 tweet 可完成 download -> scoped backfill -> scoped verify -> verified。
+3. 已 verified tweet 再次提交会生成 skipped_verified item，不重新下载、不重新 backfill、不重新 hash verify。
+4. queue item 能关联 download_attempts，WebUI 可展示每次下载尝试的 engine/status/error_category。
+5. fallback 后的最终 item 错误取最后一次下载 attempt；run 55 最终为 unsupported_media。
+```
+
+## queue-v1 错误分类契约
+
+下载器和队列层对用户暴露以下稳定错误类别：
+
+```text
+invalid_url:
+  URL 无效、tweet 不存在或下载器明确返回 404 / not found。
+  默认处理：failed_permanent。
+
+download_no_output:
+  下载器进程没有报错或只返回 No results，但 scoped backfill 无法找到本次 tweet 的 metadata/media。
+  默认处理：failed_retryable，并允许 fallback engine 继续尝试。
+
+auth_required:
+  cookies 缺失、cookies 无效、未登录、403/unauthorized/forbidden。
+  默认处理：failed_retryable；用户应检查 cookies。
+
+rate_limited:
+  429 或 rate limit。
+  默认处理：failed_retryable，等待 backoff 后重试。
+
+network_error:
+  timeout、connection、temporary failure 等网络问题。
+  默认处理：failed_retryable，等待 backoff 后重试。
+
+unsupported_media:
+  下载器明确表示目标 tweet 没有可下载视频/媒体，或媒体类型不受当前下载器支持。
+  默认处理：failed_permanent。
+
+unknown:
+  其他无法稳定归类的 stderr / exit code。
+  默认处理：failed_retryable，达到 retry limit 后转 failed_permanent。
+```
+
+分类边界：
+
+```text
+gallery-dl "No results" 更接近 download_no_output。
+yt-dlp "No video could be found in this tweet" 更接近 unsupported_media。
+如果同一 queue item 经 fallback 后有多个 attempt，最终 item error 使用最后一个 attempt 的分类，但历史 attempts 必须完整保留。
+```

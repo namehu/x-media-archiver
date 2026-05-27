@@ -193,17 +193,17 @@ docker-compose run --rm --entrypoint python xarchiver -m unittest discover -s /a
 #### P2.5.1 Queue 可观测性补齐
 
 - [~] Run 列表展示更清晰的状态、时间和任务统计。
-- [~] Run detail 展示每条 tweet item 的状态、重试次数、最近/下次尝试时间。
-- [~] Run detail 关联展示每条 item 的 download attempts。
-- [~] WebUI 自动刷新 Queue 结果，但保持轻量轮询。
-- [ ] 真实失败样本验收后补充 downloader contract。
+- [x] Run detail 展示每条 tweet item 的状态、重试次数、最近/下次尝试时间。
+- [x] Run detail 关联展示每条 item 的 download attempts。
+- [x] WebUI 自动刷新 Queue 结果，但保持轻量轮询。
+- [x] 真实失败样本验收后补充 downloader contract。
 
 #### P2.5.2 真实下载失败分类
 
-- [~] 固定 downloader 错误类别：`invalid_url`、`download_no_output`、`auth_required`、`rate_limited`、`network_error`、`unsupported_media`、`unknown`。
-- [~] Queue item 失败原因优先来自最新 download attempt。
-- [ ] 用真实图片、视频、鉴权失败、无媒体、无效 URL 样本回归。
-- [ ] 根据真实样本确认哪些类别应自动重试，哪些应永久失败。
+- [x] 固定 downloader 错误类别：`invalid_url`、`download_no_output`、`auth_required`、`rate_limited`、`network_error`、`unsupported_media`、`unknown`。
+- [x] Queue item 失败原因优先来自最新 download attempt。
+- [x] 用真实图片、视频、重复提交、无媒体样本回归。
+- [x] 根据真实样本确认基础类别边界；鉴权失败和限流样本后续遇到再补充真实记录。
 
 #### P2.5.3 WebUI 国际化与中文优先
 
