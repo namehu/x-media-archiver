@@ -8,7 +8,6 @@ ARCHIVE_SUBDIRS = (
     "state",
     "logs",
     "exports",
-    "inbox",
 )
 
 

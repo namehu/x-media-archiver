@@ -3,8 +3,7 @@ from pathlib import Path
 from types import SimpleNamespace
 from unittest.mock import patch
 
-from xarchiver.workflow import archive_urls, summarize_download_result
-from xarchiver.services.runs import run_archive_file
+from xarchiver.workflow import archive_urls, process_tweet_scope, summarize_download_result
 
 
 class WorkflowTests(unittest.TestCase):
@@ -27,13 +26,18 @@ class WorkflowTests(unittest.TestCase):
             },
         )
 
-    def test_run_archive_file_uses_jsonl_pipeline_for_jsonl_input(self) -> None:
+    def test_scoped_pipeline_links_downloads_to_archive_run_items(self) -> None:
         settings = SimpleNamespace()
-        with patch("xarchiver.services.runs.archive_jsonl", return_value={"input_type": "jsonl"}) as archive_jsonl:
-            result = run_archive_file(Path("tweets.jsonl"), settings)
+        empty_download = {"job_id": 1, "count": 0, "media_backfill": {"media_ids": [], "tweet_ids": []}}
+        with (
+            patch("xarchiver.workflow.download", side_effect=[empty_download, empty_download]) as download,
+            patch("xarchiver.workflow.verify_media_assets", return_value={"verified": 0, "missing": 0, "corrupt": 0}),
+            patch("xarchiver.workflow.get_library_snapshot", return_value={"media_total": 0, "verified_total": 0}),
+        ):
+            process_tweet_scope(["1"], settings, archive_run_id=9, item_ids={"1": 13})
 
-        self.assertEqual(result, {"input_type": "jsonl"})
-        archive_jsonl.assert_called_once_with(Path("tweets.jsonl"), settings, None)
+        self.assertEqual(download.call_args_list[0].kwargs["archive_run_id"], 9)
+        self.assertEqual(download.call_args_list[0].kwargs["run_item_ids"], {"1": 13})
 
     def test_archive_urls_recovers_interrupted_runs_before_import(self) -> None:
         settings = SimpleNamespace(stuck_timeout_minutes=120)

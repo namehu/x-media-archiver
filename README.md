@@ -63,7 +63,13 @@ Recommended one-command workflow after exporting URLs from the browser extension
 docker-compose run --rm xarchiver archive-urls /app/examples/tweet_urls.example.txt
 ```
 
-This command imports the URL file, runs gallery-dl and yt-dlp fallback only for input-scoped candidates, then backfills and verifies only media affected by that run. It reports current library totals from Postgres. Run export commands separately when a database snapshot is needed.
+This command parses the local file and submits a database-backed archive run. The API worker processes queued tweets while `xarchiver serve` is running, using scoped download, backfill, and verify operations. Run export commands separately when a database snapshot is needed.
+
+Queue JSONL input through the same service:
+
+```bash
+docker-compose run --rm xarchiver archive-jsonl /app/examples/tweets.example.jsonl
+```
 
 ## Commands
 
@@ -185,8 +191,8 @@ GET /api/tweets/{tweet_id}
 GET /api/failures
 GET /api/duplicates
 GET /api/media-file/{relative_path}
-GET /api/inbox
-GET /api/inbox/settings
+GET /api/archive-runs
+GET /api/archive-runs/{run_id}
 ```
 
 Available write API endpoints are serialized by a process-local lock. If one write action is already
@@ -197,11 +203,8 @@ POST /api/actions/verify
 POST /api/actions/requeue
 POST /api/actions/recover-interrupted
 POST /api/actions/export
-POST /api/runs/archive-urls
-POST /api/inbox/scan
-POST /api/inbox/process-pending
-POST /api/inbox/{id}/process
-POST /api/inbox/settings
+POST /api/archive-runs
+POST /api/archive-runs/{run_id}/retry
 POST /api/maintenance/backfill
 POST /api/maintenance/verify
 ```
@@ -231,20 +234,20 @@ Tweet detail
 Failures
 Duplicates
 Operations
+Archive Queue
 ```
 
-Operations can trigger requeue, recover-interrupted, database snapshot export, and incremental archive-urls. Full backfill and full verify are isolated under Maintenance and require explicit disk-scan confirmation. The WebUI still does not expose destructive file deletion.
+Archive Queue accepts pasted URLs or local TXT/JSONL files parsed in the browser and submits structured database tasks. Operations can trigger requeue, recover-interrupted, and database snapshot export. Full backfill and full verify are isolated under Maintenance and require explicit disk-scan confirmation. The WebUI does not expose destructive file deletion.
 
-## Inbox Automation
+## Archive Queue
 
-The browser extension export can be handled from a watched local inbox:
+Archive submissions are stored as runs and per-tweet task items in Postgres:
 
 ```text
-archive/inbox/
-  tweet_urls_*.txt
-  tweets_*.jsonl
-  registered/YYYY-MM/   registered source files
-  duplicates/YYYY-MM/   duplicate-content source files
+WebUI records / CLI file parser
+  -> archive_runs + archive_run_items
+  -> API background worker
+  -> scoped download / backfill / verify
 ```
 
 Run migrations before first use:
@@ -253,27 +256,24 @@ Run migrations before first use:
 docker-compose run --rm xarchiver db migrate
 ```
 
-Open the WebUI `Inbox` page to:
+Open the WebUI `Archive Queue` page to:
 
 ```text
-1. Scan files without processing them.
-2. Process pending files manually.
-3. Retry a failed file.
-4. Enable or disable timed automatic processing.
-5. Configure the automatic scan interval in minutes.
+1. Submit one or more tweet URLs.
+2. Select a local TXT or JSONL export for browser-side parsing and submission.
+3. Review runs and per-tweet task outcomes.
+4. Retry failed items as a new auditable run.
 ```
 
-Inbox behavior:
+Queue behavior:
 
 ```text
-1. File content is identified by SHA-256; identical content is only registered once.
-2. New files are moved out of the inbox root after registration; duplicate-content files are retained under `duplicates/`.
-3. TXT input performs an input-scoped URL archive workflow.
-4. JSONL input preserves richer tweet metadata, then performs the same input-scoped download and verification workflow.
-5. Each processed file is linked to an archive_runs record.
-6. Incremental runs verify only newly affected media and report full-library totals from Postgres.
-7. Automatic processing is disabled by default and only runs while the local API service is running.
-8. Automatic and manual writes share the P2.3 single-operation lock.
+1. Each submission creates an archive run and de-duplicates repeated tweet IDs inside that run.
+2. Already verified tweets are recorded as skipped_verified without disk I/O.
+3. Tweets already pending in another run are recorded as linked_pending without duplicate download.
+4. The API worker consumes pending/retryable task items only while the API service is running.
+5. Runs verify only newly affected media and report full-library totals from Postgres.
+6. CLI TXT/JSONL paths are input adapters only; no watched input directory is used.
 ```
 
 Full-disk maintenance is explicit:

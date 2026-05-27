@@ -92,28 +92,55 @@ export type ActionResponse = {
   result: Record<string, unknown>;
 };
 
-export type InboxImport = {
-  id: number;
-  file_path: string;
-  filename: string;
-  file_type: "urls" | "jsonl";
-  file_size: number;
-  sha256: string;
-  status: "pending" | "processing" | "completed" | "failed";
-  discovered_at: string;
-  processing_started_at?: string | null;
-  processed_at?: string | null;
-  error_message?: string | null;
-  result?: Record<string, unknown> | null;
-  archive_run_id?: number | null;
+export type ArchiveRunTasks = {
+  queued_count: number;
+  skipped_verified_count: number;
+  linked_pending_count: number;
+  verified_count: number;
+  failed_count: number;
 };
 
-export type InboxSettings = {
-  enabled: boolean;
-  interval_minutes: number;
-  last_scan_at?: string | null;
-  next_scan_at?: string | null;
-  updated_at: string;
+export type ArchiveRun = {
+  id: number;
+  trigger_type: string;
+  input_path?: string | null;
+  status: "queued" | "running" | "completed" | "completed_with_failures" | "failed";
+  started_at: string;
+  finished_at?: string | null;
+  error_message?: string | null;
+  result?: {
+    pipeline_version?: string;
+    tasks?: ArchiveRunTasks;
+  } | null;
+};
+
+export type ArchiveRunItem = {
+  id: number;
+  tweet_id: string;
+  status: string;
+  retry_count: number;
+  error_category?: string | null;
+  error_message?: string | null;
+  linked_item_id?: number | null;
+};
+
+export type ArchiveRunDetail = ArchiveRun & {
+  items: ArchiveRunItem[];
+};
+
+export type ArchiveSubmission = {
+  run_id: number;
+  status: string;
+  input: {
+    input_record_count: number;
+    unique_tweet_count: number;
+    duplicate_input_count: number;
+  };
+  tasks: {
+    queued_count: number;
+    skipped_verified_count: number;
+    linked_pending_count: number;
+  };
 };
 
 export function mediaQueryString(params: Record<string, string>) {

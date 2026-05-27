@@ -7,7 +7,7 @@ import "./styles.css";
 import { DashboardPage } from "./pages/DashboardPage";
 import { DuplicatesPage } from "./pages/DuplicatesPage";
 import { FailuresPage } from "./pages/FailuresPage";
-import { InboxPage } from "./pages/InboxPage";
+import { ArchiveQueuePage } from "./pages/ArchiveQueuePage";
 import { LibraryPage } from "./pages/LibraryPage";
 import { OperationsPage } from "./pages/OperationsPage";
 import { TweetDetailPage } from "./pages/TweetDetailPage";
@@ -25,7 +25,7 @@ const router = createBrowserRouter([
       { path: "failures", element: <FailuresPage /> },
       { path: "duplicates", element: <DuplicatesPage /> },
       { path: "operations", element: <OperationsPage /> },
-      { path: "inbox", element: <InboxPage /> },
+      { path: "queue", element: <ArchiveQueuePage /> },
     ],
   },
 ]);

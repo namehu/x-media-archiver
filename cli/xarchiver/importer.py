@@ -115,7 +115,7 @@ def fetch_existing_tweet_statuses(tweet_ids: list[str]) -> dict[str, str]:
             return {str(row["tweet_id"]): str(row["download_status"]) for row in cur.fetchall()}
 
 
-def upsert_tweets(rows: list[dict[str, Any]]) -> None:
+def upsert_tweets(rows: list[dict[str, Any]], connection: Any | None = None) -> None:
     if not rows:
         return
 
@@ -157,12 +157,20 @@ def upsert_tweets(rows: list[dict[str, Any]]) -> None:
             updated_at = now()
     """
 
+    if connection is not None:
+        execute_tweet_upserts(connection, sql, rows)
+        return
+
     with connect() as conn:
-        with conn.cursor() as cur:
-            for row in rows:
-                row = {**row, "raw_import": Jsonb(row["raw_import"])}
-                cur.execute(sql, row)
+        execute_tweet_upserts(conn, sql, rows)
         conn.commit()
+
+
+def execute_tweet_upserts(connection: Any, sql: str, rows: list[dict[str, Any]]) -> None:
+    with connection.cursor() as cur:
+        for row in rows:
+            row = {**row, "raw_import": Jsonb(row["raw_import"])}
+            cur.execute(sql, row)
 
 
 def extract_tweet_id(url: str) -> str:

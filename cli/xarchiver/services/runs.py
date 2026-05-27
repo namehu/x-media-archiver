@@ -7,19 +7,21 @@ from xarchiver.downloader import download
 from xarchiver.exporter import export_duplicates_csv, export_failures_csv, export_media_csv
 from xarchiver.importer import import_jsonl, import_urls
 from xarchiver.media import backfill_media_assets
-from xarchiver.recovery import recover_interrupted_runs, requeue_tweets
+from xarchiver.recovery import recover_interrupted_runs
 from xarchiver.verifier import verify_media_assets
-from xarchiver.workflow import archive_jsonl, archive_urls
+from xarchiver.services.queue import submit_jsonl_file, submit_requeue_batch, submit_urls_file
 
 
 def run_archive_urls(path: Path, settings: Settings, limit: int | None = None) -> dict[str, object]:
-    return archive_urls(path, settings, limit)
+    del settings, limit
+    return submit_urls_file(path)
 
 
 def run_archive_file(path: Path, settings: Settings, limit: int | None = None) -> dict[str, object]:
+    del settings, limit
     if path.suffix.lower() == ".jsonl":
-        return archive_jsonl(path, settings, limit)
-    return archive_urls(path, settings, limit)
+        return submit_jsonl_file(path)
+    return submit_urls_file(path)
 
 
 def run_import(path: Path) -> dict[str, object]:
@@ -50,7 +52,7 @@ def run_verify(limit: int | None = None, media_ids: list[int] | None = None) -> 
 
 
 def run_requeue(statuses: list[str] | None = None, limit: int | None = None) -> dict[str, object]:
-    return requeue_tweets(statuses, limit)
+    return submit_requeue_batch(statuses or ["failed_retryable", "missing", "corrupt"], limit)
 
 
 def run_recover_interrupted(settings: Settings, timeout_minutes: int | None = None) -> dict[str, int]:

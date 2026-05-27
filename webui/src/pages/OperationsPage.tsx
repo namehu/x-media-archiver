@@ -8,8 +8,6 @@ import { Select } from "../components/ui/Select";
 
 export function OperationsPage() {
   const queryClient = useQueryClient();
-  const [archivePath, setArchivePath] = useState("/app/examples/tweet_urls.example.txt");
-  const [archiveLimit, setArchiveLimit] = useState("");
   const [verifyLimit, setVerifyLimit] = useState("");
   const [confirmFullScan, setConfirmFullScan] = useState(false);
   const [requeueStatuses, setRequeueStatuses] = useState("failed_retryable,missing,corrupt");
@@ -34,33 +32,6 @@ export function OperationsPage() {
   return (
     <div className="space-y-5">
       <section className="grid gap-4 lg:grid-cols-2">
-        <Card>
-          <CardHeader>
-            <CardTitle>Archive URLs</CardTitle>
-          </CardHeader>
-          <CardContent className="space-y-3">
-            <Input value={archivePath} onChange={(event) => setArchivePath(event.target.value)} />
-            <Input
-              placeholder="Limit"
-              inputMode="numeric"
-              value={archiveLimit}
-              onChange={(event) => setArchiveLimit(event.target.value)}
-            />
-            <Button
-              type="button"
-              disabled={mutation.isPending}
-              onClick={() =>
-                run("/api/runs/archive-urls", {
-                  path: archivePath,
-                  limit: numberOrNull(archiveLimit),
-                })
-              }
-            >
-              Run archive
-            </Button>
-          </CardContent>
-        </Card>
-
         <Card>
           <CardHeader>
             <CardTitle>Requeue</CardTitle>

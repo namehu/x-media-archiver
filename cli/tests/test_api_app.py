@@ -4,6 +4,8 @@ from pathlib import Path
 from fastapi import HTTPException
 
 from xarchiver.api.app import (
+    ArchiveRecord,
+    ArchiveSubmitRequest,
     BackfillRequest,
     VerifyRequest,
     create_app,
@@ -68,6 +70,23 @@ class ApiAppTests(unittest.TestCase):
                 endpoints[path](request)
             self.assertEqual(error.exception.status_code, 400)
             self.assertEqual(error.exception.detail, "full_scan_confirmation_required")
+
+    def test_archive_run_api_rejects_invalid_url_without_file_path_endpoint(self) -> None:
+        app = create_app()
+        paths = {
+            route.path: route.endpoint
+            for route in app.routes
+            if "POST" in getattr(route, "methods", set())
+        }
+        self.assertIn("/api/archive-runs", paths)
+        self.assertNotIn("/api/inbox", paths)
+        self.assertNotIn("/api/runs/archive-urls", paths)
+
+        with self.assertRaises(HTTPException) as error:
+            paths["/api/archive-runs"](
+                ArchiveSubmitRequest(records=[ArchiveRecord(url="https://x.com/user/likes")])
+            )
+        self.assertEqual(error.exception.status_code, 400)
 
 
 if __name__ == "__main__":

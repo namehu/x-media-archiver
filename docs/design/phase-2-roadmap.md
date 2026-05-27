@@ -1,7 +1,7 @@
 # x-media-archiver Phase 2 Roadmap
 
 > 日期：2026-05-27  
-> 状态：P2.0 / P2.1 / P2.2 / P2.3 / P2.4 首版已落地，等待运行验收<br>
+> 状态：P2.0 - P2.4.2 已落地，文件 Inbox 方案已由数据库任务队列替代<br>
 > 阶段目标：在第一阶段已完成的 CLI 归档内核之上，建设本地 WebUI / API 管理后台能力。
 
 ---
@@ -126,7 +126,7 @@ docker-compose run --rm --entrypoint python xarchiver -m unittest discover -s /a
 - [x] API 支持 `POST /api/actions/requeue`。
 - [x] API 支持 `POST /api/actions/recover-interrupted`。
 - [x] API 支持 `POST /api/actions/export`。
-- [x] API 支持 `POST /api/runs/archive-urls`。
+- [x] API 曾支持 `POST /api/runs/archive-urls`，已由 P2.4.2 的 records 提交接口替代。
 - [x] 写入型操作串行化，避免并发下载互相覆盖状态。
 - [x] 每次操作返回 action summary。
 - [x] WebUI 新增 Operations 页面触发写入型操作。
@@ -139,7 +139,7 @@ docker-compose run --rm --entrypoint python xarchiver -m unittest discover -s /a
 3. 并发触发写入操作时只允许一个运行。
 ```
 
-### P2.4 Inbox 自动归档
+### P2.4 Inbox 自动归档（已被 P2.4.2 替代）
 
 目标：用户把插件导出的文件放入 inbox 后，系统可自动处理。
 
@@ -151,13 +151,13 @@ docker-compose run --rm --entrypoint python xarchiver -m unittest discover -s /a
 - [x] WebUI 展示 inbox 文件处理状态和关联 run。
 - [x] 新增持久化定时设置：启停、扫描间隔、最近/下次扫描时间。
 - [x] API 服务内运行定时自动扫描/处理，默认关闭。
-- [x] Inbox 根目录仅接受新文件，登记后移动至 `registered/` 或 `duplicates/`。
+- [x] 本阶段原型完成后经工程复核，确认文件 Inbox 不作为正式主流程。
 
 ### P2.4.1 增量归档与显式全量维护
 
 目标：归档量增长后，日常处理耗时只随本次输入增长，不随全库媒体数量线性增长。
 
-- [x] `archive-urls` 与 Inbox workflow 仅处理本次输入涉及的 tweet。
+- [x] `archive-urls` 与归档 workflow 仅处理本次输入涉及的 tweet。
 - [x] downloader candidate 查询支持 `tweet_ids` scope。
 - [x] backfill 仅解析本次下载涉及的 metadata 目录。
 - [x] verify 仅读取本次新增或更新的 media 文件。
@@ -169,12 +169,22 @@ docker-compose run --rm --entrypoint python xarchiver -m unittest discover -s /a
 验收：
 
 ```text
-1. 同一个 tweet_urls 文件重复放入 inbox 不会重复处理。
+1. 同批次重复 tweet 不会重复下载。
 2. 处理结果能关联到 archive run。
 3. 失败项能在 WebUI 中查看。
-4. 启用定时处理后，API 存活期间按配置间隔处理 pending 文件。
-5. 自动处理与手动写入动作不会并发执行。
+4. 日常处理与显式全量维护不会并发执行。
 ```
+
+### P2.4.2 数据库归档队列
+
+目标：让 WebUI/API/CLI 通过一致的任务模型提交归档内容，文件只作为客户端输入格式。
+
+- [x] 新增 `archive_run_items` 队列表，并关联 jobs/attempts；待自动重试项同样避免重复入队。
+- [x] 提交服务按 tweet 生成 queued / skipped_verified / linked_pending 任务结果。
+- [x] API 生命周期内后台 worker 消费数据库队列并执行 scoped pipeline。
+- [x] WebUI 以 Archive Queue 替代文件 Inbox，支持粘贴 URL 与浏览器解析 TXT/JSONL。
+- [x] CLI TXT/JSONL 命令改为提交队列，执行依赖运行中的 API worker。
+- [x] `inbox_imports` 与 scheduler 表仅保留历史兼容，新流程不使用。
 
 ### P2.5 插件直接投递预研
 
@@ -203,14 +213,14 @@ P2.0 service layer
 P2.1 read-only local API
 P2.2 read-only WebUI MVP
 P2.3 serialized write actions
-P2.4 inbox manual and timed processing
 P2.4.1 incremental archive and explicit full-disk maintenance
+P2.4.2 database archive queue
 ```
 
 推荐下一步：
 
 ```text
-1. 用新导出的 TXT 或 JSONL 文件做 Inbox 人工验收。
+1. 用新导出的 TXT 或 JSONL 通过 Archive Queue 页面做人工验收。
 2. 在实际使用反馈后评估 P2.5 插件直接投递。
 3. 不提前加入删除能力。
 ```

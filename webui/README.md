@@ -1,6 +1,6 @@
 # x-media-archiver WebUI
 
-Local read-only archive console for Phase 2.
+Local archive console for Phase 2.
 
 ## Stack
 
@@ -47,7 +47,7 @@ Tweet detail
 Failures
 Duplicates
 Operations
-Inbox
+Archive Queue
 ```
 
 Operations can trigger:
@@ -56,17 +56,14 @@ Operations can trigger:
 requeue
 recover-interrupted
 export database snapshot
-incremental archive-urls
 full backfill / full verify under Maintenance only
 ```
 
 Write actions are serialized by the local API. The WebUI does not expose destructive file deletion.
 
-The Inbox page scans `archive/inbox/`, de-duplicates exported files by SHA-256, processes pending
-TXT/JSONL files incrementally, displays the linked archive run id, and exposes persisted
-auto-processing settings. Registered source files are moved to `registered/YYYY-MM/`, duplicate
-content is moved to `duplicates/YYYY-MM/`, and the inbox root remains a new-file drop zone.
-Automatic processing is disabled by default and requires the API process to remain running.
+The Archive Queue page submits pasted URLs or browser-parsed TXT/JSONL records to the database
+queue, displays per-run task states, and creates auditable retry runs. The API process owns a
+background worker that consumes queued tasks while it is running.
 
 The Operations page separates full-disk maintenance from routine actions. Full media backfill and
 full file verification require explicit confirmation because they scan the entire archive.

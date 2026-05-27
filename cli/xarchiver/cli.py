@@ -11,8 +11,8 @@ from xarchiver.importer import import_jsonl, import_urls
 from xarchiver.migrations import migrate
 from xarchiver.search import compact_text, search_media
 from xarchiver.services.library import list_duplicates
+from xarchiver.services.queue import submit_jsonl_file, submit_urls_file
 from xarchiver.services.runs import (
-    run_archive_urls,
     run_backfill,
     run_download,
     run_export_duplicates,
@@ -65,11 +65,19 @@ def import_urls_command(path: Path = typer.Argument(..., help="Path to tweet_url
 @app.command("archive-urls")
 def archive_urls_command(
     path: Path = typer.Argument(..., help="Path to tweet_urls.txt."),
-    limit: int | None = typer.Option(None, help="Maximum pending tweets per downloader pass."),
 ) -> None:
-    settings = get_settings()
-    result = run_archive_urls(path, settings, limit)
+    result = submit_urls_file(path)
     console.print(result)
+    console.print("Queued for processing while `xarchiver serve` is running.")
+
+
+@app.command("archive-jsonl")
+def archive_jsonl_command(
+    path: Path = typer.Argument(..., help="Path to tweets JSONL."),
+) -> None:
+    result = submit_jsonl_file(path)
+    console.print(result)
+    console.print("Queued for processing while `xarchiver serve` is running.")
 
 
 @app.command("status")

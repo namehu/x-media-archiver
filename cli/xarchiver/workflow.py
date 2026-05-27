@@ -31,14 +31,7 @@ def archive_imported(
     limit: int | None = None,
 ) -> dict[str, object]:
     tweet_ids = list(import_result["tweet_ids"])
-    gallery_result = download("gallery-dl", settings, limit, dry_run=False, tweet_ids=tweet_ids)
-    fallback_result = download("yt-dlp", settings, limit, dry_run=False, tweet_ids=tweet_ids)
-    media_ids = sorted(set(download_media_ids(gallery_result) + download_media_ids(fallback_result)))
-    downloaded_tweet_ids = sorted(
-        set(download_tweet_ids(gallery_result) + download_tweet_ids(fallback_result))
-    )
-    verify_result = verify_media_assets(media_ids=media_ids)
-
+    pipeline = process_tweet_scope(tweet_ids, settings, limit)
     return {
         "pipeline_version": "incremental-v1",
         "scope": "input",
@@ -46,6 +39,42 @@ def archive_imported(
         "input_type": input_type,
         "recovery": recovery_result,
         "input": import_result,
+        **pipeline,
+    }
+
+
+def process_tweet_scope(
+    tweet_ids: list[str],
+    settings: Settings,
+    limit: int | None = None,
+    archive_run_id: int | None = None,
+    item_ids: dict[str, int] | None = None,
+) -> dict[str, object]:
+    gallery_result = download(
+        "gallery-dl",
+        settings,
+        limit,
+        dry_run=False,
+        tweet_ids=tweet_ids,
+        archive_run_id=archive_run_id,
+        run_item_ids=item_ids,
+    )
+    fallback_result = download(
+        "yt-dlp",
+        settings,
+        limit,
+        dry_run=False,
+        tweet_ids=tweet_ids,
+        archive_run_id=archive_run_id,
+        run_item_ids=item_ids,
+    )
+    media_ids = sorted(set(download_media_ids(gallery_result) + download_media_ids(fallback_result)))
+    downloaded_tweet_ids = sorted(
+        set(download_tweet_ids(gallery_result) + download_tweet_ids(fallback_result))
+    )
+    verify_result = verify_media_assets(media_ids=media_ids)
+
+    return {
         "download": {
             "download_candidate_count": gallery_result.get("count", 0),
             "gallery_dl_candidate_count": gallery_result.get("count", 0),

@@ -69,9 +69,28 @@ def recover_interrupted_runs(stuck_timeout_minutes: int) -> dict[str, int]:
                 (stuck_timeout_minutes,),
             )
             jobs_recovered = cur.rowcount
+
+            cur.execute(
+                """
+                update archive_run_items
+                set status = 'failed_retryable',
+                    error_category = 'interrupted_download',
+                    error_message = 'interrupted_download',
+                    next_attempt_at = now(),
+                    updated_at = now()
+                where status = 'processing'
+                  and last_attempt_at <= now() - make_interval(mins => %s)
+                """,
+                (stuck_timeout_minutes,),
+            )
+            items_recovered = cur.rowcount
         conn.commit()
 
-    return {"tweets_recovered": tweets_recovered, "jobs_recovered": jobs_recovered}
+    return {
+        "tweets_recovered": tweets_recovered,
+        "jobs_recovered": jobs_recovered,
+        "items_recovered": items_recovered,
+    }
 
 
 def fetch_requeue_candidates(statuses: list[str], limit: int | None) -> list[str]:

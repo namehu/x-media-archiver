@@ -19,15 +19,22 @@ def download(
     limit: int | None,
     dry_run: bool,
     tweet_ids: list[str] | None = None,
+    archive_run_id: int | None = None,
+    run_item_ids: dict[str, int] | None = None,
 ) -> dict[str, object]:
     if engine not in SUPPORTED_ENGINES:
         raise ValueError(f"Unsupported engine: {engine}")
 
     ensure_archive_dirs(settings.archive_dir)
-    tweets = fetch_download_candidates(limit, settings.retry_limit, settings.retry_backoff_minutes, tweet_ids)
+    tweets = fetch_download_candidates(
+        limit,
+        None if archive_run_id is not None else settings.retry_limit,
+        0 if archive_run_id is not None else settings.retry_backoff_minutes,
+        tweet_ids,
+    )
     input_path = write_input_file(settings.archive_dir, engine, [tweet["url"] for tweet in tweets])
 
-    job_id = create_job(engine, input_path, len(tweets), "dry_run" if dry_run else "running")
+    job_id = create_job(engine, input_path, len(tweets), "dry_run" if dry_run else "running", archive_run_id)
     if dry_run or not tweets:
         finish_job(job_id, "dry_run", 0, 0, None)
         return {
@@ -40,7 +47,7 @@ def download(
 
     cookie_error = validate_cookie_file(engine, settings.cookie_file)
     if cookie_error:
-        mark_attempts(job_id, tweets, engine, "failed_retryable", 0, cookie_error, cookie_error)
+        mark_attempts(job_id, tweets, engine, "failed_retryable", 0, cookie_error, cookie_error, run_item_ids)
         mark_tweets_failed([tweet["tweet_id"] for tweet in tweets], "failed_retryable", cookie_error)
         finish_job(job_id, "failed", 0, len(tweets), cookie_error)
         return {"job_id": job_id, "input_path": input_path, "count": len(tweets), "exit_code": 0}
@@ -48,7 +55,7 @@ def download(
     command = build_command(engine, settings, input_path)
     executable = command[0]
     if shutil.which(executable) is None:
-        mark_attempts(job_id, tweets, engine, "failed_retryable", 127, "command_not_found", executable)
+        mark_attempts(job_id, tweets, engine, "failed_retryable", 127, "command_not_found", executable, run_item_ids)
         mark_tweets_failed([tweet["tweet_id"] for tweet in tweets], "failed_retryable", "command_not_found")
         finish_job(job_id, "failed", 0, len(tweets), f"{executable} not found")
         return {"job_id": job_id, "input_path": input_path, "count": len(tweets), "exit_code": 127}
@@ -66,7 +73,7 @@ def download(
         downloaded = [tweet for tweet in tweets if tweet["tweet_id"] in downloaded_ids]
         missing = [tweet for tweet in tweets if tweet["tweet_id"] not in downloaded_ids]
 
-        mark_attempts(job_id, downloaded, engine, "downloaded", 0, None, stderr_excerpt)
+        mark_attempts(job_id, downloaded, engine, "downloaded", 0, None, stderr_excerpt, run_item_ids)
         mark_attempts(
             job_id,
             missing,
@@ -75,6 +82,7 @@ def download(
             0,
             "no_downloaded_files",
             stderr_excerpt,
+            run_item_ids,
         )
         mark_tweets_downloaded([tweet["tweet_id"] for tweet in downloaded])
         mark_tweets_failed(
@@ -87,7 +95,7 @@ def download(
     else:
         category = classify_error(result.returncode, stderr_excerpt)
         status = "failed_permanent" if category in {"not_found", "forbidden"} else "failed_retryable"
-        mark_attempts(job_id, tweets, engine, status, result.returncode, category, stderr_excerpt)
+        mark_attempts(job_id, tweets, engine, status, result.returncode, category, stderr_excerpt, run_item_ids)
         mark_tweets_failed([tweet["tweet_id"] for tweet in tweets], status, category)
         finish_job(job_id, "failed", 0, len(tweets), category)
 
@@ -110,14 +118,20 @@ def fetch_download_candidates(
         select tweet_id, url
         from tweets
         where download_status in ('pending', 'failed_retryable', 'missing', 'corrupt')
-          and (%s is null or retry_count < %s)
+    """
+    params: list[object] = []
+    if retry_limit is not None:
+        sql += " and retry_count < %s"
+        params.append(retry_limit)
+    if retry_backoff_minutes > 0:
+        sql += """
           and (
               download_status = 'pending'
               or last_attempt_at is null
               or last_attempt_at <= now() - make_interval(mins => %s * greatest(retry_count, 1))
           )
-    """
-    params: list[object] = [retry_limit, retry_limit, retry_backoff_minutes]
+        """
+        params.append(retry_backoff_minutes)
     if tweet_ids is not None:
         sql += " and tweet_id = any(%s)"
         params.append(tweet_ids)
@@ -181,16 +195,24 @@ def validate_cookie_file(engine: str, cookie_file: Path) -> str | None:
     return None
 
 
-def create_job(engine: str, input_path: Path, total_count: int, status: str) -> int:
+def create_job(
+    engine: str,
+    input_path: Path,
+    total_count: int,
+    status: str,
+    archive_run_id: int | None = None,
+) -> int:
     with connect() as conn:
         with conn.cursor() as cur:
             cur.execute(
                 """
-                insert into download_jobs (job_type, engine, input_path, status, total_count, started_at)
-                values ('download', %s, %s, %s, %s, now())
+                insert into download_jobs (
+                    job_type, engine, input_path, status, total_count, started_at, archive_run_id
+                )
+                values ('download', %s, %s, %s, %s, now(), %s)
                 returning id
                 """,
-                (engine, normalize_path(input_path), status, total_count),
+                (engine, normalize_path(input_path), status, total_count, archive_run_id),
             )
             job_id = int(cur.fetchone()["id"])
         conn.commit()
@@ -278,6 +300,7 @@ def mark_attempts(
     exit_code: int,
     error_category: str | None,
     stderr_excerpt: str | None,
+    run_item_ids: dict[str, int] | None = None,
 ) -> None:
     if not tweets:
         return
@@ -295,9 +318,10 @@ def mark_attempts(
                         error_category,
                         error_message,
                         stderr_excerpt,
+                        archive_run_item_id,
                         finished_at
                     )
-                    values (%s, %s, %s, %s, %s, %s, %s, %s, now())
+                    values (%s, %s, %s, %s, %s, %s, %s, %s, %s, now())
                     """,
                     (
                         job_id,
@@ -308,6 +332,7 @@ def mark_attempts(
                         error_category,
                         error_category,
                         stderr_excerpt,
+                        (run_item_ids or {}).get(tweet["tweet_id"]),
                     ),
                 )
         conn.commit()

@@ -12,19 +12,9 @@ from pydantic import BaseModel, Field
 
 from xarchiver.config import get_settings
 from xarchiver.services.failures import list_failures
-from xarchiver.services.inbox import (
-    get_scheduler_settings,
-    list_inbox_imports,
-    process_inbox_import,
-    process_pending_imports,
-    run_inbox_cycle,
-    scan_inbox,
-    scheduler_due,
-    update_scheduler_settings,
-)
 from xarchiver.services.library import get_summary, get_tweet_detail, list_duplicates, list_media
+from xarchiver.services.queue import get_run_detail, list_runs, process_next_queued_run, retry_run, submit_archive_batch
 from xarchiver.services.runs import (
-    run_archive_urls,
     run_backfill,
     run_export_duplicates,
     run_export_failures,
@@ -35,7 +25,7 @@ from xarchiver.services.runs import (
 )
 
 write_action_lock = Lock()
-stop_scheduler = Event()
+stop_worker = Event()
 
 
 class VerifyRequest(BaseModel):
@@ -62,29 +52,31 @@ class ExportRequest(BaseModel):
     status: str | None = "verified"
 
 
-class ArchiveUrlsRequest(BaseModel):
-    path: str
-    limit: int | None = Field(default=None, ge=1)
+class ArchiveRecord(BaseModel):
+    url: str
+    author_username: str | None = None
+    author_display_name: str | None = None
+    text: str | None = None
+    published_at: str | None = None
+    datetime: str | None = None
+    collected_at: str | None = None
+    source_url: str | None = None
 
 
-class InboxProcessRequest(BaseModel):
-    limit: int | None = Field(default=None, ge=1)
-
-
-class InboxSchedulerRequest(BaseModel):
-    enabled: bool
-    interval_minutes: int = Field(default=15, ge=1, le=1440)
+class ArchiveSubmitRequest(BaseModel):
+    trigger_type: str = "webui"
+    records: list[ArchiveRecord]
 
 
 @asynccontextmanager
 async def app_lifespan(_: FastAPI):
-    stop_scheduler.clear()
-    worker = Thread(target=scheduler_loop, name="inbox-scheduler", daemon=True)
+    stop_worker.clear()
+    worker = Thread(target=queue_worker_loop, name="archive-queue-worker", daemon=True)
     worker.start()
     try:
         yield
     finally:
-        stop_scheduler.set()
+        stop_worker.set()
         worker.join(timeout=2)
 
 
@@ -197,70 +189,49 @@ def create_app() -> FastAPI:
         require_full_scan_confirmation(request.confirm_full_scan)
         return execute_write_action("maintenance-verify", lambda: run_verify(request.limit))
 
-    @app.post("/api/runs/archive-urls")
-    def archive_urls_run(request: ArchiveUrlsRequest) -> dict[str, object]:
-        settings = get_settings()
-        input_path = Path(request.path)
-        if not input_path.exists() or not input_path.is_file():
-            raise HTTPException(status_code=404, detail="input_file_not_found")
-        return execute_write_action("archive-urls", lambda: run_archive_urls(input_path, settings, request.limit))
-
-    @app.get("/api/inbox")
-    def inbox(
-        inbox_status: str | None = Query(default=None, alias="status"),
-        limit: int = Query(100, ge=1, le=500),
-    ) -> dict[str, object]:
-        rows = list_inbox_imports(inbox_status, limit)
-        return {"rows": rows, "count": len(rows)}
-
-    @app.post("/api/inbox/scan")
-    def inbox_scan() -> dict[str, object]:
-        settings = get_settings()
-        return execute_write_action("inbox-scan", lambda: scan_inbox(settings))
-
-    @app.post("/api/inbox/process-pending")
-    def inbox_process_pending(request: InboxProcessRequest) -> dict[str, object]:
-        settings = get_settings()
-        return execute_write_action(
-            "inbox-process-pending",
-            lambda: process_pending_imports(settings, request.limit),
-        )
-
-    @app.post("/api/inbox/{import_id}/process")
-    def inbox_process(import_id: int, request: InboxProcessRequest) -> dict[str, object]:
-        settings = get_settings()
+    @app.post("/api/archive-runs", status_code=status.HTTP_202_ACCEPTED)
+    def submit_run(request: ArchiveSubmitRequest) -> dict[str, object]:
         try:
-            return execute_write_action(
-                "inbox-process",
-                lambda: process_inbox_import(import_id, settings, request.limit),
+            return submit_archive_batch(
+                [record.model_dump() for record in request.records],
+                request.trigger_type,
             )
         except ValueError as exc:
-            if str(exc) == "inbox_import_not_processable":
-                raise HTTPException(status_code=409, detail=str(exc)) from exc
-            raise
+            raise HTTPException(status_code=400, detail=str(exc)) from exc
 
-    @app.get("/api/inbox/settings")
-    def inbox_settings() -> dict[str, object]:
-        return get_scheduler_settings()
+    @app.get("/api/archive-runs")
+    def archive_runs(limit: int = Query(50, ge=1, le=200)) -> dict[str, object]:
+        rows = list_runs(limit)
+        return {"rows": rows, "count": len(rows)}
 
-    @app.post("/api/inbox/settings")
-    def inbox_settings_update(request: InboxSchedulerRequest) -> dict[str, object]:
-        return update_scheduler_settings(request.enabled, request.interval_minutes)
+    @app.get("/api/archive-runs/{run_id}")
+    def archive_run_detail(run_id: int) -> dict[str, object]:
+        result = get_run_detail(run_id)
+        if result is None:
+            raise HTTPException(status_code=404, detail="archive_run_not_found")
+        return result
+
+    @app.post("/api/archive-runs/{run_id}/retry", status_code=status.HTTP_202_ACCEPTED)
+    def retry_archive_run(run_id: int) -> dict[str, object]:
+        try:
+            return retry_run(run_id)
+        except ValueError as exc:
+            detail = str(exc)
+            code = 404 if detail == "archive_run_not_found" else 409
+            raise HTTPException(status_code=code, detail=detail) from exc
 
     return app
 
 
-def scheduler_loop() -> None:
-    while not stop_scheduler.wait(5):
+def queue_worker_loop() -> None:
+    while not stop_worker.wait(2):
         try:
-            settings_row = get_scheduler_settings()
-            if not scheduler_due(settings_row):
+            if not write_action_lock.acquire(blocking=False):
                 continue
-            settings = get_settings()
-            execute_write_action("inbox-auto-process", lambda: run_inbox_cycle(settings))
-        except HTTPException as exc:
-            if exc.status_code != status.HTTP_409_CONFLICT:
-                continue
+            try:
+                process_next_queued_run(get_settings())
+            finally:
+                write_action_lock.release()
         except Exception:
             continue
 
