@@ -28,19 +28,19 @@ http://127.0.0.1:8000
 
 ## API 基础
 
-- [ ] `GET /health` 返回正常。
-- [ ] `GET /api/v1/health/detail` 返回 worker、queue、sources、recent_errors。
-- [ ] `GET /openapi.json` 可访问。
-- [ ] OpenAPI 中业务路径只使用 `/api/v1/*`。
-- [ ] 旧 `/api/*` 业务路由不可用，例如 `/api/summary`、`/api/archive-runs`、`/api/sources`。
-- [ ] `GET /api/v1/events?topics=archive_runs,sources,source_scans` 能建立 SSE 连接。
+- [x] `GET /health` 返回正常。
+- [x] `GET /api/v1/health/detail` 返回 worker、queue、sources、recent_errors。
+- [x] `GET /openapi.json` 可访问。
+- [x] OpenAPI 中业务路径只使用 `/api/v1/*`。
+- [x] 旧 `/api/*` 业务路由不可用，例如 `/api/summary`、`/api/archive-runs`、`/api/sources`。
+- [x] `GET /api/v1/events?topics=archive_runs,sources,source_scans` 能建立 SSE 连接。
 
 ## Dashboard
 
-- [ ] 页面可以加载摘要统计。
-- [ ] API 失败时显示错误状态，而不是空白页面。
-- [ ] SSE 状态在顶部可见：连接中、已连接、离线轮询。
-- [ ] 顶部健康状态可见：写操作、队列、扫描、错误计数。
+- [x] 页面可以加载摘要统计。
+- [x] API 失败时显示错误状态，而不是空白页面。
+- [x] SSE 状态在顶部可见：连接中、已连接、离线轮询。
+- [x] 顶部健康状态可见：写操作、队列、扫描、错误计数。
 
 ## Archive Queue
 

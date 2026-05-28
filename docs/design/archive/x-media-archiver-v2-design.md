@@ -7,10 +7,10 @@
 
 关联文档：
 
-- [archive/x-media-archiver-final-design.md](./archive/x-media-archiver-final-design.md)：第一阶段 V0/V1 基础架构与归档链路设计归档。
-- [archive/roadmap-todo.md](./archive/roadmap-todo.md)：第一阶段已实现能力与验收清单归档。
+- [x-media-archiver-final-design.md](./x-media-archiver-final-design.md)：第一阶段 V0/V1 基础架构与归档链路设计归档。
+- [roadmap-todo.md](./roadmap-todo.md)：第一阶段已实现能力与验收清单归档。
 - [phase-2-roadmap.md](./phase-2-roadmap.md)：第二阶段执行路线图。
-- [downloader-contract.md](../downloader-contract.md)：下载器实际输出契约。
+- [downloader-contract.md](../../downloader-contract.md)：下载器实际输出契约。
 
 ---
 
@@ -197,7 +197,7 @@ V2 的自动归档不自动登录或扫描 X 页面。用户通过 WebUI 提交 
 6. 将 workflow 逻辑抽取为 CLI 与本地服务共享的应用服务层。
 ```
 
-说明：第一阶段 `archive/roadmap-todo.md` 已归档；本文定义的是进入本地控制台前必须具备的产品能力，第二阶段执行状态以后以 `phase-2-roadmap.md` 为准。
+说明：第一阶段 `roadmap-todo.md` 已归档；本文定义的是进入本地控制台前必须具备的产品能力，第二阶段执行状态以后以 `phase-2-roadmap.md` 为准。
 
 建议新增 CLI 能力：
 

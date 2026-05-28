@@ -382,7 +382,7 @@ docs/downloader-contract.md（补充 extractor/range 与扫描错误契约）
 P3 衔接决策：
 
 ```text
-docs/design/phase-3-roadmap.md 仅作为后续工程化候选规划。
+docs/design/archive/phase-3-roadmap.md 仅作为后续工程化候选规划。
 P2.8.1 - P2.8.3 未完成前，不启动 API/WebUI 大面积重构、SSE 或旧 API 移除。
 完成可信运行闭环后，再依据真实痛点优先选择 CI、统一错误模型、必要分页或路由整理。
 ```

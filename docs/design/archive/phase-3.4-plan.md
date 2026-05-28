@@ -2,7 +2,7 @@
 
 > 状态：历史阶段计划，已被 P3 实际推进顺序部分超越。当前 P3 总状态以
 > [phase-3-roadmap.md](./phase-3-roadmap.md) 为准；手工验收以
-> [p3-manual-acceptance.md](./p3-manual-acceptance.md) 为准。
+> [p3-manual-acceptance.md](../p3-manual-acceptance.md) 为准。
 
 ## Context
 
