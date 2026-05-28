@@ -39,12 +39,46 @@ class ArchiverError(Exception):
         self.http_status = http_status
 
 
+ERROR_HTTP_STATUS_BY_CODE = {
+    "archive_run_has_no_failed_items": 409,
+    "archive_run_not_found": 404,
+    "source_has_no_unsubmitted_tweets": 409,
+    "source_not_found": 404,
+    "source_paused": 409,
+    "write_action_in_progress": 409,
+}
+
+
+ERROR_CATEGORY_VALUES = {category.value for category in ErrorCategory}
+
+
 def category_value(category: ErrorCategory | str | None) -> str | None:
     if category is None:
         return None
     if isinstance(category, ErrorCategory):
         return category.value
     return str(category)
+
+
+def error_response_payload(
+    code: str,
+    *,
+    message: str | None = None,
+    category: ErrorCategory | str | None = None,
+) -> dict[str, str | None]:
+    category_text = category_value(category)
+    if category_text is None and code in ERROR_CATEGORY_VALUES:
+        category_text = code
+    return {
+        "detail": code,
+        "code": code,
+        "message": message or code,
+        "category": category_text,
+    }
+
+
+def http_status_for_error_code(code: str, default: int = 400) -> int:
+    return ERROR_HTTP_STATUS_BY_CODE.get(code, default)
 
 
 def classify_x_error(stderr: str | None, *, no_output_hint: bool = True) -> ErrorCategory:

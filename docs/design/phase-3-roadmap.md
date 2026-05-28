@@ -33,7 +33,8 @@ P3 不是“不新增开发即可完成”的迭代。本文中的 API 路由拆
 
 1. GitHub Actions 基础门禁：后端 Docker unittest、WebUI build、Extension typecheck/build。
 2. 测试隔离约定：CI 先重置测试数据库，不接入真实 cookies，不复用本地探索数据。
-3. 错误模型基础：新增 `cli/xarchiver/core/errors.py`，先集中下载与来源扫描共享的错误分类。
+3. 错误模型基础：新增 `cli/xarchiver/core/errors.py`，先集中下载与来源扫描共享的错误分类，并让 API
+   注册 `ArchiverError` 统一处理器、共享状态码映射和兼容旧 `detail` 字段的标准错误响应。
 
 本阶段不执行 API 路由大拆分、SSE、dark mode、完整前端目录迁移、OpenAPI 类型替换或旧
 `/api/*` alias 移除。

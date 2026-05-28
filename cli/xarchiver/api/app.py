@@ -6,12 +6,14 @@ import logging
 from pathlib import Path
 from threading import Event, Lock, Thread
 
-from fastapi import FastAPI, HTTPException, Query, status
+from fastapi import FastAPI, HTTPException, Query, Request, status
 from fastapi.middleware.cors import CORSMiddleware
-from fastapi.responses import FileResponse
+from fastapi.responses import FileResponse, JSONResponse
 from pydantic import BaseModel, Field
+from starlette.exceptions import HTTPException as StarletteHTTPException
 
 from xarchiver.config import get_settings
+from xarchiver.core.errors import ArchiverError, error_response_payload, http_status_for_error_code
 from xarchiver.services.failures import list_failures
 from xarchiver.services.library import get_summary, get_tweet_detail, list_duplicates, list_media
 from xarchiver.services.queue import get_run_detail, list_runs, process_next_queued_run, retry_run, submit_archive_batch
@@ -145,6 +147,26 @@ def create_app() -> FastAPI:
         allow_headers=["*"],
     )
 
+    @app.exception_handler(ArchiverError)
+    async def archiver_error_handler(_: Request, exc: ArchiverError) -> JSONResponse:
+        return JSONResponse(
+            status_code=exc.http_status,
+            content=error_response_payload(exc.code, message=str(exc), category=exc.category),
+        )
+
+    @app.exception_handler(StarletteHTTPException)
+    async def http_error_handler(_: Request, exc: StarletteHTTPException) -> JSONResponse:
+        if isinstance(exc.detail, str):
+            content = error_response_payload(exc.detail)
+        else:
+            content = {
+                "detail": exc.detail,
+                "code": "http_error",
+                "message": str(exc.detail),
+                "category": None,
+            }
+        return JSONResponse(status_code=exc.status_code, content=content, headers=exc.headers)
+
     @app.get("/health")
     def health() -> dict[str, str]:
         return {"status": "ok"}
@@ -262,7 +284,7 @@ def create_app() -> FastAPI:
                 request.trigger_type,
             )
         except ValueError as exc:
-            raise HTTPException(status_code=400, detail=str(exc)) from exc
+            raise_api_error(exc)
 
     @app.get("/api/archive-runs")
     def archive_runs(
@@ -286,9 +308,7 @@ def create_app() -> FastAPI:
         try:
             return retry_run(run_id)
         except ValueError as exc:
-            detail = str(exc)
-            code = 404 if detail == "archive_run_not_found" else 409
-            raise HTTPException(status_code=code, detail=detail) from exc
+            raise_api_error(exc, default_status=409)
 
     @app.post("/api/sources", status_code=status.HTTP_201_CREATED)
     def create_archive_source(request: SourceCreateRequest) -> dict[str, object]:
@@ -300,7 +320,7 @@ def create_app() -> FastAPI:
                 author_username=request.author_username,
             )
         except ValueError as exc:
-            raise HTTPException(status_code=400, detail=str(exc)) from exc
+            raise_api_error(exc)
 
     @app.get("/api/sources")
     def archive_sources(
@@ -311,7 +331,7 @@ def create_app() -> FastAPI:
         try:
             rows = list_sources(status=source_status, source_type=source_type, limit=limit)
         except ValueError as exc:
-            raise HTTPException(status_code=400, detail=str(exc)) from exc
+            raise_api_error(exc)
         return {"rows": rows, "count": len(rows)}
 
     @app.get("/api/sources/{source_id}")
@@ -326,9 +346,7 @@ def create_app() -> FastAPI:
         try:
             return submit_source_records(source_id, [record.model_dump() for record in request.records])
         except ValueError as exc:
-            detail = str(exc)
-            code = 404 if detail == "source_not_found" else 400
-            raise HTTPException(status_code=code, detail=detail) from exc
+            raise_api_error(exc)
 
     @app.post("/api/sources/{source_id}/submit-discovered", status_code=status.HTTP_202_ACCEPTED)
     def submit_archive_source_discovered(
@@ -338,43 +356,35 @@ def create_app() -> FastAPI:
         try:
             return submit_discovered_tweets(source_id, limit=request.limit)
         except ValueError as exc:
-            detail = str(exc)
-            code = 404 if detail == "source_not_found" else 409
-            raise HTTPException(status_code=code, detail=detail) from exc
+            raise_api_error(exc, default_status=409)
 
     @app.post("/api/sources/{source_id}/status")
     def update_archive_source_status(source_id: int, request: SourceStatusRequest) -> dict[str, object]:
         try:
             return update_source_status(source_id, request.status)
         except ValueError as exc:
-            detail = str(exc)
-            code = 404 if detail == "source_not_found" else 400
-            raise HTTPException(status_code=code, detail=detail) from exc
+            raise_api_error(exc)
 
     @app.post("/api/sources/{source_id}/scan", status_code=status.HTTP_202_ACCEPTED)
     def scan_archive_source(source_id: int, request: SourceScanRequest) -> dict[str, object]:
         try:
             return execute_write_action("source-scan", lambda: scan_source(source_id, request.limit, restart=request.restart))
         except ValueError as exc:
-            detail = str(exc)
-            code = 404 if detail == "source_not_found" else 409 if detail == "source_paused" else 400
-            raise HTTPException(status_code=code, detail=detail) from exc
+            raise_api_error(exc)
 
     @app.post("/api/sources/{source_id}/history-scan", status_code=status.HTTP_202_ACCEPTED)
     def start_archive_source_history_scan(source_id: int, request: SourceHistoryScanRequest) -> dict[str, object]:
         try:
             return start_source_history_scan(source_id, request.limit, request.restart)
         except ValueError as exc:
-            detail = str(exc)
-            code = 404 if detail == "source_not_found" else 400
-            raise HTTPException(status_code=code, detail=detail) from exc
+            raise_api_error(exc)
 
     @app.post("/api/sources/{source_id}/history-scan/stop")
     def stop_archive_source_history_scan(source_id: int) -> dict[str, object]:
         try:
             return stop_source_history_scan(source_id)
         except ValueError as exc:
-            raise HTTPException(status_code=404, detail=str(exc)) from exc
+            raise_api_error(exc, default_status=404)
 
     return app
 
@@ -429,6 +439,16 @@ def resolve_archive_file(archive_dir: Path, relative_path: str) -> Path:
     if base != target and base not in target.parents:
         raise HTTPException(status_code=400, detail="invalid_media_path")
     return target
+
+
+def raise_api_error(error: ArchiverError | ValueError, *, default_status: int = 400) -> None:
+    if isinstance(error, ArchiverError):
+        raise HTTPException(status_code=error.http_status, detail=error.code) from error
+    detail = str(error)
+    raise HTTPException(
+        status_code=http_status_for_error_code(detail, default=default_status),
+        detail=detail,
+    ) from error
 
 
 app = create_app()
