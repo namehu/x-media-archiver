@@ -1,4 +1,5 @@
 import unittest
+from datetime import UTC, datetime
 from types import SimpleNamespace
 from unittest.mock import patch
 
@@ -18,6 +19,19 @@ class QueueIntegrationTests(unittest.TestCase):
     def cleanup_db(self) -> None:
         with connect() as conn:
             with conn.cursor() as cur:
+                cur.execute(
+                    """
+                    delete from archive_runs
+                    where trigger_type = 'manual_retry'
+                      and exists (
+                        select 1
+                        from archive_run_items
+                        where archive_run_id = archive_runs.id
+                          and tweet_id = any(%s)
+                      )
+                    """,
+                    (self.tweet_ids,),
+                )
                 cur.execute("delete from archive_runs where trigger_type like 'test_queue%'")
                 cur.execute("delete from tweets where tweet_id = any(%s)", (self.tweet_ids,))
             conn.commit()
@@ -66,6 +80,28 @@ class QueueIntegrationTests(unittest.TestCase):
         second = submit_archive_batch([self.record(self.tweet_ids[1])], "test_queue_link_retryable")
 
         self.assertEqual(second["tasks"]["linked_pending_count"], 1)
+
+    def test_submission_accepts_datetime_fields_in_raw_payload(self) -> None:
+        result = submit_archive_batch(
+            [
+                {
+                    "url": self.record(self.tweet_ids[0])["url"],
+                    "published_at": datetime(2026, 5, 28, 1, 2, 3, tzinfo=UTC),
+                    "collected_at": datetime(2026, 5, 28, 1, 3, 4, tzinfo=UTC),
+                }
+            ],
+            "test_queue_datetime",
+        )
+
+        with connect() as conn:
+            with conn.cursor() as cur:
+                cur.execute(
+                    "select input_payload from archive_run_items where archive_run_id = %s",
+                    (result["run_id"],),
+                )
+                payload = cur.fetchone()["input_payload"]
+        self.assertEqual(payload["published_at"], "2026-05-28T01:02:03+00:00")
+        self.assertEqual(payload["collected_at"], "2026-05-28T01:03:04+00:00")
 
     def test_manual_retry_creates_new_run_for_terminal_failure(self) -> None:
         original = submit_archive_batch([self.record(self.tweet_ids[1])], "test_queue_terminal")

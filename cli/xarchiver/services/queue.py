@@ -84,7 +84,7 @@ def submit_archive_batch(
                     )
                     values (%s, %s, %s, %s, %s)
                     """,
-                    (run_id, tweet_id, Jsonb(row), item_status, linked_id),
+                    (run_id, tweet_id, Jsonb(json_safe_value(row)), item_status, linked_id),
                 )
             status = "queued" if counts["queued_count"] else "completed"
             result = build_run_result(input_summary, {**counts, "verified_count": 0, "failed_count": 0})
@@ -135,10 +135,20 @@ def normalize_records(records: list[dict[str, Any]], trigger_type: str) -> list[
                 "source_type": record.get("source_type") or trigger_type,
                 "source_url": record.get("source_url"),
                 "collected_at": record.get("collected_at"),
-                "raw_import": record,
+                "raw_import": json_safe_value(record),
             }
         )
     return rows
+
+
+def json_safe_value(value: Any) -> Any:
+    if isinstance(value, dict):
+        return {str(key): json_safe_value(item) for key, item in value.items()}
+    if isinstance(value, list):
+        return [json_safe_value(item) for item in value]
+    if hasattr(value, "isoformat"):
+        return value.isoformat()
+    return value
 
 
 def fetch_tweet_statuses(tweet_ids: list[str]) -> dict[str, str]:
