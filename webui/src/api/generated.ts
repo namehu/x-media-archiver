@@ -431,6 +431,23 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/api/v1/health/detail": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** Health Detail */
+        get: operations["health_detail_api_v1_health_detail_get"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/api/v1/media-file/{relative_path}": {
         parameters: {
             query?: never;
@@ -635,6 +652,29 @@ export interface components {
         HTTPValidationError: {
             /** Detail */
             detail?: components["schemas"]["ValidationError"][];
+        };
+        /** HealthDetailResponse */
+        HealthDetailResponse: {
+            /** Status */
+            status: string;
+            /** Worker */
+            worker: {
+                [key: string]: unknown;
+            };
+            /** Queue */
+            queue: {
+                [key: string]: unknown;
+            };
+            /** Sources */
+            sources: {
+                [key: string]: unknown;
+            };
+            /** Recent Errors */
+            recent_errors: {
+                [key: string]: unknown;
+            }[];
+        } & {
+            [key: string]: unknown;
         };
         /** PageResponse */
         PageResponse: {
@@ -1651,6 +1691,26 @@ export interface operations {
                 };
                 content: {
                     "application/json": components["schemas"]["DownloadPolicyResponse"];
+                };
+            };
+        };
+    };
+    health_detail_api_v1_health_detail_get: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HealthDetailResponse"];
                 };
             };
         };

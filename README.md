@@ -225,6 +225,7 @@ GET /api/v1/sources
 GET /api/v1/sources/{source_id}
 GET /api/v1/events
 GET /api/v1/settings/download-policy
+GET /api/v1/health/detail
 ```
 
 Available write API endpoints are serialized by a process-local lock. If one write action is already

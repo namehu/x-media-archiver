@@ -38,6 +38,7 @@ class V1RouterSmokeTests(unittest.TestCase):
             "/api/v1/sources/{source_id}",
             "/api/v1/events",
             "/api/v1/settings/download-policy",
+            "/api/v1/health/detail",
             "/api/v1/media-file/{relative_path:path}",
         ]
         for path in expected:
@@ -118,6 +119,7 @@ class V1RouterSmokeTests(unittest.TestCase):
         self.assertIn("/api/v1/sources", paths)
         self.assertIn("/api/v1/library/media", paths)
         self.assertIn("/api/v1/actions/verify", paths)
+        self.assertIn("/api/v1/health/detail", paths)
 
 
 if __name__ == "__main__":

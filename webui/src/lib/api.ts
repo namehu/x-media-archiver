@@ -256,6 +256,32 @@ export type DownloadPolicy = {
   source_scan_sleep_max_seconds: number;
 };
 
+export type HealthDetail = {
+  status: string;
+  worker: {
+    stop_requested?: boolean;
+    write_lock_held?: boolean;
+  };
+  queue: {
+    pending_items?: number;
+    processing_items?: number;
+    retryable_failed_items?: number;
+    permanent_failed_items?: number;
+    queued_runs?: number;
+    running_runs?: number;
+    latest_run?: Record<string, unknown> | null;
+  };
+  sources: {
+    active_sources?: number;
+    paused_sources?: number;
+    failed_sources?: number;
+    history_enabled_sources?: number;
+    active_scan_runs?: number;
+    latest_scan?: Record<string, unknown> | null;
+  };
+  recent_errors: Array<Record<string, unknown>>;
+};
+
 export function mediaQueryString(params: Record<string, string>) {
   const search = new URLSearchParams();
   for (const [key, value] of Object.entries(params)) {

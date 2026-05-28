@@ -1,5 +1,7 @@
 import { NavLink, Outlet } from "react-router-dom";
+import { useQuery } from "@tanstack/react-query";
 import { useServerEvents } from "../../hooks/useServerEvents";
+import { apiGet, type HealthDetail } from "../../lib/api";
 import { useI18n } from "../../lib/i18n";
 import { useTheme, type Theme } from "../../lib/theme";
 import { cn } from "../../lib/utils";
@@ -33,6 +35,16 @@ export function AppLayout() {
   const { t, locale, setLocale } = useI18n();
   const { theme, setTheme } = useTheme();
   const events = useServerEvents(["archive_runs", "sources", "source_scans", "worker"]);
+  const healthQuery = useQuery({
+    queryKey: ["health-detail"],
+    queryFn: () => apiGet<HealthDetail>("/api/v1/health/detail"),
+    refetchInterval: events.status === "connected" ? 30000 : 15000,
+  });
+  const health = healthQuery.data;
+  const writeLockHeld = Boolean(health?.worker.write_lock_held);
+  const queueWork = (health?.queue.pending_items ?? 0) + (health?.queue.processing_items ?? 0);
+  const activeScans = health?.sources.active_scan_runs ?? 0;
+  const recentErrors = health?.recent_errors.length ?? 0;
 
   const cycleTheme = () => {
     const next = themeOrder[(themeOrder.indexOf(theme) + 1) % themeOrder.length];
@@ -88,17 +100,26 @@ export function AppLayout() {
       {/* Main area */}
       <div className="flex flex-1 flex-col overflow-hidden">
         {/* TopBar */}
-        <header className="flex h-11 flex-shrink-0 items-center justify-between border-b border-border px-4">
-          <div
-            className={cn(
-              "inline-flex items-center gap-1.5 rounded-md border px-2 py-0.5 text-xs font-medium",
-              events.status === "connected" && "border-primary/30 bg-primary/10 text-primary",
-              events.status === "connecting" && "border-border bg-muted text-muted-foreground",
-              events.status === "offline" && "border-destructive/30 bg-destructive/10 text-destructive",
-            )}
-          >
-            <span className="h-1.5 w-1.5 rounded-full bg-current" />
-            {t(`events.${events.status}`)}
+        <header className="flex h-11 flex-shrink-0 items-center justify-between gap-3 border-b border-border px-4">
+          <div className="flex min-w-0 items-center gap-2">
+            <div
+              className={cn(
+                "inline-flex items-center gap-1.5 rounded-md border px-2 py-0.5 text-xs font-medium",
+                events.status === "connected" && "border-primary/30 bg-primary/10 text-primary",
+                events.status === "connecting" && "border-border bg-muted text-muted-foreground",
+                events.status === "offline" && "border-destructive/30 bg-destructive/10 text-destructive",
+              )}
+            >
+              <span className="h-1.5 w-1.5 rounded-full bg-current" />
+              {t(`events.${events.status}`)}
+            </div>
+            <StatusPill
+              tone={healthQuery.isError ? "danger" : writeLockHeld ? "warning" : "neutral"}
+              label={healthQuery.isError ? t("health.unavailable") : writeLockHeld ? t("health.writeLocked") : t("health.idle")}
+            />
+            <StatusPill label={t("health.queue", { count: queueWork })} tone={queueWork ? "warning" : "neutral"} />
+            <StatusPill label={t("health.scans", { count: activeScans })} tone={activeScans ? "warning" : "neutral"} />
+            <StatusPill label={t("health.errors", { count: recentErrors })} tone={recentErrors ? "danger" : "neutral"} />
           </div>
           <div className="flex items-center gap-1">
             <button
@@ -122,5 +143,20 @@ export function AppLayout() {
         </main>
       </div>
     </div>
+  );
+}
+
+function StatusPill({ label, tone = "neutral" }: { label: string; tone?: "neutral" | "warning" | "danger" }) {
+  return (
+    <span
+      className={cn(
+        "hidden rounded-md border px-2 py-0.5 text-xs font-medium text-muted-foreground md:inline-flex",
+        tone === "neutral" && "border-border bg-muted/50",
+        tone === "warning" && "border-amber-500/30 bg-amber-500/10 text-amber-700 dark:text-amber-300",
+        tone === "danger" && "border-destructive/30 bg-destructive/10 text-destructive",
+      )}
+    >
+      {label}
+    </span>
   );
 }

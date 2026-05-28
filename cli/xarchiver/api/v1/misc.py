@@ -7,10 +7,11 @@ from fastapi import APIRouter, HTTPException, Request
 from fastapi.responses import FileResponse, StreamingResponse
 from queue import Empty
 
-from xarchiver.api.schemas import DownloadPolicyResponse
 from xarchiver.api.deps import parse_event_topics, resolve_archive_file
+from xarchiver.api.schemas import DownloadPolicyResponse, HealthDetailResponse
 from xarchiver.config import get_settings
 from xarchiver.core.events import event_broker, format_sse_event
+from xarchiver.services.health import get_health_detail
 
 router = APIRouter(tags=["misc"])
 
@@ -51,6 +52,11 @@ def download_policy() -> dict[str, object]:
         "source_scan_sleep_min_seconds": settings.source_scan_sleep_min_seconds,
         "source_scan_sleep_max_seconds": settings.source_scan_sleep_max_seconds,
     }
+
+
+@router.get("/health/detail", response_model=HealthDetailResponse)
+def health_detail() -> dict[str, object]:
+    return get_health_detail()
 
 
 @router.get("/media-file/{relative_path:path}")

@@ -39,6 +39,14 @@ class DownloadPolicyResponse(FlexibleResponse):
     source_scan_sleep_max_seconds: float
 
 
+class HealthDetailResponse(FlexibleResponse):
+    status: str
+    worker: dict[str, Any]
+    queue: dict[str, Any]
+    sources: dict[str, Any]
+    recent_errors: list[dict[str, Any]]
+
+
 class WriteActionResponse(FlexibleResponse):
     action: str
     status: str

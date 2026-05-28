@@ -122,6 +122,7 @@ function invalidateForEvent(queryClient: QueryClient, event: ServerEvent) {
     void queryClient.invalidateQueries({ queryKey: ["archive-runs"] });
     void queryClient.invalidateQueries(runId ? { queryKey: ["archive-run", runId], exact: true } : { queryKey: ["archive-run"] });
     void queryClient.invalidateQueries({ queryKey: ["summary"] });
+    void queryClient.invalidateQueries({ queryKey: ["health-detail"] });
     void queryClient.invalidateQueries({ queryKey: ["media"] });
     void queryClient.invalidateQueries({ queryKey: ["failures"] });
     void queryClient.invalidateQueries({ queryKey: ["duplicates"] });
@@ -136,6 +137,7 @@ function invalidateForEvent(queryClient: QueryClient, event: ServerEvent) {
     );
     void queryClient.invalidateQueries({ queryKey: ["archive-runs"] });
     void queryClient.invalidateQueries({ queryKey: ["summary"] });
+    void queryClient.invalidateQueries({ queryKey: ["health-detail"] });
     return;
   }
 
@@ -143,6 +145,7 @@ function invalidateForEvent(queryClient: QueryClient, event: ServerEvent) {
     void queryClient.invalidateQueries({ queryKey: ["archive-runs"] });
     void queryClient.invalidateQueries({ queryKey: ["sources"] });
     void queryClient.invalidateQueries({ queryKey: ["summary"] });
+    void queryClient.invalidateQueries({ queryKey: ["health-detail"] });
   }
 }
 
