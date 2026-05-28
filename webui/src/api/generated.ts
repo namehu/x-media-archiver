@@ -469,6 +469,51 @@ export interface paths {
 export type webhooks = Record<string, never>;
 export interface components {
     schemas: {
+        /** ArchiveInputSummaryResponse */
+        ArchiveInputSummaryResponse: {
+            /**
+             * Input Record Count
+             * @default 0
+             */
+            input_record_count: number;
+            /**
+             * Unique Tweet Count
+             * @default 0
+             */
+            unique_tweet_count: number;
+            /**
+             * Duplicate Input Count
+             * @default 0
+             */
+            duplicate_input_count: number;
+        } & {
+            [key: string]: unknown;
+        };
+        /** ArchiveMediaCountsResponse */
+        ArchiveMediaCountsResponse: {
+            /**
+             * Backfilled Media Count
+             * @default 0
+             */
+            backfilled_media_count: number;
+            /**
+             * Verified Media Count
+             * @default 0
+             */
+            verified_media_count: number;
+            /**
+             * Missing Media Count
+             * @default 0
+             */
+            missing_media_count: number;
+            /**
+             * Corrupt Media Count
+             * @default 0
+             */
+            corrupt_media_count: number;
+        } & {
+            [key: string]: unknown;
+        };
         /** ArchiveRecord */
         ArchiveRecord: {
             /** Url */
@@ -498,16 +543,122 @@ export interface components {
             input_path?: string | null;
             /** Status */
             status: string;
+            /**
+             * Started At
+             * Format: date-time
+             */
+            started_at: string;
+            /** Finished At */
+            finished_at?: string | null;
             /** Result */
-            result?: {
+            result?: components["schemas"]["ArchiveRunResultResponse"] | {
                 [key: string]: unknown;
             } | null;
             /** Error Message */
             error_message?: string | null;
             /** Items */
-            items: {
+            items: components["schemas"]["ArchiveRunItemResponse"][];
+        } & {
+            [key: string]: unknown;
+        };
+        /** ArchiveRunItemResponse */
+        ArchiveRunItemResponse: {
+            /** Id */
+            id: number;
+            /** Tweet Id */
+            tweet_id: string;
+            /** Status */
+            status: string;
+            /** Retry Count */
+            retry_count: number;
+            /** Error Category */
+            error_category?: string | null;
+            /** Error Message */
+            error_message?: string | null;
+            /** Linked Item Id */
+            linked_item_id?: number | null;
+            /** Last Attempt At */
+            last_attempt_at?: string | null;
+            /** Next Attempt At */
+            next_attempt_at?: string | null;
+            /**
+             * Created At
+             * Format: date-time
+             */
+            created_at: string;
+            /**
+             * Updated At
+             * Format: date-time
+             */
+            updated_at: string;
+            /** Attempts */
+            attempts?: components["schemas"]["DownloadAttemptResponse"][];
+        } & {
+            [key: string]: unknown;
+        };
+        /** ArchiveRunResultResponse */
+        ArchiveRunResultResponse: {
+            /** Pipeline Version */
+            pipeline_version?: string | null;
+            /** Scope */
+            scope?: string | null;
+            /** Input */
+            input?: components["schemas"]["ArchiveInputSummaryResponse"] | {
                 [key: string]: unknown;
-            }[];
+            };
+            /** Tasks */
+            tasks?: components["schemas"]["ArchiveTaskCountsResponse"] | {
+                [key: string]: unknown;
+            };
+            /** Media */
+            media?: components["schemas"]["ArchiveMediaCountsResponse"] | {
+                [key: string]: unknown;
+            };
+            /** Library Snapshot */
+            library_snapshot?: components["schemas"]["LibrarySnapshotResponse"] | {
+                [key: string]: unknown;
+            };
+        } & {
+            [key: string]: unknown;
+        };
+        /** ArchiveRunRowResponse */
+        ArchiveRunRowResponse: {
+            /** Id */
+            id: number;
+            /** Trigger Type */
+            trigger_type: string;
+            /** Input Path */
+            input_path?: string | null;
+            /** Status */
+            status: string;
+            /**
+             * Started At
+             * Format: date-time
+             */
+            started_at: string;
+            /** Finished At */
+            finished_at?: string | null;
+            /** Result */
+            result?: components["schemas"]["ArchiveRunResultResponse"] | {
+                [key: string]: unknown;
+            } | null;
+            /** Error Message */
+            error_message?: string | null;
+        } & {
+            [key: string]: unknown;
+        };
+        /** ArchiveRunsPageResponse */
+        ArchiveRunsPageResponse: {
+            /** Count */
+            count: number;
+            /** Total Count */
+            total_count: number;
+            /** Limit */
+            limit: number;
+            /** Offset */
+            offset: number;
+            /** Rows */
+            rows: components["schemas"]["ArchiveRunRowResponse"][];
         } & {
             [key: string]: unknown;
         };
@@ -518,25 +669,127 @@ export interface components {
             /** Source Type */
             source_type: string;
             /** Source Url */
-            source_url: string;
+            source_url?: string | null;
             /** Status */
             status: string;
             /** Label */
             label?: string | null;
             /** Author Username */
             author_username?: string | null;
+            /** Cursor State */
+            cursor_state?: {
+                [key: string]: unknown;
+            } | null;
+            /** Last Seen Tweet Id */
+            last_seen_tweet_id?: string | null;
+            /** Newest Seen Tweet Id */
+            newest_seen_tweet_id?: string | null;
+            /** Oldest Seen Tweet Id */
+            oldest_seen_tweet_id?: string | null;
+            /** Discovered Count */
+            discovered_count: number;
+            /** Submitted Count */
+            submitted_count: number;
+            /** Error Category */
+            error_category?: string | null;
+            /** Error Message */
+            error_message?: string | null;
+            /** Last Scan At */
+            last_scan_at?: string | null;
+            /** Next Scan At */
+            next_scan_at?: string | null;
+            /**
+             * Created At
+             * Format: date-time
+             */
+            created_at: string;
+            /** Updated At */
+            updated_at?: string | null;
+            /**
+             * Discovered Tweet Count
+             * @default 0
+             */
+            discovered_tweet_count: number;
+            /**
+             * Unsubmitted Tweet Count
+             * @default 0
+             */
+            unsubmitted_tweet_count: number;
+            /**
+             * Discovered Media Count
+             * @default 0
+             */
+            discovered_media_count: number;
+            /** Latest Discovered At */
+            latest_discovered_at?: string | null;
             /** Discovered */
-            discovered: {
-                [key: string]: unknown;
-            }[];
-            /** Scan Summary */
-            scan_summary: {
-                [key: string]: unknown;
-            };
+            discovered: components["schemas"]["SourceDiscoveryResponse"][];
+            scan_summary: components["schemas"]["SourceScanSummaryResponse"];
             /** Scan Runs */
-            scan_runs: {
+            scan_runs: components["schemas"]["SourceScanRunResponse"][];
+        } & {
+            [key: string]: unknown;
+        };
+        /** ArchiveSourceListResponse */
+        ArchiveSourceListResponse: {
+            /** Id */
+            id: number;
+            /** Source Type */
+            source_type: string;
+            /** Source Url */
+            source_url?: string | null;
+            /** Status */
+            status: string;
+            /** Label */
+            label?: string | null;
+            /** Author Username */
+            author_username?: string | null;
+            /** Cursor State */
+            cursor_state?: {
                 [key: string]: unknown;
-            }[];
+            } | null;
+            /** Last Seen Tweet Id */
+            last_seen_tweet_id?: string | null;
+            /** Newest Seen Tweet Id */
+            newest_seen_tweet_id?: string | null;
+            /** Oldest Seen Tweet Id */
+            oldest_seen_tweet_id?: string | null;
+            /** Discovered Count */
+            discovered_count: number;
+            /** Submitted Count */
+            submitted_count: number;
+            /** Error Category */
+            error_category?: string | null;
+            /** Error Message */
+            error_message?: string | null;
+            /** Last Scan At */
+            last_scan_at?: string | null;
+            /** Next Scan At */
+            next_scan_at?: string | null;
+            /**
+             * Created At
+             * Format: date-time
+             */
+            created_at: string;
+            /** Updated At */
+            updated_at?: string | null;
+            /**
+             * Discovered Tweet Count
+             * @default 0
+             */
+            discovered_tweet_count: number;
+            /**
+             * Unsubmitted Tweet Count
+             * @default 0
+             */
+            unsubmitted_tweet_count: number;
+            /**
+             * Discovered Media Count
+             * @default 0
+             */
+            discovered_media_count: number;
+            /** Latest Discovered At */
+            latest_discovered_at?: string | null;
         } & {
             [key: string]: unknown;
         };
@@ -547,7 +800,7 @@ export interface components {
             /** Source Type */
             source_type: string;
             /** Source Url */
-            source_url: string;
+            source_url?: string | null;
             /** Status */
             status: string;
             /** Label */
@@ -563,14 +816,8 @@ export interface components {
             run_id: number;
             /** Status */
             status: string;
-            /** Input */
-            input: {
-                [key: string]: number;
-            };
-            /** Tasks */
-            tasks: {
-                [key: string]: number;
-            };
+            input: components["schemas"]["ArchiveInputSummaryResponse"];
+            tasks: components["schemas"]["ArchiveTaskCountsResponse"];
         } & {
             [key: string]: unknown;
         };
@@ -584,6 +831,51 @@ export interface components {
             /** Records */
             records: components["schemas"]["ArchiveRecord"][];
         };
+        /** ArchiveTaskCountsResponse */
+        ArchiveTaskCountsResponse: {
+            /**
+             * Queued Count
+             * @default 0
+             */
+            queued_count: number;
+            /**
+             * Skipped Verified Count
+             * @default 0
+             */
+            skipped_verified_count: number;
+            /**
+             * Linked Pending Count
+             * @default 0
+             */
+            linked_pending_count: number;
+            /**
+             * Verified Count
+             * @default 0
+             */
+            verified_count: number;
+            /**
+             * Failed Count
+             * @default 0
+             */
+            failed_count: number;
+            /**
+             * Pending Count
+             * @default 0
+             */
+            pending_count: number;
+            /**
+             * Processing Count
+             * @default 0
+             */
+            processing_count: number;
+            /**
+             * Failed Retryable Count
+             * @default 0
+             */
+            failed_retryable_count: number;
+        } & {
+            [key: string]: unknown;
+        };
         /** BackfillRequest */
         BackfillRequest: {
             /**
@@ -596,6 +888,33 @@ export interface components {
              * @default true
              */
             normalize_files: boolean;
+        };
+        /** DownloadAttemptResponse */
+        DownloadAttemptResponse: {
+            /** Id */
+            id: number;
+            /** Job Id */
+            job_id?: number | null;
+            /** Archive Run Item Id */
+            archive_run_item_id?: number | null;
+            /** Tweet Id */
+            tweet_id?: string | null;
+            /** Engine */
+            engine?: string | null;
+            /** Status */
+            status: string;
+            /** Exit Code */
+            exit_code?: number | null;
+            /** Error Category */
+            error_category?: string | null;
+            /** Error Message */
+            error_message?: string | null;
+            /** Started At */
+            started_at?: string | null;
+            /** Finished At */
+            finished_at?: string | null;
+        } & {
+            [key: string]: unknown;
         };
         /** DownloadPolicyResponse */
         DownloadPolicyResponse: {
@@ -616,12 +935,37 @@ export interface components {
         } & {
             [key: string]: unknown;
         };
+        /** DuplicateRowResponse */
+        DuplicateRowResponse: {
+            /** Sha256 */
+            sha256: string;
+            /** Duplicate Count */
+            duplicate_count: number;
+            /** Total Size */
+            total_size: number;
+            /** Tweet Id */
+            tweet_id: string;
+            /** Tweet Url */
+            tweet_url: string;
+            /** Author Username */
+            author_username?: string | null;
+            /** Media Type */
+            media_type?: string | null;
+            /** Media Status */
+            media_status: string;
+            /** Local Path */
+            local_path?: string | null;
+            /** File Size */
+            file_size?: number | null;
+            /** Media Relative Path */
+            media_relative_path: string;
+            /** Media Url */
+            media_url?: string | null;
+        } & {
+            [key: string]: unknown;
+        };
         /** DuplicatesPageResponse */
         DuplicatesPageResponse: {
-            /** Rows */
-            rows: {
-                [key: string]: unknown;
-            }[];
             /** Count */
             count: number;
             /** Total Count */
@@ -630,6 +974,8 @@ export interface components {
             limit: number;
             /** Offset */
             offset: number;
+            /** Rows */
+            rows: components["schemas"]["DuplicateRowResponse"][];
             /** Duplicate Groups */
             duplicate_groups: number;
         } & {
@@ -647,6 +993,63 @@ export interface components {
              * @default verified
              */
             status: string | null;
+        };
+        /** ExportSummaryResponse */
+        ExportSummaryResponse: {
+            /** Name */
+            name: string;
+            /** Path */
+            path: string;
+            /** Size */
+            size: number;
+            /** Modified At */
+            modified_at: number;
+        } & {
+            [key: string]: unknown;
+        };
+        /** FailurePageResponse */
+        FailurePageResponse: {
+            /** Count */
+            count: number;
+            /** Total Count */
+            total_count: number;
+            /** Limit */
+            limit: number;
+            /** Offset */
+            offset: number;
+            /** Rows */
+            rows: components["schemas"]["FailureRowResponse"][];
+        } & {
+            [key: string]: unknown;
+        };
+        /** FailureRowResponse */
+        FailureRowResponse: {
+            /** Tweet Id */
+            tweet_id: string;
+            /** Tweet Url */
+            tweet_url: string;
+            /** Author Username */
+            author_username?: string | null;
+            /** Tweet Status */
+            tweet_status: string;
+            /** Last Error */
+            last_error?: string | null;
+            /** Retry Count */
+            retry_count: number;
+            /** Latest Engine */
+            latest_engine?: string | null;
+            /** Latest Attempt Status */
+            latest_attempt_status?: string | null;
+            /** Latest Error Category */
+            latest_error_category?: string | null;
+            /** Latest Error Message */
+            latest_error_message?: string | null;
+            /** Latest Exit Code */
+            latest_exit_code?: number | null;
+            /** Latest Finished At */
+            latest_finished_at?: string | null;
+        } & {
+            [key: string]: unknown;
         };
         /** HTTPValidationError */
         HTTPValidationError: {
@@ -673,10 +1076,13 @@ export interface components {
             trigger_type: string;
             /** Status */
             status: string;
-            /** Started At */
-            started_at: unknown;
+            /**
+             * Started At
+             * Format: date-time
+             */
+            started_at: string;
             /** Finished At */
-            finished_at?: unknown | null;
+            finished_at?: string | null;
             /** Error Message */
             error_message?: string | null;
         } & {
@@ -699,20 +1105,78 @@ export interface components {
             /** Error Message */
             error_message?: string | null;
             /** Started At */
-            started_at?: unknown | null;
+            started_at?: string | null;
             /** Finished At */
-            finished_at?: unknown | null;
-            /** Created At */
-            created_at: unknown;
+            finished_at?: string | null;
+            /**
+             * Created At
+             * Format: date-time
+             */
+            created_at: string;
         } & {
             [key: string]: unknown;
         };
-        /** PageResponse */
-        PageResponse: {
-            /** Rows */
-            rows: {
-                [key: string]: unknown;
-            }[];
+        /** LibrarySnapshotResponse */
+        LibrarySnapshotResponse: {
+            /**
+             * Media Total
+             * @default 0
+             */
+            media_total: number;
+            /**
+             * Verified Total
+             * @default 0
+             */
+            verified_total: number;
+        } & {
+            [key: string]: unknown;
+        };
+        /** MediaAssetResponse */
+        MediaAssetResponse: {
+            /** Id */
+            id: number;
+            /** Media Index */
+            media_index?: number | null;
+            /** Media Type */
+            media_type?: string | null;
+            /** Media Status */
+            media_status: string;
+            /** Source Engine */
+            source_engine?: string | null;
+            /** Local Path */
+            local_path?: string | null;
+            /** Metadata Path */
+            metadata_path?: string | null;
+            /** Original Filename */
+            original_filename?: string | null;
+            /** File Ext */
+            file_ext?: string | null;
+            /** File Size */
+            file_size?: number | null;
+            /** Sha256 */
+            sha256?: string | null;
+            /** Width */
+            width?: number | null;
+            /** Height */
+            height?: number | null;
+            /** Duration Ms */
+            duration_ms?: number | null;
+            /** Error Message */
+            error_message?: string | null;
+            /**
+             * Updated At
+             * Format: date-time
+             */
+            updated_at: string;
+            /** Media Relative Path */
+            media_relative_path: string;
+            /** Media Url */
+            media_url?: string | null;
+        } & {
+            [key: string]: unknown;
+        };
+        /** MediaPageResponse */
+        MediaPageResponse: {
             /** Count */
             count: number;
             /** Total Count */
@@ -721,6 +1185,49 @@ export interface components {
             limit: number;
             /** Offset */
             offset: number;
+            /** Rows */
+            rows: components["schemas"]["MediaRowResponse"][];
+        } & {
+            [key: string]: unknown;
+        };
+        /** MediaRowResponse */
+        MediaRowResponse: {
+            /** Tweet Id */
+            tweet_id: string;
+            /** Tweet Url */
+            tweet_url: string;
+            /** Author Username */
+            author_username?: string | null;
+            /** Author Display Name */
+            author_display_name?: string | null;
+            /** Published At */
+            published_at?: string | null;
+            /** Tweet Text */
+            tweet_text?: string | null;
+            /** Tweet Status */
+            tweet_status: string;
+            /** Media Index */
+            media_index?: number | null;
+            /** Media Type */
+            media_type?: string | null;
+            /** Media Status */
+            media_status: string;
+            /** Source Engine */
+            source_engine?: string | null;
+            /** Local Path */
+            local_path?: string | null;
+            /** File Size */
+            file_size?: number | null;
+            /** Width */
+            width?: number | null;
+            /** Height */
+            height?: number | null;
+            /** Duration Ms */
+            duration_ms?: number | null;
+            /** Media Relative Path */
+            media_relative_path: string;
+            /** Media Url */
+            media_url?: string | null;
         } & {
             [key: string]: unknown;
         };
@@ -767,7 +1274,7 @@ export interface components {
             /** Error Message */
             error_message?: string | null;
             /** Occurred At */
-            occurred_at?: unknown | null;
+            occurred_at?: string | null;
         } & {
             [key: string]: unknown;
         };
@@ -793,6 +1300,32 @@ export interface components {
             label?: string | null;
             /** Author Username */
             author_username?: string | null;
+        };
+        /** SourceDiscoveryResponse */
+        SourceDiscoveryResponse: {
+            /** Id */
+            id: number;
+            /** Tweet Id */
+            tweet_id: string;
+            /** Archive Run Id */
+            archive_run_id?: number | null;
+            /**
+             * Discovered At
+             * Format: date-time
+             */
+            discovered_at: string;
+            /** Download Status */
+            download_status: string;
+            /** Author Username */
+            author_username?: string | null;
+            /** Text */
+            text?: string | null;
+            /** Raw Payload */
+            raw_payload?: {
+                [key: string]: unknown;
+            } | null;
+        } & {
+            [key: string]: unknown;
         };
         /** SourceHealthResponse */
         SourceHealthResponse: {
@@ -841,6 +1374,65 @@ export interface components {
              */
             restart: boolean;
         };
+        /** SourceScanRunResponse */
+        SourceScanRunResponse: {
+            /** Id */
+            id: number;
+            /** Trigger Type */
+            trigger_type: string;
+            /** Status */
+            status: string;
+            /** Range Start */
+            range_start?: number | null;
+            /** Range End */
+            range_end?: number | null;
+            /** Requested Limit */
+            requested_limit?: number | null;
+            /** Cursor Before */
+            cursor_before?: {
+                [key: string]: unknown;
+            } | null;
+            /** Cursor After */
+            cursor_after?: {
+                [key: string]: unknown;
+            } | null;
+            /** Discovered Tweet Count */
+            discovered_tweet_count: number;
+            /** New Tweet Count */
+            new_tweet_count: number;
+            /** Duplicate Tweet Count */
+            duplicate_tweet_count: number;
+            /** Discovered Media Count */
+            discovered_media_count: number;
+            /** Error Category */
+            error_category?: string | null;
+            /** Error Message */
+            error_message?: string | null;
+            /** Started At */
+            started_at?: string | null;
+            /** Finished At */
+            finished_at?: string | null;
+            /**
+             * Created At
+             * Format: date-time
+             */
+            created_at: string;
+        } & {
+            [key: string]: unknown;
+        };
+        /** SourceScanSummaryResponse */
+        SourceScanSummaryResponse: {
+            /** Batch Count */
+            batch_count: number;
+            /** Added Tweet Count */
+            added_tweet_count: number;
+            /** Last Success At */
+            last_success_at?: string | null;
+            /** Last Error At */
+            last_error_at?: string | null;
+        } & {
+            [key: string]: unknown;
+        };
         /** SourceStatusRequest */
         SourceStatusRequest: {
             /** Status */
@@ -850,6 +1442,21 @@ export interface components {
         SourceSubmitDiscoveredRequest: {
             /** Limit */
             limit?: number | null;
+        };
+        /** SourcesPageResponse */
+        SourcesPageResponse: {
+            /** Count */
+            count: number;
+            /** Total Count */
+            total_count: number;
+            /** Limit */
+            limit: number;
+            /** Offset */
+            offset: number;
+            /** Rows */
+            rows: components["schemas"]["ArchiveSourceListResponse"][];
+        } & {
+            [key: string]: unknown;
         };
         /** SummaryResponse */
         SummaryResponse: {
@@ -864,26 +1471,50 @@ export interface components {
             /** Archive Dir */
             archive_dir: string;
             /** Exports */
-            exports: {
-                [key: string]: unknown;
-            }[];
+            exports: components["schemas"]["ExportSummaryResponse"][];
         } & {
             [key: string]: unknown;
         };
         /** TweetDetailResponse */
         TweetDetailResponse: {
-            /** Tweet */
-            tweet: {
-                [key: string]: unknown;
-            };
+            tweet: components["schemas"]["TweetResponse"];
             /** Media */
-            media: {
-                [key: string]: unknown;
-            }[];
+            media: components["schemas"]["MediaAssetResponse"][];
             /** Attempts */
-            attempts: {
-                [key: string]: unknown;
-            }[];
+            attempts: components["schemas"]["DownloadAttemptResponse"][];
+        } & {
+            [key: string]: unknown;
+        };
+        /** TweetResponse */
+        TweetResponse: {
+            /** Tweet Id */
+            tweet_id: string;
+            /** Tweet Url */
+            tweet_url: string;
+            /** Author Username */
+            author_username?: string | null;
+            /** Author Display Name */
+            author_display_name?: string | null;
+            /** Published At */
+            published_at?: string | null;
+            /** Tweet Text */
+            tweet_text?: string | null;
+            /** Tweet Status */
+            tweet_status: string;
+            /** Last Error */
+            last_error?: string | null;
+            /** Retry Count */
+            retry_count: number;
+            /**
+             * Imported At
+             * Format: date-time
+             */
+            imported_at: string;
+            /**
+             * Updated At
+             * Format: date-time
+             */
+            updated_at: string;
         } & {
             [key: string]: unknown;
         };
@@ -1006,7 +1637,7 @@ export interface operations {
                     [name: string]: unknown;
                 };
                 content: {
-                    "application/json": components["schemas"]["PageResponse"];
+                    "application/json": components["schemas"]["MediaPageResponse"];
                 };
             };
             /** @description Validation Error */
@@ -1069,7 +1700,7 @@ export interface operations {
                     [name: string]: unknown;
                 };
                 content: {
-                    "application/json": components["schemas"]["PageResponse"];
+                    "application/json": components["schemas"]["FailurePageResponse"];
                 };
             };
             /** @description Validation Error */
@@ -1136,7 +1767,7 @@ export interface operations {
                     [name: string]: unknown;
                 };
                 content: {
-                    "application/json": components["schemas"]["PageResponse"];
+                    "application/json": components["schemas"]["ArchiveRunsPageResponse"];
                 };
             };
             /** @description Validation Error */
@@ -1265,7 +1896,7 @@ export interface operations {
                     [name: string]: unknown;
                 };
                 content: {
-                    "application/json": components["schemas"]["PageResponse"];
+                    "application/json": components["schemas"]["SourcesPageResponse"];
                 };
             };
             /** @description Validation Error */

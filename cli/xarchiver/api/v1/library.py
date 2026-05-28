@@ -2,7 +2,13 @@ from __future__ import annotations
 
 from fastapi import APIRouter, HTTPException, Query
 
-from xarchiver.api.schemas import DuplicatesPageResponse, PageResponse, SummaryResponse, TweetDetailResponse
+from xarchiver.api.schemas import (
+    DuplicatesPageResponse,
+    FailurePageResponse,
+    MediaPageResponse,
+    SummaryResponse,
+    TweetDetailResponse,
+)
 from xarchiver.config import get_settings
 from xarchiver.services.failures import list_failures
 from xarchiver.services.library import get_summary, get_tweet_detail, list_duplicates_page, list_media_page
@@ -15,7 +21,7 @@ def summary() -> dict[str, object]:
     return get_summary(get_settings())
 
 
-@router.get("/media", response_model=PageResponse)
+@router.get("/media", response_model=MediaPageResponse)
 def media(
     author: str | None = None,
     text: str | None = None,
@@ -45,7 +51,7 @@ def tweet_detail(tweet_id: str) -> dict[str, object]:
     return detail
 
 
-@router.get("/failures", response_model=PageResponse)
+@router.get("/failures", response_model=FailurePageResponse)
 def failures(
     limit: int = Query(100, ge=1, le=500),
     offset: int = Query(0, ge=0),

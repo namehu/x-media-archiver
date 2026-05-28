@@ -10,6 +10,7 @@ from fastapi.responses import JSONResponse
 from starlette.exceptions import HTTPException as StarletteHTTPException
 
 from xarchiver.api.deps import stop_worker, write_action_lock
+from xarchiver.api.middleware import RequestIdMiddleware, configure_api_logging
 from xarchiver.api.v1 import actions, archive_runs, library, maintenance, misc, sources
 from xarchiver.config import get_settings
 from xarchiver.core.errors import ArchiverError, error_response_payload
@@ -40,7 +41,9 @@ async def app_lifespan(_: FastAPI):
 
 
 def create_app() -> FastAPI:
+    configure_api_logging()
     app = FastAPI(title="x-media-archiver local API", version="0.2.0", lifespan=app_lifespan)
+    app.add_middleware(RequestIdMiddleware)
     app.add_middleware(
         CORSMiddleware,
         allow_origins=[

@@ -5,9 +5,9 @@ from fastapi import APIRouter, HTTPException, Query, status
 from xarchiver.api.deps import raise_api_error
 from xarchiver.api.schemas import (
     ArchiveRunDetailResponse,
+    ArchiveRunsPageResponse,
     ArchiveSubmissionResponse,
     ArchiveSubmitRequest,
-    PageResponse,
 )
 from xarchiver.services.queue import get_run_detail, list_runs_page, retry_run, submit_archive_batch
 
@@ -25,7 +25,7 @@ def submit_run(request: ArchiveSubmitRequest) -> dict[str, object]:
         raise_api_error(exc)
 
 
-@router.get("", response_model=PageResponse)
+@router.get("", response_model=ArchiveRunsPageResponse)
 def archive_runs(
     limit: int = Query(50, ge=1, le=200),
     offset: int = Query(0, ge=0),

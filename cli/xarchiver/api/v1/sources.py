@@ -7,7 +7,7 @@ from xarchiver.api.schemas import (
     ArchiveSourceDetailResponse,
     ArchiveSourceResponse,
     ArchiveSubmissionResponse,
-    PageResponse,
+    SourcesPageResponse,
     SourceCreateRequest,
     SourceHistoryScanRequest,
     SourceRecordsRequest,
@@ -44,7 +44,7 @@ def create_archive_source(request: SourceCreateRequest) -> dict[str, object]:
         raise_api_error(exc)
 
 
-@router.get("", response_model=PageResponse)
+@router.get("", response_model=SourcesPageResponse)
 def archive_sources(
     limit: int = Query(50, ge=1, le=200),
     offset: int = Query(0, ge=0),

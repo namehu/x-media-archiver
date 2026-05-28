@@ -4,6 +4,8 @@ import unittest
 from pathlib import Path
 
 from fastapi import HTTPException
+from fastapi import Request
+from fastapi.responses import JSONResponse
 from starlette.exceptions import HTTPException as StarletteHTTPException
 
 from xarchiver.api import schemas
@@ -16,6 +18,7 @@ from xarchiver.api.deps import (
     resolve_archive_file,
     write_action_lock,
 )
+from xarchiver.api.middleware import RequestIdMiddleware
 from xarchiver.api.schemas import ArchiveSubmitRequest, SourceCreateRequest, VerifyRequest
 from xarchiver.core.errors import ArchiverError
 from xarchiver.core.events import EventBroker, format_sse_event
@@ -94,10 +97,30 @@ class ApiAppTests(unittest.TestCase):
         self.assertIn("VerifyRequest", component_names)
         self.assertIn("ArchiveSubmitRequest", component_names)
         self.assertIn("SourceCreateRequest", component_names)
-        self.assertIn("PageResponse", component_names)
+        self.assertIn("MediaPageResponse", component_names)
+        self.assertIn("ArchiveRunsPageResponse", component_names)
+        self.assertIn("SourcesPageResponse", component_names)
         self.assertIn("WriteActionResponse", component_names)
         self.assertIn("DownloadPolicyResponse", component_names)
         self.assertIn("HealthDetailResponse", component_names)
+
+    def test_request_id_middleware_sets_response_header(self) -> None:
+        async def call_next(_: Request) -> JSONResponse:
+            return JSONResponse({"status": "ok"})
+
+        scope = {
+            "type": "http",
+            "method": "GET",
+            "path": "/health",
+            "headers": [(b"x-request-id", b"test-request-1")],
+            "client": ("127.0.0.1", 12345),
+        }
+        request = Request(scope)
+        middleware = RequestIdMiddleware(app=create_app())
+        response = asyncio.run(middleware.dispatch(request, call_next))
+
+        self.assertEqual(response.status_code, 200)
+        self.assertEqual(response.headers["X-Request-ID"], "test-request-1")
 
     def test_http_errors_include_standard_fields_and_legacy_detail(self) -> None:
         app = create_app()
