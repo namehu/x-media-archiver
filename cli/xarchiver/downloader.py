@@ -6,6 +6,12 @@ from pathlib import Path
 
 from xarchiver.archive import ensure_archive_dirs, normalize_path
 from xarchiver.config import Settings
+from xarchiver.core.errors import (
+    ErrorCategory,
+    PERMANENT_DOWNLOAD_CATEGORIES,
+    category_value,
+    classify_x_error,
+)
 from xarchiver.db import connect
 from xarchiver.media import backfill_media_assets
 
@@ -47,7 +53,7 @@ def download(
 
     cookie_error = validate_cookie_file(engine, settings.cookie_file)
     if cookie_error:
-        category = "auth_required"
+        category = ErrorCategory.AUTH_REQUIRED.value
         mark_attempts(job_id, tweets, engine, "failed_retryable", 0, category, cookie_error, run_item_ids)
         mark_tweets_failed([tweet["tweet_id"] for tweet in tweets], "failed_retryable", category)
         finish_job(job_id, "failed", 0, len(tweets), category)
@@ -56,8 +62,9 @@ def download(
     command = build_command(engine, settings, input_path)
     executable = command[0]
     if shutil.which(executable) is None:
-        mark_attempts(job_id, tweets, engine, "failed_retryable", 127, "command_not_found", executable, run_item_ids)
-        mark_tweets_failed([tweet["tweet_id"] for tweet in tweets], "failed_retryable", "command_not_found")
+        category = ErrorCategory.COMMAND_NOT_FOUND.value
+        mark_attempts(job_id, tweets, engine, "failed_retryable", 127, category, executable, run_item_ids)
+        mark_tweets_failed([tweet["tweet_id"] for tweet in tweets], "failed_retryable", category)
         finish_job(job_id, "failed", 0, len(tweets), f"{executable} not found")
         return {"job_id": job_id, "input_path": input_path, "count": len(tweets), "exit_code": 127}
 
@@ -81,7 +88,7 @@ def download(
             engine,
             "failed_retryable",
             0,
-            "download_no_output",
+            ErrorCategory.DOWNLOAD_NO_OUTPUT.value,
             stderr_excerpt,
             run_item_ids,
         )
@@ -89,13 +96,19 @@ def download(
         mark_tweets_failed(
             [tweet["tweet_id"] for tweet in missing],
             "failed_retryable",
-            "download_no_output",
+            ErrorCategory.DOWNLOAD_NO_OUTPUT.value,
         )
         status = "finished" if not missing else "partial"
-        finish_job(job_id, status, len(downloaded), len(missing), None if not missing else "download_no_output")
+        finish_job(
+            job_id,
+            status,
+            len(downloaded),
+            len(missing),
+            None if not missing else ErrorCategory.DOWNLOAD_NO_OUTPUT.value,
+        )
     else:
         category = classify_error(result.returncode, stderr_excerpt)
-        status = "failed_permanent" if category in {"invalid_url", "unsupported_media"} else "failed_retryable"
+        status = "failed_permanent" if category in {item.value for item in PERMANENT_DOWNLOAD_CATEGORIES} else "failed_retryable"
         mark_attempts(job_id, tweets, engine, status, result.returncode, category, stderr_excerpt, run_item_ids)
         mark_tweets_failed([tweet["tweet_id"] for tweet in tweets], status, category)
         finish_job(job_id, "failed", 0, len(tweets), category)
@@ -366,24 +379,7 @@ def mark_attempts(
 
 
 def classify_error(exit_code: int, stderr: str | None) -> str:
-    text = (stderr or "").lower()
-    if "cookies" in text and any(pattern in text for pattern in ("not found", "could not", "invalid", "empty")):
-        return "auth_required"
-    if any(pattern in text for pattern in ("login required", "sign in", "not logged in", "authentication", "auth")):
-        return "auth_required"
-    if "404" in text or "not found" in text:
-        return "invalid_url"
-    if "403" in text or "forbidden" in text or "unauthorized" in text:
-        return "auth_required"
-    if "429" in text or "rate" in text:
-        return "rate_limited"
-    if "no results" in text:
-        return "download_no_output"
-    if any(pattern in text for pattern in ("no video", "no media", "unsupported", "not supported")):
-        return "unsupported_media"
-    if any(pattern in text for pattern in ("timeout", "timed out", "connection", "network", "temporary failure")):
-        return "network_error"
-    return "unknown"
+    return category_value(classify_x_error(stderr)) or ErrorCategory.UNKNOWN.value
 
 
 def empty_backfill_result() -> dict[str, object]:

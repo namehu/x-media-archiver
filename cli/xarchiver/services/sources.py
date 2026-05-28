@@ -11,6 +11,7 @@ from urllib.parse import urlparse
 from psycopg.types.json import Jsonb
 
 from xarchiver.config import Settings, get_settings
+from xarchiver.core.errors import ErrorCategory, category_value, classify_x_error
 from xarchiver.db import connect
 from xarchiver.importer import extract_tweet_id, upsert_tweets
 from xarchiver.services.queue import has_pending_download_work, submit_archive_batch
@@ -1044,16 +1045,7 @@ def fetch_unsubmitted_discoveries(
 
 
 def classify_source_error(stderr: str | None) -> str:
-    text = (stderr or "").lower()
-    if any(pattern in text for pattern in ("login required", "sign in", "authentication", "403", "unauthorized")):
-        return "auth_required"
-    if "429" in text or "rate" in text:
-        return "rate_limited"
-    if any(pattern in text for pattern in ("timeout", "connection", "network", "temporary failure")):
-        return "network_error"
-    if "not found" in text or "404" in text:
-        return "invalid_url"
-    return "unknown"
+    return category_value(classify_x_error(stderr, no_output_hint=False)) or ErrorCategory.UNKNOWN.value
 
 
 def normalize_source_type(source_type: str) -> str:

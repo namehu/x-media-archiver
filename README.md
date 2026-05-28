@@ -359,6 +359,7 @@ otherwise mixed     -> partial
 Run the V0 test suite inside Docker:
 
 ```bash
+docker-compose run --rm xarchiver db reset --yes
 docker-compose run --rm --entrypoint python xarchiver -m unittest discover -s /app/tests
 ```
 
@@ -371,6 +372,11 @@ yt-dlp metadata parsing and normalization
 verify aggregation rules
 missing/corrupt/recovery integration flow
 ```
+
+The GitHub Actions CI pipeline runs the same backend suite on a freshly reset test database, plus
+`npm run check` in both `webui/` and `extension/`. See
+[`docs/engineering-ci-and-test-isolation.md`](docs/engineering-ci-and-test-isolation.md) for the
+test isolation contract.
 
 ## Browser Extension V0
 

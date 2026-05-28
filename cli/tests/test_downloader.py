@@ -4,7 +4,14 @@ from pathlib import Path
 from types import SimpleNamespace
 from unittest.mock import patch
 
-from xarchiver.downloader import build_command, classify_error, fetch_download_candidates, format_sleep_range, validate_cookie_file
+from xarchiver.core.errors import ErrorCategory, classify_x_error
+from xarchiver.downloader import (
+    build_command,
+    classify_error,
+    fetch_download_candidates,
+    format_sleep_range,
+    validate_cookie_file,
+)
 from xarchiver.db import connect
 
 
@@ -34,6 +41,10 @@ class DownloaderTests(unittest.TestCase):
         self.assertEqual(classify_error(1, "HTTP Error 404: not found"), "invalid_url")
         self.assertEqual(classify_error(1, "Connection timed out"), "network_error")
         self.assertEqual(classify_error(2, "unexpected stderr"), "unknown")
+
+    def test_core_error_classifier_is_single_source_for_x_errors(self) -> None:
+        self.assertEqual(classify_x_error("HTTP Error 429: rate limited"), ErrorCategory.RATE_LIMITED)
+        self.assertEqual(classify_x_error("No media found"), ErrorCategory.UNSUPPORTED_MEDIA)
 
     def test_format_sleep_range_normalizes_values(self) -> None:
         self.assertEqual(format_sleep_range(2, 6), "2-6")

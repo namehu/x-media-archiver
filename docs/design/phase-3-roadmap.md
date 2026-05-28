@@ -27,6 +27,17 @@ P3 不是“不新增开发即可完成”的迭代。本文中的 API 路由拆
   延后候选：SSE、dark mode、完整前端目录迁移、旧 API alias 移除
 ```
 
+## P3 第一阶段裁剪
+
+2026-05-28 已按真实使用痛点启动 P3 第一阶段，范围刻意收窄为：
+
+1. GitHub Actions 基础门禁：后端 Docker unittest、WebUI build、Extension typecheck/build。
+2. 测试隔离约定：CI 先重置测试数据库，不接入真实 cookies，不复用本地探索数据。
+3. 错误模型基础：新增 `cli/xarchiver/core/errors.py`，先集中下载与来源扫描共享的错误分类。
+
+本阶段不执行 API 路由大拆分、SSE、dark mode、完整前端目录迁移、OpenAPI 类型替换或旧
+`/api/*` alias 移除。
+
 ## Context
 
 P2.0–P2.8.0 已交付"数据库队列 + 三层架构（CLI / FastAPI / WebUI）"的功能骨架，[AGENTS.md](../../AGENTS.md) 把核心约束（author_id 路径、显式维护动作、写操作串行化、不提供媒体删除）固化下来。当前框架本身**方向正确**，但来源扫描仍处于需要可观测性和真实验收才能确认稳定性的阶段；此外在工程设施方面存在以下摩擦：
