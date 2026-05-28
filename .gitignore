@@ -21,3 +21,5 @@ node_modules/
 extension/.output/
 extension/.wxt/
 webui/dist/
+webui/.openapi.json
+webui/src/api/openapi.json

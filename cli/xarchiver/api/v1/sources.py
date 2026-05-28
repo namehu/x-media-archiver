@@ -4,12 +4,17 @@ from fastapi import APIRouter, HTTPException, Query, status
 
 from xarchiver.api.deps import execute_write_action, raise_api_error
 from xarchiver.api.schemas import (
+    ArchiveSourceDetailResponse,
+    ArchiveSourceResponse,
+    ArchiveSubmissionResponse,
+    PageResponse,
     SourceCreateRequest,
     SourceHistoryScanRequest,
     SourceRecordsRequest,
     SourceScanRequest,
     SourceStatusRequest,
     SourceSubmitDiscoveredRequest,
+    WriteActionResponse,
 )
 from xarchiver.services.sources import (
     create_source,
@@ -26,7 +31,7 @@ from xarchiver.services.sources import (
 router = APIRouter(prefix="/sources", tags=["sources"])
 
 
-@router.post("", status_code=status.HTTP_201_CREATED)
+@router.post("", status_code=status.HTTP_201_CREATED, response_model=ArchiveSourceResponse)
 def create_archive_source(request: SourceCreateRequest) -> dict[str, object]:
     try:
         return create_source(
@@ -39,7 +44,7 @@ def create_archive_source(request: SourceCreateRequest) -> dict[str, object]:
         raise_api_error(exc)
 
 
-@router.get("")
+@router.get("", response_model=PageResponse)
 def archive_sources(
     limit: int = Query(50, ge=1, le=200),
     offset: int = Query(0, ge=0),
@@ -52,7 +57,7 @@ def archive_sources(
         raise_api_error(exc)
 
 
-@router.get("/{source_id}")
+@router.get("/{source_id}", response_model=ArchiveSourceDetailResponse)
 def archive_source_detail(source_id: int) -> dict[str, object]:
     result = get_source(source_id)
     if result is None:
@@ -60,7 +65,7 @@ def archive_source_detail(source_id: int) -> dict[str, object]:
     return result
 
 
-@router.post("/{source_id}/records", status_code=status.HTTP_202_ACCEPTED)
+@router.post("/{source_id}/records", status_code=status.HTTP_202_ACCEPTED, response_model=ArchiveSubmissionResponse)
 def submit_archive_source_records(source_id: int, request: SourceRecordsRequest) -> dict[str, object]:
     try:
         return submit_source_records(source_id, [record.model_dump() for record in request.records])
@@ -68,7 +73,11 @@ def submit_archive_source_records(source_id: int, request: SourceRecordsRequest)
         raise_api_error(exc)
 
 
-@router.post("/{source_id}/submit-discovered", status_code=status.HTTP_202_ACCEPTED)
+@router.post(
+    "/{source_id}/submit-discovered",
+    status_code=status.HTTP_202_ACCEPTED,
+    response_model=ArchiveSubmissionResponse,
+)
 def submit_archive_source_discovered(
     source_id: int,
     request: SourceSubmitDiscoveredRequest,
@@ -79,7 +88,7 @@ def submit_archive_source_discovered(
         raise_api_error(exc, default_status=409)
 
 
-@router.post("/{source_id}/status")
+@router.post("/{source_id}/status", response_model=ArchiveSourceResponse)
 def update_archive_source_status(source_id: int, request: SourceStatusRequest) -> dict[str, object]:
     try:
         return update_source_status(source_id, request.status)
@@ -87,7 +96,7 @@ def update_archive_source_status(source_id: int, request: SourceStatusRequest) -
         raise_api_error(exc)
 
 
-@router.post("/{source_id}/scan", status_code=status.HTTP_202_ACCEPTED)
+@router.post("/{source_id}/scan", status_code=status.HTTP_202_ACCEPTED, response_model=WriteActionResponse)
 def scan_archive_source(source_id: int, request: SourceScanRequest) -> dict[str, object]:
     try:
         return execute_write_action("source-scan", lambda: scan_source(source_id, request.limit, restart=request.restart))
@@ -95,7 +104,7 @@ def scan_archive_source(source_id: int, request: SourceScanRequest) -> dict[str,
         raise_api_error(exc)
 
 
-@router.post("/{source_id}/history-scan", status_code=status.HTTP_202_ACCEPTED)
+@router.post("/{source_id}/history-scan", status_code=status.HTTP_202_ACCEPTED, response_model=ArchiveSourceDetailResponse)
 def start_archive_source_history_scan(source_id: int, request: SourceHistoryScanRequest) -> dict[str, object]:
     try:
         return start_source_history_scan(source_id, request.limit, request.restart)
@@ -103,7 +112,7 @@ def start_archive_source_history_scan(source_id: int, request: SourceHistoryScan
         raise_api_error(exc)
 
 
-@router.post("/{source_id}/history-scan/stop")
+@router.post("/{source_id}/history-scan/stop", response_model=ArchiveSourceDetailResponse)
 def stop_archive_source_history_scan(source_id: int) -> dict[str, object]:
     try:
         return stop_source_history_scan(source_id)

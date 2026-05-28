@@ -2,6 +2,7 @@ from __future__ import annotations
 
 from fastapi import APIRouter, HTTPException, Query
 
+from xarchiver.api.schemas import DuplicatesPageResponse, PageResponse, SummaryResponse, TweetDetailResponse
 from xarchiver.config import get_settings
 from xarchiver.services.failures import list_failures
 from xarchiver.services.library import get_summary, get_tweet_detail, list_duplicates_page, list_media_page
@@ -9,12 +10,12 @@ from xarchiver.services.library import get_summary, get_tweet_detail, list_dupli
 router = APIRouter(prefix="/library", tags=["library"])
 
 
-@router.get("/summary")
+@router.get("/summary", response_model=SummaryResponse)
 def summary() -> dict[str, object]:
     return get_summary(get_settings())
 
 
-@router.get("/media")
+@router.get("/media", response_model=PageResponse)
 def media(
     author: str | None = None,
     text: str | None = None,
@@ -36,7 +37,7 @@ def media(
     )
 
 
-@router.get("/tweets/{tweet_id}")
+@router.get("/tweets/{tweet_id}", response_model=TweetDetailResponse)
 def tweet_detail(tweet_id: str) -> dict[str, object]:
     detail = get_tweet_detail(get_settings(), tweet_id)
     if detail is None:
@@ -44,7 +45,7 @@ def tweet_detail(tweet_id: str) -> dict[str, object]:
     return detail
 
 
-@router.get("/failures")
+@router.get("/failures", response_model=PageResponse)
 def failures(
     limit: int = Query(100, ge=1, le=500),
     offset: int = Query(0, ge=0),
@@ -52,7 +53,7 @@ def failures(
     return list_failures(limit=limit, offset=offset)
 
 
-@router.get("/duplicates")
+@router.get("/duplicates", response_model=DuplicatesPageResponse)
 def duplicates(
     limit: int = Query(100, ge=1, le=500),
     offset: int = Query(0, ge=0),

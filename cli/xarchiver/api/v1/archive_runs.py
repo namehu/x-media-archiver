@@ -2,14 +2,19 @@ from __future__ import annotations
 
 from fastapi import APIRouter, HTTPException, Query, status
 
-from xarchiver.api.deps import execute_write_action, raise_api_error
-from xarchiver.api.schemas import ArchiveRecord, ArchiveSubmitRequest
+from xarchiver.api.deps import raise_api_error
+from xarchiver.api.schemas import (
+    ArchiveRunDetailResponse,
+    ArchiveSubmissionResponse,
+    ArchiveSubmitRequest,
+    PageResponse,
+)
 from xarchiver.services.queue import get_run_detail, list_runs_page, retry_run, submit_archive_batch
 
 router = APIRouter(prefix="/archive-runs", tags=["archive-runs"])
 
 
-@router.post("", status_code=status.HTTP_202_ACCEPTED)
+@router.post("", status_code=status.HTTP_202_ACCEPTED, response_model=ArchiveSubmissionResponse)
 def submit_run(request: ArchiveSubmitRequest) -> dict[str, object]:
     try:
         return submit_archive_batch(
@@ -20,7 +25,7 @@ def submit_run(request: ArchiveSubmitRequest) -> dict[str, object]:
         raise_api_error(exc)
 
 
-@router.get("")
+@router.get("", response_model=PageResponse)
 def archive_runs(
     limit: int = Query(50, ge=1, le=200),
     offset: int = Query(0, ge=0),
@@ -31,7 +36,7 @@ def archive_runs(
     return list_runs_page(limit=limit, offset=offset, status=run_status, tweet_id=tweet_id, failed_only=failed_only)
 
 
-@router.get("/{run_id}")
+@router.get("/{run_id}", response_model=ArchiveRunDetailResponse)
 def archive_run_detail(run_id: int) -> dict[str, object]:
     result = get_run_detail(run_id)
     if result is None:
@@ -39,7 +44,7 @@ def archive_run_detail(run_id: int) -> dict[str, object]:
     return result
 
 
-@router.post("/{run_id}/retry", status_code=status.HTTP_202_ACCEPTED)
+@router.post("/{run_id}/retry", status_code=status.HTTP_202_ACCEPTED, response_model=ArchiveSubmissionResponse)
 def retry_archive_run(run_id: int) -> dict[str, object]:
     try:
         return retry_run(run_id)

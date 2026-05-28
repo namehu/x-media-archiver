@@ -7,6 +7,7 @@ from fastapi import APIRouter, HTTPException, Request
 from fastapi.responses import FileResponse, StreamingResponse
 from queue import Empty
 
+from xarchiver.api.schemas import DownloadPolicyResponse
 from xarchiver.api.deps import parse_event_topics, resolve_archive_file
 from xarchiver.config import get_settings
 from xarchiver.core.events import event_broker, format_sse_event
@@ -38,7 +39,7 @@ async def events(request: Request, topics: str | None = None) -> StreamingRespon
     )
 
 
-@router.get("/settings/download-policy")
+@router.get("/settings/download-policy", response_model=DownloadPolicyResponse)
 def download_policy() -> dict[str, object]:
     settings = get_settings()
     return {

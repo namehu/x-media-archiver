@@ -3,7 +3,13 @@ from __future__ import annotations
 from fastapi import APIRouter
 
 from xarchiver.api.deps import execute_write_action, require_full_scan_confirmation
-from xarchiver.api.schemas import ExportRequest, RecoverInterruptedRequest, RequeueRequest, VerifyRequest
+from xarchiver.api.schemas import (
+    ExportRequest,
+    RecoverInterruptedRequest,
+    RequeueRequest,
+    VerifyRequest,
+    WriteActionResponse,
+)
 from xarchiver.config import get_settings
 from xarchiver.services.runs import (
     run_export_duplicates,
@@ -17,18 +23,18 @@ from xarchiver.services.runs import (
 router = APIRouter(prefix="/actions", tags=["actions"])
 
 
-@router.post("/verify")
+@router.post("/verify", response_model=WriteActionResponse)
 def verify_action(request: VerifyRequest) -> dict[str, object]:
     require_full_scan_confirmation(request.confirm_full_scan)
     return execute_write_action("verify", lambda: run_verify(request.limit))
 
 
-@router.post("/requeue")
+@router.post("/requeue", response_model=WriteActionResponse)
 def requeue_action(request: RequeueRequest) -> dict[str, object]:
     return execute_write_action("requeue", lambda: run_requeue(request.statuses, request.limit))
 
 
-@router.post("/recover-interrupted")
+@router.post("/recover-interrupted", response_model=WriteActionResponse)
 def recover_interrupted_action(request: RecoverInterruptedRequest) -> dict[str, object]:
     settings = get_settings()
     return execute_write_action(
@@ -37,7 +43,7 @@ def recover_interrupted_action(request: RecoverInterruptedRequest) -> dict[str, 
     )
 
 
-@router.post("/export")
+@router.post("/export", response_model=WriteActionResponse)
 def export_action(request: ExportRequest) -> dict[str, object]:
     settings = get_settings()
 

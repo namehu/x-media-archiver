@@ -1,5 +1,9 @@
 # P3.4 — WebUI Shell & Interaction System
 
+> 状态：历史阶段计划，已被 P3 实际推进顺序部分超越。当前 P3 总状态以
+> [phase-3-roadmap.md](./phase-3-roadmap.md) 为准；手工验收以
+> [p3-manual-acceptance.md](./p3-manual-acceptance.md) 为准。
+
 ## Context
 
 P3.0–P3.3 已完成：CI 工程化、分页、OpenAPI 类型同步、SSE 实时刷新。
@@ -87,5 +91,5 @@ Maintenance  → /operations
 
 ## 不在本阶段范围内
 
-- i18n en.ts 补全（由用户自行完成）
-- P3.5：`/api/v1/*` router 拆分、E2E 测试、移除 legacy `/api/*` 别名
+- P3.6 兼容层移除已完成；旧 `/api/*` 业务路径不再作为验收目标。
+- i18n en.ts 已有基础内容，后续新增文案仍需中英文同步。

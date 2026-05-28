@@ -367,12 +367,34 @@ otherwise mixed     -> partial
 
 ## Tests
 
-Run the V0 test suite inside Docker:
+Run the backend test suite inside Docker:
 
 ```bash
 docker-compose run --rm xarchiver db reset --yes
 docker-compose run --rm --entrypoint python xarchiver -m unittest discover -s /app/tests
 ```
+
+Run the full local validation set before a larger handoff:
+
+```bash
+# Backend: reset disposable metadata DB and run all Python tests.
+docker-compose run --rm xarchiver db reset --yes
+docker-compose run --rm --entrypoint python xarchiver -m unittest discover -s /app/tests
+
+# WebUI: regenerate OpenAPI types and build.
+cd webui
+npm run generate:api-types
+npm run check
+cd ..
+
+# Browser extension: typecheck and build.
+cd extension
+npm run check
+cd ..
+```
+
+The backend reset clears Postgres metadata only; it does not delete media files under `archive/`.
+These checks do not perform real X/Twitter bulk scans or downloads.
 
 The suite covers:
 

@@ -94,6 +94,9 @@ class ApiAppTests(unittest.TestCase):
         self.assertIn("VerifyRequest", component_names)
         self.assertIn("ArchiveSubmitRequest", component_names)
         self.assertIn("SourceCreateRequest", component_names)
+        self.assertIn("PageResponse", component_names)
+        self.assertIn("WriteActionResponse", component_names)
+        self.assertIn("DownloadPolicyResponse", component_names)
 
     def test_http_errors_include_standard_fields_and_legacy_detail(self) -> None:
         app = create_app()
