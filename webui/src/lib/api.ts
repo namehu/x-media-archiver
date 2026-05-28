@@ -54,6 +54,10 @@ export type PageResponse<T> = {
   offset: number;
 };
 
+export type DuplicatesResponse = PageResponse<MediaRow> & {
+  duplicate_groups: number;
+};
+
 export type TweetDetail = {
   tweet: MediaRow & {
     last_error?: string | null;
@@ -186,6 +190,8 @@ export type ArchiveRunDetail = ArchiveRun & {
   items: ArchiveRunItem[];
 };
 
+export type ArchiveRunPageResponse = PageResponse<ArchiveRun>;
+
 export type ArchiveSubmission = {
   run_id: number;
   source_id?: number;
@@ -290,6 +296,8 @@ export type ArchiveSource = {
     } | null;
   }>;
 };
+
+export type SourcePageResponse = PageResponse<ArchiveSource>;
 
 export type DownloadPolicy = {
   queue_batch_size: number;

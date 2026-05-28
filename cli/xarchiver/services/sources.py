@@ -49,17 +49,10 @@ def list_sources(
     status: str | None = None,
     source_type: str | None = None,
     limit: int = 50,
+    offset: int = 0,
 ) -> list[dict[str, object]]:
-    filters: list[str] = []
-    params: list[object] = []
-    if status:
-        filters.append("s.status = %s")
-        params.append(normalize_source_status(status))
-    if source_type:
-        filters.append("s.source_type = %s")
-        params.append(normalize_source_type(source_type))
-    where = f"where {' and '.join(filters)}" if filters else ""
-    params.append(limit)
+    where, params = build_source_filters(status=status, source_type=source_type)
+    params.extend([limit, offset])
     with connect() as conn:
         with conn.cursor() as cur:
             cur.execute(
@@ -74,11 +67,56 @@ def list_sources(
                 {where}
                 group by s.id
                 order by s.updated_at desc, s.id desc
-                limit %s
+                limit %s offset %s
                 """,
                 tuple(params),
             )
             return [dict(row) for row in cur.fetchall()]
+
+
+def list_sources_page(
+    status: str | None = None,
+    source_type: str | None = None,
+    limit: int = 50,
+    offset: int = 0,
+) -> dict[str, object]:
+    rows = list_sources(status=status, source_type=source_type, limit=limit, offset=offset)
+    total_count = count_sources(status=status, source_type=source_type)
+    return {"rows": rows, "count": len(rows), "total_count": total_count, "limit": limit, "offset": offset}
+
+
+def count_sources(
+    status: str | None = None,
+    source_type: str | None = None,
+) -> int:
+    where, params = build_source_filters(status=status, source_type=source_type)
+    with connect() as conn:
+        with conn.cursor() as cur:
+            cur.execute(
+                f"""
+                select count(*)::int as count
+                from archive_sources s
+                {where}
+                """,
+                tuple(params),
+            )
+            return int(cur.fetchone()["count"])
+
+
+def build_source_filters(
+    status: str | None = None,
+    source_type: str | None = None,
+) -> tuple[str, list[object]]:
+    filters: list[str] = []
+    params: list[object] = []
+    if status:
+        filters.append("s.status = %s")
+        params.append(normalize_source_status(status))
+    if source_type:
+        filters.append("s.source_type = %s")
+        params.append(normalize_source_type(source_type))
+    where = f"where {' and '.join(filters)}" if filters else ""
+    return where, params
 
 
 def get_source(source_id: int) -> dict[str, object] | None:

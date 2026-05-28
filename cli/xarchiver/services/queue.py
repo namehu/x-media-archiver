@@ -421,10 +421,65 @@ def build_run_result(
 
 def list_runs(
     limit: int = 50,
+    offset: int = 0,
     status: str | None = None,
     tweet_id: str | None = None,
     failed_only: bool = False,
 ) -> list[dict[str, object]]:
+    where, params = build_runs_filters(status=status, tweet_id=tweet_id, failed_only=failed_only)
+    params.extend([limit, offset])
+    with connect() as conn:
+        with conn.cursor() as cur:
+            cur.execute(
+                f"""
+                select r.id, r.trigger_type, r.input_path, r.status, r.started_at, r.finished_at,
+                       r.result, r.error_message
+                from archive_runs r
+                {where}
+                order by r.started_at desc, r.id desc
+                limit %s offset %s
+                """,
+                tuple(params),
+            )
+            return list(cur.fetchall())
+
+
+def list_runs_page(
+    limit: int = 50,
+    offset: int = 0,
+    status: str | None = None,
+    tweet_id: str | None = None,
+    failed_only: bool = False,
+) -> dict[str, object]:
+    rows = list_runs(limit=limit, offset=offset, status=status, tweet_id=tweet_id, failed_only=failed_only)
+    total_count = count_runs(status=status, tweet_id=tweet_id, failed_only=failed_only)
+    return {"rows": rows, "count": len(rows), "total_count": total_count, "limit": limit, "offset": offset}
+
+
+def count_runs(
+    status: str | None = None,
+    tweet_id: str | None = None,
+    failed_only: bool = False,
+) -> int:
+    where, params = build_runs_filters(status=status, tweet_id=tweet_id, failed_only=failed_only)
+    with connect() as conn:
+        with conn.cursor() as cur:
+            cur.execute(
+                f"""
+                select count(*)::int as count
+                from archive_runs r
+                {where}
+                """,
+                tuple(params),
+            )
+            return int(cur.fetchone()["count"])
+
+
+def build_runs_filters(
+    status: str | None = None,
+    tweet_id: str | None = None,
+    failed_only: bool = False,
+) -> tuple[str, list[object]]:
     filters: list[str] = []
     params: list[object] = []
     if status:
@@ -439,21 +494,7 @@ def list_runs(
             "and i.status in ('failed_retryable', 'failed_permanent'))"
         )
     where = f"where {' and '.join(filters)}" if filters else ""
-    params.append(limit)
-    with connect() as conn:
-        with conn.cursor() as cur:
-            cur.execute(
-                f"""
-                select r.id, r.trigger_type, r.input_path, r.status, r.started_at, r.finished_at,
-                       r.result, r.error_message
-                from archive_runs r
-                {where}
-                order by r.started_at desc, r.id desc
-                limit %s
-                """,
-                tuple(params),
-            )
-            return list(cur.fetchall())
+    return where, params
 
 
 def get_run(run_id: int) -> dict[str, object] | None:

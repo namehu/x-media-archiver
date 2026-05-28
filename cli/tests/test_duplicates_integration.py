@@ -5,10 +5,12 @@ from xarchiver.archive import ensure_archive_dirs
 from xarchiver.config import get_settings
 from xarchiver.db import connect
 from xarchiver.exporter import export_duplicates_csv, fetch_duplicate_rows
+from xarchiver.services.library import list_duplicates_page
 
 
 class DuplicateIntegrationTests(unittest.TestCase):
     tweet_ids = ["duplicate-fixture-1", "duplicate-fixture-2"]
+    other_tweet_ids = ["duplicate-fixture-3", "duplicate-fixture-4"]
 
     def setUp(self) -> None:
         self.settings = get_settings()
@@ -43,6 +45,30 @@ class DuplicateIntegrationTests(unittest.TestCase):
                         """,
                         (tweet_id, f"/app/archive/media/dup/{tweet_id}.jpg"),
                     )
+                for index, tweet_id in enumerate(self.other_tweet_ids, start=3):
+                    cur.execute(
+                        """
+                        insert into tweets (tweet_id, url, author_username, download_status)
+                        values (%s, %s, %s, 'verified')
+                        """,
+                        (tweet_id, f"https://x.com/dup/status/{tweet_id}", f"dup_author_{index}"),
+                    )
+                    cur.execute(
+                        """
+                        insert into media_assets (
+                            tweet_id,
+                            media_index,
+                            media_type,
+                            local_path,
+                            file_size,
+                            sha256,
+                            source_engine,
+                            download_status
+                        )
+                        values (%s, 1, 'photo', %s, 200, 'same-hash-2', 'test', 'verified')
+                        """,
+                        (tweet_id, f"/app/archive/media/dup/{tweet_id}.jpg"),
+                    )
             conn.commit()
 
     def tearDown(self) -> None:
@@ -53,7 +79,7 @@ class DuplicateIntegrationTests(unittest.TestCase):
     def cleanup_db(self) -> None:
         with connect() as conn:
             with conn.cursor() as cur:
-                cur.execute("delete from tweets where tweet_id = any(%s)", (self.tweet_ids,))
+                cur.execute("delete from tweets where tweet_id = any(%s)", (self.tweet_ids + self.other_tweet_ids,))
             conn.commit()
 
     def test_fetch_duplicate_rows_and_export_csv(self) -> None:
@@ -69,6 +95,15 @@ class DuplicateIntegrationTests(unittest.TestCase):
 
         self.assertEqual(len(exported), 2)
         self.assertEqual(exported[0]["media_relative_path"], "media/dup/duplicate-fixture-1.jpg")
+
+    def test_duplicates_page_returns_current_rows_and_total_counts(self) -> None:
+        page = list_duplicates_page(self.settings, limit=2, offset=2)
+
+        self.assertEqual(page["count"], 2)
+        self.assertGreaterEqual(page["total_count"], 4)
+        self.assertGreaterEqual(page["duplicate_groups"], 2)
+        self.assertEqual(page["limit"], 2)
+        self.assertEqual(page["offset"], 2)
 
 
 if __name__ == "__main__":

@@ -5,8 +5,8 @@ import { apiGet, type FailureRow, type PageResponse } from "../lib/api";
 import { useI18n } from "../lib/i18n";
 import { formatDateTime } from "../lib/utils";
 import { Badge } from "../components/ui/Badge";
-import { Button } from "../components/ui/Button";
 import { Card, CardContent, CardHeader, CardTitle } from "../components/ui/Card";
+import { PaginationBar } from "../components/ui/PaginationBar";
 
 const PAGE_SIZE = 100;
 
@@ -27,12 +27,12 @@ export function FailuresPage() {
         <div className="flex flex-wrap items-center justify-between gap-3">
           <CardTitle>{t("failures.title")}</CardTitle>
           {data ? (
-            <PaginationControls
+            <PaginationBar
               offset={offset}
               count={data.count}
               totalCount={data.total_count}
-              onPrevious={() => setOffset(Math.max(0, offset - PAGE_SIZE))}
-              onNext={() => setOffset(offset + PAGE_SIZE)}
+              pageSize={PAGE_SIZE}
+              onOffsetChange={setOffset}
             />
           ) : null}
         </div>
@@ -59,35 +59,6 @@ export function FailuresPage() {
         ))}
       </CardContent>
     </Card>
-  );
-}
-
-function PaginationControls({
-  offset,
-  count,
-  totalCount,
-  onPrevious,
-  onNext,
-}: {
-  offset: number;
-  count: number;
-  totalCount: number;
-  onPrevious: () => void;
-  onNext: () => void;
-}) {
-  const { t } = useI18n();
-  const start = totalCount === 0 ? 0 : offset + 1;
-  const end = offset + count;
-  return (
-    <div className="flex flex-wrap items-center gap-2 text-sm text-muted-foreground">
-      <span>{t("common.pagination.range", { start, end, total: totalCount })}</span>
-      <Button type="button" variant="secondary" onClick={onPrevious} disabled={offset <= 0}>
-        {t("common.pagination.previous")}
-      </Button>
-      <Button type="button" variant="secondary" onClick={onNext} disabled={offset + count >= totalCount}>
-        {t("common.pagination.next")}
-      </Button>
-    </div>
   );
 }
 

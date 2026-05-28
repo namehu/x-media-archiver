@@ -15,8 +15,8 @@ from starlette.exceptions import HTTPException as StarletteHTTPException
 from xarchiver.config import get_settings
 from xarchiver.core.errors import ArchiverError, error_response_payload, http_status_for_error_code
 from xarchiver.services.failures import list_failures
-from xarchiver.services.library import get_summary, get_tweet_detail, list_duplicates, list_media_page
-from xarchiver.services.queue import get_run_detail, list_runs, process_next_queued_run, retry_run, submit_archive_batch
+from xarchiver.services.library import get_summary, get_tweet_detail, list_duplicates_page, list_media_page
+from xarchiver.services.queue import get_run_detail, list_runs_page, process_next_queued_run, retry_run, submit_archive_batch
 from xarchiver.services.runs import (
     run_backfill,
     run_export_duplicates,
@@ -29,7 +29,7 @@ from xarchiver.services.runs import (
 from xarchiver.services.sources import (
     create_source,
     get_source,
-    list_sources,
+    list_sources_page,
     process_next_source_history_scan,
     recover_interrupted_source_scan_runs,
     scan_source,
@@ -224,8 +224,11 @@ def create_app() -> FastAPI:
         return list_failures(limit=limit, offset=offset)
 
     @app.get("/api/duplicates")
-    def duplicates() -> dict[str, object]:
-        return list_duplicates(get_settings())
+    def duplicates(
+        limit: int = Query(100, ge=1, le=500),
+        offset: int = Query(0, ge=0),
+    ) -> dict[str, object]:
+        return list_duplicates_page(get_settings(), limit=limit, offset=offset)
 
     @app.get("/api/media-file/{relative_path:path}")
     def media_file(relative_path: str) -> FileResponse:
@@ -292,12 +295,12 @@ def create_app() -> FastAPI:
     @app.get("/api/archive-runs")
     def archive_runs(
         limit: int = Query(50, ge=1, le=200),
+        offset: int = Query(0, ge=0),
         run_status: str | None = None,
         tweet_id: str | None = None,
         failed_only: bool = False,
     ) -> dict[str, object]:
-        rows = list_runs(limit, status=run_status, tweet_id=tweet_id, failed_only=failed_only)
-        return {"rows": rows, "count": len(rows)}
+        return list_runs_page(limit=limit, offset=offset, status=run_status, tweet_id=tweet_id, failed_only=failed_only)
 
     @app.get("/api/archive-runs/{run_id}")
     def archive_run_detail(run_id: int) -> dict[str, object]:
@@ -328,14 +331,14 @@ def create_app() -> FastAPI:
     @app.get("/api/sources")
     def archive_sources(
         limit: int = Query(50, ge=1, le=200),
+        offset: int = Query(0, ge=0),
         source_status: str | None = None,
         source_type: str | None = None,
     ) -> dict[str, object]:
         try:
-            rows = list_sources(status=source_status, source_type=source_type, limit=limit)
+            return list_sources_page(status=source_status, source_type=source_type, limit=limit, offset=offset)
         except ValueError as exc:
             raise_api_error(exc)
-        return {"rows": rows, "count": len(rows)}
 
     @app.get("/api/sources/{source_id}")
     def archive_source_detail(source_id: int) -> dict[str, object]:

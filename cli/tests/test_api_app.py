@@ -174,6 +174,45 @@ class ApiAppTests(unittest.TestCase):
                 post_paths["/api/sources/{source_id}/status"](999, SourceStatusRequest(status="paused"))
         self.assertEqual(error.exception.status_code, 404)
 
+    def test_paginated_list_routes_pass_limit_offset_and_filters(self) -> None:
+        get_paths = {
+            route.path: route.endpoint
+            for route in create_app().routes
+            if "GET" in getattr(route, "methods", set())
+        }
+        page = {"rows": [], "count": 0, "total_count": 0, "limit": 10, "offset": 20}
+
+        with patch("xarchiver.api.app.list_runs_page", return_value=page) as runs:
+            self.assertEqual(
+                get_paths["/api/archive-runs"](
+                    limit=10,
+                    offset=20,
+                    run_status="queued",
+                    tweet_id="123",
+                    failed_only=True,
+                ),
+                page,
+            )
+        runs.assert_called_once_with(limit=10, offset=20, status="queued", tweet_id="123", failed_only=True)
+
+        with patch("xarchiver.api.app.list_sources_page", return_value=page) as sources:
+            self.assertEqual(
+                get_paths["/api/sources"](
+                    limit=10,
+                    offset=20,
+                    source_status="active",
+                    source_type="user_media",
+                ),
+                page,
+            )
+        sources.assert_called_once_with(status="active", source_type="user_media", limit=10, offset=20)
+
+        duplicates_page = {**page, "duplicate_groups": 0}
+        with patch("xarchiver.api.app.list_duplicates_page", return_value=duplicates_page) as duplicates:
+            self.assertEqual(get_paths["/api/duplicates"](limit=10, offset=20), duplicates_page)
+        duplicates.assert_called_once()
+        self.assertEqual(duplicates.call_args.kwargs, {"limit": 10, "offset": 20})
+
 
 if __name__ == "__main__":
     unittest.main()

@@ -14,6 +14,7 @@ from xarchiver.services.sources import (
     infer_author_username,
     is_media_scan_url,
     is_source_scan_complete,
+    list_sources_page,
     merge_discovery_payload,
     normalize_source_type,
     normalize_source_url,
@@ -246,6 +247,11 @@ class SourceServiceTests(unittest.TestCase):
 
 class SourceDiscoveryIntegrationTests(unittest.TestCase):
     tweet_id = "919900000000000001"
+    source_urls = [
+        "https://x.com/sourcefixture/media",
+        "https://x.com/sourcefixture2/media",
+        "https://x.com/sourcefixture3",
+    ]
 
     def setUp(self) -> None:
         self.cleanup_db()
@@ -256,7 +262,7 @@ class SourceDiscoveryIntegrationTests(unittest.TestCase):
     def cleanup_db(self) -> None:
         with connect() as conn:
             with conn.cursor() as cur:
-                cur.execute("delete from archive_sources where source_url = %s", ("https://x.com/sourcefixture/media",))
+                cur.execute("delete from archive_sources where source_url = any(%s)", (self.source_urls,))
                 cur.execute("delete from tweets where tweet_id = %s", (self.tweet_id,))
             conn.commit()
 
@@ -315,6 +321,31 @@ class SourceDiscoveryIntegrationTests(unittest.TestCase):
         self.assertEqual(second_result["duplicate_count"], 1)
         self.assertEqual(row["discovered_at"].isoformat(), "2026-01-01T00:00:00+00:00")
         self.assertEqual(row["text"], "second")
+
+    def test_list_sources_page_supports_filters_offset_and_total_count(self) -> None:
+        baseline = list_sources_page(status="paused", source_type="user_media", limit=1, offset=0)["total_count"]
+        first = create_source("user_media", self.source_urls[0])
+        second = create_source("user_media", self.source_urls[1])
+        create_source("profile", self.source_urls[2])
+        with connect() as conn:
+            with conn.cursor() as cur:
+                cur.execute(
+                    "update archive_sources set status = 'paused', updated_at = '2099-01-01 00:00:00+00' where id = %s",
+                    (first["id"],),
+                )
+                cur.execute(
+                    "update archive_sources set status = 'paused', updated_at = '2099-01-02 00:00:00+00' where id = %s",
+                    (second["id"],),
+                )
+            conn.commit()
+
+        page = list_sources_page(status="paused", source_type="user_media", limit=1, offset=1)
+
+        self.assertEqual(page["count"], 1)
+        self.assertEqual(page["total_count"], baseline + 2)
+        self.assertEqual(page["limit"], 1)
+        self.assertEqual(page["offset"], 1)
+        self.assertEqual([row["id"] for row in page["rows"]], [first["id"]])
 
 if __name__ == "__main__":
     unittest.main()

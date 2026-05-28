@@ -8,6 +8,7 @@ import { Badge } from "../components/ui/Badge";
 import { Button } from "../components/ui/Button";
 import { Card, CardContent } from "../components/ui/Card";
 import { Input } from "../components/ui/Input";
+import { PaginationBar } from "../components/ui/PaginationBar";
 import { Select } from "../components/ui/Select";
 
 const PAGE_SIZE = 60;
@@ -30,8 +31,6 @@ export function LibraryPage() {
     queryKey: ["media", query],
     queryFn: () => apiGet<PageResponse<MediaRow>>(`/api/media?${query}`),
   });
-  const canGoPrevious = offset > 0;
-  const canGoNext = data ? offset + data.count < data.total_count : false;
 
   return (
     <div className="space-y-5">
@@ -81,10 +80,8 @@ export function LibraryPage() {
           offset={offset}
           count={data.count}
           totalCount={data.total_count}
-          onPrevious={() => setOffset(Math.max(0, offset - PAGE_SIZE))}
-          onNext={() => setOffset(offset + PAGE_SIZE)}
-          canGoPrevious={canGoPrevious}
-          canGoNext={canGoNext}
+          pageSize={PAGE_SIZE}
+          onOffsetChange={setOffset}
         />
       ) : null}
 
@@ -98,47 +95,10 @@ export function LibraryPage() {
           offset={offset}
           count={data.count}
           totalCount={data.total_count}
-          onPrevious={() => setOffset(Math.max(0, offset - PAGE_SIZE))}
-          onNext={() => setOffset(offset + PAGE_SIZE)}
-          canGoPrevious={canGoPrevious}
-          canGoNext={canGoNext}
+          pageSize={PAGE_SIZE}
+          onOffsetChange={setOffset}
         />
       ) : null}
-    </div>
-  );
-}
-
-function PaginationBar({
-  offset,
-  count,
-  totalCount,
-  canGoPrevious,
-  canGoNext,
-  onPrevious,
-  onNext,
-}: {
-  offset: number;
-  count: number;
-  totalCount: number;
-  canGoPrevious: boolean;
-  canGoNext: boolean;
-  onPrevious: () => void;
-  onNext: () => void;
-}) {
-  const { t } = useI18n();
-  const start = totalCount === 0 ? 0 : offset + 1;
-  const end = offset + count;
-  return (
-    <div className="flex flex-wrap items-center justify-between gap-3 rounded-lg border border-border bg-white px-4 py-3 text-sm text-muted-foreground">
-      <span>{t("common.pagination.range", { start, end, total: totalCount })}</span>
-      <div className="flex gap-2">
-        <Button type="button" variant="secondary" onClick={onPrevious} disabled={!canGoPrevious}>
-          {t("common.pagination.previous")}
-        </Button>
-        <Button type="button" variant="secondary" onClick={onNext} disabled={!canGoNext}>
-          {t("common.pagination.next")}
-        </Button>
-      </div>
     </div>
   );
 }

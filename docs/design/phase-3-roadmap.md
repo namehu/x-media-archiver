@@ -48,6 +48,10 @@ P3 执行方式
 
 目标：大型来源进入归档后，Archive Queue、Sources、Duplicates 等页面不能再依赖一次性加载和固定轮询。
 
+后端分页接口约定：Archive Queue、Sources、Duplicates 均沿用 `PageResponse` 形态，返回
+`rows/count/total_count/limit/offset`。`/api/duplicates` 额外保留 `duplicate_groups`，表示当前过滤语义下全量重复
+SHA 分组数；`total_count` 表示可分页的重复媒体行总数，`rows` 为当前页媒体行。
+
 1. Archive Queue 分页与筛选
    - `/api/archive-runs` 增加 `offset`、`total_count`，保留现有 `limit`、`run_status`、`tweet_id`、`failed_only`。
    - WebUI Archive Queue 增加分页、状态筛选、失败项筛选、按 tweet_id 查询。

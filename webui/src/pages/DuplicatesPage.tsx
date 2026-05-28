@@ -1,17 +1,22 @@
+import { useState } from "react";
 import { useQuery } from "@tanstack/react-query";
 import { Link } from "react-router-dom";
-import { apiGet, type MediaRow } from "../lib/api";
+import { apiGet, type DuplicatesResponse } from "../lib/api";
 import { useFormatters, useI18n } from "../lib/i18n";
 import { formatBytes } from "../lib/utils";
 import { Badge } from "../components/ui/Badge";
 import { Card, CardContent, CardHeader, CardTitle } from "../components/ui/Card";
+import { PaginationBar } from "../components/ui/PaginationBar";
+
+const PAGE_SIZE = 100;
 
 export function DuplicatesPage() {
   const { t } = useI18n();
   const { mediaTypeLabel } = useFormatters();
+  const [offset, setOffset] = useState(0);
   const { data, isLoading, error } = useQuery({
-    queryKey: ["duplicates"],
-    queryFn: () => apiGet<{ duplicate_groups: number; rows: MediaRow[] }>("/api/duplicates"),
+    queryKey: ["duplicates", offset],
+    queryFn: () => apiGet<DuplicatesResponse>(`/api/duplicates?limit=${PAGE_SIZE}&offset=${offset}`),
   });
 
   if (isLoading) return <State text={t("duplicates.loading")} />;
@@ -20,7 +25,18 @@ export function DuplicatesPage() {
   return (
     <Card>
       <CardHeader>
-        <CardTitle>{t("duplicates.title")} ({data?.duplicate_groups ?? 0} {t("duplicates.groups")})</CardTitle>
+        <div className="flex flex-wrap items-center justify-between gap-3">
+          <CardTitle>{t("duplicates.title")} ({data?.duplicate_groups ?? 0} {t("duplicates.groups")})</CardTitle>
+          {data ? (
+            <PaginationBar
+              offset={offset}
+              count={data.count}
+              totalCount={data.total_count}
+              pageSize={PAGE_SIZE}
+              onOffsetChange={setOffset}
+            />
+          ) : null}
+        </div>
       </CardHeader>
       <CardContent className="space-y-3">
         {data?.rows.length === 0 ? <p className="text-sm text-muted-foreground">{t("duplicates.empty")}</p> : null}
@@ -43,6 +59,15 @@ export function DuplicatesPage() {
             </div>
           </div>
         ))}
+        {data && data.rows.length > 0 ? (
+          <PaginationBar
+            offset={offset}
+            count={data.count}
+            totalCount={data.total_count}
+            pageSize={PAGE_SIZE}
+            onOffsetChange={setOffset}
+          />
+        ) : null}
       </CardContent>
     </Card>
   );

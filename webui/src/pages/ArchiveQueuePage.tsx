@@ -1,12 +1,13 @@
 import { useMemo, useState } from "react";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
-import { apiGet, apiPost, type ArchiveRun, type ArchiveRunDetail, type ArchiveSubmission } from "../lib/api";
+import { apiGet, apiPost, type ArchiveRunDetail, type ArchiveRunPageResponse, type ArchiveSubmission } from "../lib/api";
 import { useFormatters, useI18n } from "../lib/i18n";
 import { formatDateTime } from "../lib/utils";
 import { Badge } from "../components/ui/Badge";
 import { Button } from "../components/ui/Button";
 import { Card, CardContent, CardHeader, CardTitle } from "../components/ui/Card";
 import { Input } from "../components/ui/Input";
+import { PaginationBar } from "../components/ui/PaginationBar";
 import { Select } from "../components/ui/Select";
 
 type ParsedLine = {
@@ -16,6 +17,8 @@ type ParsedLine = {
   tweetId?: string;
   status: "valid" | "duplicate" | "invalid";
 };
+
+const PAGE_SIZE = 50;
 
 export function ArchiveQueuePage() {
   const { t } = useI18n();
@@ -28,16 +31,17 @@ export function ArchiveQueuePage() {
   const [statusFilter, setStatusFilter] = useState("");
   const [tweetFilter, setTweetFilter] = useState("");
   const [failedOnly, setFailedOnly] = useState(false);
+  const [offset, setOffset] = useState(0);
 
   const preview = useMemo(() => parseUrlInput(urls), [urls]);
   const validRecords = preview.rows
     .filter((row) => row.status === "valid" && row.url)
     .map((row) => ({ url: row.url as string }));
   const runsQuery = useQuery({
-    queryKey: ["archive-runs", statusFilter, tweetFilter, failedOnly],
+    queryKey: ["archive-runs", statusFilter, tweetFilter, failedOnly, offset],
     queryFn: () =>
-      apiGet<{ rows: ArchiveRun[]; count: number }>(
-        `/api/archive-runs?${runQueryString(statusFilter, tweetFilter, failedOnly)}`,
+      apiGet<ArchiveRunPageResponse>(
+        `/api/archive-runs?${runQueryString(statusFilter, tweetFilter, failedOnly, PAGE_SIZE, offset)}`,
       ),
     refetchInterval: 3000,
   });
@@ -153,12 +157,18 @@ export function ArchiveQueuePage() {
           <CardHeader>
             <div className="flex items-center justify-between gap-3">
               <CardTitle>{t("queue.runs")}</CardTitle>
-              <Badge>{runsQuery.data?.count ?? 0}</Badge>
+              <Badge>{runsQuery.data?.total_count ?? 0}</Badge>
             </div>
           </CardHeader>
           <CardContent className="space-y-3">
             <div className="grid gap-2 md:grid-cols-[1fr_1fr_auto]">
-              <Select value={statusFilter} onChange={(event) => setStatusFilter(event.target.value)}>
+              <Select
+                value={statusFilter}
+                onChange={(event) => {
+                  setOffset(0);
+                  setStatusFilter(event.target.value);
+                }}
+              >
                 <option value="">{t("queue.filterStatus")}</option>
                 <option value="queued">{statusLabel("queued")}</option>
                 <option value="running">{statusLabel("running")}</option>
@@ -169,11 +179,21 @@ export function ArchiveQueuePage() {
               <Input
                 placeholder={t("queue.searchTweet")}
                 value={tweetFilter}
-                onChange={(event) => setTweetFilter(event.target.value)}
+                onChange={(event) => {
+                  setOffset(0);
+                  setTweetFilter(event.target.value);
+                }}
               />
               <label className="flex h-9 items-center gap-2 rounded-md border border-border px-3 text-sm">
-                <input type="checkbox" checked={failedOnly} onChange={(event) => setFailedOnly(event.target.checked)} />
-                {t("queue.onlyFailed")}
+                <input
+                  type="checkbox"
+                  checked={failedOnly}
+                  onChange={(event) => {
+                    setOffset(0);
+                    setFailedOnly(event.target.checked);
+                  }}
+                />
+                <span className="whitespace-nowrap">{t("queue.onlyFailed")}</span>
               </label>
             </div>
             {(statusFilter || tweetFilter || failedOnly) ? (
@@ -184,10 +204,20 @@ export function ArchiveQueuePage() {
                   setStatusFilter("");
                   setTweetFilter("");
                   setFailedOnly(false);
+                  setOffset(0);
                 }}
               >
                 {t("queue.clearFilters")}
               </Button>
+            ) : null}
+            {runsQuery.data ? (
+              <PaginationBar
+                offset={offset}
+                count={runsQuery.data.count}
+                totalCount={runsQuery.data.total_count}
+                pageSize={PAGE_SIZE}
+                onOffsetChange={setOffset}
+              />
             ) : null}
             {runsQuery.data?.rows.map((run) => (
               <button
@@ -207,6 +237,15 @@ export function ArchiveQueuePage() {
             ))}
             {runsQuery.data?.rows.length === 0 ? (
               <p className="text-sm text-muted-foreground">{t("queue.empty")}</p>
+            ) : null}
+            {runsQuery.data && runsQuery.data.rows.length > 0 ? (
+              <PaginationBar
+                offset={offset}
+                count={runsQuery.data.count}
+                totalCount={runsQuery.data.total_count}
+                pageSize={PAGE_SIZE}
+                onOffsetChange={setOffset}
+              />
             ) : null}
           </CardContent>
         </Card>
@@ -355,8 +394,8 @@ function parseFileToText(filename: string, text: string) {
     .join("\n");
 }
 
-function runQueryString(status: string, tweetId: string, failedOnly: boolean) {
-  const search = new URLSearchParams({ limit: "50" });
+function runQueryString(status: string, tweetId: string, failedOnly: boolean, limit: number, offset: number) {
+  const search = new URLSearchParams({ limit: String(limit), offset: String(offset) });
   if (status) search.set("run_status", status);
   if (tweetId.trim()) search.set("tweet_id", tweetId.trim());
   if (failedOnly) search.set("failed_only", "true");

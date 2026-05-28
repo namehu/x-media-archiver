@@ -243,7 +243,7 @@ def count_failure_rows() -> int:
             return int(cur.fetchone()["count"])
 
 
-def fetch_duplicate_rows() -> list[dict[str, object]]:
+def fetch_duplicate_rows(limit: int | None = None, offset: int = 0) -> list[dict[str, object]]:
     sql = """
         with duplicate_hashes as (
             select sha256,
@@ -271,10 +271,54 @@ def fetch_duplicate_rows() -> list[dict[str, object]]:
         join tweets t on t.tweet_id = m.tweet_id
         order by d.duplicate_count desc, d.sha256, t.tweet_id, m.media_index nulls last, m.id
     """
+    params: list[object] = []
+    if limit is not None:
+        sql += " limit %s offset %s"
+        params.extend([limit, offset])
     with connect() as conn:
         with conn.cursor() as cur:
-            cur.execute(sql)
+            cur.execute(sql, tuple(params))
             return list(cur.fetchall())
+
+
+def count_duplicate_rows() -> int:
+    with connect() as conn:
+        with conn.cursor() as cur:
+            cur.execute(
+                """
+                with duplicate_hashes as (
+                    select sha256
+                    from media_assets
+                    where sha256 is not null
+                      and download_status in ('downloaded', 'verified')
+                    group by sha256
+                    having count(*) > 1
+                )
+                select count(*)::int as count
+                from media_assets m
+                join duplicate_hashes d on d.sha256 = m.sha256
+                """
+            )
+            return int(cur.fetchone()["count"])
+
+
+def count_all_duplicate_groups() -> int:
+    with connect() as conn:
+        with conn.cursor() as cur:
+            cur.execute(
+                """
+                select count(*)::int as count
+                from (
+                    select sha256
+                    from media_assets
+                    where sha256 is not null
+                      and download_status in ('downloaded', 'verified')
+                    group by sha256
+                    having count(*) > 1
+                ) duplicate_hashes
+                """
+            )
+            return int(cur.fetchone()["count"])
 
 
 def count_duplicate_groups(rows: list[dict[str, object]]) -> int:

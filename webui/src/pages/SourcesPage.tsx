@@ -1,13 +1,16 @@
 import { useEffect, useState } from "react";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
-import { apiGet, apiPost, type ArchiveSource, type ArchiveSubmission, type DownloadPolicy } from "../lib/api";
+import { apiGet, apiPost, type ArchiveSource, type ArchiveSubmission, type DownloadPolicy, type SourcePageResponse } from "../lib/api";
 import { useFormatters, useI18n } from "../lib/i18n";
 import { formatDateTime } from "../lib/utils";
 import { Badge } from "../components/ui/Badge";
 import { Button } from "../components/ui/Button";
 import { Card, CardContent, CardHeader, CardTitle } from "../components/ui/Card";
 import { Input } from "../components/ui/Input";
+import { PaginationBar } from "../components/ui/PaginationBar";
 import { Select } from "../components/ui/Select";
+
+const PAGE_SIZE = 50;
 
 export function SourcesPage() {
   const { t } = useI18n();
@@ -23,10 +26,16 @@ export function SourcesPage() {
   const [feedback, setFeedback] = useState<ArchiveSubmission | null>(null);
   const [scanFeedback, setScanFeedback] = useState<Record<string, unknown> | null>(null);
   const [now, setNow] = useState(() => Date.now());
+  const [sourceStatusFilter, setSourceStatusFilter] = useState("");
+  const [sourceTypeFilter, setSourceTypeFilter] = useState("");
+  const [offset, setOffset] = useState(0);
 
   const sourcesQuery = useQuery({
-    queryKey: ["sources"],
-    queryFn: () => apiGet<{ rows: ArchiveSource[]; count: number }>("/api/sources"),
+    queryKey: ["sources", sourceStatusFilter, sourceTypeFilter, offset],
+    queryFn: () =>
+      apiGet<SourcePageResponse>(
+        `/api/sources?${sourceQueryString(sourceStatusFilter, sourceTypeFilter, PAGE_SIZE, offset)}`,
+      ),
     refetchInterval: 5000,
   });
   const detailQuery = useQuery({
@@ -166,10 +175,49 @@ export function SourcesPage() {
           <CardHeader>
             <div className="flex items-center justify-between gap-3">
               <CardTitle>{t("sources.list")}</CardTitle>
-              <Badge>{sourcesQuery.data?.count ?? 0}</Badge>
+              <Badge>{sourcesQuery.data?.total_count ?? 0}</Badge>
             </div>
           </CardHeader>
           <CardContent className="space-y-3">
+            <div className="grid gap-2 sm:grid-cols-2">
+              <Select
+                value={sourceStatusFilter}
+                onChange={(event) => {
+                  setOffset(0);
+                  setSourceStatusFilter(event.target.value);
+                }}
+              >
+                <option value="">{t("common.status.all")}</option>
+                <option value="active">{statusLabel("active")}</option>
+                <option value="paused">{statusLabel("paused")}</option>
+                <option value="completed">{statusLabel("completed")}</option>
+                <option value="failed">{statusLabel("failed")}</option>
+              </Select>
+              <Select
+                value={sourceTypeFilter}
+                onChange={(event) => {
+                  setOffset(0);
+                  setSourceTypeFilter(event.target.value);
+                }}
+              >
+                <option value="">{t("sources.type.all")}</option>
+                <option value="profile">{t("sources.type.profile")}</option>
+                <option value="user_media">{t("sources.type.user_media")}</option>
+                <option value="likes">{t("sources.type.likes")}</option>
+                <option value="bookmarks">{t("sources.type.bookmarks")}</option>
+                <option value="search">{t("sources.type.search")}</option>
+                <option value="manual">{t("sources.type.manual")}</option>
+              </Select>
+            </div>
+            {sourcesQuery.data ? (
+              <PaginationBar
+                offset={offset}
+                count={sourcesQuery.data.count}
+                totalCount={sourcesQuery.data.total_count}
+                pageSize={PAGE_SIZE}
+                onOffsetChange={setOffset}
+              />
+            ) : null}
             {sourcesQuery.data?.rows.map((source) => (
               <button
                 type="button"
@@ -190,6 +238,15 @@ export function SourcesPage() {
             ))}
             {sourcesQuery.data?.rows.length === 0 ? (
               <p className="text-sm text-muted-foreground">{t("sources.empty")}</p>
+            ) : null}
+            {sourcesQuery.data && sourcesQuery.data.rows.length > 0 ? (
+              <PaginationBar
+                offset={offset}
+                count={sourcesQuery.data.count}
+                totalCount={sourcesQuery.data.total_count}
+                pageSize={PAGE_SIZE}
+                onOffsetChange={setOffset}
+              />
             ) : null}
           </CardContent>
         </Card>
@@ -578,6 +635,13 @@ function parseRecordUrls(value: string) {
       return true;
     })
     .map((url) => ({ url }));
+}
+
+function sourceQueryString(status: string, type: string, limit: number, offset: number) {
+  const search = new URLSearchParams({ limit: String(limit), offset: String(offset) });
+  if (status) search.set("source_status", status);
+  if (type) search.set("source_type", type);
+  return search.toString();
 }
 
 function sourceTypeLabel(type: string, t: (key: string) => string) {

@@ -4,7 +4,14 @@ from types import SimpleNamespace
 from unittest.mock import patch
 
 from xarchiver.db import connect
-from xarchiver.services.queue import get_run_detail, list_runs, process_next_queued_run, retry_run, submit_archive_batch
+from xarchiver.services.queue import (
+    get_run_detail,
+    list_runs,
+    list_runs_page,
+    process_next_queued_run,
+    retry_run,
+    submit_archive_batch,
+)
 
 
 class QueueIntegrationTests(unittest.TestCase):
@@ -190,3 +197,16 @@ class QueueIntegrationTests(unittest.TestCase):
         rows = list_runs(status="completed_with_failures", tweet_id=self.tweet_ids[0], failed_only=True)
 
         self.assertEqual([row["id"] for row in rows], [matched["run_id"]])
+
+    def test_list_runs_page_supports_offset_and_total_count(self) -> None:
+        first = submit_archive_batch([self.record(self.tweet_ids[0])], "test_queue_page_first")
+        second = submit_archive_batch([self.record(self.tweet_ids[1])], "test_queue_page_second")
+
+        page = list_runs_page(limit=1, offset=1, tweet_id="91000000000000000")
+
+        self.assertEqual(page["count"], 1)
+        self.assertEqual(page["total_count"], 2)
+        self.assertEqual(page["limit"], 1)
+        self.assertEqual(page["offset"], 1)
+        self.assertEqual([row["id"] for row in page["rows"]], [first["run_id"]])
+        self.assertNotEqual(first["run_id"], second["run_id"])

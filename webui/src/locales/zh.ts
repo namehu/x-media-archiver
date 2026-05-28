@@ -220,6 +220,7 @@ export const zh = {
   "sources.scanStatus.auth_required": "需要认证",
   "sources.scanStatus.network_error": "网络错误",
   "sources.scanStatus.failed": "失败",
+  "sources.type.all": "全部来源",
   "sources.type.profile": "博主主页",
   "sources.type.user_media": "博主媒体页",
   "sources.type.likes": "点赞",

@@ -5,7 +5,13 @@ from pathlib import Path
 from xarchiver.archive import ensure_archive_dirs
 from xarchiver.config import Settings
 from xarchiver.db import connect
-from xarchiver.exporter import count_duplicate_groups, fetch_duplicate_rows, fetch_export_rows
+from xarchiver.exporter import (
+    count_all_duplicate_groups,
+    count_duplicate_groups,
+    count_duplicate_rows,
+    fetch_duplicate_rows,
+    fetch_export_rows,
+)
 from xarchiver.search import count_search_media, search_media
 from xarchiver.status import get_media_count, get_media_status_counts, get_status_counts
 
@@ -171,6 +177,18 @@ def list_export_media(settings: Settings, status: str | None = "verified") -> li
 def list_duplicates(settings: Settings) -> dict[str, object]:
     rows = [attach_media_url(row, settings.archive_dir) for row in fetch_duplicate_rows()]
     return {"duplicate_groups": count_duplicate_groups(rows), "rows": rows}
+
+
+def list_duplicates_page(settings: Settings, limit: int = 100, offset: int = 0) -> dict[str, object]:
+    rows = [attach_media_url(row, settings.archive_dir) for row in fetch_duplicate_rows(limit=limit, offset=offset)]
+    return {
+        "duplicate_groups": count_all_duplicate_groups(),
+        "rows": rows,
+        "count": len(rows),
+        "total_count": count_duplicate_rows(),
+        "limit": limit,
+        "offset": offset,
+    }
 
 
 def list_recent_exports(archive_dir: Path, limit: int = 5) -> list[dict[str, object]]:
