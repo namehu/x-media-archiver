@@ -159,6 +159,33 @@ export type ArchiveSubmission = {
   };
 };
 
+export type SourceScanRun = {
+  id: number;
+  trigger_type: "history_worker" | "manual_next" | "latest_refresh";
+  status:
+    | "running"
+    | "waiting_downloads"
+    | "succeeded"
+    | "completed_empty_batch"
+    | "completed_end_of_source"
+    | "rate_limited"
+    | "auth_required"
+    | "network_error"
+    | "failed";
+  range_start?: number | null;
+  range_end?: number | null;
+  requested_limit?: number | null;
+  discovered_tweet_count: number;
+  new_tweet_count: number;
+  duplicate_tweet_count: number;
+  discovered_media_count: number;
+  error_category?: string | null;
+  error_message?: string | null;
+  started_at?: string | null;
+  finished_at?: string | null;
+  created_at: string;
+};
+
 export type ArchiveSource = {
   id: number;
   source_type: string;
@@ -193,9 +220,17 @@ export type ArchiveSource = {
     automation_enabled?: boolean;
     automation_state?: string;
     automation_limit?: number;
+    extractor_cursor?: string | null;
   } | null;
   created_at?: string | null;
   updated_at?: string | null;
+  scan_summary?: {
+    batch_count: number;
+    added_tweet_count: number;
+    last_success_at?: string | null;
+    last_error_at?: string | null;
+  };
+  scan_runs?: SourceScanRun[];
   discovered?: Array<{
     id: number;
     tweet_id: string;

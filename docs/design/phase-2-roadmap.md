@@ -1,7 +1,7 @@
 # x-media-archiver Phase 2 Roadmap
 
 > 日期：2026-05-27  
-> 状态：P2.0 - P2.5.2 已落地，P2.6/P2.7 推进中<br>
+> 状态：P2.0 - P2.8.1 已落地，P2.8.2 原生 cursor 已接入且剩余真实验收待推进<br>
 > 阶段目标：在第一阶段已完成的 CLI 归档内核之上，建设本地 WebUI / API 管理后台能力。
 
 ---
@@ -266,16 +266,16 @@ P2.5.1/P2.5.2 queue observability and error categories
 P2.6 archive queue input preview
 P2.7 run history filters
 P2.8.0 source collector foundation
+P2.8.0 background historical discovery and scan/download separation
 ```
 
-推荐下一步：
+当前判断：
 
 ```text
-1. 用新导出的 TXT 或 JSONL 通过 Source 页面挂到一个 profile/user_media 来源下做人工验收。
-2. 验证来源发现记录、Archive Queue run、tweet 下载状态三者是否能互相追踪。
-3. spike gallery-dl profile/user_media 枚举能力，只枚举 tweet_id/metadata，不直接下载。
-4. 在 source collector 稳定后再评估插件直接投递。
-5. 不提前加入删除能力。
+1. 插件滚动收集不再作为大型博主历史归档主流程。
+2. Source Collector 已具备 checkpoint、后台分批扫描、暂停/恢复、扫描与下载分离能力。
+3. 当前最大缺口不是新的入口能力，而是后台任务可观测性和真实长链路验收。
+4. 在扫描日志与终止判断验收完成前，不把该能力视为可长期无人值守运行。
 ```
 
 ### P2.8 Source Collector
@@ -293,7 +293,99 @@ P2.8.0 source collector foundation
 - [x] 下载队列增加每轮 batch size 限制，下载器增加请求/下载随机延迟参数。
 - [x] 将枚举器接入 `archive_sources.cursor_state`，支持分页 checkpoint 和恢复。
 - [x] 增加来源扫描 worker，按批次发现 tweet，避免一次性大任务；提交下载仍由用户显式触发。
-- [ ] 为限流、鉴权失败和网络错误补充来源级失败分类。
+- [~] 为限流、鉴权失败和网络错误补充来源级失败分类；已有分类、自动暂停和持久化执行记录，尚缺真实失败验收。
+
+### P2.8.1 来源扫描可观测性与执行审计
+
+目标：让后台扫描停止增长、等待或失败时，用户可以直接判断原因，而不是只能观察发现数量。
+
+- [x] 新增每批来源扫描执行记录，至少持久化：`source_id`、扫描范围、触发方式（后台/手工/最新补扫）、开始/结束时间、状态、错误类别、错误摘要。
+- [x] 每批记录统计：发现 Tweet 数、新增 Tweet 数、已存在 Tweet 数、预估媒体数，以及扫描前后的 cursor。
+- [x] 明确并落库执行结果：`running`、`waiting_downloads`、`succeeded`、`completed_empty_batch`、`completed_end_of_source`、`rate_limited`、`auth_required`、`network_error`、`failed`；随机延迟期间的待调度状态继续持久化在来源的 `cursor_state` / `next_scan_at` 中，不计作一次扫描执行。
+- [x] 后台 worker 异常不得仅在循环中被吞掉；来源详情必须可看到最近一次失败原因和发生时间。
+- [x] WebUI Sources 详情增加“扫描历史”列表，默认展示最近 20 批执行结果。
+- [x] WebUI 当前状态明确显示等待原因：等待随机延迟、等待下载队列、限流暂停、认证暂停、扫描完成。
+- [x] 增加扫描统计汇总：累计扫描批次数、累计新增 Tweet 数、最近成功扫描时间、最近错误时间。
+
+验收：
+
+```text
+1. 来源后台不增长时，不查看容器日志也能从页面判断是等待、暂停、失败还是完成。
+2. 单个 range 的输入、输出、cursor 推进与错误均可追踪。
+3. API 重启后，历史执行记录和当前调度状态仍可查看。
+```
+
+### P2.8.2 枚举语义、终止条件与真实历史扫描验收
+
+目标：在大规模运行前，用真实来源验证 cursor 设计不会漏扫、误判完成或错误统计多媒体 Tweet。
+
+- [~] 已用 `user_media /media` 真实样本确认 `gallery-dl --range` 按媒体项计数并将结论补入 contract；`profile /timeline` 待原生 cursor 接入后验收。
+- [x] 验证媒体页一批 `20` 个媒体项可对应少于 `20` 条 Tweet，并修正范围外 metadata 被误落库的问题。
+- [ ] 验证结尾判断：不足一批不能误判完成；只有可证明的空批次或 extractor 明确结束信号才完成。
+- [x] 验证重复区域行为：最新补扫遇到已知 Tweet 时不推进历史 cursor，也不错误终止历史扫描。
+- [~] 验证暂停、恢复、API 重启后的 checkpoint 延续行为；已发现并修正在途批次覆盖停止状态的竞态，待原生 cursor 路径复验。
+- [ ] 验证下载队列运行期间来源扫描会等待，不造成扫描与下载请求叠加。
+- [ ] 用真实 `rate_limited`、`auth_required` 或可控模拟结果验收自动暂停、错误展示与恢复操作。
+- [x] 将历史枚举从数字 `--range` checkpoint 改为持久化并恢复 `gallery-dl` Twitter 原生 continuation cursor。数字范围在真实 `201-220` 批次耗时约 4 分 25 秒，不满足大型来源后台扫描目标。
+- [x] 使用 `user_media /media` 真实连续批次验证 native cursor：`1-20` 建立 cursor，`21-40` 使用并更新 cursor；当前来源保持停止，未自动继续请求。
+
+验收记录输出：
+
+```text
+docs/source-scanning-acceptance.md
+docs/downloader-contract.md（补充 extractor/range 与扫描错误契约）
+```
+
+### P2.8.3 受控下载联调验收
+
+目标：来源发现可靠后，验证从发现结果到本地媒体文件的受控下载闭环。
+
+- [ ] 从真实来源选择少量未入队发现项，按 5 - 20 条分批提交下载。
+- [ ] 验证扫描不会自动提交下载，只有人工确认后才创建 Archive Queue run。
+- [ ] 验证 `QUEUE_BATCH_SIZE` 与下载随机延迟在实际执行中生效。
+- [ ] 验证媒体文件使用稳定路径：`archive/media/<author_id>/<tweet_id>/<tweet_id>--p<media_index>.<ext>`。
+- [ ] 验证扫描预估媒体数与下载完成后的 `media_assets` 数量差异可解释。
+- [ ] 验证下载失败能从来源发现项关联到 Archive Queue run/item/attempt。
+
+### P2.9 后续能力盘点（不阻塞当前大动作）
+
+以下任务已有价值，但优先级低于 P2.8.1 - P2.8.3 的可信运行闭环：
+
+- [ ] Run 列表状态、时间和任务统计的展示收尾（承接 P2.5.1 中的 `[~]` 项）。
+- [ ] 来源生命周期管理：归档/隐藏不再关注的来源，以及是否允许安全删除纯 metadata 记录的设计。
+- [ ] 历史扫描完成后的“定期最新补扫”调度设计；需先确定频率、限流策略和手工关闭入口。
+- [ ] 插件直接投递本地服务的授权/CORS/token 设计；文件导出继续作为 fallback。
+- [ ] 在自有 Supabase 项目执行 migration validation，并记录生产 metadata 数据库恢复演练结果。
+
+### P2.8 当前执行顺序
+
+```text
+优先级 A（可信运行前必须完成）
+  1. P2.8.1 来源扫描执行日志与页面状态可见化（已实现）
+  2. P2.8.2a 接入 gallery-dl Twitter 原生 continuation cursor，替换数字 offset 历史扫描（已实现）
+  3. P2.8.2b 按新项目空库状态复验 cursor/终止条件/停止恢复
+  4. P2.8.3 少量受控下载联调验收
+
+优先级 B（上述闭环稳定后）
+  5. 基于验收结论复核 P3 工程化候选计划，不直接全量启动
+  6. 定期最新补扫调度
+  7. 插件直接投递预研
+  8. 来源生命周期与生产部署维护增强
+
+保持不做
+  - 扫描自动提交下载
+  - 媒体物理删除
+  - cookies 自动读取或上传
+  - 绕过认证、代理池或反风控能力
+```
+
+P3 衔接决策：
+
+```text
+docs/design/phase-3-roadmap.md 仅作为后续工程化候选规划。
+P2.8.1 - P2.8.3 未完成前，不启动 API/WebUI 大面积重构、SSE 或旧 API 移除。
+完成可信运行闭环后，再依据真实痛点优先选择 CI、统一错误模型、必要分页或路由整理。
+```
 
 ---
 

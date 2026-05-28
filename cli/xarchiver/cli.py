@@ -6,6 +6,7 @@ from rich.table import Table
 
 from xarchiver.archive import ensure_archive_dirs
 from xarchiver.config import get_settings
+from xarchiver.db import execute_sql
 from xarchiver.exporter import export_media_gallery
 from xarchiver.importer import import_jsonl, import_urls
 from xarchiver.migrations import migrate
@@ -58,6 +59,25 @@ def db_migrate() -> None:
     if not files:
         console.print(f"No pending migrations in {settings.sql_dir}")
         return
+    for file in files:
+        console.print(f"Applied migration: {file}")
+
+
+@db_app.command("reset")
+def db_reset(yes: bool = typer.Option(False, "--yes", help="Confirm destructive database reset.")) -> None:
+    if not yes:
+        raise typer.BadParameter("Pass --yes to confirm resetting the database schema.")
+    settings = get_settings()
+    execute_sql(
+        """
+        drop schema public cascade;
+        create schema public;
+        grant all on schema public to xarchiver;
+        grant all on schema public to public;
+        """
+    )
+    files = migrate(settings.sql_dir)
+    console.print("Database schema reset.")
     for file in files:
         console.print(f"Applied migration: {file}")
 
@@ -174,7 +194,7 @@ def source_submit_discovered_command(
 @sources_app.command("history-start")
 def source_history_start_command(
     source_id: int = typer.Argument(..., help="Archive source id."),
-    limit: int = typer.Option(20, help="Media range size to scan per batch."),
+    limit: int = typer.Option(20, help="Target tweet window size to scan per batch."),
     restart: bool = typer.Option(False, help="Restart enumeration from the newest range."),
 ) -> None:
     console.print(start_source_history_scan(source_id, limit, restart=restart))

@@ -1,4 +1,4 @@
-import { useState } from "react";
+import { useEffect, useState } from "react";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { apiGet, apiPost, type ArchiveSource, type ArchiveSubmission, type DownloadPolicy } from "../lib/api";
 import { useFormatters, useI18n } from "../lib/i18n";
@@ -22,6 +22,7 @@ export function SourcesPage() {
   const [submitLimit, setSubmitLimit] = useState("20");
   const [feedback, setFeedback] = useState<ArchiveSubmission | null>(null);
   const [scanFeedback, setScanFeedback] = useState<Record<string, unknown> | null>(null);
+  const [now, setNow] = useState(() => Date.now());
 
   const sourcesQuery = useQuery({
     queryKey: ["sources"],
@@ -105,6 +106,7 @@ export function SourcesPage() {
   });
 
   const selected = detailQuery.data;
+  const activeScanRun = selected?.scan_runs?.find((run) => run.status === "running");
   const sourceRecords = parseRecordUrls(recordUrls);
   const canCreate = sourceUrl.trim().length > 0 && !createMutation.isPending;
   const canSubmit = Boolean(selectedSourceId && sourceRecords.length && !submitMutation.isPending);
@@ -114,6 +116,12 @@ export function SourcesPage() {
   );
   const historyEnabled = Boolean(selected?.cursor_state?.automation_enabled);
   const historyBusy = historyScanMutation.isPending || stopHistoryScanMutation.isPending;
+
+  useEffect(() => {
+    if (!activeScanRun) return undefined;
+    const timer = window.setInterval(() => setNow(Date.now()), 1000);
+    return () => window.clearInterval(timer);
+  }, [activeScanRun?.id]);
 
   return (
     <div className="space-y-5">
@@ -218,6 +226,31 @@ export function SourcesPage() {
                     </div>
                   </div>
                 ) : null}
+                {activeScanRun ? (
+                  <div className="rounded-md border border-primary/30 bg-primary/10 p-3 text-sm">
+                    <div className="flex flex-wrap items-center justify-between gap-2">
+                      <div className="font-medium">{t("sources.activeScanTitle")}</div>
+                      <Badge className="border-primary/30 bg-white text-primary">
+                        {scanStatusLabel(activeScanRun.status, t)}
+                      </Badge>
+                    </div>
+                    <div className="mt-2 grid gap-2 text-xs text-muted-foreground sm:grid-cols-2">
+                      <span>
+                        {t("sources.scanRange")}: {formatRunRange(activeScanRun.range_start, activeScanRun.range_end)}
+                      </span>
+                      <span>
+                        {t("sources.activeScanElapsed")}: {formatElapsed(activeScanRun.started_at, now)}
+                      </span>
+                      <span>
+                        {t("sources.activeScanStarted")}: {formatDateTime(activeScanRun.started_at)}
+                      </span>
+                      <span>
+                        {t("sources.activeScanMode")}: {scanTriggerLabel(activeScanRun.trigger_type, t)}
+                      </span>
+                    </div>
+                    <p className="mt-2 text-xs text-muted-foreground">{t("sources.activeScanHint")}</p>
+                  </div>
+                ) : null}
                 <div className="space-y-2 rounded-md bg-muted p-3 text-sm">
                   <div className="flex justify-between gap-3">
                     <span className="text-muted-foreground">{t("sources.url")}</span>
@@ -269,6 +302,25 @@ export function SourcesPage() {
                       <span>{formatDateTime(selected.next_scan_at)}</span>
                     </div>
                   ) : null}
+                </div>
+
+                <div className="grid gap-2 rounded-md border border-border p-3 text-sm sm:grid-cols-2 lg:grid-cols-4">
+                  <div>
+                    <div className="text-xs text-muted-foreground">{t("sources.scanBatches")}</div>
+                    <div>{selected.scan_summary?.batch_count ?? 0}</div>
+                  </div>
+                  <div>
+                    <div className="text-xs text-muted-foreground">{t("sources.scanAdded")}</div>
+                    <div>{selected.scan_summary?.added_tweet_count ?? 0}</div>
+                  </div>
+                  <div>
+                    <div className="text-xs text-muted-foreground">{t("sources.lastScanSuccess")}</div>
+                    <div>{formatDateTime(selected.scan_summary?.last_success_at)}</div>
+                  </div>
+                  <div>
+                    <div className="text-xs text-muted-foreground">{t("sources.lastScanError")}</div>
+                    <div>{formatDateTime(selected.scan_summary?.last_error_at)}</div>
+                  </div>
                 </div>
 
                 <div className="space-y-3 rounded-md border border-border p-3">
@@ -440,6 +492,41 @@ export function SourcesPage() {
                 </details>
 
                 <div className="space-y-2">
+                  <div className="text-sm font-medium">{t("sources.scanHistory")}</div>
+                  {selected.scan_runs?.map((run) => (
+                    <div key={run.id} className="rounded-md border border-border p-3 text-sm">
+                      <div className="flex flex-wrap items-center justify-between gap-2">
+                        <div className="flex flex-wrap items-center gap-2">
+                          <Badge>{scanTriggerLabel(run.trigger_type, t)}</Badge>
+                          <Badge className={scanStatusClassName(run.status)}>{scanStatusLabel(run.status, t)}</Badge>
+                        </div>
+                        <span className="text-xs text-muted-foreground">
+                          {run.status === "running"
+                            ? t("sources.activeScanElapsedValue", { elapsed: formatElapsed(run.started_at, now) })
+                            : formatDateTime(run.finished_at || run.created_at)}
+                        </span>
+                      </div>
+                      <div className="mt-2 flex flex-wrap gap-x-4 gap-y-1 text-xs text-muted-foreground">
+                        <span>{t("sources.scanRange")}: {formatRunRange(run.range_start, run.range_end)}</span>
+                        <span>{t("sources.activeScanStarted")}: {formatDateTime(run.started_at)}</span>
+                        <span>{t("sources.scanFound")}: {run.discovered_tweet_count}</span>
+                        <span>{t("sources.scanNew")}: {run.new_tweet_count}</span>
+                        <span>{t("sources.scanDuplicate")}: {run.duplicate_tweet_count}</span>
+                        <span>{t("sources.scanMedia")}: {run.discovered_media_count}</span>
+                      </div>
+                      {run.error_message ? (
+                        <p className="mt-2 break-words text-xs text-destructive">
+                          {run.error_category || t("sources.scanFailed")}: {run.error_message}
+                        </p>
+                      ) : null}
+                    </div>
+                  ))}
+                  {selected.scan_runs?.length === 0 ? (
+                    <p className="text-sm text-muted-foreground">{t("sources.noScanHistory")}</p>
+                  ) : null}
+                </div>
+
+                <div className="space-y-2">
                   <div className="text-sm font-medium">{t("sources.recentDiscovered")}</div>
                   {selected.discovered?.map((tweet) => (
                     <div key={tweet.id} className="rounded-md border border-border p-3 text-sm">
@@ -532,13 +619,49 @@ function formatScanState(cursorState: ArchiveSource["cursor_state"], t: (key: st
 
 function formatHistoryState(source: ArchiveSource, t: (key: string) => string) {
   const state = source.cursor_state?.automation_state;
+  if (source.status === "completed" || state === "completed") return t("sources.historyCompleted");
   if (!source.cursor_state?.automation_enabled) return t("sources.historyIdle");
   if (source.status === "paused" || state === "paused") return t("sources.historyPaused");
   if (state === "waiting_downloads") return t("sources.historyWaitingDownloads");
   if (state === "retry_wait") return t("sources.historyRetryWait");
   if (state === "rate_limited") return t("sources.historyRateLimited");
   if (state === "auth_required") return t("sources.historyAuthRequired");
+  if (state === "running" && source.next_scan_at) return t("sources.historyScheduled");
   return t("sources.historyRunning");
+}
+
+function formatRunRange(start?: number | null, end?: number | null) {
+  return start && end ? `${start}-${end}` : "-";
+}
+
+function formatElapsed(startedAt?: string | null, now = Date.now()) {
+  if (!startedAt) return "-";
+  const started = new Date(startedAt).getTime();
+  if (Number.isNaN(started)) return "-";
+  const totalSeconds = Math.max(0, Math.floor((now - started) / 1000));
+  const minutes = Math.floor(totalSeconds / 60);
+  const seconds = totalSeconds % 60;
+  if (minutes < 60) return `${minutes}m ${seconds.toString().padStart(2, "0")}s`;
+  const hours = Math.floor(minutes / 60);
+  return `${hours}h ${(minutes % 60).toString().padStart(2, "0")}m`;
+}
+
+function scanTriggerLabel(trigger: string, t: (key: string) => string) {
+  return t(`sources.scanTrigger.${trigger}`);
+}
+
+function scanStatusLabel(status: string, t: (key: string) => string) {
+  return t(`sources.scanStatus.${status}`);
+}
+
+function scanStatusClassName(status: string) {
+  if (["rate_limited", "auth_required", "network_error", "failed"].includes(status)) {
+    return "border-destructive/30 bg-destructive/10 text-destructive";
+  }
+  if (status === "succeeded" || status === "completed_empty_batch" || status === "completed_end_of_source") {
+    return "border-primary/30 bg-primary/10 text-primary";
+  }
+  return "";
 }
 
 function formatDiscoveredMedia(

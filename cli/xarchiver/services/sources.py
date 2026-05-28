@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import json
 import random
+import re
 import shutil
 import subprocess
 from typing import Any
@@ -16,6 +17,7 @@ from xarchiver.services.queue import has_pending_download_work, submit_archive_b
 
 VALID_SOURCE_TYPES = {"profile", "user_media", "likes", "bookmarks", "search", "manual"}
 VALID_SOURCE_STATUSES = {"active", "paused", "completed", "failed"}
+VALID_SCAN_TRIGGERS = {"history_worker", "manual_next", "latest_refresh"}
 
 
 def create_source(
@@ -111,7 +113,37 @@ def get_source(source_id: int) -> dict[str, object] | None:
                 (source_id,),
             )
             discovered = [dict(row) for row in cur.fetchall()]
-    return {**dict(source), "discovered": discovered}
+            cur.execute(
+                """
+                select (count(*) filter (where status <> 'waiting_downloads'))::int as batch_count,
+                       coalesce(sum(new_tweet_count), 0)::int as added_tweet_count,
+                       max(finished_at) filter (
+                         where status in ('succeeded', 'completed_empty_batch', 'completed_end_of_source')
+                       ) as last_success_at,
+                       max(finished_at) filter (
+                         where status in ('rate_limited', 'auth_required', 'network_error', 'failed')
+                       ) as last_error_at
+                from source_scan_runs
+                where source_id = %s
+                """,
+                (source_id,),
+            )
+            scan_summary = dict(cur.fetchone())
+            cur.execute(
+                """
+                select id, trigger_type, status, range_start, range_end, requested_limit,
+                       cursor_before, cursor_after, discovered_tweet_count, new_tweet_count,
+                       duplicate_tweet_count, discovered_media_count, error_category,
+                       error_message, started_at, finished_at, created_at
+                from source_scan_runs
+                where source_id = %s
+                order by created_at desc, id desc
+                limit 20
+                """,
+                (source_id,),
+            )
+            scan_runs = [dict(row) for row in cur.fetchall()]
+    return {**dict(source), "discovered": discovered, "scan_summary": scan_summary, "scan_runs": scan_runs}
 
 
 def update_source_status(source_id: int, status: str) -> dict[str, object]:
@@ -162,6 +194,7 @@ def start_source_history_scan(source_id: int, limit: int = 20, restart: bool = F
     }
     if restart:
         cursor_state["next_start_index"] = 1
+        cursor_state.pop("extractor_cursor", None)
     with connect() as conn:
         with conn.cursor() as cur:
             cur.execute(
@@ -206,12 +239,23 @@ def process_next_source_history_scan(settings: Settings) -> dict[str, object] | 
     if source is None:
         return None
     source_id = int(source["id"])
-    if has_pending_download_work():
-        schedule_next_history_scan(source_id, settings, "waiting_downloads")
-        return {"source_id": source_id, "deferred": "download_queue_active"}
     cursor_state = source.get("cursor_state") if isinstance(source.get("cursor_state"), dict) else {}
     limit = parse_positive_int(cursor_state.get("automation_limit"), settings.source_scan_batch_size)
-    result = scan_source(source_id, limit, settings=settings)
+    try:
+        downloads_pending = has_pending_download_work()
+    except Exception as exc:
+        record_source_scan_failure(source_id, cursor_state, limit, "history_worker", exc)
+        schedule_next_history_scan(source_id, settings, "retry_wait")
+        raise
+    if downloads_pending:
+        record_waiting_downloads_scan(source_id, cursor_state, limit)
+        schedule_next_history_scan(source_id, settings, "waiting_downloads")
+        return {"source_id": source_id, "deferred": "download_queue_active"}
+    try:
+        result = scan_source(source_id, limit, settings=settings, trigger_type="history_worker")
+    except Exception:
+        schedule_next_history_scan(source_id, settings, "retry_wait")
+        raise
     error_category = result.get("scanner", {}).get("error_category") if isinstance(result.get("scanner"), dict) else None
     if error_category in {"rate_limited", "auth_required"}:
         pause_history_scan_for_error(source_id, str(error_category))
@@ -220,6 +264,24 @@ def process_next_source_history_scan(settings: Settings) -> dict[str, object] | 
     else:
         schedule_next_history_scan(source_id, settings, "running" if not error_category else "retry_wait")
     return result
+
+
+def recover_interrupted_source_scan_runs() -> int:
+    with connect() as conn:
+        with conn.cursor() as cur:
+            cur.execute(
+                """
+                update source_scan_runs
+                set status = 'failed',
+                    error_category = 'interrupted',
+                    error_message = 'API stopped before this scan batch finished.',
+                    finished_at = now()
+                where status = 'running'
+                """
+            )
+            recovered = cur.rowcount
+        conn.commit()
+    return recovered
 
 
 def fetch_due_history_source() -> dict[str, object] | None:
@@ -241,6 +303,10 @@ def fetch_due_history_source() -> dict[str, object] | None:
 
 
 def schedule_next_history_scan(source_id: int, settings: Settings, state: str) -> None:
+    source = get_source(source_id)
+    cursor_state = source.get("cursor_state") if source and isinstance(source.get("cursor_state"), dict) else {}
+    if not source or source.get("status") != "active" or not cursor_state.get("automation_enabled"):
+        return
     delay = random.uniform(
         min(settings.source_scan_sleep_min_seconds, settings.source_scan_sleep_max_seconds),
         max(settings.source_scan_sleep_min_seconds, settings.source_scan_sleep_max_seconds),
@@ -290,11 +356,131 @@ def update_history_scan_state(
         conn.commit()
 
 
+def start_source_scan_run(
+    source_id: int,
+    trigger_type: str,
+    scan_range: dict[str, int],
+    cursor_before: dict[str, Any],
+) -> int:
+    if trigger_type not in VALID_SCAN_TRIGGERS:
+        raise ValueError("invalid_scan_trigger")
+    with connect() as conn:
+        with conn.cursor() as cur:
+            cur.execute(
+                """
+                insert into source_scan_runs (
+                    source_id, trigger_type, status, range_start, range_end,
+                    requested_limit, cursor_before, started_at
+                )
+                values (%s, %s, 'running', %s, %s, %s, %s, now())
+                returning id
+                """,
+                (
+                    source_id,
+                    trigger_type,
+                    scan_range["start"],
+                    scan_range["end"],
+                    scan_range["limit"],
+                    Jsonb(cursor_before),
+                ),
+            )
+            run_id = int(cur.fetchone()["id"])
+        conn.commit()
+    return run_id
+
+
+def finish_source_scan_run(
+    scan_run_id: int,
+    status: str,
+    *,
+    cursor_after: dict[str, Any],
+    discovered_tweet_count: int = 0,
+    new_tweet_count: int = 0,
+    duplicate_tweet_count: int = 0,
+    discovered_media_count: int = 0,
+    error_category: str | None = None,
+    error_message: str | None = None,
+) -> None:
+    with connect() as conn:
+        with conn.cursor() as cur:
+            cur.execute(
+                """
+                update source_scan_runs
+                set status = %s,
+                    cursor_after = %s,
+                    discovered_tweet_count = %s,
+                    new_tweet_count = %s,
+                    duplicate_tweet_count = %s,
+                    discovered_media_count = %s,
+                    error_category = %s,
+                    error_message = %s,
+                    finished_at = now()
+                where id = %s
+                """,
+                (
+                    status,
+                    Jsonb(cursor_after),
+                    discovered_tweet_count,
+                    new_tweet_count,
+                    duplicate_tweet_count,
+                    discovered_media_count,
+                    error_category,
+                    error_message,
+                    scan_run_id,
+                ),
+            )
+        conn.commit()
+
+
+def record_waiting_downloads_scan(source_id: int, cursor_state: dict[str, Any], limit: int) -> None:
+    scan_range = build_scan_range(cursor_state, limit)
+    with connect() as conn:
+        with conn.cursor() as cur:
+            cur.execute(
+                """
+                insert into source_scan_runs (
+                    source_id, trigger_type, status, range_start, range_end,
+                    requested_limit, cursor_before, cursor_after, started_at, finished_at
+                )
+                values (%s, 'history_worker', 'waiting_downloads', %s, %s, %s, %s, %s, now(), now())
+                """,
+                (
+                    source_id,
+                    scan_range["start"],
+                    scan_range["end"],
+                    scan_range["limit"],
+                    Jsonb(cursor_state),
+                    Jsonb(cursor_state),
+                ),
+            )
+        conn.commit()
+
+
+def record_source_scan_failure(
+    source_id: int,
+    cursor_state: dict[str, Any],
+    limit: int,
+    trigger_type: str,
+    error: Exception,
+) -> None:
+    run_id = start_source_scan_run(source_id, trigger_type, build_scan_range(cursor_state, limit), cursor_state)
+    message = str(error) or error.__class__.__name__
+    mark_source_scan_result(source_id, error_category="failed", error_message=message)
+    finish_source_scan_run(
+        run_id,
+        "failed",
+        cursor_after=cursor_state,
+        error_category="failed",
+        error_message=message,
+    )
+
+
 def scan_source(
     source_id: int,
     limit: int = 20,
     restart: bool = False,
     settings: Settings | None = None,
+    trigger_type: str | None = None,
 ) -> dict[str, object]:
     settings = settings or get_settings()
     source = get_source(source_id)
@@ -303,61 +489,106 @@ def scan_source(
     if str(source.get("status")) == "paused":
         raise ValueError("source_paused")
     source_url = str(source.get("source_url") or "")
-    scan_url = build_gallery_dl_scan_url(str(source.get("source_type") or ""), source_url)
+    source_type = str(source.get("source_type") or "")
+    if source_type not in {"profile", "user_media"}:
+        raise ValueError("source_scan_not_supported")
+    scan_url = build_gallery_dl_scan_url(source_type, source_url)
     cursor_state = source.get("cursor_state") if isinstance(source.get("cursor_state"), dict) else {}
+    scan_trigger = trigger_type or ("latest_refresh" if restart else "manual_next")
+    advances_history = scan_trigger != "latest_refresh"
+    scan_cursor = None if not advances_history else cursor_state.get("extractor_cursor")
     scan_range = build_scan_range(cursor_state, limit, restart=restart)
-    records, scan_meta = discover_records_with_gallery_dl(
-        scan_url,
-        scan_range["start"],
-        scan_range["end"],
-        settings.source_scan_sleep_min_seconds,
-        settings.source_scan_sleep_max_seconds,
-    )
-    if not records:
-        update_source_cursor(
-            source_id,
-            cursor_state,
-            scan_meta,
-            scan_range,
-            discovered_count=0,
-            new_discovered_count=0,
-            completed=scan_meta.get("exit_code") == 0,
+    scan_run_id = start_source_scan_run(source_id, scan_trigger, scan_range, cursor_state)
+    try:
+        records, scan_meta = discover_records_with_gallery_dl(
+            scan_url,
+            scan_range["start"],
+            scan_range["end"],
+            settings.source_scan_sleep_min_seconds,
+            settings.source_scan_sleep_max_seconds,
+            continuation_cursor=str(scan_cursor) if scan_cursor else None,
         )
-        completed = scan_meta.get("exit_code") == 0
-        mark_source_scan_result(
-            source_id,
-            error_category=None if completed else scan_meta.get("error_category") or "download_no_output",
-            error_message=None if completed else scan_meta.get("error_message") or "No tweets discovered for source.",
+        if not records:
+            scan_succeeded = scan_meta.get("exit_code") == 0
+            completed = scan_succeeded and advances_history
+            cursor_after = (
+                update_source_cursor(
+                    source_id,
+                    scan_meta,
+                    scan_range,
+                    discovered_count=0,
+                    new_discovered_count=0,
+                    completed=completed,
+                )
+                if advances_history
+                else cursor_state
+            )
+            error_category = None if scan_succeeded else str(scan_meta.get("error_category") or "failed")
+            error_message = (
+                None if scan_succeeded else str(scan_meta.get("error_message") or "No tweets discovered for source.")
+            )
+            mark_source_scan_result(source_id, error_category=error_category, error_message=error_message)
+            finish_source_scan_run(
+                scan_run_id,
+                scan_run_status(scan_meta, completed),
+                cursor_after=cursor_after,
+                error_category=error_category,
+                error_message=error_message,
+            )
+            return {
+                "source_id": source_id,
+                "scan_run_id": scan_run_id,
+                "discovered_count": 0,
+                "new_discovered_count": 0,
+                "duplicate_count": 0,
+                "completed": completed,
+                "submitted": None,
+                "scanner": scan_meta,
+            }
+        result = record_source_discoveries(source_id, records, mark_scanned=True)
+        completed = advances_history and is_source_scan_complete(scan_meta, scan_range, int(result["discovered_count"]))
+        cursor_after = (
+            update_source_cursor(
+                source_id,
+                scan_meta,
+                scan_range,
+                discovered_count=int(result["discovered_count"]),
+                new_discovered_count=int(result["new_discovered_count"]),
+                completed=completed,
+            )
+            if advances_history
+            else cursor_state
+        )
+        mark_source_scan_result(source_id)
+        finish_source_scan_run(
+            scan_run_id,
+            scan_run_status(scan_meta, completed),
+            cursor_after=cursor_after,
+            discovered_tweet_count=int(result["discovered_count"]),
+            new_tweet_count=int(result["new_discovered_count"]),
+            duplicate_tweet_count=int(result["duplicate_count"]),
+            discovered_media_count=count_discovered_media(records),
         )
         return {
             "source_id": source_id,
-            "discovered_count": 0,
-            "new_discovered_count": 0,
-            "duplicate_count": 0,
+            "scan_run_id": scan_run_id,
+            "discovered_count": result["discovered_count"],
+            "new_discovered_count": result["new_discovered_count"],
+            "duplicate_count": result["duplicate_count"],
             "completed": completed,
             "submitted": None,
             "scanner": scan_meta,
         }
-    result = record_source_discoveries(source_id, records, mark_scanned=True)
-    completed = is_source_scan_complete(scan_meta, scan_range, int(result["discovered_count"]))
-    update_source_cursor(
-        source_id,
-        cursor_state,
-        scan_meta,
-        scan_range,
-        discovered_count=int(result["discovered_count"]),
-        new_discovered_count=int(result["new_discovered_count"]),
-        completed=completed,
-    )
-    return {
-        "source_id": source_id,
-        "discovered_count": result["discovered_count"],
-        "new_discovered_count": result["new_discovered_count"],
-        "duplicate_count": result["duplicate_count"],
-        "completed": completed,
-        "submitted": None,
-        "scanner": scan_meta,
-    }
+    except Exception as exc:
+        mark_source_scan_result(source_id, error_category="failed", error_message=str(exc))
+        finish_source_scan_run(
+            scan_run_id,
+            "failed",
+            cursor_after=cursor_state,
+            error_category="failed",
+            error_message=str(exc),
+        )
+        raise
 
 
 def discover_records_with_gallery_dl(
@@ -366,6 +597,7 @@ def discover_records_with_gallery_dl(
     end: int,
     sleep_min_seconds: float = 20.0,
     sleep_max_seconds: float = 45.0,
+    continuation_cursor: str | None = None,
 ) -> tuple[list[dict[str, Any]], dict[str, object]]:
     if start < 1 or end < start:
         raise ValueError("scan_limit_required")
@@ -378,10 +610,12 @@ def discover_records_with_gallery_dl(
         "--dump-json",
         "--sleep-request",
         format_sleep_range(sleep_min_seconds, sleep_max_seconds),
-        "--range",
-        f"{start}-{end}",
-        source_url,
     ]
+    limit = end - start + 1
+    command.extend(["--verbose", "-o", f"limit={limit}", "--post-range", f"1-{limit}"])
+    if continuation_cursor:
+        command.extend(["-o", f"cursor={continuation_cursor}"])
+    command.append(source_url)
     result = subprocess.run(command, capture_output=True, text=True, check=False)
     stderr_excerpt = result.stderr[-4000:] if result.stderr else None
     if result.returncode != 0:
@@ -394,10 +628,12 @@ def discover_records_with_gallery_dl(
     return records, {
         "exit_code": result.returncode,
         "raw_record_count": len(records),
-        "stderr_excerpt": stderr_excerpt,
+        "stderr_excerpt": None,
         "scan_url": source_url,
         "range_start": start,
         "range_end": end,
+        "cursor_mode": "native",
+        "continuation_cursor": extract_gallery_dl_cursor(result.stderr),
     }
 
 
@@ -420,7 +656,27 @@ def build_scan_range(cursor_state: dict[str, Any], limit: int, restart: bool = F
 def is_source_scan_complete(scan_meta: dict[str, object], scan_range: dict[str, int], discovered_count: int) -> bool:
     if scan_meta.get("exit_code") != 0:
         return False
-    return discovered_count == 0
+    return not scan_meta.get("continuation_cursor")
+
+
+def extract_gallery_dl_cursor(stderr: str | None) -> str | None:
+    matches = re.findall(r"Cursor:\s+(\S+)", stderr or "")
+    return matches[-1] if matches else None
+
+
+def scan_run_status(scan_meta: dict[str, object], completed: bool) -> str:
+    if completed:
+        return "completed_empty_batch" if int(scan_meta.get("raw_record_count") or 0) == 0 else "completed_end_of_source"
+    category = str(scan_meta.get("error_category") or "")
+    if category in {"rate_limited", "auth_required", "network_error"}:
+        return category
+    if scan_meta.get("exit_code") == 0:
+        return "succeeded"
+    return "failed"
+
+
+def count_discovered_media(records: list[dict[str, Any]]) -> int:
+    return sum(parse_positive_int(record.get("media_count"), 0) for record in records)
 
 
 def parse_positive_int(value: object, default: int) -> int:
@@ -433,17 +689,16 @@ def parse_positive_int(value: object, default: int) -> int:
 
 def update_source_cursor(
     source_id: int,
-    previous_cursor: dict[str, Any],
     scan_meta: dict[str, object],
     scan_range: dict[str, int],
     discovered_count: int,
     new_discovered_count: int,
     completed: bool,
-) -> None:
+) -> dict[str, Any]:
     duplicate_count = max(discovered_count - new_discovered_count, 0)
-    next_start = scan_range["end"] + 1 if discovered_count > 0 else scan_range["start"]
-    cursor_state = {
-        **previous_cursor,
+    has_continuation = bool(scan_meta.get("continuation_cursor"))
+    next_start = scan_range["end"] + 1 if discovered_count > 0 or has_continuation else scan_range["start"]
+    progress_state = {
         "next_start_index": next_start,
         "last_range_start": scan_range["start"],
         "last_range_end": scan_range["end"],
@@ -456,19 +711,23 @@ def update_source_cursor(
         "last_reached_known_region": discovered_count > 0 and new_discovered_count == 0,
         "last_completed": completed,
     }
+    progress_state["extractor_cursor"] = scan_meta.get("continuation_cursor")
     with connect() as conn:
         with conn.cursor() as cur:
             cur.execute(
                 """
                 update archive_sources
-                set cursor_state = %s,
+                set cursor_state = cursor_state || %s,
                     status = case when %s then 'completed' else status end,
                     updated_at = now()
                 where id = %s
+                returning cursor_state
                 """,
-                (Jsonb(cursor_state), completed, source_id),
+                (Jsonb(progress_state), completed, source_id),
             )
+            cursor_state = dict(cur.fetchone()["cursor_state"])
         conn.commit()
+    return cursor_state
 
 
 def parse_gallery_dl_records(stdout: str, source_url: str) -> list[dict[str, Any]]:
@@ -539,7 +798,14 @@ def parse_gallery_dl_records(stdout: str, source_url: str) -> list[dict[str, Any
             }
         else:
             rows[tweet_id] = next_row
-    return list(rows.values())
+    records = list(rows.values())
+    if is_media_scan_url(source_url):
+        return [record for record in records if int(record.get("media_count") or 0) > 0]
+    return records
+
+
+def is_media_scan_url(source_url: str) -> bool:
+    return urlparse(source_url).path.rstrip("/").endswith("/media")
 
 
 def normalize_gallery_media_type(value: object) -> str | None:
@@ -622,8 +888,7 @@ def record_source_discoveries(
                     )
                     values (%s, %s, %s)
                     on conflict (source_id, tweet_id) do update set
-                        raw_payload = excluded.raw_payload,
-                        discovered_at = now()
+                        raw_payload = excluded.raw_payload
                     returning (xmax = 0) as inserted
                     """,
                     (source_id, tweet_id, Jsonb(payload)),

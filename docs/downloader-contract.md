@@ -232,3 +232,30 @@ gallery-dl "No results" 更接近 download_no_output。
 yt-dlp "No video could be found in this tweet" 更接近 unsupported_media。
 如果同一 queue item 经 fallback 后有多个 attempt，最终 item error 使用最后一个 attempt 的分类，但历史 attempts 必须完整保留。
 ```
+
+## source discovery 真实验收补充
+
+验证时间：
+
+```text
+date: 2026-05-27
+source: https://x.com/earthcurated/media
+gallery-dl version: 1.32.1
+```
+
+已确认：
+
+```text
+1. media 页使用 --range 时，范围单位是媒体项，而不是 Tweet。
+   range 1-20 与 201-220 均返回 20 个媒体项，但分别仅对应 13 条去重 Tweet。
+2. --dump-json 会同时给出页面 metadata 与当前选中媒体事件。
+   对 media 来源，只能将带当前批媒体事件的 Tweet 作为本批发现结果。
+3. 数字 --range 仅限制输出范围，不能作为万条级可恢复分页的性能 checkpoint。
+   range 201-220 的受控扫描耗时约 4 分 25 秒。
+4. 当前版本的 Twitter extractor 源码支持 cursor 配置及 continuation cursor 推进；
+   来源历史扫描现已接入该原生 cursor。
+5. 原生 cursor 真实验证：native baseline 批次 `1-20` 返回 20 Tweet / 32 媒体，
+   continuation 批次 `21-40` 返回 20 Tweet / 36 媒体；第二批使用并更新了首批保存的 cursor。
+```
+
+详细验收记录见 [`source-scanning-acceptance.md`](source-scanning-acceptance.md)。

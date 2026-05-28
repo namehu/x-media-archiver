@@ -2,6 +2,7 @@ from __future__ import annotations
 
 from contextlib import asynccontextmanager
 from collections.abc import Callable
+import logging
 from pathlib import Path
 from threading import Event, Lock, Thread
 
@@ -28,6 +29,7 @@ from xarchiver.services.sources import (
     get_source,
     list_sources,
     process_next_source_history_scan,
+    recover_interrupted_source_scan_runs,
     scan_source,
     start_source_history_scan,
     stop_source_history_scan,
@@ -38,6 +40,7 @@ from xarchiver.services.sources import (
 
 write_action_lock = Lock()
 stop_worker = Event()
+logger = logging.getLogger(__name__)
 
 
 class VerifyRequest(BaseModel):
@@ -112,6 +115,9 @@ class SourceHistoryScanRequest(BaseModel):
 @asynccontextmanager
 async def app_lifespan(_: FastAPI):
     stop_worker.clear()
+    recovered_scans = recover_interrupted_source_scan_runs()
+    if recovered_scans:
+        logger.warning("Marked %s interrupted source scan batch(es) as failed.", recovered_scans)
     workers = [
         Thread(target=queue_worker_loop, name="archive-queue-worker", daemon=True),
         Thread(target=source_worker_loop, name="source-scan-worker", daemon=True),
@@ -383,7 +389,7 @@ def queue_worker_loop() -> None:
             finally:
                 write_action_lock.release()
         except Exception:
-            continue
+            logger.exception("Queue worker iteration failed.")
 
 
 def source_worker_loop() -> None:
@@ -396,7 +402,7 @@ def source_worker_loop() -> None:
             finally:
                 write_action_lock.release()
         except Exception:
-            continue
+            logger.exception("Source scan worker iteration failed.")
 
 
 def execute_write_action(name: str, action: Callable[[], dict[str, object]]) -> dict[str, object]:

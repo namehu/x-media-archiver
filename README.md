@@ -16,6 +16,14 @@ docker-compose run --rm xarchiver init /app/archive
 docker-compose run --rm xarchiver db migrate
 ```
 
+For disposable local validation, reset the metadata database and re-apply all migrations with:
+
+```bash
+docker-compose run --rm xarchiver db reset --yes
+```
+
+This clears Postgres metadata only. It does not delete files under `archive/`.
+
 Put exported X/Twitter cookies at:
 
 ```text
@@ -266,15 +274,20 @@ same Archive Queue while preserving source-to-tweet traceability. The current im
 the recoverable source model, manual discovered-URL submission, and small-batch `gallery-dl` scanning
 for profile timelines and user media pages. Source scanning records discovered tweets only; it does
 not automatically submit them to the download queue. Use the explicit submit action when you are ready
-to download a controlled batch. Each scan advances `archive_sources.cursor_state` with the last
-`gallery-dl --range` window, duplicate/new counts, and the next range start, so large historical
-backfills can continue in small recoverable batches instead of restarting from the first page.
-The Sources page can run this as a background history scan with random gaps between batches, pause
-and resume it, and stop it explicitly. It only records discoveries; it never submits downloads
-automatically, and it waits while the download queue has work.
+to download a controlled batch. Each controlled scan records its logical batch window,
+duplicate/new counts, and cursor diagnostics in `archive_sources.cursor_state`.
+Real validation on 2026-05-27 showed that numeric ranges are not an efficient continuation mechanism
+for deep media history. The source collector now persists the Twitter extractor's native continuation
+cursor and uses it for historical batches. Scanning records discoveries only and never submits downloads
+automatically. Every attempted source scan, plus
+each deferral caused by active downloads, is persisted in `source_scan_runs` with its range,
+cursor snapshots, counts, outcome, and error summary. The Sources detail page exposes the latest
+20 scan events and cumulative statistics so a stalled history scan can be diagnosed after restart
+without relying on container logs.
 
-See [`docs/source-scanning-workflow.md`](docs/source-scanning-workflow.md) for the button meanings,
-checkpoint behavior, and the complete scan-to-download business flow.
+See [`docs/source-scanning-workflow.md`](docs/source-scanning-workflow.md) for the button meanings and
+workflow, and [`docs/source-scanning-acceptance.md`](docs/source-scanning-acceptance.md) for the
+native-cursor blocker found during real source validation.
 
 ## Archive Queue
 
