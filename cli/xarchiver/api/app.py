@@ -2,17 +2,23 @@ from __future__ import annotations
 
 import asyncio
 from contextlib import asynccontextmanager
-from collections.abc import Callable
 import logging
-from pathlib import Path
-from queue import Empty
-from threading import Event, Lock, Thread
+from threading import Thread
 
 from fastapi import FastAPI, HTTPException, Query, Request, status
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import FileResponse, JSONResponse, StreamingResponse
 from starlette.exceptions import HTTPException as StarletteHTTPException
 
+from xarchiver.api.deps import (
+    execute_write_action,
+    parse_event_topics,
+    raise_api_error,
+    require_full_scan_confirmation,
+    resolve_archive_file,
+    stop_worker,
+    write_action_lock,
+)
 from xarchiver.api.schemas import (
     ArchiveRecord,
     ArchiveSubmitRequest,
@@ -28,8 +34,9 @@ from xarchiver.api.schemas import (
     SourceSubmitDiscoveredRequest,
     VerifyRequest,
 )
+from xarchiver.api.v1 import actions, archive_runs, library, maintenance, misc, sources
 from xarchiver.config import get_settings
-from xarchiver.core.errors import ArchiverError, error_response_payload, http_status_for_error_code
+from xarchiver.core.errors import ArchiverError, error_response_payload
 from xarchiver.core.events import event_broker, format_sse_event
 from xarchiver.services.failures import list_failures
 from xarchiver.services.library import get_summary, get_tweet_detail, list_duplicates_page, list_media_page
@@ -57,8 +64,6 @@ from xarchiver.services.sources import (
     update_source_status,
 )
 
-write_action_lock = Lock()
-stop_worker = Event()
 logger = logging.getLogger(__name__)
 
 
@@ -115,6 +120,16 @@ def create_app() -> FastAPI:
             }
         return JSONResponse(status_code=exc.status_code, content=content, headers=exc.headers)
 
+    # v1 routers — canonical versioned API
+    app.include_router(library.router, prefix="/api/v1")
+    app.include_router(archive_runs.router, prefix="/api/v1")
+    app.include_router(sources.router, prefix="/api/v1")
+    app.include_router(actions.router, prefix="/api/v1")
+    app.include_router(maintenance.router, prefix="/api/v1")
+    app.include_router(misc.router, prefix="/api/v1")
+
+    # ── Legacy /api/* routes — kept for WebUI backward compat, removed in P3.6 ──
+
     @app.get("/health")
     def health() -> dict[str, str]:
         return {"status": "ok"}
@@ -129,7 +144,7 @@ def create_app() -> FastAPI:
                 while not await request.is_disconnected():
                     try:
                         event = await asyncio.to_thread(subscription.get, 15.0)
-                    except Empty:
+                    except Exception:
                         yield ": keepalive\n\n"
                         continue
                     yield format_sse_event(event)
@@ -264,7 +279,7 @@ def create_app() -> FastAPI:
             raise_api_error(exc)
 
     @app.get("/api/archive-runs")
-    def archive_runs(
+    def archive_runs_list(
         limit: int = Query(50, ge=1, le=200),
         offset: int = Query(0, ge=0),
         run_status: str | None = None,
@@ -390,48 +405,6 @@ def source_worker_loop() -> None:
                 write_action_lock.release()
         except Exception:
             logger.exception("Source scan worker iteration failed.")
-
-
-def execute_write_action(name: str, action: Callable[[], dict[str, object]]) -> dict[str, object]:
-    if not write_action_lock.acquire(blocking=False):
-        raise HTTPException(
-            status_code=status.HTTP_409_CONFLICT,
-            detail="write_action_in_progress",
-        )
-    try:
-        result = action()
-        return {"action": name, "status": "completed", "result": result}
-    finally:
-        write_action_lock.release()
-
-
-def require_full_scan_confirmation(confirmed: bool) -> None:
-    if not confirmed:
-        raise HTTPException(status_code=400, detail="full_scan_confirmation_required")
-
-
-def parse_event_topics(topics: str | None) -> list[str] | None:
-    if not topics:
-        return None
-    return [topic.strip() for topic in topics.split(",") if topic.strip()]
-
-
-def resolve_archive_file(archive_dir: Path, relative_path: str) -> Path:
-    base = archive_dir.resolve()
-    target = (base / relative_path).resolve()
-    if base != target and base not in target.parents:
-        raise HTTPException(status_code=400, detail="invalid_media_path")
-    return target
-
-
-def raise_api_error(error: ArchiverError | ValueError, *, default_status: int = 400) -> None:
-    if isinstance(error, ArchiverError):
-        raise HTTPException(status_code=error.http_status, detail=error.code) from error
-    detail = str(error)
-    raise HTTPException(
-        status_code=http_status_for_error_code(detail, default=default_status),
-        detail=detail,
-    ) from error
 
 
 app = create_app()
