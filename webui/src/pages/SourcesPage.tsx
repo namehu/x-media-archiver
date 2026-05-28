@@ -1,5 +1,6 @@
 import { useEffect, useState } from "react";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
+import { useSearchParams } from "react-router-dom";
 import { apiGet, apiPost, type ArchiveSource, type ArchiveSubmission, type DownloadPolicy, type SourcePageResponse } from "../lib/api";
 import { useFormatters, useI18n } from "../lib/i18n";
 import { formatDateTime } from "../lib/utils";
@@ -16,6 +17,7 @@ export function SourcesPage() {
   const { t } = useI18n();
   const { statusLabel } = useFormatters();
   const queryClient = useQueryClient();
+  const [searchParams, setSearchParams] = useSearchParams();
   const [sourceType, setSourceType] = useState("profile");
   const [sourceUrl, setSourceUrl] = useState("");
   const [label, setLabel] = useState("");
@@ -127,6 +129,16 @@ export function SourcesPage() {
   const historyBusy = historyScanMutation.isPending || stopHistoryScanMutation.isPending;
 
   useEffect(() => {
+    const sourceId = Number(searchParams.get("sourceId"));
+    if (Number.isFinite(sourceId) && sourceId > 0) setSelectedSourceId(sourceId);
+  }, [searchParams]);
+
+  const selectSource = (sourceId: number) => {
+    setSelectedSourceId(sourceId);
+    setSearchParams({ sourceId: String(sourceId) });
+  };
+
+  useEffect(() => {
     if (!activeScanRun) return undefined;
     const timer = window.setInterval(() => setNow(Date.now()), 1000);
     return () => window.clearInterval(timer);
@@ -223,7 +235,7 @@ export function SourcesPage() {
                 type="button"
                 key={source.id}
                 className="flex w-full items-center justify-between gap-3 rounded-md border border-border bg-white p-3 text-left hover:bg-muted"
-                onClick={() => setSelectedSourceId(source.id)}
+                onClick={() => selectSource(source.id)}
               >
                 <div className="min-w-0">
                   <div className="truncate text-sm font-medium">{source.label || source.source_url}</div>

@@ -259,27 +259,58 @@ export type DownloadPolicy = {
 export type HealthDetail = {
   status: string;
   worker: {
-    stop_requested?: boolean;
-    write_lock_held?: boolean;
+    stop_requested: boolean;
+    write_lock_held: boolean;
   };
   queue: {
-    pending_items?: number;
-    processing_items?: number;
-    retryable_failed_items?: number;
-    permanent_failed_items?: number;
-    queued_runs?: number;
-    running_runs?: number;
-    latest_run?: Record<string, unknown> | null;
+    pending_items: number;
+    processing_items: number;
+    retryable_failed_items: number;
+    permanent_failed_items: number;
+    queued_runs: number;
+    running_runs: number;
+    latest_run?: {
+      id: number;
+      trigger_type: string;
+      status: string;
+      started_at: string;
+      finished_at?: string | null;
+      error_message?: string | null;
+    } | null;
   };
   sources: {
-    active_sources?: number;
-    paused_sources?: number;
-    failed_sources?: number;
-    history_enabled_sources?: number;
-    active_scan_runs?: number;
-    latest_scan?: Record<string, unknown> | null;
+    active_sources: number;
+    paused_sources: number;
+    failed_sources: number;
+    history_enabled_sources: number;
+    active_scan_runs: number;
+    latest_scan?: {
+      id: number;
+      source_id: number;
+      trigger_type: string;
+      status: string;
+      requested_limit?: number | null;
+      error_category?: string | null;
+      error_message?: string | null;
+      started_at?: string | null;
+      finished_at?: string | null;
+      created_at: string;
+    } | null;
   };
-  recent_errors: Array<Record<string, unknown>>;
+  recent_errors: Array<{
+    kind?: string | null;
+    id?: string | null;
+    subject?: string | null;
+    archive_run_id?: number | null;
+    archive_run_item_id?: number | null;
+    tweet_id?: string | null;
+    source_id?: number | null;
+    source_scan_run_id?: number | null;
+    target_path?: string | null;
+    error_category?: string | null;
+    error_message?: string | null;
+    occurred_at?: string | null;
+  }>;
 };
 
 export function mediaQueryString(params: Record<string, string>) {

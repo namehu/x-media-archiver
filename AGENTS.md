@@ -88,6 +88,7 @@ npm run zip
 - API 请求集中在 `webui/src/lib/api.ts`，页面保持以展示、筛选和用户交互为主。
 - 复用 `webui/src/components/ui/` 的已有组件和 `AppLayout`，保持后台界面的信息密度与交互风格一致。
 - 用户触发 full backfill 或 full verify 时必须保留显式确认语义；WebUI 不提供媒体文件删除能力。
+- WebUI 国际化默认不处理英文翻译；英文文案由人工手动补齐与校对。
 - 面向用户的新文案应同时更新已有中英文 locale 结构。
 
 ### Extension

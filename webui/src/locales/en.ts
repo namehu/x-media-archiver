@@ -29,6 +29,7 @@ export const en: Record<string, string> = {
   "operations.startedAt": "Started",
   "operations.finishedAt": "Finished",
   "operations.sourceId": "Source ID",
+  "operations.openErrorTarget": "Open target",
   "sources.type.all": "All sources",
   "nav.group.operations": "Operations",
   "nav.group.data": "Data",

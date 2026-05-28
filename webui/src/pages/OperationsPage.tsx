@@ -1,5 +1,6 @@
 import { useState } from "react";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
+import { Link } from "react-router-dom";
 import { apiGet, apiPost, type ActionResponse, type HealthDetail } from "../lib/api";
 import { useI18n } from "../lib/i18n";
 import { formatDateTime } from "../lib/utils";
@@ -365,8 +366,13 @@ function RecentErrorsList({ errors }: { errors: HealthDetail["recent_errors"] })
                 <span className="text-xs text-muted-foreground">{formatDateTime(stringOrNumber(error.occurred_at))}</span>
               </div>
               <div className="mt-1 text-xs text-muted-foreground">
-                {textValue(error.error_category)} · {textValue(error.error_message)}
+                {formatError(error.error_category, error.error_message, t)}
               </div>
+              {error.target_path ? (
+                <Link to={error.target_path} className="mt-1 inline-flex text-xs font-medium text-primary hover:underline">
+                  {t("operations.openErrorTarget")}
+                </Link>
+              ) : null}
             </div>
           ))}
         </div>
@@ -384,6 +390,15 @@ function textValue(value: unknown) {
 
 function stringOrNumber(value: unknown) {
   return typeof value === "string" || typeof value === "number" ? value : null;
+}
+
+function formatError(category: string | null | undefined, message: string | null | undefined, t: (key: string) => string) {
+  if (category) {
+    const key = `common.error.${category}`;
+    const translated = t(key);
+    return translated === key ? category : translated;
+  }
+  return textValue(message);
 }
 
 function numberOrNull(value: string) {

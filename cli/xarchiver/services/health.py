@@ -112,13 +112,33 @@ def get_source_summary(cur) -> dict[str, object]:
 def get_recent_errors(cur, limit: int = 5) -> list[dict[str, object]]:
     cur.execute(
         """
-        select 'archive_item' as kind, id::text as id, tweet_id as subject,
-               error_category, error_message, updated_at as occurred_at
+        select 'archive_item' as kind,
+               id::text as id,
+               tweet_id as subject,
+               archive_run_id,
+               id as archive_run_item_id,
+               tweet_id,
+               null::bigint as source_id,
+               null::bigint as source_scan_run_id,
+               '/tweets/' || tweet_id as target_path,
+               error_category,
+               error_message,
+               updated_at as occurred_at
         from archive_run_items
         where error_category is not null or error_message is not null
         union all
-        select 'source_scan' as kind, id::text as id, source_id::text as subject,
-               error_category, error_message, coalesce(finished_at, created_at) as occurred_at
+        select 'source_scan' as kind,
+               id::text as id,
+               source_id::text as subject,
+               null::bigint as archive_run_id,
+               null::bigint as archive_run_item_id,
+               null::text as tweet_id,
+               source_id,
+               id as source_scan_run_id,
+               '/sources?sourceId=' || source_id::text as target_path,
+               error_category,
+               error_message,
+               coalesce(finished_at, created_at) as occurred_at
         from source_scan_runs
         where error_category is not null or error_message is not null
         order by occurred_at desc nulls last

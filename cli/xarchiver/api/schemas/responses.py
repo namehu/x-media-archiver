@@ -39,12 +39,73 @@ class DownloadPolicyResponse(FlexibleResponse):
     source_scan_sleep_max_seconds: float
 
 
+class WorkerHealthResponse(FlexibleResponse):
+    stop_requested: bool
+    write_lock_held: bool
+
+
+class LatestRunResponse(FlexibleResponse):
+    id: int
+    trigger_type: str
+    status: str
+    started_at: Any
+    finished_at: Any | None = None
+    error_message: str | None = None
+
+
+class QueueHealthResponse(FlexibleResponse):
+    pending_items: int
+    processing_items: int
+    retryable_failed_items: int
+    permanent_failed_items: int
+    queued_runs: int
+    running_runs: int
+    latest_run: LatestRunResponse | None = None
+
+
+class LatestScanResponse(FlexibleResponse):
+    id: int
+    source_id: int
+    trigger_type: str
+    status: str
+    requested_limit: int | None = None
+    error_category: str | None = None
+    error_message: str | None = None
+    started_at: Any | None = None
+    finished_at: Any | None = None
+    created_at: Any
+
+
+class SourceHealthResponse(FlexibleResponse):
+    active_sources: int
+    paused_sources: int
+    failed_sources: int
+    history_enabled_sources: int
+    active_scan_runs: int
+    latest_scan: LatestScanResponse | None = None
+
+
+class RecentErrorResponse(FlexibleResponse):
+    kind: str
+    id: str
+    subject: str
+    archive_run_id: int | None = None
+    archive_run_item_id: int | None = None
+    tweet_id: str | None = None
+    source_id: int | None = None
+    source_scan_run_id: int | None = None
+    target_path: str | None = None
+    error_category: str | None = None
+    error_message: str | None = None
+    occurred_at: Any | None = None
+
+
 class HealthDetailResponse(FlexibleResponse):
     status: str
-    worker: dict[str, Any]
-    queue: dict[str, Any]
-    sources: dict[str, Any]
-    recent_errors: list[dict[str, Any]]
+    worker: WorkerHealthResponse
+    queue: QueueHealthResponse
+    sources: SourceHealthResponse
+    recent_errors: list[RecentErrorResponse]
 
 
 class WriteActionResponse(FlexibleResponse):

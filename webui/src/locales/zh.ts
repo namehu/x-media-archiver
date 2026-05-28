@@ -261,6 +261,7 @@ export const zh = {
   "operations.startedAt": "开始",
   "operations.finishedAt": "结束",
   "operations.sourceId": "来源 ID",
+  "operations.openErrorTarget": "打开定位",
   "operations.requeueStatuses": "重新入队状态",
   "operations.limit": "数量上限",
   "operations.recoverInterrupted": "恢复中断任务",

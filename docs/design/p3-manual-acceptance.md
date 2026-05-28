@@ -87,6 +87,7 @@ http://127.0.0.1:8000
 
 - [ ] Requeue、Recover interrupted、Export 是显式操作。
 - [ ] 系统状态面板能显示写操作锁、队列积压、来源扫描、最近批次、最近扫描和最近错误。
+- [ ] 最近错误中的 `archive_item` 可以跳到 Tweet detail，`source_scan` 可以跳到对应 Source detail。
 - [ ] Full backfill 和 Full verify 保留显式确认语义。
 - [ ] WebUI 不提供媒体文件删除能力。
 - [ ] 后端写操作互斥：已有写操作执行时，新写操作返回 `409 write_action_in_progress`。

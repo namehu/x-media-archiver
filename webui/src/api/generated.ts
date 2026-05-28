@@ -657,22 +657,53 @@ export interface components {
         HealthDetailResponse: {
             /** Status */
             status: string;
-            /** Worker */
-            worker: {
-                [key: string]: unknown;
-            };
-            /** Queue */
-            queue: {
-                [key: string]: unknown;
-            };
-            /** Sources */
-            sources: {
-                [key: string]: unknown;
-            };
+            worker: components["schemas"]["WorkerHealthResponse"];
+            queue: components["schemas"]["QueueHealthResponse"];
+            sources: components["schemas"]["SourceHealthResponse"];
             /** Recent Errors */
-            recent_errors: {
-                [key: string]: unknown;
-            }[];
+            recent_errors: components["schemas"]["RecentErrorResponse"][];
+        } & {
+            [key: string]: unknown;
+        };
+        /** LatestRunResponse */
+        LatestRunResponse: {
+            /** Id */
+            id: number;
+            /** Trigger Type */
+            trigger_type: string;
+            /** Status */
+            status: string;
+            /** Started At */
+            started_at: unknown;
+            /** Finished At */
+            finished_at?: unknown | null;
+            /** Error Message */
+            error_message?: string | null;
+        } & {
+            [key: string]: unknown;
+        };
+        /** LatestScanResponse */
+        LatestScanResponse: {
+            /** Id */
+            id: number;
+            /** Source Id */
+            source_id: number;
+            /** Trigger Type */
+            trigger_type: string;
+            /** Status */
+            status: string;
+            /** Requested Limit */
+            requested_limit?: number | null;
+            /** Error Category */
+            error_category?: string | null;
+            /** Error Message */
+            error_message?: string | null;
+            /** Started At */
+            started_at?: unknown | null;
+            /** Finished At */
+            finished_at?: unknown | null;
+            /** Created At */
+            created_at: unknown;
         } & {
             [key: string]: unknown;
         };
@@ -690,6 +721,53 @@ export interface components {
             limit: number;
             /** Offset */
             offset: number;
+        } & {
+            [key: string]: unknown;
+        };
+        /** QueueHealthResponse */
+        QueueHealthResponse: {
+            /** Pending Items */
+            pending_items: number;
+            /** Processing Items */
+            processing_items: number;
+            /** Retryable Failed Items */
+            retryable_failed_items: number;
+            /** Permanent Failed Items */
+            permanent_failed_items: number;
+            /** Queued Runs */
+            queued_runs: number;
+            /** Running Runs */
+            running_runs: number;
+            latest_run?: components["schemas"]["LatestRunResponse"] | null;
+        } & {
+            [key: string]: unknown;
+        };
+        /** RecentErrorResponse */
+        RecentErrorResponse: {
+            /** Kind */
+            kind: string;
+            /** Id */
+            id: string;
+            /** Subject */
+            subject: string;
+            /** Archive Run Id */
+            archive_run_id?: number | null;
+            /** Archive Run Item Id */
+            archive_run_item_id?: number | null;
+            /** Tweet Id */
+            tweet_id?: string | null;
+            /** Source Id */
+            source_id?: number | null;
+            /** Source Scan Run Id */
+            source_scan_run_id?: number | null;
+            /** Target Path */
+            target_path?: string | null;
+            /** Error Category */
+            error_category?: string | null;
+            /** Error Message */
+            error_message?: string | null;
+            /** Occurred At */
+            occurred_at?: unknown | null;
         } & {
             [key: string]: unknown;
         };
@@ -715,6 +793,22 @@ export interface components {
             label?: string | null;
             /** Author Username */
             author_username?: string | null;
+        };
+        /** SourceHealthResponse */
+        SourceHealthResponse: {
+            /** Active Sources */
+            active_sources: number;
+            /** Paused Sources */
+            paused_sources: number;
+            /** Failed Sources */
+            failed_sources: number;
+            /** History Enabled Sources */
+            history_enabled_sources: number;
+            /** Active Scan Runs */
+            active_scan_runs: number;
+            latest_scan?: components["schemas"]["LatestScanResponse"] | null;
+        } & {
+            [key: string]: unknown;
         };
         /** SourceHistoryScanRequest */
         SourceHistoryScanRequest: {
@@ -815,6 +909,15 @@ export interface components {
              * @default false
              */
             confirm_full_scan: boolean;
+        };
+        /** WorkerHealthResponse */
+        WorkerHealthResponse: {
+            /** Stop Requested */
+            stop_requested: boolean;
+            /** Write Lock Held */
+            write_lock_held: boolean;
+        } & {
+            [key: string]: unknown;
         };
         /** WriteActionResponse */
         WriteActionResponse: {
