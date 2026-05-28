@@ -1,7 +1,7 @@
 import { useState } from "react";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { Link } from "react-router-dom";
-import { apiGet, apiPost, type ActionResponse, type HealthDetail } from "../lib/api";
+import { ApiError, apiGet, apiPost, type ActionResponse, type HealthDetail } from "../lib/api";
 import { useI18n } from "../lib/i18n";
 import { formatDateTime } from "../lib/utils";
 import { Badge } from "../components/ui/Badge";
@@ -11,9 +11,11 @@ import { EmptyState } from "../components/ui/EmptyState";
 import { ErrorState } from "../components/ui/ErrorState";
 import { Input } from "../components/ui/Input";
 import { Select } from "../components/ui/Select";
+import { useToast } from "../components/ui/Toast";
 
 export function OperationsPage() {
   const { t } = useI18n();
+  const { toast } = useToast();
   const queryClient = useQueryClient();
   const [verifyLimit, setVerifyLimit] = useState("");
   const [confirmFullScan, setConfirmFullScan] = useState(false);
@@ -30,15 +32,19 @@ export function OperationsPage() {
   });
 
   const mutation = useMutation({
-    mutationFn: ({ path, body }: { path: string; body: unknown }) => apiPost<ActionResponse>(path, body),
-    onSuccess: async (result) => {
+    mutationFn: ({ path, body }: { path: string; body: unknown; actionLabel: string }) => apiPost<ActionResponse>(path, body),
+    onSuccess: async (result, variables) => {
       setLastResult(result);
+      toast(t("operations.actionCompleted", { action: variables.actionLabel }), "success");
       await queryClient.invalidateQueries();
+    },
+    onError: (error, variables) => {
+      toast(t("operations.actionFailed", { action: variables.actionLabel, error: errorMessage(error) }), "error");
     },
   });
 
-  const run = (path: string, body: Record<string, unknown> = {}) => {
-    mutation.mutate({ path, body });
+  const run = (path: string, actionLabel: string, body: Record<string, unknown> = {}) => {
+    mutation.mutate({ path, body, actionLabel });
   };
 
   return (
@@ -78,7 +84,7 @@ export function OperationsPage() {
               type="button"
               disabled={mutation.isPending}
               onClick={() =>
-                run("/api/v1/actions/requeue", {
+                run("/api/v1/actions/requeue", t("operations.requeue"), {
                   statuses: requeueStatuses.length ? requeueStatuses : null,
                   limit: numberOrNull(requeueLimit),
                 })
@@ -104,7 +110,7 @@ export function OperationsPage() {
               type="button"
               disabled={mutation.isPending}
               onClick={() =>
-                run("/api/v1/actions/recover-interrupted", {
+                run("/api/v1/actions/recover-interrupted", t("operations.recoverInterrupted"), {
                   timeout_minutes: numberOrNull(recoverTimeout),
                 })
               }
@@ -134,7 +140,7 @@ export function OperationsPage() {
             <Button
               type="button"
               disabled={mutation.isPending}
-              onClick={() => run("/api/v1/actions/export", { kind: exportKind, status: exportStatus })}
+              onClick={() => run("/api/v1/actions/export", t("operations.export"), { kind: exportKind, status: exportStatus })}
             >
               {t("operations.exportSnapshot")}
             </Button>
@@ -170,7 +176,7 @@ export function OperationsPage() {
               variant="secondary"
               disabled={mutation.isPending || !confirmFullScan}
               onClick={() =>
-                run("/api/v1/maintenance/verify", {
+                run("/api/v1/maintenance/verify", t("operations.fullVerify"), {
                   limit: numberOrNull(verifyLimit),
                   confirm_full_scan: confirmFullScan,
                 })
@@ -183,7 +189,7 @@ export function OperationsPage() {
               variant="secondary"
               disabled={mutation.isPending || !confirmFullScan}
               onClick={() =>
-                run("/api/v1/maintenance/backfill", {
+                run("/api/v1/maintenance/backfill", t("operations.fullBackfill"), {
                   confirm_full_scan: confirmFullScan,
                   normalize_files: true,
                 })
@@ -202,23 +208,54 @@ export function OperationsPage() {
         <CardHeader>
           <CardTitle>{t("operations.result")}</CardTitle>
         </CardHeader>
-        <CardContent>
+        <CardContent className="space-y-3">
           {mutation.error ? (
-            <pre className="overflow-auto rounded-md bg-muted p-3 text-sm text-destructive">
-              {String(mutation.error)}
-            </pre>
+            <div className="rounded-md border border-destructive/30 bg-destructive/10 p-3 text-sm text-destructive">
+              <div className="font-medium">{t("operations.lastActionFailed")}</div>
+              <div className="mt-1 break-words">{errorMessage(mutation.error)}</div>
+            </div>
           ) : null}
           {mutation.isPending ? <p className="text-sm text-muted-foreground">{t("operations.running")}</p> : null}
-          {lastResult ? (
-            <pre className="overflow-auto rounded-md bg-muted p-3 text-sm">
-              {JSON.stringify(lastResult, null, 2)}
-            </pre>
-          ) : null}
+          {lastResult ? <OperationResultSummary result={lastResult} /> : null}
           {!lastResult && !mutation.error && !mutation.isPending ? (
             <p className="text-sm text-muted-foreground">{t("operations.noResult")}</p>
           ) : null}
         </CardContent>
       </Card>
+    </div>
+  );
+}
+
+function OperationResultSummary({ result }: { result: ActionResponse }) {
+  const { t } = useI18n();
+  const items = resultSummaryItems(result, t);
+
+  return (
+    <div className="space-y-3">
+      <div className="rounded-md border border-border p-3">
+        <div className="mb-2 flex flex-wrap items-center gap-2">
+          <Badge>{textValue(result.status)}</Badge>
+          <span className="text-sm font-medium">{actionLabel(result.action, t)}</span>
+        </div>
+        {items.length ? (
+          <dl className="grid gap-2 text-sm md:grid-cols-2 xl:grid-cols-3">
+            {items.map((item) => (
+              <div key={item.label} className={item.wide ? "md:col-span-2 xl:col-span-3" : undefined}>
+                <dt className="text-xs text-muted-foreground">{item.label}</dt>
+                <dd className="mt-0.5 break-words font-medium">{item.value}</dd>
+              </div>
+            ))}
+          </dl>
+        ) : (
+          <p className="text-sm text-muted-foreground">{t("operations.noSummaryFields")}</p>
+        )}
+      </div>
+      <details className="rounded-md border border-border bg-muted/30 p-3">
+        <summary className="cursor-pointer text-sm font-medium">{t("operations.debugDetails")}</summary>
+        <pre className="mt-3 max-h-80 overflow-auto rounded-md bg-background p-3 text-xs">
+          {JSON.stringify(result, null, 2)}
+        </pre>
+      </details>
     </div>
   );
 }
@@ -399,6 +436,82 @@ function formatError(category: string | null | undefined, message: string | null
     return translated === key ? category : translated;
   }
   return textValue(message);
+}
+
+type SummaryItem = {
+  label: string;
+  value: string;
+  wide?: boolean;
+};
+
+function resultSummaryItems(result: ActionResponse, t: (key: string, params?: Record<string, string | number>) => string) {
+  const data = result.result ?? {};
+  const items: SummaryItem[] = [];
+  const add = (key: string, value: unknown, options: { wide?: boolean } = {}) => {
+    if (value === null || value === undefined || value === "") return;
+    items.push({ label: t(`operations.resultField.${key}`), value: resultValue(value), wide: options.wide });
+  };
+
+  add("runId", data.run_id);
+  add("queued", nestedValue(data, "tasks", "queued_count"));
+  add("skipped", nestedValue(data, "tasks", "skipped_verified_count"));
+  add("linked", nestedValue(data, "tasks", "linked_pending_count"));
+  add("requeued", data.requeued);
+  add("checked", data.checked);
+  add("verified", data.verified);
+  add("missing", data.missing);
+  add("corrupt", data.corrupt);
+  add("scanned", data.scanned);
+  add("upserted", data.upserted);
+  add("skipped", data.skipped);
+  add("tweetsRecovered", data.tweets_recovered);
+  add("jobsRecovered", data.jobs_recovered);
+  add("itemsRecovered", data.items_recovered);
+  add("rows", data.rows);
+  add("duplicateGroups", data.duplicate_groups);
+  add("status", data.status);
+  add("path", data.path, { wide: true });
+
+  if (!items.length) {
+    for (const [key, value] of Object.entries(data)) {
+      if (isSummaryValue(value)) add(key, value, { wide: typeof value === "string" && value.length > 36 });
+    }
+  }
+
+  return items;
+}
+
+function nestedValue(data: Record<string, unknown>, key: string, childKey: string) {
+  const child = data[key];
+  if (!child || typeof child !== "object" || Array.isArray(child)) return undefined;
+  return (child as Record<string, unknown>)[childKey];
+}
+
+function isSummaryValue(value: unknown) {
+  return value === null || ["string", "number", "boolean"].includes(typeof value) || Array.isArray(value);
+}
+
+function resultValue(value: unknown) {
+  if (Array.isArray(value)) return `${value.length}`;
+  if (typeof value === "boolean") return value ? "true" : "false";
+  return textValue(value);
+}
+
+function actionLabel(action: string, t: (key: string) => string) {
+  const key = `operations.action.${action}`;
+  const translated = t(key);
+  return translated === key ? action : translated;
+}
+
+function errorMessage(error: unknown) {
+  if (error instanceof ApiError) {
+    const parts = [error.message];
+    if (error.code) parts.push(error.code);
+    if (error.status) parts.push(String(error.status));
+    return parts.join(" · ");
+  }
+  if (error instanceof Error) return error.message;
+  return String(error);
 }
 
 function numberOrNull(value: string) {
