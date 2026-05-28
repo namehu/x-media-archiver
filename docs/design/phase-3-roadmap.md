@@ -67,6 +67,7 @@ P3 执行方式
 3. 可观测性增强
    - 第一批已完成：`/api/v1/health/detail` 返回 worker 写锁、队列积压、来源扫描和最近错误摘要。
    - WebUI 顶栏已接入健康详情，展示写操作、队列、扫描和错误计数。
+   - Operations 页面已新增系统状态面板，展示队列积压、最近 run、最近 scan 与最近错误列表。
    - 结构化日志替换散落 print/logger。
 4. E2E / 手工验收固化
    - Archive Queue 主流程、Sources 历史扫描、显式维护动作、SSE 刷新。
@@ -453,7 +454,7 @@ webui/src/
 | **P3.1** | 列表规模化 | ✅ Library/Failures/Archive Queue/Sources/Duplicates 分页与筛选、通用分页组件 | 向前兼容；旧响应字段 `rows/count` 保留 |
 | **P3.2** | OpenAPI 与 API 边界 | ✅ OpenAPI 代理、类型生成、API client 分层、request schemas 迁移；⏳ response_model 待分页接口稳定后补 | 不一次性替换全部手写类型 |
 | **P3.3** | 实时性 | ✅ `core/events.py` 事件总线、`/api/v1/events` SSE、WebUI `useServerEvents`、事件连接状态指示；⏳ worker 锁状态事件后续补 | SSE 只负责刷新；失联降级到 15s 条件轮询，不能丢失历史诊断能力 |
-| **P3.4** | 可观测性 | ✅ `/api/v1/health/detail`、WebUI 顶栏健康状态；⏳ 结构化日志、Operations 页接入实时日志尾巴、错误分类视图 | 仅追加，不修改既有行为 |
+| **P3.4** | 可观测性 | ✅ `/api/v1/health/detail`、WebUI 顶栏健康状态、Operations 系统状态面板；⏳ 结构化日志、实时日志尾巴、错误分类视图 | 仅追加，不修改既有行为 |
 | **P3.5** | WebUI 骨架与交互系统 | AppShell、Dialog/Toast/DataTable/EmptyState/ErrorState、危险操作输入确认、i18n、主题令牌 | 页面逐个迁移，pages/ 与 features/ 可短暂共存 |
 | **P3.6** | 路由模块化与最终收口 | ✅ `/api/v1/*` router、WebUI v1 调用、移除旧 `/api/*` 内联兼容层、OpenAPI 重新生成 | 已完成破坏性变更；手动联调需重启 API/WebUI |
 
