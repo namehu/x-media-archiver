@@ -3,7 +3,9 @@ import React from "react";
 import ReactDOM from "react-dom/client";
 import { createBrowserRouter, RouterProvider } from "react-router-dom";
 import { AppLayout } from "./components/layout/AppLayout";
+import { ToastProvider } from "./components/ui/Toast";
 import { I18nProvider } from "./lib/i18n";
+import { ThemeProvider } from "./lib/theme";
 import "./styles.css";
 import { DashboardPage } from "./pages/DashboardPage";
 import { DuplicatesPage } from "./pages/DuplicatesPage";
@@ -35,10 +37,14 @@ const router = createBrowserRouter([
 
 ReactDOM.createRoot(document.getElementById("root")!).render(
   <React.StrictMode>
-    <I18nProvider locale="zh">
-      <QueryClientProvider client={queryClient}>
-        <RouterProvider router={router} />
-      </QueryClientProvider>
-    </I18nProvider>
+    <ThemeProvider>
+      <I18nProvider locale="zh">
+        <QueryClientProvider client={queryClient}>
+          <ToastProvider>
+            <RouterProvider router={router} />
+          </ToastProvider>
+        </QueryClientProvider>
+      </I18nProvider>
+    </ThemeProvider>
   </React.StrictMode>,
 );

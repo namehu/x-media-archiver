@@ -6,4 +6,10 @@ export const en: Record<string, string> = {
   "events.connecting": "Connecting live events",
   "events.offline": "Live events offline, using polling",
   "sources.type.all": "All sources",
+  "nav.group.operations": "Operations",
+  "nav.group.data": "Data",
+  "nav.group.maintenance": "Maintenance",
+  "theme.light": "Light",
+  "theme.dark": "Dark",
+  "theme.auto": "Auto",
 };
