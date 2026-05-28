@@ -7,6 +7,7 @@ from unittest.mock import patch
 from fastapi import HTTPException
 from starlette.exceptions import HTTPException as StarletteHTTPException
 
+from xarchiver.api import schemas
 from xarchiver.api.app import (
     ArchiveRecord,
     ArchiveSubmitRequest,
@@ -75,6 +76,16 @@ class ApiAppTests(unittest.TestCase):
         app = create_app()
 
         self.assertIn(ArchiverError, app.exception_handlers)
+
+    def test_request_schemas_are_split_without_renaming_openapi_components(self) -> None:
+        self.assertIs(schemas.VerifyRequest, VerifyRequest)
+        self.assertIs(schemas.ArchiveSubmitRequest, ArchiveSubmitRequest)
+
+        component_names = set(create_app().openapi()["components"]["schemas"])
+
+        self.assertIn("VerifyRequest", component_names)
+        self.assertIn("ArchiveSubmitRequest", component_names)
+        self.assertIn("SourceCreateRequest", component_names)
 
     def test_http_errors_include_standard_fields_and_legacy_detail(self) -> None:
         app = create_app()

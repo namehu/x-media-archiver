@@ -1,3 +1,5 @@
+export { ApiError, apiGet, apiPost, apiRequest } from "../api/client";
+
 export type Summary = {
   tweet_status_counts: Record<string, number>;
   media_count: number;
@@ -77,61 +79,6 @@ export type TweetDetail = {
     finished_at?: string | null;
   }>;
 };
-
-export class ApiError extends Error {
-  status: number;
-  code?: string;
-  category?: string | null;
-  detail?: unknown;
-
-  constructor(status: number, message: string, code?: string, category?: string | null, detail?: unknown) {
-    super(`API ${status}: ${message}`);
-    this.name = "ApiError";
-    this.status = status;
-    this.code = code;
-    this.category = category;
-    this.detail = detail;
-  }
-}
-
-type ApiErrorPayload = {
-  detail?: unknown;
-  code?: string;
-  message?: string;
-  category?: string | null;
-};
-
-export async function apiGet<T>(path: string): Promise<T> {
-  const response = await fetch(path);
-  if (!response.ok) {
-    throw await buildApiError(response);
-  }
-  return response.json() as Promise<T>;
-}
-
-export async function apiPost<T>(path: string, body: unknown): Promise<T> {
-  const response = await fetch(path, {
-    method: "POST",
-    headers: { "Content-Type": "application/json" },
-    body: JSON.stringify(body),
-  });
-  if (!response.ok) {
-    throw await buildApiError(response);
-  }
-  return response.json() as Promise<T>;
-}
-
-async function buildApiError(response: Response) {
-  const text = await response.text();
-  let payload: ApiErrorPayload | null = null;
-  try {
-    payload = text ? (JSON.parse(text) as ApiErrorPayload) : null;
-  } catch (_error) {
-    payload = null;
-  }
-  const message = payload?.message || (typeof payload?.detail === "string" ? payload.detail : text || response.statusText);
-  return new ApiError(response.status, message, payload?.code, payload?.category, payload?.detail);
-}
 
 export type ActionResponse = {
   action: string;

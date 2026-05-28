@@ -5,6 +5,9 @@
   "type": "module",
   "scripts": {
     "dev": "vite --host 127.0.0.1",
+    "generate:openapi": "docker-compose -f ../docker-compose.yml run --rm --entrypoint python xarchiver -c \"import json; from xarchiver.api.app import create_app; print(json.dumps(create_app().openapi(), ensure_ascii=False, indent=2))\" > src/api/openapi.json",
+    "sync-types": "openapi-typescript src/api/openapi.json -o src/api/generated.ts",
+    "generate:api-types": "npm run generate:openapi && npm run sync-types",
     "typecheck": "tsc --noEmit",
     "check": "npm run build",
     "build": "tsc --noEmit && vite build",
@@ -21,6 +24,7 @@
     "@types/react": "^19.1.6",
     "@types/react-dom": "^19.1.5",
     "autoprefixer": "^10.4.21",
+    "openapi-typescript": "^7.13.0",
     "postcss": "^8.5.6",
     "tailwindcss": "^3.4.17",
     "typescript": "^5.9.2",

@@ -34,7 +34,17 @@ Open:
 http://127.0.0.1:5173
 ```
 
-The Vite dev server proxies `/api` and `/health` to `http://127.0.0.1:8000`.
+The Vite dev server proxies `/api`, `/health`, and `/openapi.json` to `http://127.0.0.1:8000`.
+
+Generate OpenAPI schema and TypeScript types:
+
+```bash
+npm run generate:api-types
+```
+
+This uses the Docker backend environment and writes `src/api/openapi.json` and `src/api/generated.ts`. The handwritten API facade in
+`src/lib/api.ts` remains the stable import path for pages, while shared request behavior lives in
+`src/api/client.ts`.
 
 ## Scope
 
