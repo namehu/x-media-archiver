@@ -40,6 +40,7 @@ class JsonLogFormatter(logging.Formatter):
             "duration_ms",
             "client",
             "error_type",
+            "details",
         ):
             value = getattr(record, key, None)
             if value is not None:

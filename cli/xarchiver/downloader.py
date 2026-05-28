@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import logging
 import shutil
 import subprocess
 from pathlib import Path
@@ -17,6 +18,7 @@ from xarchiver.media import backfill_media_assets
 
 
 SUPPORTED_ENGINES = {"gallery-dl", "yt-dlp"}
+logger = logging.getLogger(__name__)
 
 
 def download(
@@ -40,9 +42,33 @@ def download(
     )
     input_path = write_input_file(settings.archive_dir, engine, [tweet["url"] for tweet in tweets])
 
-    job_id = create_job(engine, input_path, len(tweets), "dry_run" if dry_run else "running", archive_run_id)
+    job_id = create_job(
+        engine,
+        input_path,
+        len(tweets),
+        "dry_run" if dry_run else "running",
+        archive_run_id,
+    )
+    log_download_event(
+        "download.job.started",
+        job_id=job_id,
+        engine=engine,
+        tweet_count=len(tweets),
+        dry_run=dry_run,
+        archive_run_id=archive_run_id,
+    )
     if dry_run or not tweets:
         finish_job(job_id, "dry_run", 0, 0, None)
+        log_download_event(
+            "download.job.completed",
+            job_id=job_id,
+            engine=engine,
+            status="dry_run",
+            success_count=0,
+            failed_count=0,
+            tweet_count=len(tweets),
+            dry_run=True,
+        )
         return {
             "job_id": job_id,
             "input_path": input_path,
@@ -54,21 +80,72 @@ def download(
     cookie_error = validate_cookie_file(engine, settings.cookie_file)
     if cookie_error:
         category = ErrorCategory.AUTH_REQUIRED.value
-        mark_attempts(job_id, tweets, engine, "failed_retryable", 0, category, cookie_error, run_item_ids)
+        mark_attempts(
+            job_id,
+            tweets,
+            engine,
+            "failed_retryable",
+            0,
+            category,
+            cookie_error,
+            run_item_ids,
+        )
         mark_tweets_failed([tweet["tweet_id"] for tweet in tweets], "failed_retryable", category)
         finish_job(job_id, "failed", 0, len(tweets), category)
-        return {"job_id": job_id, "input_path": input_path, "count": len(tweets), "exit_code": 0}
+        log_download_event(
+            "download.job.failed",
+            job_id=job_id,
+            engine=engine,
+            status="failed",
+            error_category=category,
+            failed_count=len(tweets),
+        )
+        return {
+            "job_id": job_id,
+            "input_path": input_path,
+            "count": len(tweets),
+            "exit_code": 0,
+        }
 
     command = build_command(engine, settings, input_path)
     executable = command[0]
     if shutil.which(executable) is None:
         category = ErrorCategory.COMMAND_NOT_FOUND.value
-        mark_attempts(job_id, tweets, engine, "failed_retryable", 127, category, executable, run_item_ids)
+        mark_attempts(
+            job_id,
+            tweets,
+            engine,
+            "failed_retryable",
+            127,
+            category,
+            executable,
+            run_item_ids,
+        )
         mark_tweets_failed([tweet["tweet_id"] for tweet in tweets], "failed_retryable", category)
         finish_job(job_id, "failed", 0, len(tweets), f"{executable} not found")
-        return {"job_id": job_id, "input_path": input_path, "count": len(tweets), "exit_code": 127}
+        log_download_event(
+            "download.job.failed",
+            job_id=job_id,
+            engine=engine,
+            status="failed",
+            error_category=category,
+            failed_count=len(tweets),
+            exit_code=127,
+        )
+        return {
+            "job_id": job_id,
+            "input_path": input_path,
+            "count": len(tweets),
+            "exit_code": 127,
+        }
 
     set_tweets_downloading([tweet["tweet_id"] for tweet in tweets])
+    log_download_event(
+        "download.command.started",
+        job_id=job_id,
+        engine=engine,
+        tweet_count=len(tweets),
+    )
     result = subprocess.run(command, capture_output=True, text=True, check=False)
     stderr_excerpt = result.stderr[-4000:] if result.stderr else None
 
@@ -81,7 +158,16 @@ def download(
         downloaded = [tweet for tweet in tweets if tweet["tweet_id"] in downloaded_ids]
         missing = [tweet for tweet in tweets if tweet["tweet_id"] not in downloaded_ids]
 
-        mark_attempts(job_id, downloaded, engine, "downloaded", 0, None, stderr_excerpt, run_item_ids)
+        mark_attempts(
+            job_id,
+            downloaded,
+            engine,
+            "downloaded",
+            0,
+            None,
+            stderr_excerpt,
+            run_item_ids,
+        )
         mark_attempts(
             job_id,
             missing,
@@ -106,12 +192,44 @@ def download(
             len(missing),
             None if not missing else ErrorCategory.DOWNLOAD_NO_OUTPUT.value,
         )
+        log_download_event(
+            "download.job.completed",
+            job_id=job_id,
+            engine=engine,
+            status=status,
+            exit_code=result.returncode,
+            success_count=len(downloaded),
+            failed_count=len(missing),
+            error_category=None if not missing else ErrorCategory.DOWNLOAD_NO_OUTPUT.value,
+        )
     else:
         category = classify_error(result.returncode, stderr_excerpt)
-        status = "failed_permanent" if category in {item.value for item in PERMANENT_DOWNLOAD_CATEGORIES} else "failed_retryable"
-        mark_attempts(job_id, tweets, engine, status, result.returncode, category, stderr_excerpt, run_item_ids)
+        status = (
+            "failed_permanent"
+            if category in {item.value for item in PERMANENT_DOWNLOAD_CATEGORIES}
+            else "failed_retryable"
+        )
+        mark_attempts(
+            job_id,
+            tweets,
+            engine,
+            status,
+            result.returncode,
+            category,
+            stderr_excerpt,
+            run_item_ids,
+        )
         mark_tweets_failed([tweet["tweet_id"] for tweet in tweets], status, category)
         finish_job(job_id, "failed", 0, len(tweets), category)
+        log_download_event(
+            "download.job.failed",
+            job_id=job_id,
+            engine=engine,
+            status="failed",
+            exit_code=result.returncode,
+            error_category=category,
+            failed_count=len(tweets),
+        )
 
     return {
         "job_id": job_id,
@@ -384,3 +502,7 @@ def classify_error(exit_code: int, stderr: str | None) -> str:
 
 def empty_backfill_result() -> dict[str, object]:
     return {"scanned": 0, "upserted": 0, "skipped": 0, "media_ids": [], "tweet_ids": []}
+
+
+def log_download_event(event: str, **details: object) -> None:
+    logger.info("Download event: %s", event, extra={"event": event, "details": details})

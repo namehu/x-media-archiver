@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import logging
 from pathlib import Path
 from typing import Any
 
@@ -11,6 +12,8 @@ from xarchiver.db import connect
 from xarchiver.importer import extract_tweet_id, parse_jsonl_rows, parse_url_rows, upsert_tweets
 from xarchiver.services.library import get_library_snapshot
 from xarchiver.workflow import process_tweet_scope
+
+logger = logging.getLogger(__name__)
 
 
 def submit_archive_batch(
@@ -195,13 +198,27 @@ def process_next_queued_run(settings: Settings) -> dict[str, object] | None:
     run_id = int(claimed[0]["archive_run_id"])
     item_ids = {str(row["tweet_id"]): int(row["id"]) for row in claimed}
     tweet_ids = list(item_ids)
+    log_queue_event("archive.worker.claimed", run_id=run_id, item_count=len(claimed))
     try:
         pipeline = process_tweet_scope(tweet_ids, settings, archive_run_id=run_id, item_ids=item_ids)
         update_processed_items(run_id, claimed, settings, pipeline)
     except Exception as exc:
         fail_processing_items(run_id, claimed, settings, str(exc))
+        log_queue_event(
+            "archive.worker.failed",
+            run_id=run_id,
+            item_count=len(claimed),
+            error_type=type(exc).__name__,
+        )
         raise
-    return get_run_detail(run_id) or {}
+    detail = get_run_detail(run_id) or {}
+    log_queue_event(
+        "archive.worker.completed",
+        run_id=run_id,
+        item_count=len(claimed),
+        status=detail.get("status"),
+    )
+    return detail
 
 
 def claim_next_items(retry_limit: int, batch_size: int = 20) -> list[dict[str, object]]:
@@ -635,3 +652,7 @@ def reset_tweets_for_retry(tweet_ids: list[str]) -> None:
                 (tweet_ids,),
             )
         conn.commit()
+
+
+def log_queue_event(event: str, **details: object) -> None:
+    logger.info("Archive queue event: %s", event, extra={"event": event, "details": details})

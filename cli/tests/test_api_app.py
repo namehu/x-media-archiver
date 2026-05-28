@@ -1,5 +1,6 @@
 import asyncio
 import json
+import logging
 import unittest
 from pathlib import Path
 
@@ -18,7 +19,7 @@ from xarchiver.api.deps import (
     resolve_archive_file,
     write_action_lock,
 )
-from xarchiver.api.middleware import RequestIdMiddleware
+from xarchiver.api.middleware import JsonLogFormatter, RequestIdMiddleware
 from xarchiver.api.schemas import ArchiveSubmitRequest, SourceCreateRequest, VerifyRequest
 from xarchiver.core.errors import ArchiverError
 from xarchiver.core.events import EventBroker, format_sse_event
@@ -121,6 +122,24 @@ class ApiAppTests(unittest.TestCase):
 
         self.assertEqual(response.status_code, 200)
         self.assertEqual(response.headers["X-Request-ID"], "test-request-1")
+
+    def test_json_log_formatter_includes_structured_details(self) -> None:
+        record = logging.LogRecord(
+            "xarchiver.test",
+            logging.INFO,
+            __file__,
+            1,
+            "message",
+            (),
+            None,
+        )
+        record.event = "download.job.completed"
+        record.details = {"job_id": 12, "status": "finished"}
+
+        payload = json.loads(JsonLogFormatter().format(record))
+
+        self.assertEqual(payload["event"], "download.job.completed")
+        self.assertEqual(payload["details"], {"job_id": 12, "status": "finished"})
 
     def test_http_errors_include_standard_fields_and_legacy_detail(self) -> None:
         app = create_app()

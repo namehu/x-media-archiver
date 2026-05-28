@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import json
+import logging
 import random
 import re
 import shutil
@@ -20,6 +21,7 @@ from xarchiver.services.queue import has_pending_download_work, submit_archive_b
 VALID_SOURCE_TYPES = {"profile", "user_media", "likes", "bookmarks", "search", "manual"}
 VALID_SOURCE_STATUSES = {"active", "paused", "completed", "failed"}
 VALID_SCAN_TRIGGERS = {"history_worker", "manual_next", "latest_refresh"}
+logger = logging.getLogger(__name__)
 
 
 def create_source(
@@ -570,6 +572,16 @@ def scan_source(
     scan_cursor = None if not advances_history else cursor_state.get("extractor_cursor")
     scan_range = build_scan_range(cursor_state, limit, restart=restart)
     scan_run_id = start_source_scan_run(source_id, scan_trigger, scan_range, cursor_state)
+    log_source_scan_event(
+        "source.scan.started",
+        source_id=source_id,
+        scan_run_id=scan_run_id,
+        trigger_type=scan_trigger,
+        range_start=scan_range["start"],
+        range_end=scan_range["end"],
+        limit=scan_range["limit"],
+        restart=restart,
+    )
     try:
         records, scan_meta = discover_records_with_gallery_dl(
             scan_url,
@@ -606,6 +618,17 @@ def scan_source(
                 error_category=error_category,
                 error_message=error_message,
             )
+            log_source_scan_event(
+                "source.scan.completed",
+                source_id=source_id,
+                scan_run_id=scan_run_id,
+                status=scan_run_status(scan_meta, completed),
+                discovered_count=0,
+                new_discovered_count=0,
+                duplicate_count=0,
+                completed=completed,
+                error_category=error_category,
+            )
             return {
                 "source_id": source_id,
                 "scan_run_id": scan_run_id,
@@ -640,6 +663,17 @@ def scan_source(
             duplicate_tweet_count=int(result["duplicate_count"]),
             discovered_media_count=count_discovered_media(records),
         )
+        log_source_scan_event(
+            "source.scan.completed",
+            source_id=source_id,
+            scan_run_id=scan_run_id,
+            status=scan_run_status(scan_meta, completed),
+            discovered_count=result["discovered_count"],
+            new_discovered_count=result["new_discovered_count"],
+            duplicate_count=result["duplicate_count"],
+            discovered_media_count=count_discovered_media(records),
+            completed=completed,
+        )
         return {
             "source_id": source_id,
             "scan_run_id": scan_run_id,
@@ -658,6 +692,12 @@ def scan_source(
             cursor_after=cursor_state,
             error_category="failed",
             error_message=str(exc),
+        )
+        log_source_scan_event(
+            "source.scan.failed",
+            source_id=source_id,
+            scan_run_id=scan_run_id,
+            error_type=type(exc).__name__,
         )
         raise
 
@@ -1163,3 +1203,7 @@ def infer_author_username(source_type: str, source_url: str) -> str | None:
     if username in {"home", "search", "bookmarks", "i"}:
         return None
     return username
+
+
+def log_source_scan_event(event: str, **details: object) -> None:
+    logger.info("Source scan event: %s", event, extra={"event": event, "details": details})
