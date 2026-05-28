@@ -1,20 +1,21 @@
 # x-media-archiver 升级迭代设计方案（P3）
 
-> 状态：候选工程化规划，暂不作为当前执行主线
+> 状态：已启动，P3 第一阶段已完成
 > 评审日期：2026-05-27
-> 启动门禁：完成 P2.8.1 来源扫描可观测性、P2.8.2 真实扫描验收与 P2.8.3 受控下载联调后，再按实际痛点裁剪启动。
+> 第一阶段收口：2026-05-28，用户已完成完整验证
+> 执行原则：P3 子项均需完成；按依赖和风险拆小批次推进，不再作为可选候选互斥处理。
 
 ## 评审决策
 
 P3 不是“不新增开发即可完成”的迭代。本文中的 API 路由拆分、统一异常模型、SSE、OpenAPI 类型同步、WebUI 重构、CI 与 E2E 均需要新增开发投入。
 
-当前不直接推进 P3 全量建设，原因如下：
+P3 不一次性全量建设，原因如下：
 
 1. 当前主风险是来源历史扫描尚未完成可追踪与真实长链路验收，而不是 API 文件规模或前端目录组织。
 2. 内存 SSE 只能改善实时刷新，不能替代持久化的来源扫描批次审计；API 重启后仍需要查明过去发生过什么。
 3. 在真实使用稳定前进行 API 和 WebUI 大面积重构，会增加变更面，却不能直接证明大型来源归档可靠。
 
-当前执行顺序以 [phase-2-roadmap.md](./phase-2-roadmap.md) 为准：
+P2.8 来源扫描闭环完成后，P3 已按裁剪方式启动。历史门禁如下：
 
 ```text
 必须先完成
@@ -22,25 +23,112 @@ P3 不是“不新增开发即可完成”的迭代。本文中的 API 路由拆
   P2.8.2 真实 range/cursor/终止条件验收
   P2.8.3 少量受控下载联调验收
 
-完成后按证据选择 P3 子项
-  优先候选：CI、统一错误模型、必要分页、API 路由边界整理
-  延后候选：SSE、dark mode、完整前端目录迁移、旧 API alias 移除
+P3 执行方式
+  所有子项均要完成
+  按依赖顺序推进：先工程边界与可验证性，再 API/数据展示，再实时性与 WebUI 骨架，最后收口破坏性变更
+  每一批都必须独立可验证、可回退、可暂停
 ```
 
-## P3 第一阶段裁剪
+## P3 第一阶段收口
 
-2026-05-28 已按真实使用痛点启动 P3 第一阶段，范围刻意收窄为：
+2026-05-28 已按真实使用痛点完成 P3 第一阶段，范围刻意收窄为：
 
-1. GitHub Actions 基础门禁：后端 Docker unittest、WebUI build、Extension typecheck/build。
-2. 测试隔离约定：CI 先重置测试数据库，不接入真实 cookies，不复用本地探索数据。
-3. 错误模型基础：新增 `cli/xarchiver/core/errors.py`，先集中下载与来源扫描共享的错误分类，并让 API
+1. ✅ GitHub Actions 基础门禁：后端 Docker unittest、WebUI build、Extension typecheck/build。
+2. ✅ 测试隔离约定：CI 先重置测试数据库，不接入真实 cookies，不复用本地探索数据。
+3. ✅ 错误模型基础：新增 `cli/xarchiver/core/errors.py`，先集中下载与来源扫描共享的错误分类，并让 API
    注册 `ArchiverError` 统一处理器、共享状态码映射和兼容旧 `detail` 字段的标准错误响应。
-
-本阶段不执行 API 路由大拆分、SSE、dark mode、完整前端目录迁移、OpenAPI 类型替换或旧
-`/api/*` alias 移除。
-
-4. 必要分页：`/api/media` 与 `/api/failures` 支持 `limit`、`offset` 与 `total_count`，WebUI 的
+4. ✅ 必要分页：`/api/media` 与 `/api/failures` 支持 `limit`、`offset` 与 `total_count`，WebUI 的
    Library / Failures 页面先接入简单上一页/下一页控制，避免大库一次性加载。
+
+用户已完成完整验证。后续推进不再区分“倾向”或“候选”，只按依赖拆批执行。
+
+## 下一步推进计划
+
+### P3 第二阶段：列表规模化与任务可操作性
+
+目标：大型来源进入归档后，Archive Queue、Sources、Duplicates 等页面不能再依赖一次性加载和固定轮询。
+
+1. Archive Queue 分页与筛选
+   - `/api/archive-runs` 增加 `offset`、`total_count`，保留现有 `limit`、`run_status`、`tweet_id`、`failed_only`。
+   - WebUI Archive Queue 增加分页、状态筛选、失败项筛选、按 tweet_id 查询。
+   - 运行中批次仍保留自动刷新，但只刷新当前页和选中详情。
+2. Sources 分页与筛选
+   - `/api/sources` 增加 `offset`、`total_count`，支持 `source_status`、`source_type` 的 UI 筛选。
+   - 来源详情的 discovered 列表增加分页或“最近 N 条 + 查看更多”，避免单来源几万条发现记录压垮页面。
+   - `source_scan_runs` 历史记录增加分页或按状态筛选。
+3. Duplicates 分页
+   - `/api/duplicates` 拆分为可分页查询，返回 `duplicate_groups` 与当前页 rows。
+   - WebUI Duplicates 接入分页，保留当前重复组统计。
+4. 通用分页组件
+   - 抽出 `PaginationBar` / `PageResponse<T>` 复用，避免 Library、Failures、Archive Queue、Sources 各自写一套。
+   - 文案保持 `zh/en` 同步；当前 `en.ts` 仍为空，第二阶段要补齐最小英文词典或建立明确退化规则。
+
+### P3 第三阶段：OpenAPI 类型同步与 API 边界整理
+
+目标：减少手写类型漂移，开始为后续路由拆分铺路。
+
+1. 暴露并代理 `/openapi.json`
+   - FastAPI 已自动提供 OpenAPI；WebUI dev server 需要代理或脚本支持读取。
+2. 引入 `openapi-typescript`
+   - 新增 `webui/scripts/sync-types.ts` 或等价脚本。
+   - 生成 `webui/src/api/generated.ts` 并提交。
+   - CI 校验生成类型与提交一致。
+3. API client 分层
+   - 保留 `webui/src/lib/api.ts` 兼容层。
+   - 新建 `webui/src/api/client.ts` 与按域 query/mutation helper。
+   - 优先迁移新增页面和分页接口，不一次性改完整 WebUI。
+4. API schema 整理
+   - Pydantic request/response model 从 `api/app.py` 逐步移到 `api/schemas/`。
+   - 路由拆分之前先保证 schema 命名稳定，避免 OpenAPI 频繁变化。
+
+### P3 第四阶段：实时性与可观测性
+
+目标：减少固定轮询，运行状态变化能及时可见，同时保留持久化审计。
+
+1. `core/events.py` 内存事件总线
+   - 发布 run、run item、source scan、worker lock 等事件。
+   - 事件只用于刷新提示，不作为唯一审计来源。
+2. `/api/events` 或 `/api/v1/events` SSE
+   - 支持 topic 过滤。
+   - 断线自动恢复；WebUI 保留轮询兜底。
+3. WebUI `useServerEvents`
+   - 收到事件后精准 invalidate React Query。
+   - Archive Queue、Sources、Dashboard 先接入。
+4. 健康详情与结构化日志
+   - `/api/health/detail` 返回 worker 状态、锁状态、最近错误摘要。
+   - 后端日志逐步从 print/散落 logger 收敛为统一 logger。
+
+### P3 第五阶段：WebUI 骨架与交互系统
+
+目标：管理后台从“能用页面”升级为长期可维护的操作台。
+
+1. AppShell 信息架构
+   - 侧栏分组：运行、数据、维护。
+   - 顶栏加入 worker 状态、语言切换、全局反馈。
+2. 基础 UI 组件
+   - Dialog、ConfirmDialog、Toast、Tooltip、Skeleton、EmptyState、ErrorState、DataTable。
+   - 危险动作统一确认：后端守卫不变，前端增加输入式确认。
+3. i18n 收口
+   - 补齐 `locales/en.ts`。
+   - 新增文案必须中英同步。
+4. 主题与设计令牌
+   - CSS variables / Tailwind token 化。
+   - light / dark / auto 作为可选主题，不影响当前业务功能。
+
+### P3 第六阶段：路由模块化与最终收口
+
+目标：拆 API 文件、清理兼容层，并形成稳定的长期结构。
+
+1. API routers 拆分
+   - `library`、`archive_runs`、`sources`、`actions`、`maintenance`、`media_files`、`events`。
+   - 新路径 `/api/v1/*` 与旧 `/api/*` 并行一段时间。
+2. 测试补齐
+   - API 路由层冒烟。
+   - Archive Queue 主流程 E2E。
+   - recovery/search/archive 的剩余单测。
+3. 兼容层移除
+   - P3.6 才移除旧 `/api/*` alias 和旧 pages 目录。
+   - 这是唯一集中破坏性变更，必须单独执行和验证。
 
 ## Context
 
@@ -295,15 +383,15 @@ webui/src/
 
 | 里程碑 | 名称 | 关键产出 | 风险 / 兼容性 |
 | --- | --- | --- | --- |
-| **P3.0** | 工程基建 + API 模块化 | routers 拆分到 `api/routers/`、`/api/v1/*` 双挂、`core/errors.py` 错误枚举、OpenAPI 暴露 + openapi-typescript 同步、structlog + request_id、ESLint/Prettier、pre-commit、GitHub Actions | 旧 `/api/*` 保留 alias；WebUI 仍用旧 client，类型先生成不替换 |
-| **P3.1** | WebUI 骨架重构 | shadcn 基础组件落地（button/card/dialog/toast/alert-dialog/dropdown/tabs/tooltip/skeleton）、AppShell 信息架构升级、design token + dark mode、locales/en 补齐 + LanguageSwitcher | 页面逐个迁入 features/，pages/ 与 features/ 短暂共存 |
-| **P3.2** | 危险操作 + 数据展示 | ConfirmDialog（FULL SCAN 输入解锁）、DataTable / Pagination 通用组件、EmptyState / ErrorState、Failures/Duplicates/Library 接入分页 | API 层补 `offset`/`total_count` 字段（向前兼容） |
-| **P3.3** | 实时性 | 在扫描批次审计已持久化的前提下，增加 `core/events.py` 事件总线、`/api/v1/events` SSE、WebUI `useServerEvents`、worker 状态指示灯 | SSE 只负责刷新；失联降级到条件轮询，不能丢失历史诊断能力 |
-| **P3.4** | 可观测性 | 结构化日志、`/api/v1/health/detail`、Operations 页接入实时日志尾巴、错误分类视图 | 仅追加，不修改既有行为 |
-| **P3.5** | 测试与文档 | recovery/search/archive 单测、API 路由层冒烟、Playwright e2e 覆盖 Archive Queue 主流程、`docs/api/` 用 redoc 渲染 OpenAPI | — |
-| **P3.6** | 收口 | 移除 `/api/*` 旧 alias、移除 `webui/src/pages/` 旧目录、移除轮询兜底里的过期分支、`docs/design/phase-3-roadmap.md` 终稿 | 唯一一次破坏性变更，集中在此里程碑 |
+| **P3.0** | 工程基建与错误边界 | ✅ GitHub Actions、测试隔离说明、`core/errors.py`、标准错误响应、WebUI `ApiError`；待做 OpenAPI 类型同步、lint/pre-commit | 已完成第一批；剩余工程化项进入 P3 第三阶段 |
+| **P3.1** | 列表规模化 | ✅ Library/Failures 分页；待做 Archive Queue、Sources、Duplicates 分页与筛选、通用分页组件 | 向前兼容；旧响应字段 `rows/count` 保留 |
+| **P3.2** | OpenAPI 与 API 边界 | OpenAPI 代理、类型生成、API client 分层、schemas 迁移 | 不一次性替换全部手写类型 |
+| **P3.3** | 实时性 | `core/events.py` 事件总线、SSE、WebUI `useServerEvents`、worker 状态指示灯 | SSE 只负责刷新；失联降级到条件轮询，不能丢失历史诊断能力 |
+| **P3.4** | 可观测性 | 结构化日志、`/api/health/detail`、Operations 页接入实时日志尾巴、错误分类视图 | 仅追加，不修改既有行为 |
+| **P3.5** | WebUI 骨架与交互系统 | AppShell、Dialog/Toast/DataTable/EmptyState/ErrorState、危险操作输入确认、i18n、主题令牌 | 页面逐个迁移，pages/ 与 features/ 可短暂共存 |
+| **P3.6** | 路由模块化与最终收口 | `/api/v1/*` 双挂、routers 拆分、API/E2E 测试、移除旧 alias 与旧目录 | 唯一集中破坏性变更，必须单独执行和验证 |
 
-若 P3 经门禁复核后启动，每个里程碑应独立 PR、独立可上线、可随时叫停。当前不因本文存在而默认开始这些重构。
+P3 已启动。后续每个批次应独立可验证、可上线、可暂停；所有子项都要完成，只按依赖与风险排序。
 
 ---
 
