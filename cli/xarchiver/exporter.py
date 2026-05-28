@@ -194,7 +194,7 @@ def fetch_export_rows(status: str | None) -> list[dict[str, object]]:
             return list(cur.fetchall())
 
 
-def fetch_failure_rows() -> list[dict[str, object]]:
+def fetch_failure_rows(limit: int | None = None, offset: int = 0) -> list[dict[str, object]]:
     sql = """
         select
             t.tweet_id,
@@ -220,10 +220,27 @@ def fetch_failure_rows() -> list[dict[str, object]]:
         where t.download_status not in ('downloaded', 'verified', 'skipped')
         order by t.updated_at desc, t.tweet_id
     """
+    params: list[object] = []
+    if limit is not None:
+        sql += " limit %s offset %s"
+        params.extend([limit, offset])
     with connect() as conn:
         with conn.cursor() as cur:
-            cur.execute(sql)
+            cur.execute(sql, tuple(params))
             return list(cur.fetchall())
+
+
+def count_failure_rows() -> int:
+    with connect() as conn:
+        with conn.cursor() as cur:
+            cur.execute(
+                """
+                select count(*)::int as count
+                from tweets
+                where download_status not in ('downloaded', 'verified', 'skipped')
+                """
+            )
+            return int(cur.fetchone()["count"])
 
 
 def fetch_duplicate_rows() -> list[dict[str, object]]:

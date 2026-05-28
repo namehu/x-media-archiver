@@ -19,13 +19,13 @@ class SearchUnitTests(unittest.TestCase):
         self.assertIn("t.download_status = %s", sql)
         self.assertIn("m.download_status = %s", sql)
         self.assertIn("m.media_type = %s", sql)
-        self.assertEqual(params, ("%physics%", "%physics%", "%chaos%", "verified", "verified", "video", 10))
+        self.assertEqual(params, ("%physics%", "%physics%", "%chaos%", "verified", "verified", "video", 10, 0))
 
     def test_build_search_query_skips_media_status_for_all(self) -> None:
         sql, params = build_search_query(None, None, None, "all", None, 5)
 
         self.assertNotIn("m.download_status = %s", sql)
-        self.assertEqual(params, (5,))
+        self.assertEqual(params, (5, 0))
 
     def test_compact_text_normalizes_whitespace_and_truncates(self) -> None:
         self.assertEqual(compact_text("a\n\nb\tc", 20), "a b c")

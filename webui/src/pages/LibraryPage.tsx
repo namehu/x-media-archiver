@@ -1,7 +1,7 @@
 import { useMemo, useState } from "react";
 import { useQuery } from "@tanstack/react-query";
 import { Link } from "react-router-dom";
-import { apiGet, mediaQueryString, type MediaRow } from "../lib/api";
+import { apiGet, mediaQueryString, type MediaRow, type PageResponse } from "../lib/api";
 import { useFormatters, useI18n } from "../lib/i18n";
 import { formatBytes, formatDateTime } from "../lib/utils";
 import { Badge } from "../components/ui/Badge";
@@ -10,7 +10,7 @@ import { Card, CardContent } from "../components/ui/Card";
 import { Input } from "../components/ui/Input";
 import { Select } from "../components/ui/Select";
 
-type MediaResponse = { rows: MediaRow[]; count: number };
+const PAGE_SIZE = 60;
 
 export function LibraryPage() {
   const { t } = useI18n();
@@ -21,11 +21,17 @@ export function LibraryPage() {
     media_type: "",
   });
   const [submitted, setSubmitted] = useState(filters);
-  const query = useMemo(() => mediaQueryString({ ...submitted, limit: "80" }), [submitted]);
+  const [offset, setOffset] = useState(0);
+  const query = useMemo(
+    () => mediaQueryString({ ...submitted, limit: String(PAGE_SIZE), offset: String(offset) }),
+    [offset, submitted],
+  );
   const { data, isLoading, error } = useQuery({
     queryKey: ["media", query],
-    queryFn: () => apiGet<MediaResponse>(`/api/media?${query}`),
+    queryFn: () => apiGet<PageResponse<MediaRow>>(`/api/media?${query}`),
   });
+  const canGoPrevious = offset > 0;
+  const canGoNext = data ? offset + data.count < data.total_count : false;
 
   return (
     <div className="space-y-5">
@@ -33,6 +39,7 @@ export function LibraryPage() {
         className="grid gap-3 rounded-lg border border-border bg-white p-4 md:grid-cols-[1fr_1fr_160px_160px_auto]"
         onSubmit={(event) => {
           event.preventDefault();
+          setOffset(0);
           setSubmitted(filters);
         }}
       >
@@ -69,12 +76,69 @@ export function LibraryPage() {
 
       {isLoading ? <State text={t("library.loading")} /> : null}
       {error ? <State text={String(error)} /> : null}
+      {data ? (
+        <PaginationBar
+          offset={offset}
+          count={data.count}
+          totalCount={data.total_count}
+          onPrevious={() => setOffset(Math.max(0, offset - PAGE_SIZE))}
+          onNext={() => setOffset(offset + PAGE_SIZE)}
+          canGoPrevious={canGoPrevious}
+          canGoNext={canGoNext}
+        />
+      ) : null}
 
       <section className="grid gap-4 md:grid-cols-2 xl:grid-cols-3">
         {data?.rows.map((row) => <MediaCard key={`${row.tweet_id}-${row.media_index}`} row={row} />)}
       </section>
 
       {data && data.rows.length === 0 ? <State text={t("library.noMatched")} /> : null}
+      {data && data.rows.length > 0 ? (
+        <PaginationBar
+          offset={offset}
+          count={data.count}
+          totalCount={data.total_count}
+          onPrevious={() => setOffset(Math.max(0, offset - PAGE_SIZE))}
+          onNext={() => setOffset(offset + PAGE_SIZE)}
+          canGoPrevious={canGoPrevious}
+          canGoNext={canGoNext}
+        />
+      ) : null}
+    </div>
+  );
+}
+
+function PaginationBar({
+  offset,
+  count,
+  totalCount,
+  canGoPrevious,
+  canGoNext,
+  onPrevious,
+  onNext,
+}: {
+  offset: number;
+  count: number;
+  totalCount: number;
+  canGoPrevious: boolean;
+  canGoNext: boolean;
+  onPrevious: () => void;
+  onNext: () => void;
+}) {
+  const { t } = useI18n();
+  const start = totalCount === 0 ? 0 : offset + 1;
+  const end = offset + count;
+  return (
+    <div className="flex flex-wrap items-center justify-between gap-3 rounded-lg border border-border bg-white px-4 py-3 text-sm text-muted-foreground">
+      <span>{t("common.pagination.range", { start, end, total: totalCount })}</span>
+      <div className="flex gap-2">
+        <Button type="button" variant="secondary" onClick={onPrevious} disabled={!canGoPrevious}>
+          {t("common.pagination.previous")}
+        </Button>
+        <Button type="button" variant="secondary" onClick={onNext} disabled={!canGoNext}>
+          {t("common.pagination.next")}
+        </Button>
+      </div>
     </div>
   );
 }

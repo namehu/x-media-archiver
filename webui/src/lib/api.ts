@@ -46,6 +46,14 @@ export type FailureRow = {
   latest_finished_at?: string | null;
 };
 
+export type PageResponse<T> = {
+  rows: T[];
+  count: number;
+  total_count: number;
+  limit: number;
+  offset: number;
+};
+
 export type TweetDetail = {
   tweet: MediaRow & {
     last_error?: string | null;

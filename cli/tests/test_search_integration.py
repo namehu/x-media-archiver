@@ -56,6 +56,11 @@ class SearchIntegrationTests(unittest.TestCase):
 
         self.assertIn(self.tweet_id, tweet_ids)
 
+    def test_search_media_supports_offset(self) -> None:
+        rows = search_media(author="search", media_status="verified", limit=10, offset=1)
+
+        self.assertNotIn(self.tweet_id, {row["tweet_id"] for row in rows})
+
 
 if __name__ == "__main__":
     unittest.main()

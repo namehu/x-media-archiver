@@ -39,6 +39,9 @@ P3 不是“不新增开发即可完成”的迭代。本文中的 API 路由拆
 本阶段不执行 API 路由大拆分、SSE、dark mode、完整前端目录迁移、OpenAPI 类型替换或旧
 `/api/*` alias 移除。
 
+4. 必要分页：`/api/media` 与 `/api/failures` 支持 `limit`、`offset` 与 `total_count`，WebUI 的
+   Library / Failures 页面先接入简单上一页/下一页控制，避免大库一次性加载。
+
 ## Context
 
 P2.0–P2.8.0 已交付"数据库队列 + 三层架构（CLI / FastAPI / WebUI）"的功能骨架，[AGENTS.md](../../AGENTS.md) 把核心约束（author_id 路径、显式维护动作、写操作串行化、不提供媒体删除）固化下来。当前框架本身**方向正确**，但来源扫描仍处于需要可观测性和真实验收才能确认稳定性的阶段；此外在工程设施方面存在以下摩擦：

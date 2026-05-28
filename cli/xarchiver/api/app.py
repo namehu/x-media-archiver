@@ -15,7 +15,7 @@ from starlette.exceptions import HTTPException as StarletteHTTPException
 from xarchiver.config import get_settings
 from xarchiver.core.errors import ArchiverError, error_response_payload, http_status_for_error_code
 from xarchiver.services.failures import list_failures
-from xarchiver.services.library import get_summary, get_tweet_detail, list_duplicates, list_media
+from xarchiver.services.library import get_summary, get_tweet_detail, list_duplicates, list_media_page
 from xarchiver.services.queue import get_run_detail, list_runs, process_next_queued_run, retry_run, submit_archive_batch
 from xarchiver.services.runs import (
     run_backfill,
@@ -196,8 +196,9 @@ def create_app() -> FastAPI:
         media_status: str | None = Query("verified"),
         media_type: str | None = None,
         limit: int = Query(50, ge=1, le=200),
+        offset: int = Query(0, ge=0),
     ) -> dict[str, object]:
-        rows = list_media(
+        return list_media_page(
             get_settings(),
             author=author,
             text=text,
@@ -205,8 +206,8 @@ def create_app() -> FastAPI:
             media_status=media_status,
             media_type=media_type,
             limit=limit,
+            offset=offset,
         )
-        return {"rows": rows, "count": len(rows)}
 
     @app.get("/api/tweets/{tweet_id}")
     def tweet_detail(tweet_id: str) -> dict[str, object]:
@@ -216,9 +217,11 @@ def create_app() -> FastAPI:
         return detail
 
     @app.get("/api/failures")
-    def failures(limit: int = Query(100, ge=1, le=500)) -> dict[str, object]:
-        rows = list_failures(limit)
-        return {"rows": rows, "count": len(rows)}
+    def failures(
+        limit: int = Query(100, ge=1, le=500),
+        offset: int = Query(0, ge=0),
+    ) -> dict[str, object]:
+        return list_failures(limit=limit, offset=offset)
 
     @app.get("/api/duplicates")
     def duplicates() -> dict[str, object]:

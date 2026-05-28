@@ -6,7 +6,7 @@ from xarchiver.archive import ensure_archive_dirs
 from xarchiver.config import Settings
 from xarchiver.db import connect
 from xarchiver.exporter import count_duplicate_groups, fetch_duplicate_rows, fetch_export_rows
-from xarchiver.search import search_media
+from xarchiver.search import count_search_media, search_media
 from xarchiver.status import get_media_count, get_media_status_counts, get_status_counts
 
 
@@ -44,6 +44,7 @@ def list_media(
     media_status: str | None = "verified",
     media_type: str | None = None,
     limit: int = 50,
+    offset: int = 0,
 ) -> list[dict[str, object]]:
     rows = search_media(
         author=author,
@@ -52,8 +53,39 @@ def list_media(
         media_status=None if media_status == "all" else media_status,
         media_type=media_type,
         limit=limit,
+        offset=offset,
     )
     return [attach_media_url(row, settings.archive_dir) for row in rows]
+
+
+def list_media_page(
+    settings: Settings,
+    author: str | None = None,
+    text: str | None = None,
+    tweet_status: str | None = None,
+    media_status: str | None = "verified",
+    media_type: str | None = None,
+    limit: int = 50,
+    offset: int = 0,
+) -> dict[str, object]:
+    rows = list_media(
+        settings,
+        author=author,
+        text=text,
+        tweet_status=tweet_status,
+        media_status=media_status,
+        media_type=media_type,
+        limit=limit,
+        offset=offset,
+    )
+    total_count = count_search_media(
+        author=author,
+        text=text,
+        tweet_status=tweet_status,
+        media_status=None if media_status == "all" else media_status,
+        media_type=media_type,
+    )
+    return {"rows": rows, "count": len(rows), "total_count": total_count, "limit": limit, "offset": offset}
 
 
 def get_tweet_detail(settings: Settings, tweet_id: str) -> dict[str, object] | None:

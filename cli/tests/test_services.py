@@ -57,6 +57,7 @@ class LibraryServiceTests(unittest.TestCase):
             media_status=None,
             media_type=None,
             limit=10,
+            offset=0,
         )
 
 
