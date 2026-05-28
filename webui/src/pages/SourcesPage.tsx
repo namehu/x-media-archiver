@@ -34,19 +34,19 @@ export function SourcesPage() {
     queryKey: ["sources", sourceStatusFilter, sourceTypeFilter, offset],
     queryFn: () =>
       apiGet<SourcePageResponse>(
-        `/api/sources?${sourceQueryString(sourceStatusFilter, sourceTypeFilter, PAGE_SIZE, offset)}`,
+        `/api/v1/sources?${sourceQueryString(sourceStatusFilter, sourceTypeFilter, PAGE_SIZE, offset)}`,
       ),
     refetchInterval: 15000,
   });
   const detailQuery = useQuery({
     queryKey: ["source", selectedSourceId],
-    queryFn: () => apiGet<ArchiveSource>(`/api/sources/${selectedSourceId}`),
+    queryFn: () => apiGet<ArchiveSource>(`/api/v1/sources/${selectedSourceId}`),
     enabled: selectedSourceId !== null,
     refetchInterval: 15000,
   });
   const policyQuery = useQuery({
     queryKey: ["download-policy"],
-    queryFn: () => apiGet<DownloadPolicy>("/api/settings/download-policy"),
+    queryFn: () => apiGet<DownloadPolicy>("/api/v1/settings/download-policy"),
   });
 
   const refresh = async (sourceId?: number) => {
@@ -60,7 +60,7 @@ export function SourcesPage() {
 
   const createMutation = useMutation({
     mutationFn: () =>
-      apiPost<ArchiveSource>("/api/sources", {
+      apiPost<ArchiveSource>("/api/v1/sources", {
         source_type: sourceType,
         source_url: sourceUrl,
         label: label || undefined,
@@ -74,7 +74,7 @@ export function SourcesPage() {
 
   const submitMutation = useMutation({
     mutationFn: ({ sourceId, records }: { sourceId: number; records: Array<{ url: string }> }) =>
-      apiPost<ArchiveSubmission>(`/api/sources/${sourceId}/records`, { records }),
+      apiPost<ArchiveSubmission>(`/api/v1/sources/${sourceId}/records`, { records }),
     onSuccess: async (result) => {
       setFeedback(result);
       setRecordUrls("");
@@ -84,12 +84,12 @@ export function SourcesPage() {
 
   const statusMutation = useMutation({
     mutationFn: ({ sourceId, status }: { sourceId: number; status: "active" | "paused" }) =>
-      apiPost<ArchiveSource>(`/api/sources/${sourceId}/status`, { status }),
+      apiPost<ArchiveSource>(`/api/v1/sources/${sourceId}/status`, { status }),
     onSuccess: async (source) => refresh(source.id),
   });
   const scanMutation = useMutation({
     mutationFn: ({ sourceId, limit, restart }: { sourceId: number; limit: number; restart?: boolean }) =>
-      apiPost<Record<string, unknown>>(`/api/sources/${sourceId}/scan`, { limit, restart }),
+      apiPost<Record<string, unknown>>(`/api/v1/sources/${sourceId}/scan`, { limit, restart }),
     onSuccess: async (response) => {
       const result = unwrapActionResult(response);
       setScanFeedback(result);
@@ -98,7 +98,7 @@ export function SourcesPage() {
   });
   const submitDiscoveredMutation = useMutation({
     mutationFn: ({ sourceId, limit }: { sourceId: number; limit?: number }) =>
-      apiPost<ArchiveSubmission>(`/api/sources/${sourceId}/submit-discovered`, { limit }),
+      apiPost<ArchiveSubmission>(`/api/v1/sources/${sourceId}/submit-discovered`, { limit }),
     onSuccess: async (result) => {
       setFeedback(result);
       await refresh(result.source_id);
@@ -106,11 +106,11 @@ export function SourcesPage() {
   });
   const historyScanMutation = useMutation({
     mutationFn: ({ sourceId, limit, restart = false }: { sourceId: number; limit: number; restart?: boolean }) =>
-      apiPost<ArchiveSource>(`/api/sources/${sourceId}/history-scan`, { limit, restart }),
+      apiPost<ArchiveSource>(`/api/v1/sources/${sourceId}/history-scan`, { limit, restart }),
     onSuccess: async (source) => refresh(source.id),
   });
   const stopHistoryScanMutation = useMutation({
-    mutationFn: (sourceId: number) => apiPost<ArchiveSource>(`/api/sources/${sourceId}/history-scan/stop`, {}),
+    mutationFn: (sourceId: number) => apiPost<ArchiveSource>(`/api/v1/sources/${sourceId}/history-scan/stop`, {}),
     onSuccess: async (source) => refresh(source.id),
   });
 

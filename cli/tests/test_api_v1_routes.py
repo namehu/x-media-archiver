@@ -3,17 +3,12 @@ from unittest.mock import patch
 
 from fastapi import HTTPException
 
-from xarchiver.api.app import (
-    BackfillRequest,
-    SourceCreateRequest,
-    SourceStatusRequest,
-    VerifyRequest,
-    create_app,
-)
+from xarchiver.api.app import create_app
+from xarchiver.api.schemas import BackfillRequest, SourceCreateRequest, SourceStatusRequest, VerifyRequest
 
 
 class V1RouterSmokeTests(unittest.TestCase):
-    """Verify that /api/v1/* routes are registered and behave identically to /api/* equivalents."""
+    """Verify that canonical /api/v1/* routes are registered and wired correctly."""
 
     def setUp(self):
         self.app = create_app()

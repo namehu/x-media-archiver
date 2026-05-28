@@ -216,7 +216,7 @@ def attach_media_url(row: dict[str, object], archive_dir: Path) -> dict[str, obj
     local_path = values.get("local_path")
     relative_path = archive_relative_path(local_path, archive_dir)
     values["media_relative_path"] = relative_path
-    values["media_url"] = f"/api/media-file/{relative_path}" if relative_path else None
+    values["media_url"] = f"/api/v1/media-file/{relative_path}" if relative_path else None
     return values
 
 

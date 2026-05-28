@@ -213,28 +213,39 @@ Available read-only API endpoints:
 
 ```text
 GET /health
-GET /api/summary
-GET /api/media
-GET /api/tweets/{tweet_id}
-GET /api/failures
-GET /api/duplicates
-GET /api/media-file/{relative_path}
-GET /api/archive-runs
-GET /api/archive-runs/{run_id}
+GET /api/v1/library/summary
+GET /api/v1/library/media
+GET /api/v1/library/tweets/{tweet_id}
+GET /api/v1/library/failures
+GET /api/v1/library/duplicates
+GET /api/v1/media-file/{relative_path}
+GET /api/v1/archive-runs
+GET /api/v1/archive-runs/{run_id}
+GET /api/v1/sources
+GET /api/v1/sources/{source_id}
+GET /api/v1/events
+GET /api/v1/settings/download-policy
 ```
 
 Available write API endpoints are serialized by a process-local lock. If one write action is already
 running, the API returns `409 write_action_in_progress`.
 
 ```text
-POST /api/actions/verify
-POST /api/actions/requeue
-POST /api/actions/recover-interrupted
-POST /api/actions/export
-POST /api/archive-runs
-POST /api/archive-runs/{run_id}/retry
-POST /api/maintenance/backfill
-POST /api/maintenance/verify
+POST /api/v1/actions/verify
+POST /api/v1/actions/requeue
+POST /api/v1/actions/recover-interrupted
+POST /api/v1/actions/export
+POST /api/v1/archive-runs
+POST /api/v1/archive-runs/{run_id}/retry
+POST /api/v1/sources
+POST /api/v1/sources/{source_id}/records
+POST /api/v1/sources/{source_id}/submit-discovered
+POST /api/v1/sources/{source_id}/status
+POST /api/v1/sources/{source_id}/scan
+POST /api/v1/sources/{source_id}/history-scan
+POST /api/v1/sources/{source_id}/history-scan/stop
+POST /api/v1/maintenance/backfill
+POST /api/v1/maintenance/verify
 ```
 
 Run the WebUI:

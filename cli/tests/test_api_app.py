@@ -2,21 +2,13 @@ import asyncio
 import json
 import unittest
 from pathlib import Path
-from unittest.mock import patch
 
 from fastapi import HTTPException
-from starlette.requests import Request
 from starlette.exceptions import HTTPException as StarletteHTTPException
 
 from xarchiver.api import schemas
-from xarchiver.api.app import (
-    ArchiveRecord,
-    ArchiveSubmitRequest,
-    BackfillRequest,
-    SourceCreateRequest,
-    SourceStatusRequest,
-    VerifyRequest,
-    create_app,
+from xarchiver.api.app import create_app
+from xarchiver.api.deps import (
     execute_write_action,
     parse_event_topics,
     raise_api_error,
@@ -24,6 +16,7 @@ from xarchiver.api.app import (
     resolve_archive_file,
     write_action_lock,
 )
+from xarchiver.api.schemas import ArchiveSubmitRequest, SourceCreateRequest, VerifyRequest
 from xarchiver.core.errors import ArchiverError
 from xarchiver.core.events import EventBroker, format_sse_event
 
@@ -75,49 +68,22 @@ class ApiAppTests(unittest.TestCase):
         self.assertEqual(missing.exception.status_code, 404)
         self.assertEqual(conflict.exception.status_code, 409)
 
-    def test_app_registers_archiver_error_handler(self) -> None:
+    def test_app_registers_error_handlers_and_health(self) -> None:
         app = create_app()
+        get_paths = {route.path for route in app.routes if "GET" in getattr(route, "methods", set())}
 
         self.assertIn(ArchiverError, app.exception_handlers)
+        self.assertIn("/health", get_paths)
 
-    def test_events_route_is_registered(self) -> None:
-        get_paths = {
-            route.path: route.endpoint
-            for route in create_app().routes
-            if "GET" in getattr(route, "methods", set())
-        }
+    def test_legacy_api_routes_are_removed(self) -> None:
+        paths = {route.path for route in create_app().routes}
 
-        self.assertIn("/api/events", get_paths)
-
-        request = Request(
-            {
-                "type": "http",
-                "method": "GET",
-                "path": "/api/events",
-                "headers": [],
-                "query_string": b"",
-            }
-        )
-        response = asyncio.run(get_paths["/api/events"](request, topics="archive_runs,sources"))
-        self.assertEqual(response.media_type, "text/event-stream")
-        asyncio.run(response.body_iterator.aclose())
-
-    def test_event_topic_parsing_and_sse_format(self) -> None:
-        self.assertEqual(parse_event_topics("archive_runs, source_scans ,, "), ["archive_runs", "source_scans"])
-        broker = EventBroker()
-        subscription = broker.subscribe(["source_scans"])
-        try:
-            broker.publish("archive_runs", "archive.run.submitted", {"run_id": 1})
-            event = broker.publish("source_scans", "source.scan.completed", {"scan_run_id": 2})
-
-            self.assertEqual(subscription.get(timeout=0.1), event)
-        finally:
-            subscription.close()
-
-        payload = format_sse_event(event)
-
-        self.assertIn("event: source.scan.completed", payload)
-        self.assertIn('"scan_run_id":2', payload)
+        self.assertNotIn("/api/summary", paths)
+        self.assertNotIn("/api/archive-runs", paths)
+        self.assertNotIn("/api/sources", paths)
+        self.assertIn("/api/v1/library/summary", paths)
+        self.assertIn("/api/v1/archive-runs", paths)
+        self.assertIn("/api/v1/sources", paths)
 
     def test_request_schemas_are_split_without_renaming_openapi_components(self) -> None:
         self.assertIs(schemas.VerifyRequest, VerifyRequest)
@@ -160,111 +126,22 @@ class ApiAppTests(unittest.TestCase):
         self.assertEqual(body["code"], "rate_limited")
         self.assertEqual(body["category"], "rate_limited")
 
-    def test_full_scan_endpoints_reject_unconfirmed_requests(self) -> None:
-        endpoints = {
-            route.path: route.endpoint
-            for route in create_app().routes
-            if route.path in {"/api/maintenance/backfill", "/api/maintenance/verify", "/api/actions/verify"}
-        }
+    def test_event_topic_parsing_and_sse_format(self) -> None:
+        self.assertEqual(parse_event_topics("archive_runs, source_scans ,, "), ["archive_runs", "source_scans"])
+        broker = EventBroker()
+        subscription = broker.subscribe(["source_scans"])
+        try:
+            broker.publish("archive_runs", "archive.run.submitted", {"run_id": 1})
+            event = broker.publish("source_scans", "source.scan.completed", {"scan_run_id": 2})
 
-        for path, request in (
-            ("/api/maintenance/backfill", BackfillRequest()),
-            ("/api/maintenance/verify", VerifyRequest()),
-            ("/api/actions/verify", VerifyRequest()),
-        ):
-            with self.assertRaises(HTTPException) as error:
-                endpoints[path](request)
-            self.assertEqual(error.exception.status_code, 400)
-            self.assertEqual(error.exception.detail, "full_scan_confirmation_required")
+            self.assertEqual(subscription.get(timeout=0.1), event)
+        finally:
+            subscription.close()
 
-    def test_archive_run_api_rejects_invalid_url_without_file_path_endpoint(self) -> None:
-        app = create_app()
-        paths = {
-            route.path: route.endpoint
-            for route in app.routes
-            if "POST" in getattr(route, "methods", set())
-        }
-        self.assertIn("/api/archive-runs", paths)
-        self.assertNotIn("/api/inbox", paths)
-        self.assertNotIn("/api/runs/archive-urls", paths)
+        payload = format_sse_event(event)
 
-        with self.assertRaises(HTTPException) as error:
-            paths["/api/archive-runs"](
-                ArchiveSubmitRequest(records=[ArchiveRecord(url="https://x.com/user/likes")])
-            )
-        self.assertEqual(error.exception.status_code, 400)
-
-    def test_source_routes_are_registered(self) -> None:
-        app = create_app()
-        post_paths = {
-            route.path: route.endpoint
-            for route in app.routes
-            if "POST" in getattr(route, "methods", set())
-        }
-        get_paths = {
-            route.path: route.endpoint
-            for route in app.routes
-            if "GET" in getattr(route, "methods", set())
-        }
-
-        self.assertIn("/api/sources", post_paths)
-        self.assertIn("/api/sources", get_paths)
-        self.assertIn("/api/sources/{source_id}", get_paths)
-        self.assertIn("/api/sources/{source_id}/records", post_paths)
-        self.assertIn("/api/sources/{source_id}/status", post_paths)
-        self.assertIn("/api/sources/{source_id}/scan", post_paths)
-        self.assertIn("/api/sources/{source_id}/history-scan", post_paths)
-        self.assertIn("/api/sources/{source_id}/history-scan/stop", post_paths)
-
-        with self.assertRaises(HTTPException) as error:
-            post_paths["/api/sources"](
-                SourceCreateRequest(source_type="profile", source_url="https://example.com/user")
-            )
-        self.assertEqual(error.exception.status_code, 400)
-
-        with patch("xarchiver.api.app.update_source_status", side_effect=ValueError("source_not_found")):
-            with self.assertRaises(HTTPException) as error:
-                post_paths["/api/sources/{source_id}/status"](999, SourceStatusRequest(status="paused"))
-        self.assertEqual(error.exception.status_code, 404)
-
-    def test_paginated_list_routes_pass_limit_offset_and_filters(self) -> None:
-        get_paths = {
-            route.path: route.endpoint
-            for route in create_app().routes
-            if "GET" in getattr(route, "methods", set())
-        }
-        page = {"rows": [], "count": 0, "total_count": 0, "limit": 10, "offset": 20}
-
-        with patch("xarchiver.api.app.list_runs_page", return_value=page) as runs:
-            self.assertEqual(
-                get_paths["/api/archive-runs"](
-                    limit=10,
-                    offset=20,
-                    run_status="queued",
-                    tweet_id="123",
-                    failed_only=True,
-                ),
-                page,
-            )
-        runs.assert_called_once_with(limit=10, offset=20, status="queued", tweet_id="123", failed_only=True)
-
-        with patch("xarchiver.api.app.list_sources_page", return_value=page) as sources:
-            self.assertEqual(
-                get_paths["/api/sources"](
-                    limit=10,
-                    offset=20,
-                    source_status="active",
-                    source_type="user_media",
-                ),
-                page,
-            )
-        sources.assert_called_once_with(status="active", source_type="user_media", limit=10, offset=20)
-
-        duplicates_page = {**page, "duplicate_groups": 0}
-        with patch("xarchiver.api.app.list_duplicates_page", return_value=duplicates_page) as duplicates:
-            self.assertEqual(get_paths["/api/duplicates"](limit=10, offset=20), duplicates_page)
-        duplicates.assert_called_once()
-        self.assertEqual(duplicates.call_args.kwargs, {"limit": 10, "offset": 20})
+        self.assertIn("event: source.scan.completed", payload)
+        self.assertIn('"scan_run_id":2', payload)
 
 
 if __name__ == "__main__":

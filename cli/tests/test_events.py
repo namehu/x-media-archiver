@@ -5,7 +5,8 @@ from queue import Empty
 from starlette.requests import Request
 from starlette.responses import StreamingResponse
 
-from xarchiver.api.app import create_app, parse_event_topics
+from xarchiver.api.app import create_app
+from xarchiver.api.deps import parse_event_topics
 from xarchiver.core.events import EventBroker, format_sse_event
 
 
@@ -41,12 +42,12 @@ class EventBrokerTests(unittest.TestCase):
 
 class EventRouteTests(unittest.TestCase):
     def test_events_route_returns_text_event_stream(self) -> None:
-        route = next(route for route in create_app().routes if getattr(route, "path", None) == "/api/events")
+        route = next(route for route in create_app().routes if getattr(route, "path", None) == "/api/v1/events")
         request = Request(
             {
                 "type": "http",
                 "method": "GET",
-                "path": "/api/events",
+                "path": "/api/v1/events",
                 "headers": [],
                 "query_string": b"",
             }

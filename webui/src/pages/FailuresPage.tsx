@@ -15,7 +15,7 @@ export function FailuresPage() {
   const [offset, setOffset] = useState(0);
   const { data, isLoading, error } = useQuery({
     queryKey: ["failures", offset],
-    queryFn: () => apiGet<PageResponse<FailureRow>>(`/api/failures?limit=${PAGE_SIZE}&offset=${offset}`),
+    queryFn: () => apiGet<PageResponse<FailureRow>>(`/api/v1/library/failures?limit=${PAGE_SIZE}&offset=${offset}`),
   });
 
   if (isLoading) return <State text={t("failures.loading")} />;

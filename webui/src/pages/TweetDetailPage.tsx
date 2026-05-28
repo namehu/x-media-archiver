@@ -12,7 +12,7 @@ export function TweetDetailPage() {
   const { tweetId } = useParams();
   const { data, isLoading, error } = useQuery({
     queryKey: ["tweet", tweetId],
-    queryFn: () => apiGet<TweetDetail>(`/api/tweets/${tweetId}`),
+    queryFn: () => apiGet<TweetDetail>(`/api/v1/library/tweets/${tweetId}`),
     enabled: Boolean(tweetId),
   });
 

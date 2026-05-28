@@ -10,7 +10,7 @@ export function DashboardPage() {
   const { statusLabel } = useFormatters();
   const { data, isLoading, error } = useQuery({
     queryKey: ["summary"],
-    queryFn: () => apiGet<Summary>("/api/summary"),
+    queryFn: () => apiGet<Summary>("/api/v1/library/summary"),
   });
 
   if (isLoading) return <PageState title={t("dashboard.loading")} />;

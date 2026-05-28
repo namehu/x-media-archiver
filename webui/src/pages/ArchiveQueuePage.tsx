@@ -41,13 +41,13 @@ export function ArchiveQueuePage() {
     queryKey: ["archive-runs", statusFilter, tweetFilter, failedOnly, offset],
     queryFn: () =>
       apiGet<ArchiveRunPageResponse>(
-        `/api/archive-runs?${runQueryString(statusFilter, tweetFilter, failedOnly, PAGE_SIZE, offset)}`,
+        `/api/v1/archive-runs?${runQueryString(statusFilter, tweetFilter, failedOnly, PAGE_SIZE, offset)}`,
       ),
     refetchInterval: 15000,
   });
   const detailQuery = useQuery({
     queryKey: ["archive-run", selectedRunId],
-    queryFn: () => apiGet<ArchiveRunDetail>(`/api/archive-runs/${selectedRunId}`),
+    queryFn: () => apiGet<ArchiveRunDetail>(`/api/v1/archive-runs/${selectedRunId}`),
     enabled: selectedRunId !== null,
     refetchInterval: 15000,
   });
@@ -64,7 +64,7 @@ export function ArchiveQueuePage() {
   };
   const submitMutation = useMutation({
     mutationFn: (records: Array<{ url: string } & Record<string, unknown>>) =>
-      apiPost<ArchiveSubmission>("/api/archive-runs", { trigger_type: "webui", records }),
+      apiPost<ArchiveSubmission>("/api/v1/archive-runs", { trigger_type: "webui", records }),
     onSuccess: async (result) => {
       setFeedback(result);
       setParseError(null);
@@ -73,7 +73,7 @@ export function ArchiveQueuePage() {
     },
   });
   const retryMutation = useMutation({
-    mutationFn: (runId: number) => apiPost<ArchiveSubmission>(`/api/archive-runs/${runId}/retry`, {}),
+    mutationFn: (runId: number) => apiPost<ArchiveSubmission>(`/api/v1/archive-runs/${runId}/retry`, {}),
     onSuccess: async (result) => {
       setFeedback(result);
       await refresh(result.run_id);

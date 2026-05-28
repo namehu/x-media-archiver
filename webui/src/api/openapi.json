@@ -27,54 +27,13 @@
         }
       }
     },
-    "/api/events": {
+    "/api/v1/library/summary": {
       "get": {
-        "summary": "Events",
-        "operationId": "events_api_events_get",
-        "parameters": [
-          {
-            "name": "topics",
-            "in": "query",
-            "required": false,
-            "schema": {
-              "anyOf": [
-                {
-                  "type": "string"
-                },
-                {
-                  "type": "null"
-                }
-              ],
-              "title": "Topics"
-            }
-          }
+        "tags": [
+          "library"
         ],
-        "responses": {
-          "200": {
-            "description": "Successful Response",
-            "content": {
-              "application/json": {
-                "schema": {}
-              }
-            }
-          },
-          "422": {
-            "description": "Validation Error",
-            "content": {
-              "application/json": {
-                "schema": {
-                  "$ref": "#/components/schemas/HTTPValidationError"
-                }
-              }
-            }
-          }
-        }
-      }
-    },
-    "/api/summary": {
-      "get": {
         "summary": "Summary",
-        "operationId": "summary_api_summary_get",
+        "operationId": "summary_api_v1_library_summary_get",
         "responses": {
           "200": {
             "description": "Successful Response",
@@ -83,7 +42,7 @@
                 "schema": {
                   "additionalProperties": true,
                   "type": "object",
-                  "title": "Response Summary Api Summary Get"
+                  "title": "Response Summary Api V1 Library Summary Get"
                 }
               }
             }
@@ -91,30 +50,13 @@
         }
       }
     },
-    "/api/settings/download-policy": {
+    "/api/v1/library/media": {
       "get": {
-        "summary": "Download Policy",
-        "operationId": "download_policy_api_settings_download_policy_get",
-        "responses": {
-          "200": {
-            "description": "Successful Response",
-            "content": {
-              "application/json": {
-                "schema": {
-                  "additionalProperties": true,
-                  "type": "object",
-                  "title": "Response Download Policy Api Settings Download Policy Get"
-                }
-              }
-            }
-          }
-        }
-      }
-    },
-    "/api/media": {
-      "get": {
+        "tags": [
+          "library"
+        ],
         "summary": "Media",
-        "operationId": "media_api_media_get",
+        "operationId": "media_api_v1_library_media_get",
         "parameters": [
           {
             "name": "author",
@@ -229,7 +171,7 @@
                 "schema": {
                   "type": "object",
                   "additionalProperties": true,
-                  "title": "Response Media Api Media Get"
+                  "title": "Response Media Api V1 Library Media Get"
                 }
               }
             }
@@ -247,10 +189,13 @@
         }
       }
     },
-    "/api/tweets/{tweet_id}": {
+    "/api/v1/library/tweets/{tweet_id}": {
       "get": {
+        "tags": [
+          "library"
+        ],
         "summary": "Tweet Detail",
-        "operationId": "tweet_detail_api_tweets__tweet_id__get",
+        "operationId": "tweet_detail_api_v1_library_tweets__tweet_id__get",
         "parameters": [
           {
             "name": "tweet_id",
@@ -270,7 +215,7 @@
                 "schema": {
                   "type": "object",
                   "additionalProperties": true,
-                  "title": "Response Tweet Detail Api Tweets  Tweet Id  Get"
+                  "title": "Response Tweet Detail Api V1 Library Tweets  Tweet Id  Get"
                 }
               }
             }
@@ -288,10 +233,13 @@
         }
       }
     },
-    "/api/failures": {
+    "/api/v1/library/failures": {
       "get": {
+        "tags": [
+          "library"
+        ],
         "summary": "Failures",
-        "operationId": "failures_api_failures_get",
+        "operationId": "failures_api_v1_library_failures_get",
         "parameters": [
           {
             "name": "limit",
@@ -325,7 +273,7 @@
                 "schema": {
                   "type": "object",
                   "additionalProperties": true,
-                  "title": "Response Failures Api Failures Get"
+                  "title": "Response Failures Api V1 Library Failures Get"
                 }
               }
             }
@@ -343,10 +291,13 @@
         }
       }
     },
-    "/api/duplicates": {
+    "/api/v1/library/duplicates": {
       "get": {
+        "tags": [
+          "library"
+        ],
         "summary": "Duplicates",
-        "operationId": "duplicates_api_duplicates_get",
+        "operationId": "duplicates_api_v1_library_duplicates_get",
         "parameters": [
           {
             "name": "limit",
@@ -380,7 +331,7 @@
                 "schema": {
                   "type": "object",
                   "additionalProperties": true,
-                  "title": "Response Duplicates Api Duplicates Get"
+                  "title": "Response Duplicates Api V1 Library Duplicates Get"
                 }
               }
             }
@@ -398,287 +349,13 @@
         }
       }
     },
-    "/api/media-file/{relative_path}": {
-      "get": {
-        "summary": "Media File",
-        "operationId": "media_file_api_media_file__relative_path__get",
-        "parameters": [
-          {
-            "name": "relative_path",
-            "in": "path",
-            "required": true,
-            "schema": {
-              "type": "string",
-              "title": "Relative Path"
-            }
-          }
+    "/api/v1/archive-runs": {
+      "post": {
+        "tags": [
+          "archive-runs"
         ],
-        "responses": {
-          "200": {
-            "description": "Successful Response",
-            "content": {
-              "application/json": {
-                "schema": {}
-              }
-            }
-          },
-          "422": {
-            "description": "Validation Error",
-            "content": {
-              "application/json": {
-                "schema": {
-                  "$ref": "#/components/schemas/HTTPValidationError"
-                }
-              }
-            }
-          }
-        }
-      }
-    },
-    "/api/actions/verify": {
-      "post": {
-        "summary": "Verify Action",
-        "operationId": "verify_action_api_actions_verify_post",
-        "requestBody": {
-          "content": {
-            "application/json": {
-              "schema": {
-                "$ref": "#/components/schemas/VerifyRequest"
-              }
-            }
-          },
-          "required": true
-        },
-        "responses": {
-          "200": {
-            "description": "Successful Response",
-            "content": {
-              "application/json": {
-                "schema": {
-                  "additionalProperties": true,
-                  "type": "object",
-                  "title": "Response Verify Action Api Actions Verify Post"
-                }
-              }
-            }
-          },
-          "422": {
-            "description": "Validation Error",
-            "content": {
-              "application/json": {
-                "schema": {
-                  "$ref": "#/components/schemas/HTTPValidationError"
-                }
-              }
-            }
-          }
-        }
-      }
-    },
-    "/api/actions/requeue": {
-      "post": {
-        "summary": "Requeue Action",
-        "operationId": "requeue_action_api_actions_requeue_post",
-        "requestBody": {
-          "content": {
-            "application/json": {
-              "schema": {
-                "$ref": "#/components/schemas/RequeueRequest"
-              }
-            }
-          },
-          "required": true
-        },
-        "responses": {
-          "200": {
-            "description": "Successful Response",
-            "content": {
-              "application/json": {
-                "schema": {
-                  "additionalProperties": true,
-                  "type": "object",
-                  "title": "Response Requeue Action Api Actions Requeue Post"
-                }
-              }
-            }
-          },
-          "422": {
-            "description": "Validation Error",
-            "content": {
-              "application/json": {
-                "schema": {
-                  "$ref": "#/components/schemas/HTTPValidationError"
-                }
-              }
-            }
-          }
-        }
-      }
-    },
-    "/api/actions/recover-interrupted": {
-      "post": {
-        "summary": "Recover Interrupted Action",
-        "operationId": "recover_interrupted_action_api_actions_recover_interrupted_post",
-        "requestBody": {
-          "content": {
-            "application/json": {
-              "schema": {
-                "$ref": "#/components/schemas/RecoverInterruptedRequest"
-              }
-            }
-          },
-          "required": true
-        },
-        "responses": {
-          "200": {
-            "description": "Successful Response",
-            "content": {
-              "application/json": {
-                "schema": {
-                  "additionalProperties": true,
-                  "type": "object",
-                  "title": "Response Recover Interrupted Action Api Actions Recover Interrupted Post"
-                }
-              }
-            }
-          },
-          "422": {
-            "description": "Validation Error",
-            "content": {
-              "application/json": {
-                "schema": {
-                  "$ref": "#/components/schemas/HTTPValidationError"
-                }
-              }
-            }
-          }
-        }
-      }
-    },
-    "/api/actions/export": {
-      "post": {
-        "summary": "Export Action",
-        "operationId": "export_action_api_actions_export_post",
-        "requestBody": {
-          "content": {
-            "application/json": {
-              "schema": {
-                "$ref": "#/components/schemas/ExportRequest"
-              }
-            }
-          },
-          "required": true
-        },
-        "responses": {
-          "200": {
-            "description": "Successful Response",
-            "content": {
-              "application/json": {
-                "schema": {
-                  "additionalProperties": true,
-                  "type": "object",
-                  "title": "Response Export Action Api Actions Export Post"
-                }
-              }
-            }
-          },
-          "422": {
-            "description": "Validation Error",
-            "content": {
-              "application/json": {
-                "schema": {
-                  "$ref": "#/components/schemas/HTTPValidationError"
-                }
-              }
-            }
-          }
-        }
-      }
-    },
-    "/api/maintenance/backfill": {
-      "post": {
-        "summary": "Maintenance Backfill",
-        "operationId": "maintenance_backfill_api_maintenance_backfill_post",
-        "requestBody": {
-          "content": {
-            "application/json": {
-              "schema": {
-                "$ref": "#/components/schemas/BackfillRequest"
-              }
-            }
-          },
-          "required": true
-        },
-        "responses": {
-          "200": {
-            "description": "Successful Response",
-            "content": {
-              "application/json": {
-                "schema": {
-                  "additionalProperties": true,
-                  "type": "object",
-                  "title": "Response Maintenance Backfill Api Maintenance Backfill Post"
-                }
-              }
-            }
-          },
-          "422": {
-            "description": "Validation Error",
-            "content": {
-              "application/json": {
-                "schema": {
-                  "$ref": "#/components/schemas/HTTPValidationError"
-                }
-              }
-            }
-          }
-        }
-      }
-    },
-    "/api/maintenance/verify": {
-      "post": {
-        "summary": "Maintenance Verify",
-        "operationId": "maintenance_verify_api_maintenance_verify_post",
-        "requestBody": {
-          "content": {
-            "application/json": {
-              "schema": {
-                "$ref": "#/components/schemas/VerifyRequest"
-              }
-            }
-          },
-          "required": true
-        },
-        "responses": {
-          "200": {
-            "description": "Successful Response",
-            "content": {
-              "application/json": {
-                "schema": {
-                  "additionalProperties": true,
-                  "type": "object",
-                  "title": "Response Maintenance Verify Api Maintenance Verify Post"
-                }
-              }
-            }
-          },
-          "422": {
-            "description": "Validation Error",
-            "content": {
-              "application/json": {
-                "schema": {
-                  "$ref": "#/components/schemas/HTTPValidationError"
-                }
-              }
-            }
-          }
-        }
-      }
-    },
-    "/api/archive-runs": {
-      "post": {
         "summary": "Submit Run",
-        "operationId": "submit_run_api_archive_runs_post",
+        "operationId": "submit_run_api_v1_archive_runs_post",
         "requestBody": {
           "required": true,
           "content": {
@@ -697,7 +374,7 @@
                 "schema": {
                   "type": "object",
                   "additionalProperties": true,
-                  "title": "Response Submit Run Api Archive Runs Post"
+                  "title": "Response Submit Run Api V1 Archive Runs Post"
                 }
               }
             }
@@ -715,8 +392,11 @@
         }
       },
       "get": {
+        "tags": [
+          "archive-runs"
+        ],
         "summary": "Archive Runs",
-        "operationId": "archive_runs_api_archive_runs_get",
+        "operationId": "archive_runs_api_v1_archive_runs_get",
         "parameters": [
           {
             "name": "limit",
@@ -792,7 +472,7 @@
                 "schema": {
                   "type": "object",
                   "additionalProperties": true,
-                  "title": "Response Archive Runs Api Archive Runs Get"
+                  "title": "Response Archive Runs Api V1 Archive Runs Get"
                 }
               }
             }
@@ -810,10 +490,13 @@
         }
       }
     },
-    "/api/archive-runs/{run_id}": {
+    "/api/v1/archive-runs/{run_id}": {
       "get": {
+        "tags": [
+          "archive-runs"
+        ],
         "summary": "Archive Run Detail",
-        "operationId": "archive_run_detail_api_archive_runs__run_id__get",
+        "operationId": "archive_run_detail_api_v1_archive_runs__run_id__get",
         "parameters": [
           {
             "name": "run_id",
@@ -833,7 +516,7 @@
                 "schema": {
                   "type": "object",
                   "additionalProperties": true,
-                  "title": "Response Archive Run Detail Api Archive Runs  Run Id  Get"
+                  "title": "Response Archive Run Detail Api V1 Archive Runs  Run Id  Get"
                 }
               }
             }
@@ -851,10 +534,13 @@
         }
       }
     },
-    "/api/archive-runs/{run_id}/retry": {
+    "/api/v1/archive-runs/{run_id}/retry": {
       "post": {
+        "tags": [
+          "archive-runs"
+        ],
         "summary": "Retry Archive Run",
-        "operationId": "retry_archive_run_api_archive_runs__run_id__retry_post",
+        "operationId": "retry_archive_run_api_v1_archive_runs__run_id__retry_post",
         "parameters": [
           {
             "name": "run_id",
@@ -874,7 +560,7 @@
                 "schema": {
                   "type": "object",
                   "additionalProperties": true,
-                  "title": "Response Retry Archive Run Api Archive Runs  Run Id  Retry Post"
+                  "title": "Response Retry Archive Run Api V1 Archive Runs  Run Id  Retry Post"
                 }
               }
             }
@@ -892,10 +578,13 @@
         }
       }
     },
-    "/api/sources": {
+    "/api/v1/sources": {
       "post": {
+        "tags": [
+          "sources"
+        ],
         "summary": "Create Archive Source",
-        "operationId": "create_archive_source_api_sources_post",
+        "operationId": "create_archive_source_api_v1_sources_post",
         "requestBody": {
           "required": true,
           "content": {
@@ -914,7 +603,7 @@
                 "schema": {
                   "type": "object",
                   "additionalProperties": true,
-                  "title": "Response Create Archive Source Api Sources Post"
+                  "title": "Response Create Archive Source Api V1 Sources Post"
                 }
               }
             }
@@ -932,8 +621,11 @@
         }
       },
       "get": {
+        "tags": [
+          "sources"
+        ],
         "summary": "Archive Sources",
-        "operationId": "archive_sources_api_sources_get",
+        "operationId": "archive_sources_api_v1_sources_get",
         "parameters": [
           {
             "name": "limit",
@@ -999,7 +691,7 @@
                 "schema": {
                   "type": "object",
                   "additionalProperties": true,
-                  "title": "Response Archive Sources Api Sources Get"
+                  "title": "Response Archive Sources Api V1 Sources Get"
                 }
               }
             }
@@ -1017,10 +709,13 @@
         }
       }
     },
-    "/api/sources/{source_id}": {
+    "/api/v1/sources/{source_id}": {
       "get": {
+        "tags": [
+          "sources"
+        ],
         "summary": "Archive Source Detail",
-        "operationId": "archive_source_detail_api_sources__source_id__get",
+        "operationId": "archive_source_detail_api_v1_sources__source_id__get",
         "parameters": [
           {
             "name": "source_id",
@@ -1040,7 +735,7 @@
                 "schema": {
                   "type": "object",
                   "additionalProperties": true,
-                  "title": "Response Archive Source Detail Api Sources  Source Id  Get"
+                  "title": "Response Archive Source Detail Api V1 Sources  Source Id  Get"
                 }
               }
             }
@@ -1058,10 +753,13 @@
         }
       }
     },
-    "/api/sources/{source_id}/records": {
+    "/api/v1/sources/{source_id}/records": {
       "post": {
+        "tags": [
+          "sources"
+        ],
         "summary": "Submit Archive Source Records",
-        "operationId": "submit_archive_source_records_api_sources__source_id__records_post",
+        "operationId": "submit_archive_source_records_api_v1_sources__source_id__records_post",
         "parameters": [
           {
             "name": "source_id",
@@ -1091,7 +789,7 @@
                 "schema": {
                   "type": "object",
                   "additionalProperties": true,
-                  "title": "Response Submit Archive Source Records Api Sources  Source Id  Records Post"
+                  "title": "Response Submit Archive Source Records Api V1 Sources  Source Id  Records Post"
                 }
               }
             }
@@ -1109,10 +807,13 @@
         }
       }
     },
-    "/api/sources/{source_id}/submit-discovered": {
+    "/api/v1/sources/{source_id}/submit-discovered": {
       "post": {
+        "tags": [
+          "sources"
+        ],
         "summary": "Submit Archive Source Discovered",
-        "operationId": "submit_archive_source_discovered_api_sources__source_id__submit_discovered_post",
+        "operationId": "submit_archive_source_discovered_api_v1_sources__source_id__submit_discovered_post",
         "parameters": [
           {
             "name": "source_id",
@@ -1142,7 +843,7 @@
                 "schema": {
                   "type": "object",
                   "additionalProperties": true,
-                  "title": "Response Submit Archive Source Discovered Api Sources  Source Id  Submit Discovered Post"
+                  "title": "Response Submit Archive Source Discovered Api V1 Sources  Source Id  Submit Discovered Post"
                 }
               }
             }
@@ -1160,10 +861,13 @@
         }
       }
     },
-    "/api/sources/{source_id}/status": {
+    "/api/v1/sources/{source_id}/status": {
       "post": {
+        "tags": [
+          "sources"
+        ],
         "summary": "Update Archive Source Status",
-        "operationId": "update_archive_source_status_api_sources__source_id__status_post",
+        "operationId": "update_archive_source_status_api_v1_sources__source_id__status_post",
         "parameters": [
           {
             "name": "source_id",
@@ -1193,7 +897,7 @@
                 "schema": {
                   "type": "object",
                   "additionalProperties": true,
-                  "title": "Response Update Archive Source Status Api Sources  Source Id  Status Post"
+                  "title": "Response Update Archive Source Status Api V1 Sources  Source Id  Status Post"
                 }
               }
             }
@@ -1211,10 +915,13 @@
         }
       }
     },
-    "/api/sources/{source_id}/scan": {
+    "/api/v1/sources/{source_id}/scan": {
       "post": {
+        "tags": [
+          "sources"
+        ],
         "summary": "Scan Archive Source",
-        "operationId": "scan_archive_source_api_sources__source_id__scan_post",
+        "operationId": "scan_archive_source_api_v1_sources__source_id__scan_post",
         "parameters": [
           {
             "name": "source_id",
@@ -1244,7 +951,7 @@
                 "schema": {
                   "type": "object",
                   "additionalProperties": true,
-                  "title": "Response Scan Archive Source Api Sources  Source Id  Scan Post"
+                  "title": "Response Scan Archive Source Api V1 Sources  Source Id  Scan Post"
                 }
               }
             }
@@ -1262,10 +969,13 @@
         }
       }
     },
-    "/api/sources/{source_id}/history-scan": {
+    "/api/v1/sources/{source_id}/history-scan": {
       "post": {
+        "tags": [
+          "sources"
+        ],
         "summary": "Start Archive Source History Scan",
-        "operationId": "start_archive_source_history_scan_api_sources__source_id__history_scan_post",
+        "operationId": "start_archive_source_history_scan_api_v1_sources__source_id__history_scan_post",
         "parameters": [
           {
             "name": "source_id",
@@ -1295,7 +1005,7 @@
                 "schema": {
                   "type": "object",
                   "additionalProperties": true,
-                  "title": "Response Start Archive Source History Scan Api Sources  Source Id  History Scan Post"
+                  "title": "Response Start Archive Source History Scan Api V1 Sources  Source Id  History Scan Post"
                 }
               }
             }
@@ -1313,10 +1023,13 @@
         }
       }
     },
-    "/api/sources/{source_id}/history-scan/stop": {
+    "/api/v1/sources/{source_id}/history-scan/stop": {
       "post": {
+        "tags": [
+          "sources"
+        ],
         "summary": "Stop Archive Source History Scan",
-        "operationId": "stop_archive_source_history_scan_api_sources__source_id__history_scan_stop_post",
+        "operationId": "stop_archive_source_history_scan_api_v1_sources__source_id__history_scan_stop_post",
         "parameters": [
           {
             "name": "source_id",
@@ -1336,8 +1049,376 @@
                 "schema": {
                   "type": "object",
                   "additionalProperties": true,
-                  "title": "Response Stop Archive Source History Scan Api Sources  Source Id  History Scan Stop Post"
+                  "title": "Response Stop Archive Source History Scan Api V1 Sources  Source Id  History Scan Stop Post"
                 }
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/v1/actions/verify": {
+      "post": {
+        "tags": [
+          "actions"
+        ],
+        "summary": "Verify Action",
+        "operationId": "verify_action_api_v1_actions_verify_post",
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/VerifyRequest"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "additionalProperties": true,
+                  "type": "object",
+                  "title": "Response Verify Action Api V1 Actions Verify Post"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/v1/actions/requeue": {
+      "post": {
+        "tags": [
+          "actions"
+        ],
+        "summary": "Requeue Action",
+        "operationId": "requeue_action_api_v1_actions_requeue_post",
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/RequeueRequest"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "additionalProperties": true,
+                  "type": "object",
+                  "title": "Response Requeue Action Api V1 Actions Requeue Post"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/v1/actions/recover-interrupted": {
+      "post": {
+        "tags": [
+          "actions"
+        ],
+        "summary": "Recover Interrupted Action",
+        "operationId": "recover_interrupted_action_api_v1_actions_recover_interrupted_post",
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/RecoverInterruptedRequest"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "additionalProperties": true,
+                  "type": "object",
+                  "title": "Response Recover Interrupted Action Api V1 Actions Recover Interrupted Post"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/v1/actions/export": {
+      "post": {
+        "tags": [
+          "actions"
+        ],
+        "summary": "Export Action",
+        "operationId": "export_action_api_v1_actions_export_post",
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/ExportRequest"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "additionalProperties": true,
+                  "type": "object",
+                  "title": "Response Export Action Api V1 Actions Export Post"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/v1/maintenance/backfill": {
+      "post": {
+        "tags": [
+          "maintenance"
+        ],
+        "summary": "Maintenance Backfill",
+        "operationId": "maintenance_backfill_api_v1_maintenance_backfill_post",
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/BackfillRequest"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "additionalProperties": true,
+                  "type": "object",
+                  "title": "Response Maintenance Backfill Api V1 Maintenance Backfill Post"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/v1/maintenance/verify": {
+      "post": {
+        "tags": [
+          "maintenance"
+        ],
+        "summary": "Maintenance Verify",
+        "operationId": "maintenance_verify_api_v1_maintenance_verify_post",
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/VerifyRequest"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "additionalProperties": true,
+                  "type": "object",
+                  "title": "Response Maintenance Verify Api V1 Maintenance Verify Post"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/v1/events": {
+      "get": {
+        "tags": [
+          "misc"
+        ],
+        "summary": "Events",
+        "operationId": "events_api_v1_events_get",
+        "parameters": [
+          {
+            "name": "topics",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Topics"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {}
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/v1/settings/download-policy": {
+      "get": {
+        "tags": [
+          "misc"
+        ],
+        "summary": "Download Policy",
+        "operationId": "download_policy_api_v1_settings_download_policy_get",
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "additionalProperties": true,
+                  "type": "object",
+                  "title": "Response Download Policy Api V1 Settings Download Policy Get"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/v1/media-file/{relative_path}": {
+      "get": {
+        "tags": [
+          "misc"
+        ],
+        "summary": "Media File",
+        "operationId": "media_file_api_v1_media_file__relative_path__get",
+        "parameters": [
+          {
+            "name": "relative_path",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "title": "Relative Path"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {}
               }
             }
           },

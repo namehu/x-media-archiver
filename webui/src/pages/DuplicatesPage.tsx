@@ -16,7 +16,7 @@ export function DuplicatesPage() {
   const [offset, setOffset] = useState(0);
   const { data, isLoading, error } = useQuery({
     queryKey: ["duplicates", offset],
-    queryFn: () => apiGet<DuplicatesResponse>(`/api/duplicates?limit=${PAGE_SIZE}&offset=${offset}`),
+    queryFn: () => apiGet<DuplicatesResponse>(`/api/v1/library/duplicates?limit=${PAGE_SIZE}&offset=${offset}`),
   });
 
   if (isLoading) return <State text={t("duplicates.loading")} />;

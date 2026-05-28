@@ -29,7 +29,7 @@ export function LibraryPage() {
   );
   const { data, isLoading, error } = useQuery({
     queryKey: ["media", query],
-    queryFn: () => apiGet<PageResponse<MediaRow>>(`/api/media?${query}`),
+    queryFn: () => apiGet<PageResponse<MediaRow>>(`/api/v1/library/media?${query}`),
   });
 
   return (

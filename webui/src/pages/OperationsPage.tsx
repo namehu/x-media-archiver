@@ -66,7 +66,7 @@ export function OperationsPage() {
               type="button"
               disabled={mutation.isPending}
               onClick={() =>
-                run("/api/actions/requeue", {
+                run("/api/v1/actions/requeue", {
                   statuses: requeueStatuses.length ? requeueStatuses : null,
                   limit: numberOrNull(requeueLimit),
                 })
@@ -92,7 +92,7 @@ export function OperationsPage() {
               type="button"
               disabled={mutation.isPending}
               onClick={() =>
-                run("/api/actions/recover-interrupted", {
+                run("/api/v1/actions/recover-interrupted", {
                   timeout_minutes: numberOrNull(recoverTimeout),
                 })
               }
@@ -122,7 +122,7 @@ export function OperationsPage() {
             <Button
               type="button"
               disabled={mutation.isPending}
-              onClick={() => run("/api/actions/export", { kind: exportKind, status: exportStatus })}
+              onClick={() => run("/api/v1/actions/export", { kind: exportKind, status: exportStatus })}
             >
               {t("operations.exportSnapshot")}
             </Button>
@@ -158,7 +158,7 @@ export function OperationsPage() {
               variant="secondary"
               disabled={mutation.isPending || !confirmFullScan}
               onClick={() =>
-                run("/api/maintenance/verify", {
+                run("/api/v1/maintenance/verify", {
                   limit: numberOrNull(verifyLimit),
                   confirm_full_scan: confirmFullScan,
                 })
@@ -171,7 +171,7 @@ export function OperationsPage() {
               variant="secondary"
               disabled={mutation.isPending || !confirmFullScan}
               onClick={() =>
-                run("/api/maintenance/backfill", {
+                run("/api/v1/maintenance/backfill", {
                   confirm_full_scan: confirmFullScan,
                   normalize_files: true,
                 })

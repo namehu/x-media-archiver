@@ -24,7 +24,7 @@ class LibraryServiceTests(unittest.TestCase):
         row = attach_media_url({"local_path": "/app/archive/media/alice/1.jpg"}, Path("/app/archive"))
 
         self.assertEqual(row["media_relative_path"], "media/alice/1.jpg")
-        self.assertEqual(row["media_url"], "/api/media-file/media/alice/1.jpg")
+        self.assertEqual(row["media_url"], "/api/v1/media-file/media/alice/1.jpg")
 
     def test_get_summary_never_exposes_sensitive_settings(self) -> None:
         settings = SimpleNamespace(
