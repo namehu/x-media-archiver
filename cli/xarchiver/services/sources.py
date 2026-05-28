@@ -12,6 +12,7 @@ from psycopg.types.json import Jsonb
 
 from xarchiver.config import Settings, get_settings
 from xarchiver.core.errors import ErrorCategory, category_value, classify_x_error
+from xarchiver.core.events import publish_event
 from xarchiver.db import connect
 from xarchiver.importer import extract_tweet_id, upsert_tweets
 from xarchiver.services.queue import has_pending_download_work, submit_archive_batch
@@ -42,6 +43,11 @@ def create_source(
             )
             row = dict(cur.fetchone())
         conn.commit()
+    publish_event(
+        "sources",
+        "source.created",
+        {"source_id": int(row["id"]), "source_type": source_type, "source_url": source_url},
+    )
     return row
 
 
@@ -212,6 +218,7 @@ def update_source_status(source_id: int, status: str) -> dict[str, object]:
             )
             row = cur.fetchone()
         conn.commit()
+    publish_event("sources", "source.status_changed", {"source_id": source_id, "status": status})
     return dict(row)
 
 
@@ -250,6 +257,7 @@ def start_source_history_scan(source_id: int, limit: int = 20, restart: bool = F
                 (Jsonb(cursor_state), source_id),
             )
         conn.commit()
+    publish_event("source_scans", "source.history_scan.started", {"source_id": source_id, "limit": limit, "restart": restart})
     return get_source(source_id) or {}
 
 
@@ -270,6 +278,7 @@ def stop_source_history_scan(source_id: int) -> dict[str, object]:
                 (Jsonb(cursor_state), source_id),
             )
         conn.commit()
+    publish_event("source_scans", "source.history_scan.stopped", {"source_id": source_id})
     return get_source(source_id) or {}
 
 
@@ -425,6 +434,11 @@ def start_source_scan_run(
             )
             run_id = int(cur.fetchone()["id"])
         conn.commit()
+    publish_event(
+        "source_scans",
+        "source.scan.started",
+        {"source_id": source_id, "scan_run_id": run_id, "trigger_type": trigger_type, "range": scan_range},
+    )
     return run_id
 
 
@@ -469,6 +483,19 @@ def finish_source_scan_run(
                 ),
             )
         conn.commit()
+    publish_event(
+        "source_scans",
+        "source.scan.completed",
+        {
+            "scan_run_id": scan_run_id,
+            "status": status,
+            "discovered_tweet_count": discovered_tweet_count,
+            "new_tweet_count": new_tweet_count,
+            "duplicate_tweet_count": duplicate_tweet_count,
+            "discovered_media_count": discovered_media_count,
+            "error_category": error_category,
+        },
+    )
 
 
 def record_waiting_downloads_scan(source_id: int, cursor_state: dict[str, Any], limit: int) -> None:
@@ -493,6 +520,11 @@ def record_waiting_downloads_scan(source_id: int, cursor_state: dict[str, Any], 
                 ),
             )
         conn.commit()
+    publish_event(
+        "source_scans",
+        "source.scan.waiting_downloads",
+        {"source_id": source_id, "range": scan_range, "status": "waiting_downloads"},
+    )
 
 
 def record_source_scan_failure(
@@ -967,11 +999,13 @@ def record_source_discoveries(
                 ),
             )
         conn.commit()
-    return {
+    result = {
         "discovered_count": len(unique_tweet_ids),
         "new_discovered_count": inserted,
         "duplicate_count": max(len(unique_tweet_ids) - inserted, 0),
     }
+    publish_event("source_scans", "source.scan.discovered", {"source_id": source_id, **result})
+    return result
 
 
 def merge_discovery_payload(existing: dict[str, Any] | None, current: dict[str, Any]) -> dict[str, Any]:
@@ -1053,7 +1087,13 @@ def submit_discovered_tweets(
                 (len(submitted_tweet_ids), source_id),
             )
         conn.commit()
-    return {**submission, "source_id": source_id, "submitted_count": len(submitted_tweet_ids)}
+    result = {**submission, "source_id": source_id, "submitted_count": len(submitted_tweet_ids)}
+    publish_event(
+        "source_scans",
+        "source.discovered.submitted",
+        {"source_id": source_id, "run_id": run_id, "submitted_count": len(submitted_tweet_ids)},
+    )
+    return result
 
 
 def fetch_unsubmitted_discoveries(

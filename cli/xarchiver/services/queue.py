@@ -6,6 +6,7 @@ from typing import Any
 from psycopg.types.json import Jsonb
 
 from xarchiver.config import Settings
+from xarchiver.core.events import publish_event
 from xarchiver.db import connect
 from xarchiver.importer import extract_tweet_id, parse_jsonl_rows, parse_url_rows, upsert_tweets
 from xarchiver.services.library import get_library_snapshot
@@ -99,12 +100,25 @@ def submit_archive_batch(
             )
         conn.commit()
 
-    return {
+    result = {
         "run_id": run_id,
         "status": status,
         "input": input_summary,
         "tasks": counts,
     }
+    publish_event(
+        "archive_runs",
+        "archive.run.submitted",
+        {
+            "run_id": run_id,
+            "status": status,
+            "trigger_type": trigger_type,
+            "input_path": input_path,
+            "input": input_summary,
+            "tasks": counts,
+        },
+    )
+    return result
 
 
 def submit_urls_file(path: Path) -> dict[str, object]:
@@ -232,6 +246,12 @@ def claim_next_items(retry_limit: int, batch_size: int = 20) -> list[dict[str, o
                     (run_id,),
                 )
         conn.commit()
+    if rows:
+        publish_event(
+            "archive_runs",
+            "archive.run.processing",
+            {"run_id": int(rows[0]["archive_run_id"]), "item_count": len(rows)},
+        )
     return rows
 
 
@@ -284,6 +304,7 @@ def update_processed_items(
                 )
         conn.commit()
     update_run_after_processing(run_id, pipeline)
+    publish_event("archive_runs", "archive.run.items_processed", {"run_id": run_id, "item_count": len(claimed)})
 
 
 def fail_processing_items(run_id: int, claimed: list[dict[str, object]], settings: Settings, error: str) -> None:
@@ -305,6 +326,7 @@ def fail_processing_items(run_id: int, claimed: list[dict[str, object]], setting
                 )
         conn.commit()
     update_run_after_processing(run_id, None)
+    publish_event("archive_runs", "archive.run.items_failed", {"run_id": run_id, "item_count": len(claimed)})
 
 
 def update_run_after_processing(run_id: int, pipeline: dict[str, object] | None) -> None:
@@ -330,6 +352,8 @@ def update_run_after_processing(run_id: int, pipeline: dict[str, object] | None)
                 (status, Jsonb(result), status, run_id),
             )
         conn.commit()
+    event_type = "archive.run.completed" if status in {"completed", "completed_with_failures"} else "archive.run.updated"
+    publish_event("archive_runs", event_type, {"run_id": run_id, "status": status, "tasks": task_counts})
 
 
 def count_run_items(run_id: int) -> dict[str, int]:
@@ -555,7 +579,13 @@ def retry_run(run_id: int) -> dict[str, object]:
     if not retryable:
         raise ValueError("archive_run_has_no_failed_items")
     reset_tweets_for_retry([extract_tweet_id(str(row["url"])) for row in retryable])
-    return submit_archive_batch(retryable, "manual_retry")
+    result = submit_archive_batch(retryable, "manual_retry")
+    publish_event(
+        "archive_runs",
+        "archive.run.retried",
+        {"run_id": result["run_id"], "original_run_id": run_id, "queued_count": result["tasks"]["queued_count"]},
+    )
+    return result
 
 
 def submit_requeue_batch(statuses: list[str], limit: int | None = None) -> dict[str, object]:

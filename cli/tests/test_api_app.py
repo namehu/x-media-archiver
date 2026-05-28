@@ -5,6 +5,7 @@ from pathlib import Path
 from unittest.mock import patch
 
 from fastapi import HTTPException
+from starlette.requests import Request
 from starlette.exceptions import HTTPException as StarletteHTTPException
 
 from xarchiver.api import schemas
@@ -17,12 +18,14 @@ from xarchiver.api.app import (
     VerifyRequest,
     create_app,
     execute_write_action,
+    parse_event_topics,
     raise_api_error,
     require_full_scan_confirmation,
     resolve_archive_file,
     write_action_lock,
 )
 from xarchiver.core.errors import ArchiverError
+from xarchiver.core.events import EventBroker, format_sse_event
 
 
 class ApiAppTests(unittest.TestCase):
@@ -76,6 +79,45 @@ class ApiAppTests(unittest.TestCase):
         app = create_app()
 
         self.assertIn(ArchiverError, app.exception_handlers)
+
+    def test_events_route_is_registered(self) -> None:
+        get_paths = {
+            route.path: route.endpoint
+            for route in create_app().routes
+            if "GET" in getattr(route, "methods", set())
+        }
+
+        self.assertIn("/api/events", get_paths)
+
+        request = Request(
+            {
+                "type": "http",
+                "method": "GET",
+                "path": "/api/events",
+                "headers": [],
+                "query_string": b"",
+            }
+        )
+        response = asyncio.run(get_paths["/api/events"](request, topics="archive_runs,sources"))
+        self.assertEqual(response.media_type, "text/event-stream")
+        asyncio.run(response.body_iterator.aclose())
+
+    def test_event_topic_parsing_and_sse_format(self) -> None:
+        self.assertEqual(parse_event_topics("archive_runs, source_scans ,, "), ["archive_runs", "source_scans"])
+        broker = EventBroker()
+        subscription = broker.subscribe(["source_scans"])
+        try:
+            broker.publish("archive_runs", "archive.run.submitted", {"run_id": 1})
+            event = broker.publish("source_scans", "source.scan.completed", {"scan_run_id": 2})
+
+            self.assertEqual(subscription.get(timeout=0.1), event)
+        finally:
+            subscription.close()
+
+        payload = format_sse_event(event)
+
+        self.assertIn("event: source.scan.completed", payload)
+        self.assertIn('"scan_run_id":2', payload)
 
     def test_request_schemas_are_split_without_renaming_openapi_components(self) -> None:
         self.assertIs(schemas.VerifyRequest, VerifyRequest)

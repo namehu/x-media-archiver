@@ -43,13 +43,13 @@ export function ArchiveQueuePage() {
       apiGet<ArchiveRunPageResponse>(
         `/api/archive-runs?${runQueryString(statusFilter, tweetFilter, failedOnly, PAGE_SIZE, offset)}`,
       ),
-    refetchInterval: 3000,
+    refetchInterval: 15000,
   });
   const detailQuery = useQuery({
     queryKey: ["archive-run", selectedRunId],
     queryFn: () => apiGet<ArchiveRunDetail>(`/api/archive-runs/${selectedRunId}`),
     enabled: selectedRunId !== null,
-    refetchInterval: 3000,
+    refetchInterval: 15000,
   });
 
   const refresh = async (runId?: number) => {

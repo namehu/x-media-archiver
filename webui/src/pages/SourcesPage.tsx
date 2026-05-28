@@ -36,13 +36,13 @@ export function SourcesPage() {
       apiGet<SourcePageResponse>(
         `/api/sources?${sourceQueryString(sourceStatusFilter, sourceTypeFilter, PAGE_SIZE, offset)}`,
       ),
-    refetchInterval: 5000,
+    refetchInterval: 15000,
   });
   const detailQuery = useQuery({
     queryKey: ["source", selectedSourceId],
     queryFn: () => apiGet<ArchiveSource>(`/api/sources/${selectedSourceId}`),
     enabled: selectedSourceId !== null,
-    refetchInterval: 5000,
+    refetchInterval: 15000,
   });
   const policyQuery = useQuery({
     queryKey: ["download-policy"],

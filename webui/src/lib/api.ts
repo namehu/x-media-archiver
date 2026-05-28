@@ -1,4 +1,4 @@
-export { ApiError, apiGet, apiPost, apiRequest } from "../api/client";
+export { ApiError, apiGet, apiPost, apiRequest, apiUrl } from "../api/client";
 
 export type Summary = {
   tweet_status_counts: Record<string, number>;

@@ -1,14 +1,16 @@
 from __future__ import annotations
 
+import asyncio
 from contextlib import asynccontextmanager
 from collections.abc import Callable
 import logging
 from pathlib import Path
+from queue import Empty
 from threading import Event, Lock, Thread
 
 from fastapi import FastAPI, HTTPException, Query, Request, status
 from fastapi.middleware.cors import CORSMiddleware
-from fastapi.responses import FileResponse, JSONResponse
+from fastapi.responses import FileResponse, JSONResponse, StreamingResponse
 from starlette.exceptions import HTTPException as StarletteHTTPException
 
 from xarchiver.api.schemas import (
@@ -28,6 +30,7 @@ from xarchiver.api.schemas import (
 )
 from xarchiver.config import get_settings
 from xarchiver.core.errors import ArchiverError, error_response_payload, http_status_for_error_code
+from xarchiver.core.events import event_broker, format_sse_event
 from xarchiver.services.failures import list_failures
 from xarchiver.services.library import get_summary, get_tweet_detail, list_duplicates_page, list_media_page
 from xarchiver.services.queue import get_run_detail, list_runs_page, process_next_queued_run, retry_run, submit_archive_batch
@@ -115,6 +118,29 @@ def create_app() -> FastAPI:
     @app.get("/health")
     def health() -> dict[str, str]:
         return {"status": "ok"}
+
+    @app.get("/api/events")
+    async def events(request: Request, topics: str | None = None) -> StreamingResponse:
+        subscription = event_broker.subscribe(parse_event_topics(topics))
+
+        async def event_stream():
+            try:
+                yield ": connected\n\n"
+                while not await request.is_disconnected():
+                    try:
+                        event = await asyncio.to_thread(subscription.get, 15.0)
+                    except Empty:
+                        yield ": keepalive\n\n"
+                        continue
+                    yield format_sse_event(event)
+            finally:
+                subscription.close()
+
+        return StreamingResponse(
+            event_stream(),
+            media_type="text/event-stream",
+            headers={"Cache-Control": "no-cache", "X-Accel-Buffering": "no"},
+        )
 
     @app.get("/api/summary")
     def summary() -> dict[str, object]:
@@ -382,6 +408,12 @@ def execute_write_action(name: str, action: Callable[[], dict[str, object]]) -> 
 def require_full_scan_confirmation(confirmed: bool) -> None:
     if not confirmed:
         raise HTTPException(status_code=400, detail="full_scan_confirmation_required")
+
+
+def parse_event_topics(topics: str | None) -> list[str] | None:
+    if not topics:
+        return None
+    return [topic.strip() for topic in topics.split(",") if topic.strip()]
 
 
 def resolve_archive_file(archive_dir: Path, relative_path: str) -> Path:

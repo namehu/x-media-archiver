@@ -38,7 +38,7 @@ export async function apiPost<T>(path: string, body: unknown, options: ApiReques
 }
 
 export async function apiRequest<T>(path: string, options: ApiRequestOptions = {}): Promise<T> {
-  const response = await fetch(toApiUrl(path), buildRequestInit(options));
+  const response = await fetch(apiUrl(path), buildRequestInit(options));
   if (!response.ok) {
     throw await buildApiError(response);
   }
@@ -66,7 +66,7 @@ function buildRequestInit({ body, headers, ...options }: ApiRequestOptions): Req
   return init;
 }
 
-function toApiUrl(path: string) {
+export function apiUrl(path: string) {
   if (/^https?:\/\//i.test(path)) return path;
   if (!API_BASE_URL) return path;
   return `${API_BASE_URL}${path.startsWith("/") ? path : `/${path}`}`;
