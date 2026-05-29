@@ -86,8 +86,7 @@ export function AppLayout() {
             end
             className={({ isActive }) =>
               cn(
-                "flex items-center rounded-md px-2 py-1.5 text-sm text-muted-foreground hover:bg-muted hover:text-foreground",
-                "text-fg-secondary transition duration-fast ease-out hover:bg-bg-muted hover:text-fg-primary",
+                "flex items-center rounded-md px-2 py-1.5 text-sm text-fg-secondary transition duration-fast ease-out hover:bg-bg-muted hover:text-fg-primary",
                 isActive && "bg-brand-soft font-semibold text-brand",
               )
             }

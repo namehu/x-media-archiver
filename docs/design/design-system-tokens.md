@@ -5,7 +5,7 @@
 > 主文档: [phase-4-ui-revamp-plan.md](./phase-4-ui-revamp-plan.md)  
 > 配套: [webui-component-inventory.md](./webui-component-inventory.md)
 
-本文档定义 Phase 4 重构使用的全部设计 token,作为 `webui/src/styles.css` 与 `webui/tailwind.config.js` 修改的权威依据。所有 ui-next 组件必须只引用本文档定义的 token,不允许内联颜色/字号/阴影/动效魔数。
+本文档定义 Phase 4 重构使用的全部设计 token,作为 `webui/src/styles.css` 与 `webui/tailwind.config.js` 修改的权威依据。所有 ui 组件必须只引用本文档定义的 token,不允许内联颜色/字号/阴影/动效魔数。
 
 ---
 
@@ -252,7 +252,7 @@ export default {
 }
 ```
 
-M3 完成后(所有页面已切换到 ui-next),删除 legacy 部分。
+M3 完成后(所有页面已切换到 ui),删除 legacy 部分。
 
 ---
 
@@ -432,7 +432,7 @@ export function applyTheme(t: Theme) {
 
 ---
 
-## 九、Token 命名约定 (供 ui-next 实施)
+## 九、Token 命名约定 (供 ui 实施)
 
 | 类别 | 前缀 | 例 |
 |---|---|---|
@@ -445,7 +445,7 @@ export function applyTheme(t: Theme) {
 | 圆角 | `rounded-{md\|lg\|xl}` | `rounded-lg` |
 | 动效 | `duration-{fast\|base\|slow}` + `ease-{out\|spring}` | `duration-base ease-out` |
 
-ui-next 组件源码中**禁止出现** `#0096FA` / `hsl(206 100% 49%)` / `0.5rem` 等魔数,必须走 token。
+ui 组件源码中**禁止出现** `#0096FA` / `hsl(206 100% 49%)` / `0.5rem` 等魔数,必须走 token。
 
 ---
 

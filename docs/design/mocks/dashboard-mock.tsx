@@ -16,7 +16,7 @@
  *
  * 落地时:
  *   - StatCard / Sparkline / StatusDot / LiveIndicator / DonutChart / StackedBar
- *     抽到 webui/src/components/ui-next/ 下作为独立组件
+ *     抽到 webui/src/components/ui/ 下作为独立组件
  *   - 数据通过 useQuery + useEventStream 接 /api/v1/library/summary、/health/detail、/events
  */
 
@@ -156,10 +156,10 @@ const RECENT_FAILURES = [
 ];
 
 // ===========================================================================
-// 子组件 (落地时各自迁移到 ui-next/)
+// 子组件 (落地时各自迁移到 ui/)
 // ===========================================================================
 
-/** ui-next/sparkline.tsx — SVG path 折线,无依赖 */
+/** ui/sparkline.tsx — SVG path 折线,无依赖 */
 function Sparkline({
   data,
   color = "hsl(206 100% 49%)",
@@ -191,7 +191,7 @@ function Sparkline({
   );
 }
 
-/** ui-next/status-dot.tsx — 状态点,running 态呼吸 */
+/** ui/status-dot.tsx — 状态点,running 态呼吸 */
 function StatusDot({
   status,
   className = "",
@@ -221,7 +221,7 @@ function StatusDot({
   );
 }
 
-/** ui-next/live-indicator.tsx — SSE 连接状态 */
+/** ui/live-indicator.tsx — SSE 连接状态 */
 function LiveIndicator({ state }: { state: "connecting" | "open" | "reconnecting" | "closed" }) {
   const cfg = {
     connecting: { dot: "warning" as const, text: "连接中…", tone: "text-[hsl(38_92%_50%)]" },
@@ -237,7 +237,7 @@ function LiveIndicator({ state }: { state: "connecting" | "open" | "reconnecting
   );
 }
 
-/** ui-next/stat-card.tsx — 统计卡 */
+/** ui/stat-card.tsx — 统计卡 */
 function StatCard({
   label,
   value,

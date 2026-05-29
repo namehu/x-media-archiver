@@ -1,15 +1,15 @@
-# WebUI Component Inventory — 旧组件迁移与 ui-next 清单
+# WebUI Component Inventory — 旧组件迁移与 ui 清单
 
 > 版本: v1.0  
 > 日期: 2026-05-28  
 > 主文档: [phase-4-ui-revamp-plan.md](./phase-4-ui-revamp-plan.md)  
 > 配套: [design-system-tokens.md](./design-system-tokens.md)
 
-本文档是 Phase 4 重构期的"对照表":每个旧组件迁移到哪个新组件、何时迁移、需要哪些新增组件、依赖如何变化、每个页面用到哪些 ui-next 组件。实施 PR 应**对照本文档逐项打勾**。
+本文档是 Phase 4 重构期的"对照表":每个旧组件迁移到哪个新组件、何时迁移、需要哪些新增组件、依赖如何变化、每个页面用到哪些 ui 组件。实施 PR 应**对照本文档逐项打勾**。
 
 ---
 
-## 一、ui-next 引入策略与目录约定
+## 一、ui 引入策略与目录约定
 
 ### 1.1 目录结构
 
@@ -19,7 +19,7 @@ webui/src/components/
 │   ├── Button.tsx
 │   ├── Card.tsx
 │   └── ...
-├── ui-next/           # 新组件,本期主战场
+├── ui/           # 新组件,本期主战场
 │   ├── button.tsx     # 文件名小写(shadcn 风格)
 │   ├── card.tsx
 │   ├── ...
@@ -32,7 +32,7 @@ webui/src/components/
 
 ### 1.2 引用约束
 
-- **新页面 / 重构页面**: 只允许 `import { Button } from "@/components/ui-next/button"`(必要时配 Vite alias `@`)
+- **新页面 / 重构页面**: 只允许 `import { Button } from "@/components/ui/button"`(必要时配 Vite alias `@`)
 - **未重构页面**: 继续用旧 `import { Button } from "../components/ui/Button"`,不混用
 - **每个 PR 限制只动一页** — 整页切换,避免新旧混搭
 
@@ -44,8 +44,8 @@ webui/src/components/
 4. `npm i @tanstack/react-table` (M2 Library 用)
 5. `npm i react-virtuoso` (M2 Library/Queue/Sources 用)
 6. `npm i recharts` (M1 Dashboard 用)
-7. 用 shadcn CLI 复制源码到 `ui-next/`(或手动复制):`npx shadcn@latest add button card input select badge dialog sheet tabs tooltip command table skeleton popover dropdown-menu checkbox switch`
-8. 改造每个组件:把 `text-foreground` 等 shadcn 默认 token 替换为本项目 token(`text-fg-primary` / `bg-bg-surface` 等),参考 [design-system-tokens.md §9](./design-system-tokens.md#%E4%B9%9D%E3%80%81token-%E5%91%BD%E5%90%8D%E7%BA%A6%E5%AE%9A-%E4%BE%9B-ui-next-%E5%AE%9E%E6%96%BD)
+7. 用 shadcn CLI 复制源码到 `ui/`(或手动复制):`npx shadcn@latest add button card input select badge dialog sheet tabs tooltip command table skeleton popover dropdown-menu checkbox switch`
+8. 改造每个组件:把 `text-foreground` 等 shadcn 默认 token 替换为本项目 token(`text-fg-primary` / `bg-bg-surface` 等),参考 [design-system-tokens.md §9](./design-system-tokens.md#%E4%B9%9D%E3%80%81token-%E5%91%BD%E5%90%8D%E7%BA%A6%E5%AE%9A-%E4%BE%9B-ui-%E5%AE%9E%E6%96%BD)
 
 ---
 
@@ -53,23 +53,23 @@ webui/src/components/
 
 | # | 组件 | 路径 | Radix 依赖 | 重点改造 |
 |---|---|---|---|---|
-| 1 | Button | `ui-next/button.tsx` | — | CVA variants: `default`/`secondary`/`outline`/`ghost`/`destructive` + sizes `sm`/`md`/`lg`/`icon` |
-| 2 | Card | `ui-next/card.tsx` | — | `rounded-lg shadow-1 border-subtle`,补 `CardDescription` |
-| 3 | Input | `ui-next/input.tsx` | — | 支持前后缀图标(InputAdornment 模式) |
-| 4 | Select | `ui-next/select.tsx` | `@radix-ui/react-select` | 替代原生 select,支持搜索过滤 |
-| 5 | Badge | `ui-next/badge.tsx` | — | tone variants: `default`/`secondary`/`success`/`warning`/`danger` |
-| 6 | Dialog | `ui-next/dialog.tsx` | `@radix-ui/react-dialog` | 自动 ESC + 遮罩 + focus trap,`rounded-xl shadow-3` |
-| 7 | Sheet | `ui-next/sheet.tsx` | `@radix-ui/react-dialog` | 右侧抽屉,`ease-spring` 入场 |
-| 8 | Tabs | `ui-next/tabs.tsx` | `@radix-ui/react-tabs` | 下划线 active 风格(brand 色),非按钮风格 |
-| 9 | Tooltip | `ui-next/tooltip.tsx` | `@radix-ui/react-tooltip` | `shadow-2 rounded-md text-xs` |
-| 10 | Toast (sonner) | `ui-next/toaster.tsx` | sonner | 右上堆叠,success/error/info/loading 四态 |
-| 11 | Command | `ui-next/command.tsx` | cmdk | M3 CommandPalette 基底 |
-| 12 | Table | `ui-next/table.tsx` | — | 配 TanStack Table v8 包装为 DataTable |
-| 13 | Skeleton | `ui-next/skeleton.tsx` | — | 加 `animate-shimmer` |
-| 14 | Popover | `ui-next/popover.tsx` | `@radix-ui/react-popover` | 筛选下拉、迷你菜单 |
-| 15 | DropdownMenu | `ui-next/dropdown-menu.tsx` | `@radix-ui/react-dropdown-menu` | 行操作菜单 |
-| 16 | Checkbox | `ui-next/checkbox.tsx` | `@radix-ui/react-checkbox` | DataTable 选中、批量操作 |
-| 17 | Switch | `ui-next/switch.tsx` | `@radix-ui/react-switch` | Sources 启用/禁用开关 |
+| 1 | Button | `ui/button.tsx` | — | CVA variants: `default`/`secondary`/`outline`/`ghost`/`destructive` + sizes `sm`/`md`/`lg`/`icon` |
+| 2 | Card | `ui/card.tsx` | — | `rounded-lg shadow-1 border-subtle`,补 `CardDescription` |
+| 3 | Input | `ui/input.tsx` | — | 支持前后缀图标(InputAdornment 模式) |
+| 4 | Select | `ui/select.tsx` | `@radix-ui/react-select` | 替代原生 select,支持搜索过滤 |
+| 5 | Badge | `ui/badge.tsx` | — | tone variants: `default`/`secondary`/`success`/`warning`/`danger` |
+| 6 | Dialog | `ui/dialog.tsx` | `@radix-ui/react-dialog` | 自动 ESC + 遮罩 + focus trap,`rounded-xl shadow-3` |
+| 7 | Sheet | `ui/sheet.tsx` | `@radix-ui/react-dialog` | 右侧抽屉,`ease-spring` 入场 |
+| 8 | Tabs | `ui/tabs.tsx` | `@radix-ui/react-tabs` | 下划线 active 风格(brand 色),非按钮风格 |
+| 9 | Tooltip | `ui/tooltip.tsx` | `@radix-ui/react-tooltip` | `shadow-2 rounded-md text-xs` |
+| 10 | Toast (sonner) | `ui/toaster.tsx` | sonner | 右上堆叠,success/error/info/loading 四态 |
+| 11 | Command | `ui/command.tsx` | cmdk | M3 CommandPalette 基底 |
+| 12 | Table | `ui/table.tsx` | — | 配 TanStack Table v8 包装为 DataTable |
+| 13 | Skeleton | `ui/skeleton.tsx` | — | 加 `animate-shimmer` |
+| 14 | Popover | `ui/popover.tsx` | `@radix-ui/react-popover` | 筛选下拉、迷你菜单 |
+| 15 | DropdownMenu | `ui/dropdown-menu.tsx` | `@radix-ui/react-dropdown-menu` | 行操作菜单 |
+| 16 | Checkbox | `ui/checkbox.tsx` | `@radix-ui/react-checkbox` | DataTable 选中、批量操作 |
+| 17 | Switch | `ui/switch.tsx` | `@radix-ui/react-switch` | Sources 启用/禁用开关 |
 
 ---
 
@@ -77,16 +77,16 @@ webui/src/components/
 
 | # | 组件 | 路径 | 阶段 | 输入 props | 用途 |
 |---|---|---|---|---|---|
-| 1 | StatCard | `ui-next/stat-card.tsx` | M1 | `{ label, value, sparklineData?, trend?, tone? }` | Dashboard 统计卡:label + 大数字 + sparkline + 趋势百分比/箭头 |
-| 2 | Sparkline | `ui-next/sparkline.tsx` | M1 | `{ data: number[], color?, height? }` | SVG path 实现,无依赖,30 数据点折线 |
-| 3 | StatusDot | `ui-next/status-dot.tsx` | M1 | `{ status: "running"\|"success"\|"warning"\|"danger"\|"idle" }` | 替代纯文字状态,running 态 `animate-breathe` |
-| 4 | LiveIndicator | `ui-next/live-indicator.tsx` | M1 | `{ state: "connecting"\|"open"\|"reconnecting"\|"closed" }` | SSE 连接状态指示 |
-| 5 | MediaThumbnail | `ui-next/media-thumbnail.tsx` | M2 | `{ src, alt, mediaType, blurHash?, onClick? }` | 统一缩略图:loading / error / blur-up + 视频/GIF 角标 |
-| 6 | DataTable | `ui-next/data-table.tsx` | M2 | `{ columns, data, virtualizer?, onRowClick?, ... }` | 基于 TanStack Table v8 + Table 包装,支持排序/选中/虚拟滚动 |
-| 7 | ProgressRing | `ui-next/progress-ring.tsx` | M2 | `{ value, size?, strokeWidth? }` | SVG 圆环进度,Queue Hero 用 |
-| 8 | CommandPalette | `ui-next/command-palette.tsx` | M3 | `{ open, onOpenChange, commands }` | Cmd+K 全局搜索/跳转,基于 cmdk |
-| 9 | EmptyState | `ui-next/empty-state.tsx` | M3 | `{ icon, title, description?, action? }` | 升级旧版,加 lucide 图标 + CTA |
-| 10 | ErrorState | `ui-next/error-state.tsx` | M3 | `{ title, detail?, onRetry? }` | 升级旧版,加重试按钮 |
+| 1 | StatCard | `ui/stat-card.tsx` | M1 | `{ label, value, sparklineData?, trend?, tone? }` | Dashboard 统计卡:label + 大数字 + sparkline + 趋势百分比/箭头 |
+| 2 | Sparkline | `ui/sparkline.tsx` | M1 | `{ data: number[], color?, height? }` | SVG path 实现,无依赖,30 数据点折线 |
+| 3 | StatusDot | `ui/status-dot.tsx` | M1 | `{ status: "running"\|"success"\|"warning"\|"danger"\|"idle" }` | 替代纯文字状态,running 态 `animate-breathe` |
+| 4 | LiveIndicator | `ui/live-indicator.tsx` | M1 | `{ state: "connecting"\|"open"\|"reconnecting"\|"closed" }` | SSE 连接状态指示 |
+| 5 | MediaThumbnail | `ui/media-thumbnail.tsx` | M2 | `{ src, alt, mediaType, blurHash?, onClick? }` | 统一缩略图:loading / error / blur-up + 视频/GIF 角标 |
+| 6 | DataTable | `ui/data-table.tsx` | M2 | `{ columns, data, virtualizer?, onRowClick?, ... }` | 基于 TanStack Table v8 + Table 包装,支持排序/选中/虚拟滚动 |
+| 7 | ProgressRing | `ui/progress-ring.tsx` | M2 | `{ value, size?, strokeWidth? }` | SVG 圆环进度,Queue Hero 用 |
+| 8 | CommandPalette | `ui/command-palette.tsx` | M3 | `{ open, onOpenChange, commands }` | Cmd+K 全局搜索/跳转,基于 cmdk |
+| 9 | EmptyState | `ui/empty-state.tsx` | M3 | `{ icon, title, description?, action? }` | 升级旧版,加 lucide 图标 + CTA |
+| 10 | ErrorState | `ui/error-state.tsx` | M3 | `{ title, detail?, onRetry? }` | 升级旧版,加重试按钮 |
 
 ### 3.1 关键 hook
 
@@ -101,7 +101,7 @@ webui/src/components/
 
 ## 四、旧 → 新组件迁移映射
 
-| 旧 (`components/ui/`) | 新 (`components/ui-next/`) | 迁移阶段 | 关键差异与注意点 |
+| 旧 (`components/ui/`) | 新 (`components/ui/`) | 迁移阶段 | 关键差异与注意点 |
 |---|---|---|---|
 | `Button.tsx` (3 variants) | `button.tsx` (5 variants × 4 sizes) | M2 起 | CVA 重写;旧 `primary`/`secondary`/`ghost` 映射到新 `default`/`secondary`/`ghost`,新增 `outline`/`destructive` |
 | `Card.tsx` | `card.tsx` | M2 起 | 圆角从 `md` 升到 `lg`;补 `CardDescription`;hover 升 elevation |
@@ -118,13 +118,13 @@ webui/src/components/
 
 ### 4.1 删除旧组件的时机
 
-M3 完成后(所有 8 页面已切换到 ui-next),整体删除 `webui/src/components/ui/`,同时删除 [`styles.css`](../../webui/src/styles.css) 中的 legacy token 映射段。
+M3 完成后(所有 8 页面已切换到 ui),整体删除 `webui/src/components/ui/`,同时删除 [`styles.css`](../../webui/src/styles.css) 中的 legacy token 映射段。
 
 ---
 
 ## 五、八页面组件使用指南
 
-每个页面在重构时用到哪些 ui-next 组件,作为 PR 提交清单的对照。
+每个页面在重构时用到哪些 ui 组件,作为 PR 提交清单的对照。
 
 ### 5.1 Dashboard `/` (M1)
 
@@ -325,7 +325,7 @@ Vite 自动拆 chunk,首屏不加载图表代码。
 | Dashboard chunk (含 Recharts) | < 100 KB |
 | Library chunk (含 react-virtuoso) | < 60 KB |
 | Sources chunk | < 50 KB |
-| 公共 chunk (含 ui-next 基础) | < 80 KB |
+| 公共 chunk (含 ui 基础) | < 80 KB |
 | 总首屏 | < 200 KB |
 
 实施时用 `npm run build` 后看 `dist/assets/*.js` 大小,超限触发回滚或拆 chunk。
@@ -337,7 +337,7 @@ Vite 自动拆 chunk,首屏不加载图表代码。
 每个重构 PR 必须勾选:
 
 - [ ] 只动一个页面(检查 `git diff --stat`)
-- [ ] 该页面**完全**切换到 `ui-next/`,无残留旧组件引用(`grep "components/ui/" webui/src/pages/<page>/`)
+- [ ] 该页面**完全**切换到 `ui/`,无残留旧组件引用(`grep "components/ui/" webui/src/pages/<page>/`)
 - [ ] 新组件源码无颜色/字号/阴影魔数(全走 token)
 - [ ] hover/focus/active 状态齐全(三态截图附 PR)
 - [ ] 空态 / 错误态 / 骨架屏全部新版

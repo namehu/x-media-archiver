@@ -29,16 +29,6 @@
   --dur-base: 200ms;
   --dur-slow: 360ms;
 
-  --border: var(--border-subtle);
-  --background: var(--bg-base);
-  --foreground: var(--fg-primary);
-  --muted: var(--bg-muted);
-  --muted-foreground: var(--fg-secondary);
-  --primary: var(--brand);
-  --primary-foreground: 0 0% 100%;
-  --accent-foreground: 0 0% 100%;
-  --destructive: var(--danger);
-
   font-family:
     "Inter", "Noto Sans SC", ui-sans-serif, system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
   font-feature-settings: "tnum", "ss01";

@@ -16,7 +16,7 @@
  *   5. 分页 + 跳转输入
  *
  * 落地时:
- *   - MediaThumbnail / FilterChip / Pagination / BatchDock 抽到 ui-next/
+ *   - MediaThumbnail / FilterChip / Pagination / BatchDock 抽到 ui/
  *   - 数据通过 useQuery + SSE invalidate 接 /api/v1/library/media
  *   - 长列表用 react-virtuoso 做虚拟滚动
  */
@@ -109,7 +109,7 @@ const FILTER_STATUSES: { key: MediaStatus | "all"; label: string }[] = [
 // 子组件
 // ===========================================================================
 
-/** ui-next/media-thumbnail.tsx —— 统一缩略图,带 loading / hover overlay / 角标 */
+/** ui/media-thumbnail.tsx —— 统一缩略图,带 loading / hover overlay / 角标 */
 function MediaThumbnail({
   item,
   selected,
@@ -227,7 +227,7 @@ function OverlayBtn({ icon: Icon, label }: { icon: typeof Eye; label: string }) 
   );
 }
 
-/** ui-next/filter-chip.tsx — chip 形式多选状态 */
+/** ui/filter-chip.tsx — chip 形式多选状态 */
 function FilterChip({
   active,
   onClick,
