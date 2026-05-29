@@ -1,6 +1,7 @@
 import { createContext, useContext, useEffect, useState, type ReactNode } from "react";
 
 export type Theme = "light" | "dark" | "auto";
+const THEME_KEY = "x-archiver-theme";
 
 const ThemeContext = createContext<{ theme: Theme; setTheme: (t: Theme) => void }>({
   theme: "auto",
@@ -9,24 +10,16 @@ const ThemeContext = createContext<{ theme: Theme; setTheme: (t: Theme) => void 
 
 export function ThemeProvider({ children }: { children: ReactNode }) {
   const [theme, setThemeState] = useState<Theme>(() => {
-    return (localStorage.getItem("theme") as Theme) ?? "auto";
+    return getStoredTheme();
   });
 
   const setTheme = (t: Theme) => {
     setThemeState(t);
-    localStorage.setItem("theme", t);
+    localStorage.setItem(THEME_KEY, t);
   };
 
   useEffect(() => {
-    const root = document.documentElement;
-    if (theme === "dark") {
-      root.classList.add("dark");
-    } else if (theme === "light") {
-      root.classList.remove("dark");
-    } else {
-      const isDark = window.matchMedia("(prefers-color-scheme: dark)").matches;
-      root.classList.toggle("dark", isDark);
-    }
+    applyTheme(theme);
   }, [theme]);
 
   useEffect(() => {
@@ -44,4 +37,16 @@ export function ThemeProvider({ children }: { children: ReactNode }) {
 
 export function useTheme() {
   return useContext(ThemeContext);
+}
+
+export function getStoredTheme(): Theme {
+  const value = localStorage.getItem(THEME_KEY) as Theme | null;
+  return value === "light" || value === "dark" || value === "auto" ? value : "auto";
+}
+
+export function applyTheme(theme: Theme) {
+  const root = document.documentElement;
+  const isDark = theme === "dark" || (theme === "auto" && window.matchMedia("(prefers-color-scheme: dark)").matches);
+  root.classList.toggle("dark", isDark);
+  localStorage.setItem(THEME_KEY, theme);
 }
