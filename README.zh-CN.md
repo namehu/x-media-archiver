@@ -161,7 +161,7 @@ docker-compose run --rm xarchiver duplicates
 docker-compose run --rm xarchiver export-duplicates
 ```
 
-生产环境在 Supabase 中存储元数据（包含连接选择与迁移检查）的说明见 [docs/supabase-deployment.md](docs/supabase-deployment.md)。备份与恢复流程见 [docs/backup-restore.md](docs/backup-restore.md)。
+生产部署的完整说明（Supabase 元数据存储、连接选择、迁移检查、服务运行、调优、备份与恢复）见统一手册 [docs/deploy/](docs/deploy/README.md)。
 
 如果本地端口 5432 已被占用，可覆盖开发 Postgres 的宿主机映射端口：
 
