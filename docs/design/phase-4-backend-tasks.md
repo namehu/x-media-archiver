@@ -388,5 +388,5 @@ Day 6       T5 完成 → 合入
 
 - 业务背景 / API 设计:看 [phase-3.4-plan.md](./phase-3.4-plan.md) 与 [x-media-archiver-v2-design.md](./x-media-archiver-v2-design.md)
 - 测试体系:[engineering-ci-and-test-isolation.md](../engineering-ci-and-test-isolation.md)
-- 部署 / DB 备份:[backup-restore.md](../backup-restore.md)
+- 部署 / DB 备份:[deploy/README.md](../deploy/README.md)
 - 主计划 / WebUI 进度:[phase-4-ui-revamp-plan.md](./phase-4-ui-revamp-plan.md)

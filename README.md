@@ -162,9 +162,9 @@ docker-compose run --rm xarchiver duplicates
 docker-compose run --rm xarchiver export-duplicates
 ```
 
-Production metadata storage in Supabase, including connection selection and migration checks, is
-documented in [`docs/supabase-deployment.md`](docs/supabase-deployment.md). Backup and restore
-procedures are documented in [`docs/backup-restore.md`](docs/backup-restore.md).
+Production deployment — including Supabase metadata storage, connection selection, migration
+checks, service operation, tuning, and backup/restore procedures — is documented in the unified
+[`docs/deploy/`](docs/deploy/README.md) handbook.
 
 If local port 5432 is already in use, override the development Postgres host port:
 
