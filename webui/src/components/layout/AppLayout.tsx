@@ -1,7 +1,9 @@
-import { NavLink, Outlet } from "react-router-dom";
+import { NavLink, Outlet, useNavigate } from "react-router-dom";
+import { useMemo, useState } from "react";
 import { useQuery } from "@tanstack/react-query";
 import { useServerEvents } from "../../hooks/useServerEvents";
 import { LiveIndicator } from "../ui-next/live-indicator";
+import { CommandPalette, type CommandPaletteItem } from "../ui-next/command-palette";
 import { apiGet, type HealthDetail } from "../../lib/api";
 import { useI18n } from "../../lib/i18n";
 import { useTheme, type Theme } from "../../lib/theme";
@@ -38,6 +40,8 @@ const themeOrder: Theme[] = ["light", "dark", "auto"];
 export function AppLayout() {
   const { t, locale, setLocale } = useI18n();
   const { theme, setTheme } = useTheme();
+  const navigate = useNavigate();
+  const [commandOpen, setCommandOpen] = useState(false);
   const events = useServerEvents(["archive_runs", "sources", "source_scans", "worker"]);
   const healthQuery = useQuery({
     queryKey: ["health-detail"],
@@ -54,6 +58,19 @@ export function AppLayout() {
     const next = themeOrder[(themeOrder.indexOf(theme) + 1) % themeOrder.length];
     setTheme(next);
   };
+  const commands = useMemo<CommandPaletteItem[]>(
+    () => [
+      { id: "dashboard", label: t("nav.dashboard"), description: "/", onSelect: () => navigate("/") },
+      { id: "library", label: t("nav.library"), description: "/library", onSelect: () => navigate("/library") },
+      { id: "queue", label: t("nav.queue"), description: "/queue", onSelect: () => navigate("/queue") },
+      { id: "sources", label: t("nav.sources"), description: "/sources", onSelect: () => navigate("/sources") },
+      { id: "failures", label: t("nav.failures"), description: "/failures", onSelect: () => navigate("/failures") },
+      { id: "duplicates", label: t("nav.duplicates"), description: "/duplicates", onSelect: () => navigate("/duplicates") },
+      { id: "operations", label: t("nav.operations"), description: "/operations", onSelect: () => navigate("/operations") },
+      { id: "demo", label: t("nav.demo"), description: "/demo", onSelect: () => navigate("/demo") },
+    ],
+    [navigate, t],
+  );
 
   return (
     <div className="flex min-h-screen bg-bg-base text-fg-primary">
@@ -121,6 +138,14 @@ export function AppLayout() {
           </div>
           <div className="flex items-center gap-1">
             <button
+              onClick={() => setCommandOpen(true)}
+              className="hidden rounded-md border border-border-subtle bg-bg-surface px-3 py-1 text-xs font-medium text-fg-secondary transition hover:bg-bg-muted hover:text-fg-primary focus:outline-none focus-visible:ring-2 focus-visible:ring-brand/50 md:inline-flex"
+              title={t("command.open")}
+            >
+              {t("command.search")}
+              <span className="ml-2 text-fg-tertiary">⌘K</span>
+            </button>
+            <button
               onClick={() => setLocale(locale === "zh" ? "en" : "zh")}
               className="rounded-md px-2 py-1 text-xs font-medium text-fg-secondary transition hover:bg-bg-muted hover:text-fg-primary focus:outline-none focus-visible:ring-2 focus-visible:ring-brand/50"
               title={locale === "zh" ? "Switch to English" : "切换为中文"}
@@ -140,6 +165,13 @@ export function AppLayout() {
           <Outlet />
         </main>
       </div>
+      <CommandPalette
+        open={commandOpen}
+        onOpenChange={setCommandOpen}
+        commands={commands}
+        placeholder={t("command.placeholder")}
+        emptyLabel={t("command.empty")}
+      />
     </div>
   );
 }
