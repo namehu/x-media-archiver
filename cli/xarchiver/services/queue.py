@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import logging
 from pathlib import Path
+from threading import Event, Thread
 from typing import Any
 
 from psycopg.types.json import Jsonb
@@ -14,6 +15,42 @@ from xarchiver.services.library import get_library_snapshot
 from xarchiver.workflow import process_tweet_scope
 
 logger = logging.getLogger(__name__)
+LEASE_SECONDS = 60
+HEARTBEAT_SECONDS = 20
+
+
+class WorkerLeaseLost(RuntimeError):
+    pass
+
+
+class ArchiveItemLeaseHeartbeat:
+    def __init__(self, item_ids: list[int], worker_id: str | None) -> None:
+        self.item_ids = item_ids
+        self.worker_id = worker_id
+        self.stop = Event()
+        self.lost = Event()
+        self.thread: Thread | None = None
+
+    def __enter__(self) -> "ArchiveItemLeaseHeartbeat":
+        if self.worker_id and self.item_ids:
+            self.thread = Thread(target=self._run, name="archive-item-lease-heartbeat", daemon=True)
+            self.thread.start()
+        return self
+
+    def __exit__(self, *_: object) -> None:
+        self.stop.set()
+        if self.thread:
+            self.thread.join(timeout=2)
+
+    def _run(self) -> None:
+        while not self.stop.wait(HEARTBEAT_SECONDS):
+            if not heartbeat_archive_items(self.item_ids, self.worker_id or ""):
+                self.lost.set()
+                return
+
+    def ensure_active(self) -> None:
+        if self.lost.is_set():
+            raise WorkerLeaseLost("archive_item_lease_lost")
 
 
 def submit_archive_batch(
@@ -191,8 +228,8 @@ def has_pending_download_work() -> bool:
             return bool(cur.fetchone()["pending"])
 
 
-def process_next_queued_run(settings: Settings) -> dict[str, object] | None:
-    claimed = claim_next_items(settings.retry_limit, getattr(settings, "queue_batch_size", 20))
+def process_next_queued_run(settings: Settings, worker_id: str | None = None) -> dict[str, object] | None:
+    claimed = claim_next_items(settings.retry_limit, getattr(settings, "queue_batch_size", 20), worker_id=worker_id)
     if not claimed:
         return None
     run_id = int(claimed[0]["archive_run_id"])
@@ -200,10 +237,14 @@ def process_next_queued_run(settings: Settings) -> dict[str, object] | None:
     tweet_ids = list(item_ids)
     log_queue_event("archive.worker.claimed", run_id=run_id, item_count=len(claimed))
     try:
-        pipeline = process_tweet_scope(tweet_ids, settings, archive_run_id=run_id, item_ids=item_ids)
-        update_processed_items(run_id, claimed, settings, pipeline)
+        with ArchiveItemLeaseHeartbeat([int(row["id"]) for row in claimed], worker_id) as lease:
+            pipeline = process_tweet_scope(tweet_ids, settings, archive_run_id=run_id, item_ids=item_ids)
+            lease.ensure_active()
+            update_processed_items(run_id, claimed, settings, pipeline, worker_id=worker_id)
+            lease.ensure_active()
     except Exception as exc:
-        fail_processing_items(run_id, claimed, settings, str(exc))
+        if not isinstance(exc, WorkerLeaseLost):
+            fail_processing_items(run_id, claimed, settings, str(exc), worker_id=worker_id)
         log_queue_event(
             "archive.worker.failed",
             run_id=run_id,
@@ -221,7 +262,7 @@ def process_next_queued_run(settings: Settings) -> dict[str, object] | None:
     return detail
 
 
-def claim_next_items(retry_limit: int, batch_size: int = 20) -> list[dict[str, object]]:
+def claim_next_items(retry_limit: int, batch_size: int = 20, worker_id: str | None = None) -> list[dict[str, object]]:
     batch_size = max(1, int(batch_size))
     with connect() as conn:
         with conn.cursor() as cur:
@@ -230,7 +271,10 @@ def claim_next_items(retry_limit: int, batch_size: int = 20) -> list[dict[str, o
                 with candidate_run as (
                   select archive_run_id
                   from archive_run_items
-                  where status in ('pending', 'failed_retryable')
+                  where (
+                      status in ('pending', 'failed_retryable')
+                      or (status = 'processing' and (lease_expires_at is null or lease_expires_at < now()))
+                    )
                     and retry_count < %s
                     and (next_attempt_at is null or next_attempt_at <= now())
                   order by created_at asc, id asc
@@ -241,7 +285,10 @@ def claim_next_items(retry_limit: int, batch_size: int = 20) -> list[dict[str, o
                   select i.id
                   from archive_run_items i
                   join candidate_run r on r.archive_run_id = i.archive_run_id
-                  where i.status in ('pending', 'failed_retryable')
+                  where (
+                      i.status in ('pending', 'failed_retryable')
+                      or (i.status = 'processing' and (i.lease_expires_at is null or i.lease_expires_at < now()))
+                    )
                     and i.retry_count < %s
                     and (i.next_attempt_at is null or i.next_attempt_at <= now())
                   order by i.id asc
@@ -249,11 +296,16 @@ def claim_next_items(retry_limit: int, batch_size: int = 20) -> list[dict[str, o
                   for update skip locked
                 )
                 update archive_run_items
-                set status = 'processing', last_attempt_at = now(), updated_at = now()
+                set status = 'processing',
+                    worker_id = %s,
+                    claimed_at = now(),
+                    lease_expires_at = now() + make_interval(secs => %s),
+                    last_attempt_at = now(),
+                    updated_at = now()
                 where id in (select id from candidate_items)
-                returning id, archive_run_id, tweet_id, retry_count
+                returning id, archive_run_id, tweet_id, retry_count, worker_id
                 """,
-                (retry_limit, retry_limit, batch_size),
+                (retry_limit, retry_limit, batch_size, worker_id, LEASE_SECONDS),
             )
             rows = list(cur.fetchall())
             if rows:
@@ -277,6 +329,7 @@ def update_processed_items(
     claimed: list[dict[str, object]],
     settings: Settings,
     pipeline: dict[str, object],
+    worker_id: str | None = None,
 ) -> None:
     tweet_statuses = fetch_tweet_statuses([str(row["tweet_id"]) for row in claimed])
     item_errors = fetch_latest_item_errors([int(row["id"]) for row in claimed])
@@ -304,8 +357,10 @@ def update_processed_items(
                           then now() + make_interval(mins => %s) else null end,
                         error_category = case when %s = 'verified' then null else %s end,
                         error_message = case when %s = 'verified' then null else %s end,
+                        worker_id = null, lease_expires_at = null,
                         updated_at = now()
                     where id = %s
+                      and (%s::text is null or worker_id = %s)
                     """,
                     (
                         item_status,
@@ -317,14 +372,24 @@ def update_processed_items(
                         item_status,
                         error_message,
                         int(row["id"]),
+                        worker_id,
+                        worker_id,
                     ),
                 )
+                if worker_id is not None and cur.rowcount != 1:
+                    raise WorkerLeaseLost("archive_item_lease_lost")
         conn.commit()
     update_run_after_processing(run_id, pipeline)
     publish_event("archive_runs", "archive.run.items_processed", {"run_id": run_id, "item_count": len(claimed)})
 
 
-def fail_processing_items(run_id: int, claimed: list[dict[str, object]], settings: Settings, error: str) -> None:
+def fail_processing_items(
+    run_id: int,
+    claimed: list[dict[str, object]],
+    settings: Settings,
+    error: str,
+    worker_id: str | None = None,
+) -> None:
     with connect() as conn:
         with conn.cursor() as cur:
             for row in claimed:
@@ -336,11 +401,25 @@ def fail_processing_items(run_id: int, claimed: list[dict[str, object]], setting
                     set status = %s, retry_count = %s,
                         next_attempt_at = case when %s = 'failed_retryable'
                           then now() + make_interval(mins => %s) else null end,
-                        error_category = 'worker_error', error_message = %s, updated_at = now()
+                        error_category = 'worker_error', error_message = %s,
+                        worker_id = null, lease_expires_at = null,
+                        updated_at = now()
                     where id = %s
+                      and (%s::text is null or worker_id = %s)
                     """,
-                    (status, retries, status, settings.retry_backoff_minutes * retries, error, int(row["id"])),
+                    (
+                        status,
+                        retries,
+                        status,
+                        settings.retry_backoff_minutes * retries,
+                        error,
+                        int(row["id"]),
+                        worker_id,
+                        worker_id,
+                    ),
                 )
+                if worker_id is not None and cur.rowcount != 1:
+                    raise WorkerLeaseLost("archive_item_lease_lost")
         conn.commit()
     update_run_after_processing(run_id, None)
     publish_event("archive_runs", "archive.run.items_failed", {"run_id": run_id, "item_count": len(claimed)})
@@ -656,3 +735,35 @@ def reset_tweets_for_retry(tweet_ids: list[str]) -> None:
 
 def log_queue_event(event: str, **details: object) -> None:
     logger.info("Archive queue event: %s", event, extra={"event": event, "details": details})
+
+
+def heartbeat_archive_items(item_ids: list[int], worker_id: str) -> bool:
+    if not item_ids:
+        return True
+    with connect() as conn:
+        with conn.cursor() as cur:
+            cur.execute(
+                """
+                update archive_run_items
+                set lease_expires_at = now() + make_interval(secs => %s),
+                    updated_at = now()
+                where id = any(%s) and worker_id = %s and status = 'processing'
+                """,
+                (LEASE_SECONDS, item_ids, worker_id),
+            )
+            updated = cur.rowcount
+        conn.commit()
+    return updated == len(item_ids)
+
+
+def count_expired_archive_item_leases() -> int:
+    with connect() as conn:
+        with conn.cursor() as cur:
+            cur.execute(
+                """
+                select count(*)::int as count
+                from archive_run_items
+                where status = 'processing' and (lease_expires_at is null or lease_expires_at < now())
+                """
+            )
+            return int(cur.fetchone()["count"])

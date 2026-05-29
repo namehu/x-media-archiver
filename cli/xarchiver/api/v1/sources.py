@@ -99,7 +99,11 @@ def update_archive_source_status(source_id: int, request: SourceStatusRequest) -
 @router.post("/{source_id}/scan", status_code=status.HTTP_202_ACCEPTED, response_model=WriteActionResponse)
 def scan_archive_source(source_id: int, request: SourceScanRequest) -> dict[str, object]:
     try:
-        return execute_write_action("source-scan", lambda: scan_source(source_id, request.limit, restart=request.restart))
+        return execute_write_action(
+            "source-scan",
+            lambda: scan_source(source_id, request.limit, restart=request.restart),
+            scope=f"source:{source_id}",
+        )
     except ValueError as exc:
         raise_api_error(exc)
 

@@ -262,6 +262,13 @@ export type HealthDetail = {
     stop_requested: boolean;
     write_lock_held: boolean;
   };
+  db_pool: {
+    active: number;
+    idle: number;
+    waiting: number;
+    min_size: number;
+    max_size: number;
+  };
   queue: {
     pending_items: number;
     processing_items: number;

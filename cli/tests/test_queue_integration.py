@@ -5,7 +5,9 @@ from unittest.mock import patch
 
 from xarchiver.db import connect
 from xarchiver.services.queue import (
+    claim_next_items,
     get_run_detail,
+    heartbeat_archive_items,
     list_runs,
     list_runs_page,
     process_next_queued_run,
@@ -174,6 +176,28 @@ class QueueIntegrationTests(unittest.TestCase):
         detail = get_run_detail(int(submitted["run_id"]))
         self.assertEqual(process.call_args.args[0], [self.tweet_ids[0]])
         self.assertEqual(detail["status"], "queued")
+
+    def test_expired_processing_item_can_be_reclaimed_by_new_worker(self) -> None:
+        submit_archive_batch([self.record(self.tweet_ids[2])], "test_queue_lease")
+        first_claim = claim_next_items(3, batch_size=1, worker_id="worker-old")
+        item_id = int(first_claim[0]["id"])
+        with connect() as conn:
+            with conn.cursor() as cur:
+                cur.execute(
+                    """
+                    update archive_run_items
+                    set lease_expires_at = now() - interval '1 second'
+                    where id = %s
+                    """,
+                    (item_id,),
+                )
+            conn.commit()
+
+        second_claim = claim_next_items(3, batch_size=1, worker_id="worker-new")
+
+        self.assertEqual(int(second_claim[0]["id"]), item_id)
+        self.assertEqual(second_claim[0]["worker_id"], "worker-new")
+        self.assertFalse(heartbeat_archive_items([item_id], "worker-old"))
 
     def test_list_runs_filters_by_status_tweet_and_failed_items(self) -> None:
         matched = submit_archive_batch([self.record(self.tweet_ids[0])], "test_queue_filter_match")

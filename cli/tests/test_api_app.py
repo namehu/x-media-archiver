@@ -19,6 +19,7 @@ from xarchiver.api.deps import (
     resolve_archive_file,
     write_action_lock,
 )
+from xarchiver.core.lock_manager import lock_manager
 from xarchiver.api.middleware import JsonLogFormatter, RequestIdMiddleware
 from xarchiver.api.schemas import ArchiveSubmitRequest, SourceCreateRequest, VerifyRequest
 from xarchiver.core.errors import ArchiverError
@@ -49,6 +50,19 @@ class ApiAppTests(unittest.TestCase):
 
         self.assertEqual(error.exception.status_code, 409)
         self.assertEqual(error.exception.detail, "write_action_in_progress")
+
+    def test_scoped_write_actions_allow_independent_sources(self) -> None:
+        with lock_manager.acquire("source:1", blocking=False) as acquired:
+            self.assertTrue(acquired)
+            result = execute_write_action("source-scan", lambda: {"source_id": 2}, scope="source:2")
+            with self.assertRaises(HTTPException) as same_scope:
+                execute_write_action("source-scan", lambda: {"source_id": 1}, scope="source:1")
+            with self.assertRaises(HTTPException) as global_scope:
+                execute_write_action("verify", lambda: {"checked": 1}, scope="global")
+
+        self.assertEqual(result["result"], {"source_id": 2})
+        self.assertEqual(same_scope.exception.status_code, 409)
+        self.assertEqual(global_scope.exception.status_code, 409)
 
     def test_resolve_archive_file_rejects_path_escape(self) -> None:
         with self.assertRaises(HTTPException) as error:

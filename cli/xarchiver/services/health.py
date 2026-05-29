@@ -1,7 +1,7 @@
 from __future__ import annotations
 
-from xarchiver.api.deps import stop_worker, write_action_lock
-from xarchiver.db import connect
+from xarchiver.api.deps import stop_worker, write_lock_held
+from xarchiver.db import connect, get_pool_stats
 
 
 def get_health_detail() -> dict[str, object]:
@@ -11,8 +11,9 @@ def get_health_detail() -> dict[str, object]:
                 "status": "ok",
                 "worker": {
                     "stop_requested": stop_worker.is_set(),
-                    "write_lock_held": write_action_lock.locked(),
+                    "write_lock_held": write_lock_held(),
                 },
+                "db_pool": get_pool_stats(),
                 "queue": get_queue_summary(cur),
                 "sources": get_source_summary(cur),
                 "recent_errors": get_recent_errors(cur),

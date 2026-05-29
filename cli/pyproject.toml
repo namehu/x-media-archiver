@@ -9,6 +9,7 @@ dependencies = [
   "pydantic-settings",
   "orjson",
   "psycopg[binary]",
+  "psycopg_pool",
   "python-dotenv",
   "gallery-dl",
   "yt-dlp",

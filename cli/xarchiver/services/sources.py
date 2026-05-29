@@ -6,9 +6,11 @@ import random
 import re
 import shutil
 import subprocess
+from threading import Event, Thread
 from typing import Any
 from urllib.parse import urlparse
 
+from psycopg.errors import UniqueViolation
 from psycopg.types.json import Jsonb
 
 from xarchiver.config import Settings, get_settings
@@ -22,6 +24,42 @@ VALID_SOURCE_TYPES = {"profile", "user_media", "likes", "bookmarks", "search", "
 VALID_SOURCE_STATUSES = {"active", "paused", "completed", "failed"}
 VALID_SCAN_TRIGGERS = {"history_worker", "manual_next", "latest_refresh"}
 logger = logging.getLogger(__name__)
+LEASE_SECONDS = 60
+HEARTBEAT_SECONDS = 20
+
+
+class WorkerLeaseLost(RuntimeError):
+    pass
+
+
+class SourceScanLeaseHeartbeat:
+    def __init__(self, scan_run_id: int, worker_id: str | None) -> None:
+        self.scan_run_id = scan_run_id
+        self.worker_id = worker_id
+        self.stop = Event()
+        self.lost = Event()
+        self.thread: Thread | None = None
+
+    def __enter__(self) -> "SourceScanLeaseHeartbeat":
+        if self.worker_id:
+            self.thread = Thread(target=self._run, name="source-scan-lease-heartbeat", daemon=True)
+            self.thread.start()
+        return self
+
+    def __exit__(self, *_: object) -> None:
+        self.stop.set()
+        if self.thread:
+            self.thread.join(timeout=2)
+
+    def _run(self) -> None:
+        while not self.stop.wait(HEARTBEAT_SECONDS):
+            if not heartbeat_source_scan_run(self.scan_run_id, self.worker_id or ""):
+                self.lost.set()
+                return
+
+    def ensure_active(self) -> None:
+        if self.lost.is_set():
+            raise WorkerLeaseLost("source_scan_lease_lost")
 
 
 def create_source(
@@ -284,7 +322,7 @@ def stop_source_history_scan(source_id: int) -> dict[str, object]:
     return get_source(source_id) or {}
 
 
-def process_next_source_history_scan(settings: Settings) -> dict[str, object] | None:
+def process_next_source_history_scan(settings: Settings, worker_id: str | None = None) -> dict[str, object] | None:
     source = fetch_due_history_source()
     if source is None:
         return None
@@ -302,7 +340,14 @@ def process_next_source_history_scan(settings: Settings) -> dict[str, object] | 
         schedule_next_history_scan(source_id, settings, "waiting_downloads")
         return {"source_id": source_id, "deferred": "download_queue_active"}
     try:
-        result = scan_source(source_id, limit, settings=settings, trigger_type="history_worker")
+        result = scan_source(source_id, limit, settings=settings, trigger_type="history_worker", worker_id=worker_id)
+    except WorkerLeaseLost:
+        raise
+    except ValueError as exc:
+        if str(exc) == "source_scan_in_progress":
+            return None
+        schedule_next_history_scan(source_id, settings, "retry_wait")
+        raise
     except Exception:
         schedule_next_history_scan(source_id, settings, "retry_wait")
         raise
@@ -332,6 +377,47 @@ def recover_interrupted_source_scan_runs() -> int:
             recovered = cur.rowcount
         conn.commit()
     return recovered
+
+
+def recover_expired_source_scan_leases() -> int:
+    with connect() as conn:
+        with conn.cursor() as cur:
+            cur.execute(
+                """
+                update source_scan_runs
+                set status = 'failed',
+                    error_category = 'worker_lease_expired',
+                    error_message = 'Worker lease expired before this scan batch finished.',
+                    finished_at = now(),
+                    worker_id = null,
+                    lease_expires_at = null
+                where (
+                    status = 'running' and (lease_expires_at is null or lease_expires_at < now())
+                  ) or (
+                    status = 'waiting_downloads' and lease_expires_at < now()
+                  )
+                """
+            )
+            recovered = cur.rowcount
+        conn.commit()
+    return recovered
+
+
+def count_expired_source_scan_leases() -> int:
+    with connect() as conn:
+        with conn.cursor() as cur:
+            cur.execute(
+                """
+                select count(*)::int as count
+                from source_scan_runs
+                where (
+                    status = 'running' and (lease_expires_at is null or lease_expires_at < now())
+                  ) or (
+                    status = 'waiting_downloads' and lease_expires_at < now()
+                  )
+                """
+            )
+            return int(cur.fetchone()["count"])
 
 
 def fetch_due_history_source() -> dict[str, object] | None:
@@ -411,29 +497,43 @@ def start_source_scan_run(
     trigger_type: str,
     scan_range: dict[str, int],
     cursor_before: dict[str, Any],
+    worker_id: str | None = None,
 ) -> int:
     if trigger_type not in VALID_SCAN_TRIGGERS:
         raise ValueError("invalid_scan_trigger")
     with connect() as conn:
         with conn.cursor() as cur:
-            cur.execute(
-                """
-                insert into source_scan_runs (
-                    source_id, trigger_type, status, range_start, range_end,
-                    requested_limit, cursor_before, started_at
+            try:
+                cur.execute(
+                    """
+                    insert into source_scan_runs (
+                        source_id, trigger_type, status, range_start, range_end,
+                        requested_limit, cursor_before, started_at,
+                        worker_id, claimed_at, lease_expires_at
+                    )
+                    values (
+                        %s, %s, 'running', %s, %s, %s, %s, now(),
+                        %s,
+                        case when %s::text is null then null else now() end,
+                        case when %s::text is null then null else now() + make_interval(secs => %s) end
+                    )
+                    returning id
+                    """,
+                    (
+                        source_id,
+                        trigger_type,
+                        scan_range["start"],
+                        scan_range["end"],
+                        scan_range["limit"],
+                        Jsonb(cursor_before),
+                        worker_id,
+                        worker_id,
+                        worker_id,
+                        LEASE_SECONDS,
+                    ),
                 )
-                values (%s, %s, 'running', %s, %s, %s, %s, now())
-                returning id
-                """,
-                (
-                    source_id,
-                    trigger_type,
-                    scan_range["start"],
-                    scan_range["end"],
-                    scan_range["limit"],
-                    Jsonb(cursor_before),
-                ),
-            )
+            except UniqueViolation as exc:
+                raise ValueError("source_scan_in_progress") from exc
             run_id = int(cur.fetchone()["id"])
         conn.commit()
     publish_event(
@@ -455,6 +555,7 @@ def finish_source_scan_run(
     discovered_media_count: int = 0,
     error_category: str | None = None,
     error_message: str | None = None,
+    worker_id: str | None = None,
 ) -> None:
     with connect() as conn:
         with conn.cursor() as cur:
@@ -469,8 +570,11 @@ def finish_source_scan_run(
                     discovered_media_count = %s,
                     error_category = %s,
                     error_message = %s,
-                    finished_at = now()
+                    finished_at = now(),
+                    worker_id = null,
+                    lease_expires_at = null
                 where id = %s
+                  and (%s::text is null or worker_id = %s)
                 """,
                 (
                     status,
@@ -482,8 +586,12 @@ def finish_source_scan_run(
                     error_category,
                     error_message,
                     scan_run_id,
+                    worker_id,
+                    worker_id,
                 ),
             )
+            if worker_id is not None and cur.rowcount != 1:
+                raise WorkerLeaseLost("source_scan_lease_lost")
         conn.commit()
     publish_event(
         "source_scans",
@@ -554,6 +662,7 @@ def scan_source(
     restart: bool = False,
     settings: Settings | None = None,
     trigger_type: str | None = None,
+    worker_id: str | None = None,
 ) -> dict[str, object]:
     settings = settings or get_settings()
     source = get_source(source_id)
@@ -571,7 +680,7 @@ def scan_source(
     advances_history = scan_trigger != "latest_refresh"
     scan_cursor = None if not advances_history else cursor_state.get("extractor_cursor")
     scan_range = build_scan_range(cursor_state, limit, restart=restart)
-    scan_run_id = start_source_scan_run(source_id, scan_trigger, scan_range, cursor_state)
+    scan_run_id = start_source_scan_run(source_id, scan_trigger, scan_range, cursor_state, worker_id=worker_id)
     log_source_scan_event(
         "source.scan.started",
         source_id=source_id,
@@ -583,108 +692,31 @@ def scan_source(
         restart=restart,
     )
     try:
-        records, scan_meta = discover_records_with_gallery_dl(
-            scan_url,
-            scan_range["start"],
-            scan_range["end"],
-            settings.source_scan_sleep_min_seconds,
-            settings.source_scan_sleep_max_seconds,
-            continuation_cursor=str(scan_cursor) if scan_cursor else None,
-        )
-        if not records:
-            scan_succeeded = scan_meta.get("exit_code") == 0
-            completed = scan_succeeded and advances_history
-            cursor_after = (
-                update_source_cursor(
-                    source_id,
-                    scan_meta,
-                    scan_range,
-                    discovered_count=0,
-                    new_discovered_count=0,
-                    completed=completed,
-                )
-                if advances_history
-                else cursor_state
+        with SourceScanLeaseHeartbeat(scan_run_id, worker_id) as lease:
+            records, scan_meta = discover_records_with_gallery_dl(
+                scan_url,
+                scan_range["start"],
+                scan_range["end"],
+                settings.source_scan_sleep_min_seconds,
+                settings.source_scan_sleep_max_seconds,
+                continuation_cursor=str(scan_cursor) if scan_cursor else None,
             )
-            error_category = None if scan_succeeded else str(scan_meta.get("error_category") or "failed")
-            error_message = (
-                None if scan_succeeded else str(scan_meta.get("error_message") or "No tweets discovered for source.")
-            )
-            mark_source_scan_result(source_id, error_category=error_category, error_message=error_message)
-            finish_source_scan_run(
-                scan_run_id,
-                scan_run_status(scan_meta, completed),
-                cursor_after=cursor_after,
-                error_category=error_category,
-                error_message=error_message,
-            )
-            log_source_scan_event(
-                "source.scan.completed",
+            ensure_source_scan_lease(scan_run_id, worker_id)
+            result = finish_scan_source_result(
                 source_id=source_id,
                 scan_run_id=scan_run_id,
-                status=scan_run_status(scan_meta, completed),
-                discovered_count=0,
-                new_discovered_count=0,
-                duplicate_count=0,
-                completed=completed,
-                error_category=error_category,
+                records=records,
+                scan_meta=scan_meta,
+                scan_range=scan_range,
+                cursor_state=cursor_state,
+                advances_history=advances_history,
+                worker_id=worker_id,
+                lease=lease,
             )
-            return {
-                "source_id": source_id,
-                "scan_run_id": scan_run_id,
-                "discovered_count": 0,
-                "new_discovered_count": 0,
-                "duplicate_count": 0,
-                "completed": completed,
-                "submitted": None,
-                "scanner": scan_meta,
-            }
-        result = record_source_discoveries(source_id, records, mark_scanned=True)
-        completed = advances_history and is_source_scan_complete(scan_meta, scan_range, int(result["discovered_count"]))
-        cursor_after = (
-            update_source_cursor(
-                source_id,
-                scan_meta,
-                scan_range,
-                discovered_count=int(result["discovered_count"]),
-                new_discovered_count=int(result["new_discovered_count"]),
-                completed=completed,
-            )
-            if advances_history
-            else cursor_state
-        )
-        mark_source_scan_result(source_id)
-        finish_source_scan_run(
-            scan_run_id,
-            scan_run_status(scan_meta, completed),
-            cursor_after=cursor_after,
-            discovered_tweet_count=int(result["discovered_count"]),
-            new_tweet_count=int(result["new_discovered_count"]),
-            duplicate_tweet_count=int(result["duplicate_count"]),
-            discovered_media_count=count_discovered_media(records),
-        )
-        log_source_scan_event(
-            "source.scan.completed",
-            source_id=source_id,
-            scan_run_id=scan_run_id,
-            status=scan_run_status(scan_meta, completed),
-            discovered_count=result["discovered_count"],
-            new_discovered_count=result["new_discovered_count"],
-            duplicate_count=result["duplicate_count"],
-            discovered_media_count=count_discovered_media(records),
-            completed=completed,
-        )
-        return {
-            "source_id": source_id,
-            "scan_run_id": scan_run_id,
-            "discovered_count": result["discovered_count"],
-            "new_discovered_count": result["new_discovered_count"],
-            "duplicate_count": result["duplicate_count"],
-            "completed": completed,
-            "submitted": None,
-            "scanner": scan_meta,
-        }
+            return result
     except Exception as exc:
+        if isinstance(exc, WorkerLeaseLost):
+            raise
         mark_source_scan_result(source_id, error_category="failed", error_message=str(exc))
         finish_source_scan_run(
             scan_run_id,
@@ -692,6 +724,7 @@ def scan_source(
             cursor_after=cursor_state,
             error_category="failed",
             error_message=str(exc),
+            worker_id=worker_id,
         )
         log_source_scan_event(
             "source.scan.failed",
@@ -700,6 +733,126 @@ def scan_source(
             error_type=type(exc).__name__,
         )
         raise
+
+
+def finish_scan_source_result(
+    *,
+    source_id: int,
+    scan_run_id: int,
+    records: list[dict[str, Any]],
+    scan_meta: dict[str, object],
+    scan_range: dict[str, int],
+    cursor_state: dict[str, Any],
+    advances_history: bool,
+    worker_id: str | None,
+    lease: SourceScanLeaseHeartbeat,
+) -> dict[str, object]:
+    if not records:
+        lease.ensure_active()
+        scan_succeeded = scan_meta.get("exit_code") == 0
+        completed = scan_succeeded and advances_history
+        ensure_source_scan_lease(scan_run_id, worker_id)
+        cursor_after = (
+            update_source_cursor(
+                source_id,
+                scan_meta,
+                scan_range,
+                discovered_count=0,
+                new_discovered_count=0,
+                completed=completed,
+            )
+            if advances_history
+            else cursor_state
+        )
+        error_category = None if scan_succeeded else str(scan_meta.get("error_category") or "failed")
+        error_message = (
+            None if scan_succeeded else str(scan_meta.get("error_message") or "No tweets discovered for source.")
+        )
+        ensure_source_scan_lease(scan_run_id, worker_id)
+        mark_source_scan_result(source_id, error_category=error_category, error_message=error_message)
+        ensure_source_scan_lease(scan_run_id, worker_id)
+        finish_source_scan_run(
+            scan_run_id,
+            scan_run_status(scan_meta, completed),
+            cursor_after=cursor_after,
+            error_category=error_category,
+            error_message=error_message,
+            worker_id=worker_id,
+        )
+        log_source_scan_event(
+            "source.scan.completed",
+            source_id=source_id,
+            scan_run_id=scan_run_id,
+            status=scan_run_status(scan_meta, completed),
+            discovered_count=0,
+            new_discovered_count=0,
+            duplicate_count=0,
+            completed=completed,
+            error_category=error_category,
+        )
+        return {
+            "source_id": source_id,
+            "scan_run_id": scan_run_id,
+            "discovered_count": 0,
+            "new_discovered_count": 0,
+            "duplicate_count": 0,
+            "completed": completed,
+            "submitted": None,
+            "scanner": scan_meta,
+        }
+
+    lease.ensure_active()
+    ensure_source_scan_lease(scan_run_id, worker_id)
+    result = record_source_discoveries(source_id, records, mark_scanned=True)
+    completed = advances_history and is_source_scan_complete(scan_meta, scan_range, int(result["discovered_count"]))
+    ensure_source_scan_lease(scan_run_id, worker_id)
+    cursor_after = (
+        update_source_cursor(
+            source_id,
+            scan_meta,
+            scan_range,
+            discovered_count=int(result["discovered_count"]),
+            new_discovered_count=int(result["new_discovered_count"]),
+            completed=completed,
+        )
+        if advances_history
+        else cursor_state
+    )
+    ensure_source_scan_lease(scan_run_id, worker_id)
+    mark_source_scan_result(source_id)
+    lease.ensure_active()
+    ensure_source_scan_lease(scan_run_id, worker_id)
+    finish_source_scan_run(
+        scan_run_id,
+        scan_run_status(scan_meta, completed),
+        cursor_after=cursor_after,
+        discovered_tweet_count=int(result["discovered_count"]),
+        new_tweet_count=int(result["new_discovered_count"]),
+        duplicate_tweet_count=int(result["duplicate_count"]),
+        discovered_media_count=count_discovered_media(records),
+        worker_id=worker_id,
+    )
+    log_source_scan_event(
+        "source.scan.completed",
+        source_id=source_id,
+        scan_run_id=scan_run_id,
+        status=scan_run_status(scan_meta, completed),
+        discovered_count=result["discovered_count"],
+        new_discovered_count=result["new_discovered_count"],
+        duplicate_count=result["duplicate_count"],
+        discovered_media_count=count_discovered_media(records),
+        completed=completed,
+    )
+    return {
+        "source_id": source_id,
+        "scan_run_id": scan_run_id,
+        "discovered_count": result["discovered_count"],
+        "new_discovered_count": result["new_discovered_count"],
+        "duplicate_count": result["duplicate_count"],
+        "completed": completed,
+        "submitted": None,
+        "scanner": scan_meta,
+    }
 
 
 def discover_records_with_gallery_dl(
@@ -957,6 +1110,29 @@ def mark_source_scan_result(
                 (error_category, error_message, source_id),
             )
         conn.commit()
+
+
+def heartbeat_source_scan_run(scan_run_id: int, worker_id: str) -> bool:
+    with connect() as conn:
+        with conn.cursor() as cur:
+            cur.execute(
+                """
+                update source_scan_runs
+                set lease_expires_at = now() + make_interval(secs => %s)
+                where id = %s
+                  and worker_id = %s
+                  and status in ('running', 'waiting_downloads')
+                """,
+                (LEASE_SECONDS, scan_run_id, worker_id),
+            )
+            updated = cur.rowcount
+        conn.commit()
+    return updated == 1
+
+
+def ensure_source_scan_lease(scan_run_id: int, worker_id: str | None) -> None:
+    if worker_id is not None and not heartbeat_source_scan_run(scan_run_id, worker_id):
+        raise WorkerLeaseLost("source_scan_lease_lost")
 
 
 def record_source_discoveries(

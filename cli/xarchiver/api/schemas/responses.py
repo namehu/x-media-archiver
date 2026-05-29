@@ -55,6 +55,14 @@ class WorkerHealthResponse(FlexibleResponse):
     write_lock_held: bool
 
 
+class DbPoolHealthResponse(FlexibleResponse):
+    active: int
+    idle: int
+    waiting: int
+    min_size: int
+    max_size: int
+
+
 class LatestRunResponse(FlexibleResponse):
     id: int
     trigger_type: str
@@ -114,6 +122,7 @@ class RecentErrorResponse(FlexibleResponse):
 class HealthDetailResponse(FlexibleResponse):
     status: str
     worker: WorkerHealthResponse
+    db_pool: DbPoolHealthResponse
     queue: QueueHealthResponse
     sources: SourceHealthResponse
     recent_errors: list[RecentErrorResponse]

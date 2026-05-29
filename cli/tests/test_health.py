@@ -82,6 +82,12 @@ class HealthServiceTests(unittest.TestCase):
         self.assertEqual(source_error["source_scan_run_id"], scan_run_id)
         self.assertEqual(source_error["target_path"], f"/sources?sourceId={source_id}")
 
+    def test_health_detail_includes_db_pool_stats(self) -> None:
+        detail = get_health_detail()
+
+        self.assertIn("db_pool", detail)
+        self.assertEqual(set(detail["db_pool"]), {"active", "idle", "waiting", "min_size", "max_size"})
+
 
 if __name__ == "__main__":
     unittest.main()

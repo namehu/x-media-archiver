@@ -2,20 +2,25 @@ from __future__ import annotations
 
 from contextlib import asynccontextmanager
 import logging
+import os
+import socket
 from threading import Thread
+import uuid
 
 from fastapi import FastAPI, Request
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import JSONResponse
 from starlette.exceptions import HTTPException as StarletteHTTPException
 
-from xarchiver.api.deps import stop_worker, write_action_lock
+from xarchiver.api.deps import stop_worker
 from xarchiver.api.middleware import RequestIdMiddleware, configure_api_logging
 from xarchiver.api.v1 import actions, archive_runs, library, maintenance, misc, sources
 from xarchiver.config import get_settings
 from xarchiver.core.errors import ArchiverError, error_response_payload
-from xarchiver.services.queue import process_next_queued_run
-from xarchiver.services.sources import process_next_source_history_scan, recover_interrupted_source_scan_runs
+from xarchiver.core.lock_manager import lock_manager
+from xarchiver.db import close_pool, open_pool
+from xarchiver.services.queue import count_expired_archive_item_leases, process_next_queued_run
+from xarchiver.services.sources import recover_expired_source_scan_leases, process_next_source_history_scan
 
 logger = logging.getLogger(__name__)
 
@@ -23,12 +28,21 @@ logger = logging.getLogger(__name__)
 @asynccontextmanager
 async def app_lifespan(_: FastAPI):
     stop_worker.clear()
-    recovered_scans = recover_interrupted_source_scan_runs()
-    if recovered_scans:
-        logger.warning("Marked %s interrupted source scan batch(es) as failed.", recovered_scans)
+    open_pool()
+    worker_id = make_worker_id()
+    expired_items = count_expired_archive_item_leases()
+    expired_scans = recover_expired_source_scan_leases()
+    if expired_items or expired_scans:
+        logger.warning(
+            "Found expired worker leases on startup.",
+            extra={
+                "event": "worker.lease.expired_found",
+                "details": {"archive_items": expired_items, "source_scans": expired_scans},
+            },
+        )
     workers = [
-        Thread(target=queue_worker_loop, name="archive-queue-worker", daemon=True),
-        Thread(target=source_worker_loop, name="source-scan-worker", daemon=True),
+        Thread(target=queue_worker_loop, args=(worker_id,), name="archive-queue-worker", daemon=True),
+        Thread(target=source_worker_loop, args=(worker_id,), name="source-scan-worker", daemon=True),
     ]
     for worker in workers:
         worker.start()
@@ -38,6 +52,7 @@ async def app_lifespan(_: FastAPI):
         stop_worker.set()
         for worker in workers:
             worker.join(timeout=2)
+        close_pool()
 
 
 def create_app() -> FastAPI:
@@ -89,28 +104,28 @@ def create_app() -> FastAPI:
     return app
 
 
-def queue_worker_loop() -> None:
+def make_worker_id() -> str:
+    return f"{socket.gethostname()}-{os.getpid()}-{uuid.uuid4().hex[:8]}"
+
+
+def queue_worker_loop(worker_id: str | None = None) -> None:
+    worker_id = worker_id or make_worker_id()
     while not stop_worker.wait(2):
         try:
-            if not write_action_lock.acquire(blocking=False):
+            if lock_manager.locked("global"):
                 continue
-            try:
-                process_next_queued_run(get_settings())
-            finally:
-                write_action_lock.release()
+            process_next_queued_run(get_settings(), worker_id=worker_id)
         except Exception:
             logger.exception("Queue worker iteration failed.")
 
 
-def source_worker_loop() -> None:
+def source_worker_loop(worker_id: str | None = None) -> None:
+    worker_id = worker_id or make_worker_id()
     while not stop_worker.wait(2):
         try:
-            if not write_action_lock.acquire(blocking=False):
+            if lock_manager.locked("global"):
                 continue
-            try:
-                process_next_source_history_scan(get_settings())
-            finally:
-                write_action_lock.release()
+            process_next_source_history_scan(get_settings(), worker_id=worker_id)
         except Exception:
             logger.exception("Source scan worker iteration failed.")
 

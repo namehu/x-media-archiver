@@ -1061,10 +1061,26 @@ export interface components {
             /** Status */
             status: string;
             worker: components["schemas"]["WorkerHealthResponse"];
+            db_pool: components["schemas"]["DbPoolHealthResponse"];
             queue: components["schemas"]["QueueHealthResponse"];
             sources: components["schemas"]["SourceHealthResponse"];
             /** Recent Errors */
             recent_errors: components["schemas"]["RecentErrorResponse"][];
+        } & {
+            [key: string]: unknown;
+        };
+        /** DbPoolHealthResponse */
+        DbPoolHealthResponse: {
+            /** Active */
+            active: number;
+            /** Idle */
+            idle: number;
+            /** Waiting */
+            waiting: number;
+            /** Min Size */
+            min_size: number;
+            /** Max Size */
+            max_size: number;
         } & {
             [key: string]: unknown;
         };

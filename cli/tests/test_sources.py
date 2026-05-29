@@ -20,6 +20,7 @@ from xarchiver.services.sources import (
     normalize_source_url,
     parse_gallery_dl_records,
     record_source_discoveries,
+    recover_expired_source_scan_leases,
     scan_source,
     scan_run_status,
     schedule_next_history_scan,
@@ -226,6 +227,7 @@ class SourceServiceTests(unittest.TestCase):
             cursor_after=cursor,
             error_category=None,
             error_message=None,
+            worker_id=None,
         )
 
     def test_schedule_next_history_scan_does_not_reschedule_paused_source(self) -> None:
@@ -346,6 +348,38 @@ class SourceDiscoveryIntegrationTests(unittest.TestCase):
         self.assertEqual(page["limit"], 1)
         self.assertEqual(page["offset"], 1)
         self.assertEqual([row["id"] for row in page["rows"]], [first["id"]])
+
+    def test_recover_expired_source_scan_lease_marks_run_failed(self) -> None:
+        source = create_source("profile", self.source_urls[2])
+        with connect() as conn:
+            with conn.cursor() as cur:
+                cur.execute(
+                    """
+                    insert into source_scan_runs (
+                      source_id, trigger_type, status, requested_limit,
+                      worker_id, claimed_at, lease_expires_at
+                    )
+                    values (
+                      %s, 'history_worker', 'running', 20,
+                      'worker-old', now() - interval '2 minutes', now() - interval '1 second'
+                    )
+                    returning id
+                    """,
+                    (source["id"],),
+                )
+                scan_run_id = int(cur.fetchone()["id"])
+            conn.commit()
+
+        recovered = recover_expired_source_scan_leases()
+
+        with connect() as conn:
+            with conn.cursor() as cur:
+                cur.execute("select status, error_category, worker_id from source_scan_runs where id = %s", (scan_run_id,))
+                row = cur.fetchone()
+        self.assertEqual(recovered, 1)
+        self.assertEqual(row["status"], "failed")
+        self.assertEqual(row["error_category"], "worker_lease_expired")
+        self.assertIsNone(row["worker_id"])
 
 if __name__ == "__main__":
     unittest.main()
