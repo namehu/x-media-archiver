@@ -3,8 +3,8 @@ import React, { Suspense, lazy } from "react";
 import ReactDOM from "react-dom/client";
 import { createBrowserRouter, RouterProvider } from "react-router-dom";
 import { AppLayout } from "./components/layout/AppLayout";
-import { Skeleton } from "./components/ui-next/skeleton";
-import { Toaster } from "./components/ui-next/toaster";
+import { Skeleton } from "./components/ui/skeleton";
+import { Toaster } from "./components/ui/toaster";
 import { I18nProvider } from "./lib/i18n";
 import { applyTheme, getStoredTheme, ThemeProvider } from "./lib/theme";
 import "./styles.css";
@@ -17,7 +17,7 @@ const LibraryPage = lazy(() => import("./pages/LibraryPage").then((module) => ({
 const OperationsPage = lazy(() => import("./pages/OperationsPage").then((module) => ({ default: module.OperationsPage })));
 const SourcesPage = lazy(() => import("./pages/SourcesPage").then((module) => ({ default: module.SourcesPage })));
 const TweetDetailPage = lazy(() => import("./pages/TweetDetailPage").then((module) => ({ default: module.TweetDetailPage })));
-const UiNextDemoPage = lazy(() => import("./pages/UiNextDemoPage").then((module) => ({ default: module.UiNextDemoPage })));
+const UiDemoPage = lazy(() => import("./pages/UiDemoPage").then((module) => ({ default: module.UiDemoPage })));
 
 applyTheme(getStoredTheme());
 
@@ -36,7 +36,7 @@ const router = createBrowserRouter([
       { path: "operations", element: route(<OperationsPage />) },
       { path: "queue", element: route(<ArchiveQueuePage />) },
       { path: "sources", element: route(<SourcesPage />) },
-      { path: "demo", element: route(<UiNextDemoPage />) },
+      { path: "demo", element: route(<UiDemoPage />) },
     ],
   },
 ]);

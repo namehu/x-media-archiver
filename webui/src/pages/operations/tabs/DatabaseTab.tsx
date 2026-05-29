@@ -1,8 +1,8 @@
 import { Activity, Database, HardDrive, Server } from "lucide-react";
 import type { HealthDetail } from "../../../lib/api";
-import { Button } from "../../../components/ui-next/button";
-import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "../../../components/ui-next/card";
-import { StatCard } from "../../../components/ui-next/stat-card";
+import { Button } from "../../../components/ui/button";
+import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "../../../components/ui/card";
+import { StatCard } from "../../../components/ui/stat-card";
 import { useI18n } from "../../../lib/i18n";
 import type { OperationRun, StringSetter } from "../types";
 

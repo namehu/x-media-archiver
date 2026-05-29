@@ -1,5 +1,5 @@
 import type { ArchiveSource } from "../../../lib/api";
-import { Badge } from "../../../components/ui-next/badge";
+import { Badge } from "../../../components/ui/badge";
 import { formatDateTime } from "../../../lib/utils";
 import { formatElapsed, formatRunRange, scanStatusLabel, scanStatusTone, scanTriggerLabel, type TFunction } from "../utils";
 

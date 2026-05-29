@@ -5,12 +5,12 @@ import { apiGet, type Summary } from "../lib/api";
 import { useI18n, useFormatters } from "../lib/i18n";
 import { formatBytes, formatDateTime } from "../lib/utils";
 import { useServerEvents } from "../hooks/useServerEvents";
-import { Badge } from "../components/ui-next/badge";
-import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "../components/ui-next/card";
-import { LiveIndicator } from "../components/ui-next/live-indicator";
-import { Skeleton } from "../components/ui-next/skeleton";
-import { StatCard } from "../components/ui-next/stat-card";
-import { StatusDot } from "../components/ui-next/status-dot";
+import { Badge } from "../components/ui/badge";
+import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "../components/ui/card";
+import { LiveIndicator } from "../components/ui/live-indicator";
+import { Skeleton } from "../components/ui/skeleton";
+import { StatCard } from "../components/ui/stat-card";
+import { StatusDot } from "../components/ui/status-dot";
 
 const StatusDistributionCard = lazy(() =>
   import("./dashboard/DashboardCharts").then((module) => ({ default: module.StatusDistributionCard })),

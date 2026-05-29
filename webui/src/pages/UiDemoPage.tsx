@@ -1,26 +1,26 @@
 import { Box, Database, Search } from "lucide-react";
-import { Badge } from "../components/ui-next/badge";
-import { Button } from "../components/ui-next/button";
-import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "../components/ui-next/card";
-import { EmptyState } from "../components/ui-next/empty-state";
-import { ErrorState } from "../components/ui-next/error-state";
-import { Input } from "../components/ui-next/input";
-import { LiveIndicator } from "../components/ui-next/live-indicator";
-import { ProgressRing } from "../components/ui-next/progress-ring";
-import { Skeleton } from "../components/ui-next/skeleton";
-import { Sparkline } from "../components/ui-next/sparkline";
-import { StatCard } from "../components/ui-next/stat-card";
-import { StatusDot } from "../components/ui-next/status-dot";
-import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "../components/ui-next/table";
-import { Tabs, TabsContent, TabsList, TabsTrigger } from "../components/ui-next/tabs";
-import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from "../components/ui-next/tooltip";
+import { Badge } from "../components/ui/badge";
+import { Button } from "../components/ui/button";
+import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "../components/ui/card";
+import { EmptyState } from "../components/ui/empty-state";
+import { ErrorState } from "../components/ui/error-state";
+import { Input } from "../components/ui/input";
+import { LiveIndicator } from "../components/ui/live-indicator";
+import { ProgressRing } from "../components/ui/progress-ring";
+import { Skeleton } from "../components/ui/skeleton";
+import { Sparkline } from "../components/ui/sparkline";
+import { StatCard } from "../components/ui/stat-card";
+import { StatusDot } from "../components/ui/status-dot";
+import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "../components/ui/table";
+import { Tabs, TabsContent, TabsList, TabsTrigger } from "../components/ui/tabs";
+import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from "../components/ui/tooltip";
 
-export function UiNextDemoPage() {
+export function UiDemoPage() {
   return (
     <TooltipProvider>
       <div className="space-y-6">
         <div>
-          <h1 className="text-2xl font-bold text-fg-primary">ui-next preview</h1>
+          <h1 className="text-2xl font-bold text-fg-primary">ui preview</h1>
           <p className="mt-1 text-sm text-fg-secondary">Phase 4 token, component, and interaction sandbox.</p>
         </div>
 

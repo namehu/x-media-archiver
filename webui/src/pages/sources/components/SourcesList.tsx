@@ -1,8 +1,8 @@
 import type { ArchiveSource, SourcePageResponse } from "../../../lib/api";
-import { Badge } from "../../../components/ui-next/badge";
-import { Card, CardContent, CardHeader, CardTitle } from "../../../components/ui-next/card";
-import { Pagination } from "../../../components/ui-next/pagination";
-import { Select } from "../../../components/ui-next/select";
+import { Badge } from "../../../components/ui/badge";
+import { Card, CardContent, CardHeader, CardTitle } from "../../../components/ui/card";
+import { Pagination } from "../../../components/ui/pagination";
+import { Select } from "../../../components/ui/select";
 import { SOURCE_TYPES, sourceStatusTone, sourceTypeLabel, type TFunction } from "../utils";
 import { SOURCES_PAGE_SIZE } from "../hooks/useSourcesQuery";
 

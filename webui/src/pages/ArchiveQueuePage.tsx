@@ -5,19 +5,19 @@ import { apiGet, apiPost, type ArchiveRun, type ArchiveRunDetail, type ArchiveRu
 import { useFormatters, useI18n } from "../lib/i18n";
 import { formatDateTime } from "../lib/utils";
 import { useServerEvents } from "../hooks/useServerEvents";
-import { Badge, type BadgeProps } from "../components/ui-next/badge";
-import { Button } from "../components/ui-next/button";
-import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "../components/ui-next/card";
-import { ErrorState } from "../components/ui-next/error-state";
-import { Input } from "../components/ui-next/input";
-import { LiveIndicator } from "../components/ui-next/live-indicator";
-import { Pagination } from "../components/ui-next/pagination";
-import { ProgressRing } from "../components/ui-next/progress-ring";
-import { Skeleton } from "../components/ui-next/skeleton";
-import { StatCard } from "../components/ui-next/stat-card";
-import { StatusDot } from "../components/ui-next/status-dot";
-import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "../components/ui-next/table";
-import { Tabs, TabsContent, TabsList, TabsTrigger } from "../components/ui-next/tabs";
+import { Badge, type BadgeProps } from "../components/ui/badge";
+import { Button } from "../components/ui/button";
+import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "../components/ui/card";
+import { ErrorState } from "../components/ui/error-state";
+import { Input } from "../components/ui/input";
+import { LiveIndicator } from "../components/ui/live-indicator";
+import { Pagination } from "../components/ui/pagination";
+import { ProgressRing } from "../components/ui/progress-ring";
+import { Skeleton } from "../components/ui/skeleton";
+import { StatCard } from "../components/ui/stat-card";
+import { StatusDot } from "../components/ui/status-dot";
+import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "../components/ui/table";
+import { Tabs, TabsContent, TabsList, TabsTrigger } from "../components/ui/tabs";
 
 type ParsedLine = {
   line: number;

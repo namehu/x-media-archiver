@@ -1,10 +1,10 @@
 import * as React from "react";
 import type { ArchiveSource, ArchiveSubmission, DownloadPolicy } from "../../../lib/api";
-import { Badge } from "../../../components/ui-next/badge";
-import { Button } from "../../../components/ui-next/button";
-import { Card, CardContent, CardHeader, CardTitle } from "../../../components/ui-next/card";
-import { Input } from "../../../components/ui-next/input";
-import { Tabs, TabsContent, TabsList, TabsTrigger } from "../../../components/ui-next/tabs";
+import { Badge } from "../../../components/ui/badge";
+import { Button } from "../../../components/ui/button";
+import { Card, CardContent, CardHeader, CardTitle } from "../../../components/ui/card";
+import { Input } from "../../../components/ui/input";
+import { Tabs, TabsContent, TabsList, TabsTrigger } from "../../../components/ui/tabs";
 import { formatDateTime } from "../../../lib/utils";
 import { SourceScanHistoryTab } from "./SourceScanHistoryTab";
 import { SourceTweetsTab } from "./SourceTweetsTab";

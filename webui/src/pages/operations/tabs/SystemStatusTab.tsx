@@ -1,11 +1,11 @@
 import { Link } from "react-router-dom";
 import { Activity, AlertTriangle, Lock, Wrench } from "lucide-react";
 import type { HealthDetail } from "../../../lib/api";
-import { Badge } from "../../../components/ui-next/badge";
-import { Card, CardContent, CardHeader, CardTitle } from "../../../components/ui-next/card";
-import { EmptyState } from "../../../components/ui-next/empty-state";
-import { ErrorState } from "../../../components/ui-next/error-state";
-import { StatCard } from "../../../components/ui-next/stat-card";
+import { Badge } from "../../../components/ui/badge";
+import { Card, CardContent, CardHeader, CardTitle } from "../../../components/ui/card";
+import { EmptyState } from "../../../components/ui/empty-state";
+import { ErrorState } from "../../../components/ui/error-state";
+import { StatCard } from "../../../components/ui/stat-card";
 import { useI18n } from "../../../lib/i18n";
 import { formatDateTime } from "../../../lib/utils";
 import { formatError, stringOrNumber, textValue } from "../utils";

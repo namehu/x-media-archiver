@@ -1,8 +1,8 @@
 import { useEffect, useState } from "react";
-import { Button } from "../../../components/ui-next/button";
-import { Card, CardContent, CardHeader, CardTitle } from "../../../components/ui-next/card";
-import { Input } from "../../../components/ui-next/input";
-import { Select } from "../../../components/ui-next/select";
+import { Button } from "../../../components/ui/button";
+import { Card, CardContent, CardHeader, CardTitle } from "../../../components/ui/card";
+import { Input } from "../../../components/ui/input";
+import { Select } from "../../../components/ui/select";
 import { inferSourceType, SOURCE_TYPES, type TFunction } from "../utils";
 
 export function CreateSource({

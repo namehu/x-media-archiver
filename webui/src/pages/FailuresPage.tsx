@@ -6,22 +6,22 @@ import type { ColumnDef } from "@tanstack/react-table";
 import { apiGet, apiPost, type ActionResponse, type FailureRow, type PageResponse } from "../lib/api";
 import { useFormatters, useI18n } from "../lib/i18n";
 import { formatDateTime } from "../lib/utils";
-import { Badge, type BadgeProps } from "../components/ui-next/badge";
-import { Button } from "../components/ui-next/button";
-import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "../components/ui-next/card";
-import { Checkbox } from "../components/ui-next/checkbox";
-import { DataTable } from "../components/ui-next/data-table";
+import { Badge, type BadgeProps } from "../components/ui/badge";
+import { Button } from "../components/ui/button";
+import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "../components/ui/card";
+import { Checkbox } from "../components/ui/checkbox";
+import { DataTable } from "../components/ui/data-table";
 import {
   DropdownMenu,
   DropdownMenuContent,
   DropdownMenuItem,
   DropdownMenuTrigger,
-} from "../components/ui-next/dropdown-menu";
-import { EmptyState } from "../components/ui-next/empty-state";
-import { ErrorState } from "../components/ui-next/error-state";
-import { Pagination } from "../components/ui-next/pagination";
-import { Skeleton } from "../components/ui-next/skeleton";
-import { StatCard } from "../components/ui-next/stat-card";
+} from "../components/ui/dropdown-menu";
+import { EmptyState } from "../components/ui/empty-state";
+import { ErrorState } from "../components/ui/error-state";
+import { Pagination } from "../components/ui/pagination";
+import { Skeleton } from "../components/ui/skeleton";
+import { StatCard } from "../components/ui/stat-card";
 
 const PAGE_SIZE = 100;
 const REQUEUE_STATUSES = ["failed_retryable", "missing", "corrupt", "failed_permanent"];

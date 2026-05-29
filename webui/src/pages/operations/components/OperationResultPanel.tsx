@@ -1,7 +1,7 @@
 import type { ActionResponse } from "../../../lib/api";
-import { Badge } from "../../../components/ui-next/badge";
-import { Card, CardContent, CardHeader, CardTitle } from "../../../components/ui-next/card";
-import { ErrorState } from "../../../components/ui-next/error-state";
+import { Badge } from "../../../components/ui/badge";
+import { Card, CardContent, CardHeader, CardTitle } from "../../../components/ui/card";
+import { ErrorState } from "../../../components/ui/error-state";
 import { useI18n } from "../../../lib/i18n";
 import { actionLabel, errorMessage, resultSummaryItems, textValue } from "../utils";
 

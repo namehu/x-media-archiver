@@ -1,8 +1,8 @@
 import { RotateCcw } from "lucide-react";
-import { Button } from "../../../components/ui-next/button";
-import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "../../../components/ui-next/card";
-import { Checkbox } from "../../../components/ui-next/checkbox";
-import { Input } from "../../../components/ui-next/input";
+import { Button } from "../../../components/ui/button";
+import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "../../../components/ui/card";
+import { Checkbox } from "../../../components/ui/checkbox";
+import { Input } from "../../../components/ui/input";
 import { useI18n } from "../../../lib/i18n";
 import { REQUEUE_STATUSES, type BooleanSetter, type OperationRun, type RequeueStatusesSetter, type StringSetter } from "../types";
 import { numberOrNull } from "../utils";

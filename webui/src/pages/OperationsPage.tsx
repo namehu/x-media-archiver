@@ -1,5 +1,5 @@
-import { Badge } from "../components/ui-next/badge";
-import { Tabs, TabsContent, TabsList, TabsTrigger } from "../components/ui-next/tabs";
+import { Badge } from "../components/ui/badge";
+import { Tabs, TabsContent, TabsList, TabsTrigger } from "../components/ui/tabs";
 import { useI18n } from "../lib/i18n";
 import { OperationResultPanel } from "./operations/components/OperationResultPanel";
 import { useMaintenanceOps } from "./operations/hooks/useMaintenanceOps";
