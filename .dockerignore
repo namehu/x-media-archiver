@@ -1,0 +1,29 @@
+# Build context is the repository root. Keep webui/ (stage 1 builds it), sql/ and cli/.
+.git
+.github
+.gitignore
+
+# Local data and secrets must never enter the image.
+archive
+secrets
+.env
+.env.*
+pg_data
+
+# Node / build artifacts (the WebUI is rebuilt inside stage 1).
+**/node_modules
+webui/dist
+webui/.openapi.json
+extension
+
+# Docs, examples and dev-only files are not needed at runtime.
+docs
+examples
+
+# Python / tooling caches.
+**/__pycache__
+*.py[cod]
+.pytest_cache
+.ruff_cache
+*.log
+.*.log

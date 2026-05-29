@@ -3,13 +3,15 @@ from __future__ import annotations
 from contextlib import asynccontextmanager
 import logging
 import os
+from pathlib import Path
 import socket
 from threading import Thread
 import uuid
 
-from fastapi import FastAPI, Request
+from fastapi import FastAPI, HTTPException, Request
 from fastapi.middleware.cors import CORSMiddleware
-from fastapi.responses import JSONResponse
+from fastapi.responses import FileResponse, JSONResponse
+from fastapi.staticfiles import StaticFiles
 from starlette.exceptions import HTTPException as StarletteHTTPException
 
 from xarchiver.api.deps import stop_worker
@@ -101,7 +103,37 @@ def create_app() -> FastAPI:
     app.include_router(maintenance.router, prefix="/api/v1")
     app.include_router(misc.router, prefix="/api/v1")
 
+    mount_webui(app)
+
     return app
+
+
+def mount_webui(app: FastAPI) -> None:
+    """Serve the built WebUI from the same origin when its dist directory is present.
+
+    The catch-all is registered after the API routers so /api/v1/* and /health keep
+    priority. When the dist directory is absent (local dev, backend tests) nothing is
+    mounted and the API behaves exactly as before.
+    """
+    dist = Path(os.environ.get("WEBUI_DIST", "/app/webui"))
+    index_file = dist / "index.html"
+    if not index_file.is_file():
+        return
+
+    assets_dir = dist / "assets"
+    if assets_dir.is_dir():
+        app.mount("/assets", StaticFiles(directory=assets_dir), name="assets")
+
+    @app.get("/{full_path:path}", include_in_schema=False)
+    def spa_fallback(full_path: str) -> FileResponse:
+        # API and health routes are matched earlier; anything reaching here that
+        # still looks like an API path must 404 as JSON, not fall back to index.html.
+        if full_path == "health" or full_path == "api" or full_path.startswith("api/"):
+            raise HTTPException(status_code=404, detail="not_found")
+        candidate = (dist / full_path).resolve()
+        if dist.resolve() in candidate.parents and candidate.is_file():
+            return FileResponse(candidate)
+        return FileResponse(index_file)
 
 
 def make_worker_id() -> str:

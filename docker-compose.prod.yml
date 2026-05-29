@@ -1,0 +1,50 @@
+# Production deployment: pull the pre-built self-contained image and run it
+# alongside a bundled Postgres. The server serves both the API and the WebUI.
+#
+#   1. Copy .env.production.example to .env.production and edit the secrets.
+#   2. Put X/Twitter cookies at ./secrets/cookies.txt (Netscape format).
+#   3. docker compose --env-file .env.production -f docker-compose.prod.yml up -d
+#
+# NOTE: always pass --env-file .env.production. Compose only auto-loads a file
+# named ".env"; the ${POSTGRES_PASSWORD} interpolation below is resolved at
+# compose parse time and needs the file passed explicitly (the env_file: key
+# only injects vars into the container, not into compose interpolation).
+#
+# To use an external Postgres (e.g. Supabase) instead of the bundled one:
+#   - point DATABASE_URL in .env.production at the external database,
+#   - remove the `postgres` service and the `depends_on` block below.
+
+services:
+  postgres:
+    image: postgres:16
+    environment:
+      POSTGRES_DB: ${POSTGRES_DB:-xarchiver}
+      POSTGRES_USER: ${POSTGRES_USER:-xarchiver}
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:?set POSTGRES_PASSWORD in .env.production}
+    volumes:
+      - pg_data:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U ${POSTGRES_USER:-xarchiver} -d ${POSTGRES_DB:-xarchiver}"]
+      interval: 5s
+      timeout: 5s
+      retries: 10
+    restart: unless-stopped
+
+  app:
+    # Replace with docker.io/<your-dockerhub-user>/x-media-archiver, or pin a
+    # specific version tag (e.g. :1.0.0) instead of :latest.
+    image: ghcr.io/namehu/x-media-archiver:latest
+    env_file:
+      - .env.production
+    ports:
+      - "127.0.0.1:${API_PORT:-8000}:8000"
+    volumes:
+      - ./archive:/app/archive
+      - ./secrets:/app/secrets:ro
+    depends_on:
+      postgres:
+        condition: service_healthy
+    restart: unless-stopped
+
+volumes:
+  pg_data:
