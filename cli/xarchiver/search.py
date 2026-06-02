@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 from xarchiver.db import connect
+from xarchiver.row_models import SearchMediaRow
 
 
 def search_media(
@@ -11,12 +12,12 @@ def search_media(
     media_type: str | None = None,
     limit: int = 20,
     offset: int = 0,
-) -> list[dict[str, object]]:
+) -> list[SearchMediaRow]:
     sql, params = build_search_query(author, text, tweet_status, media_status, media_type, limit, offset)
     with connect() as conn:
         with conn.cursor() as cur:
             cur.execute(sql, params)
-            return list(cur.fetchall())
+            return [SearchMediaRow.model_validate(dict(row)) for row in cur.fetchall()]
 
 
 def count_search_media(

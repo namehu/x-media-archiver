@@ -12,6 +12,7 @@ from xarchiver.exporter import (
     fetch_duplicate_rows,
     fetch_export_rows,
 )
+from xarchiver.row_models import RowModel
 from xarchiver.search import count_search_media, search_media
 from xarchiver.status import get_media_count, get_media_status_counts, get_status_counts
 
@@ -211,7 +212,7 @@ def list_recent_exports(archive_dir: Path, limit: int = 5) -> list[dict[str, obj
     ]
 
 
-def attach_media_url(row: dict[str, object], archive_dir: Path) -> dict[str, object]:
+def attach_media_url(row: dict[str, object] | RowModel, archive_dir: Path) -> dict[str, object]:
     values = dict(row)
     local_path = values.get("local_path")
     relative_path = archive_relative_path(local_path, archive_dir)
