@@ -12,6 +12,7 @@ from psycopg.types.json import Jsonb
 
 from xarchiver.archive import normalize_path
 from xarchiver.db import connect
+from xarchiver.row_models import IdRow
 
 
 MEDIA_EXTENSIONS = {".jpg", ".jpeg", ".png", ".gif", ".webp", ".mp4", ".mov", ".m4v"}
@@ -335,7 +336,7 @@ def upsert_media_assets(assets: list[MediaAsset]) -> list[int]:
                         Jsonb(asset.raw_metadata),
                     ),
                 )
-                media_ids.append(int(cur.fetchone()["id"]))
+                media_ids.append(IdRow.model_validate(dict(cur.fetchone())).id)
         conn.commit()
     return media_ids
 

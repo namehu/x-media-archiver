@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 from xarchiver.db import connect
+from xarchiver.row_models import TweetIdRow
 
 
 DEFAULT_REQUEUE_STATUSES = ["failed_retryable", "missing", "corrupt"]
@@ -108,4 +109,4 @@ def fetch_requeue_candidates(statuses: list[str], limit: int | None) -> list[str
     with connect() as conn:
         with conn.cursor() as cur:
             cur.execute(sql, params)
-            return [str(row["tweet_id"]) for row in cur.fetchall()]
+            return [row.tweet_id for row in (TweetIdRow.model_validate(dict(row)) for row in cur.fetchall())]

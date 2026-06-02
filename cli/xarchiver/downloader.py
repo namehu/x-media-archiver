@@ -15,6 +15,7 @@ from xarchiver.core.errors import (
 )
 from xarchiver.db import connect
 from xarchiver.media import backfill_media_assets
+from xarchiver.row_models import DownloadCandidateRow, IdRow
 
 
 SUPPORTED_ENGINES = {"gallery-dl", "yt-dlp"}
@@ -245,7 +246,7 @@ def fetch_download_candidates(
     retry_limit: int | None = None,
     retry_backoff_minutes: int = 0,
     tweet_ids: list[str] | None = None,
-) -> list[dict[str, str]]:
+) -> list[DownloadCandidateRow]:
     sql = """
         select tweet_id, url
         from tweets
@@ -275,7 +276,7 @@ def fetch_download_candidates(
     with connect() as conn:
         with conn.cursor() as cur:
             cur.execute(sql, tuple(params))
-            return list(cur.fetchall())
+            return [DownloadCandidateRow.model_validate(dict(row)) for row in cur.fetchall()]
 
 
 def write_input_file(archive_dir: Path, engine: str, urls: list[str]) -> Path:
@@ -372,7 +373,7 @@ def create_job(
                 """,
                 (engine, normalize_path(input_path), status, total_count, archive_run_id),
             )
-            job_id = int(cur.fetchone()["id"])
+            job_id = IdRow.model_validate(dict(cur.fetchone())).id
         conn.commit()
         return job_id
 

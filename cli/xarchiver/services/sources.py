@@ -18,6 +18,18 @@ from xarchiver.core.errors import ErrorCategory, category_value, classify_x_erro
 from xarchiver.core.events import publish_event
 from xarchiver.db import connect
 from xarchiver.importer import extract_tweet_id, upsert_tweets
+from xarchiver.row_models import (
+    ArchiveSourceListRow,
+    ArchiveSourceRow,
+    CursorStateRow,
+    IdRow,
+    InsertedFlagRow,
+    RawPayloadRow,
+    SourceDiscoveryRow,
+    SourceScanRunRow,
+    SourceScanSummaryRow,
+    TweetRow,
+)
 from xarchiver.services.queue import has_pending_download_work, submit_archive_batch
 
 VALID_SOURCE_TYPES = {"profile", "user_media", "likes", "bookmarks", "search", "manual"}
@@ -81,7 +93,7 @@ def create_source(
                 """,
                 (source_type, source_url, label, author_username),
             )
-            row = dict(cur.fetchone())
+            row = dict(ArchiveSourceRow.model_validate(dict(cur.fetchone())))
         conn.commit()
     publish_event(
         "sources",
@@ -96,7 +108,7 @@ def list_sources(
     source_type: str | None = None,
     limit: int = 50,
     offset: int = 0,
-) -> list[dict[str, object]]:
+) -> list[ArchiveSourceListRow]:
     where, params = build_source_filters(status=status, source_type=source_type)
     params.extend([limit, offset])
     with connect() as conn:
@@ -117,7 +129,7 @@ def list_sources(
                 """,
                 tuple(params),
             )
-            return [dict(row) for row in cur.fetchall()]
+            return [ArchiveSourceListRow.model_validate(dict(row)) for row in cur.fetchall()]
 
 
 def list_sources_page(
@@ -185,6 +197,7 @@ def get_source(source_id: int) -> dict[str, object] | None:
             source = cur.fetchone()
             if source is None:
                 return None
+            source_row = ArchiveSourceListRow.model_validate(dict(source))
             cur.execute(
                 """
                 select d.id, d.tweet_id, d.archive_run_id, d.discovered_at, t.download_status,
@@ -197,7 +210,10 @@ def get_source(source_id: int) -> dict[str, object] | None:
                 """,
                 (source_id,),
             )
-            discovered = [dict(row) for row in cur.fetchall()]
+            discovered = [
+                dict(SourceDiscoveryRow.model_validate(dict(row)))
+                for row in cur.fetchall()
+            ]
             cur.execute(
                 """
                 select (count(*) filter (where status <> 'waiting_downloads'))::int as batch_count,
@@ -213,7 +229,7 @@ def get_source(source_id: int) -> dict[str, object] | None:
                 """,
                 (source_id,),
             )
-            scan_summary = dict(cur.fetchone())
+            scan_summary = dict(SourceScanSummaryRow.model_validate(dict(cur.fetchone())))
             cur.execute(
                 """
                 select id, trigger_type, status, range_start, range_end, requested_limit,
@@ -227,8 +243,16 @@ def get_source(source_id: int) -> dict[str, object] | None:
                 """,
                 (source_id,),
             )
-            scan_runs = [dict(row) for row in cur.fetchall()]
-    return {**dict(source), "discovered": discovered, "scan_summary": scan_summary, "scan_runs": scan_runs}
+            scan_runs = [
+                dict(SourceScanRunRow.model_validate(dict(row)))
+                for row in cur.fetchall()
+            ]
+    return {
+        **dict(source_row),
+        "discovered": discovered,
+        "scan_summary": scan_summary,
+        "scan_runs": scan_runs,
+    }
 
 
 def update_source_status(source_id: int, status: str) -> dict[str, object]:
@@ -256,7 +280,7 @@ def update_source_status(source_id: int, status: str) -> dict[str, object]:
                 """,
                 (status, Jsonb(cursor_state), automation_enabled and status == "active", source_id),
             )
-            row = cur.fetchone()
+            row = ArchiveSourceRow.model_validate(dict(cur.fetchone()))
         conn.commit()
     publish_event("sources", "source.status_changed", {"source_id": source_id, "status": status})
     return dict(row)
@@ -435,7 +459,7 @@ def fetch_due_history_source() -> dict[str, object] | None:
                 """
             )
             row = cur.fetchone()
-            return dict(row) if row else None
+            return dict(ArchiveSourceRow.model_validate(dict(row))) if row else None
 
 
 def schedule_next_history_scan(source_id: int, settings: Settings, state: str) -> None:
@@ -534,7 +558,7 @@ def start_source_scan_run(
                 )
             except UniqueViolation as exc:
                 raise ValueError("source_scan_in_progress") from exc
-            run_id = int(cur.fetchone()["id"])
+            run_id = IdRow.model_validate(dict(cur.fetchone())).id
         conn.commit()
     publish_event(
         "source_scans",
@@ -989,7 +1013,7 @@ def update_source_cursor(
                 """,
                 (Jsonb(progress_state), completed, source_id),
             )
-            cursor_state = dict(cur.fetchone()["cursor_state"])
+            cursor_state = CursorStateRow.model_validate(dict(cur.fetchone())).cursor_state
         conn.commit()
     return cursor_state
 
@@ -1166,8 +1190,13 @@ def record_source_discoveries(
                     "select raw_payload from source_discovered_tweets where source_id = %s and tweet_id = %s",
                     (source_id, tweet_id),
                 )
-                existing = cur.fetchone()
-                payload = merge_discovery_payload(existing["raw_payload"] if existing else None, record)
+                existing_row = cur.fetchone()
+                existing = (
+                    RawPayloadRow.model_validate(dict(existing_row))
+                    if existing_row
+                    else None
+                )
+                payload = merge_discovery_payload(existing.raw_payload if existing else None, record)
                 cur.execute(
                     """
                     insert into source_discovered_tweets (
@@ -1180,7 +1209,7 @@ def record_source_discoveries(
                     """,
                     (source_id, tweet_id, Jsonb(payload)),
                 )
-                if cur.fetchone()["inserted"]:
+                if InsertedFlagRow.model_validate(dict(cur.fetchone())).inserted:
                     inserted += 1
             cur.execute(
                 """
@@ -1316,7 +1345,7 @@ def fetch_unsubmitted_discoveries(
     source_id: int,
     limit: int | None = None,
     tweet_ids: list[str] | None = None,
-) -> list[dict[str, object]]:
+) -> list[TweetRow]:
     filters = ["d.source_id = %s", "d.archive_run_id is null"]
     params: list[object] = [source_id]
     if tweet_ids is not None:
@@ -1335,7 +1364,7 @@ def fetch_unsubmitted_discoveries(
     with connect() as conn:
         with conn.cursor() as cur:
             cur.execute(sql, tuple(params))
-            return [dict(row) for row in cur.fetchall()]
+            return [TweetRow.model_validate(dict(row)) for row in cur.fetchall()]
 
 
 def classify_source_error(stderr: str | None) -> str:

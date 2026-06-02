@@ -11,7 +11,18 @@ from xarchiver.config import Settings
 from xarchiver.core.events import publish_event
 from xarchiver.db import connect
 from xarchiver.importer import extract_tweet_id, parse_jsonl_rows, parse_url_rows, upsert_tweets
-from xarchiver.row_models import ArchiveRunAttemptRow, ArchiveRunItemRow, ArchiveRunRow
+from xarchiver.row_models import (
+    ArchiveClaimedItemRow,
+    ArchiveRunAttemptRow,
+    ArchiveRunItemRow,
+    ArchiveRunRow,
+    DownloadStatusRow,
+    IdRow,
+    LatestItemErrorRow,
+    StatusCountRow,
+    TweetStatusRow,
+    UrlRow,
+)
 from xarchiver.services.library import get_library_snapshot
 from xarchiver.workflow import process_tweet_scope
 
@@ -93,12 +104,12 @@ def submit_archive_batch(
                     ),
                 ),
             )
-            run_id = int(cur.fetchone()["id"])
+            run_id = IdRow.model_validate(dict(cur.fetchone())).id
             for row in unique_rows:
                 tweet_id = str(row["tweet_id"])
                 cur.execute("select pg_advisory_xact_lock(hashtextextended(%s, 0))", (tweet_id,))
                 cur.execute("select download_status from tweets where tweet_id = %s for update", (tweet_id,))
-                tweet_status = str(cur.fetchone()["download_status"])
+                tweet_status = DownloadStatusRow.model_validate(dict(cur.fetchone())).download_status
                 cur.execute(
                     """
                     select id from archive_run_items
@@ -107,14 +118,15 @@ def submit_archive_batch(
                     """,
                     (tweet_id,),
                 )
-                active_item = cur.fetchone()
+                active_item_row = cur.fetchone()
+                active_item = IdRow.model_validate(dict(active_item_row)) if active_item_row else None
                 linked_id = None
                 if tweet_status == "verified":
                     item_status = "skipped_verified"
                     counts["skipped_verified_count"] += 1
                 elif active_item is not None:
                     item_status = "linked_pending"
-                    linked_id = int(active_item["id"])
+                    linked_id = active_item.id
                     counts["linked_pending_count"] += 1
                 else:
                     item_status = "pending"
@@ -212,7 +224,10 @@ def fetch_tweet_statuses(tweet_ids: list[str]) -> dict[str, str]:
     with connect() as conn:
         with conn.cursor() as cur:
             cur.execute("select tweet_id, download_status from tweets where tweet_id = any(%s)", (tweet_ids,))
-            return {str(row["tweet_id"]): str(row["download_status"]) for row in cur.fetchall()}
+            return {
+                row.tweet_id: row.download_status
+                for row in (TweetStatusRow.model_validate(dict(row)) for row in cur.fetchall())
+            }
 
 
 def has_pending_download_work() -> bool:
@@ -263,7 +278,11 @@ def process_next_queued_run(settings: Settings, worker_id: str | None = None) ->
     return detail
 
 
-def claim_next_items(retry_limit: int, batch_size: int = 20, worker_id: str | None = None) -> list[dict[str, object]]:
+def claim_next_items(
+    retry_limit: int,
+    batch_size: int = 20,
+    worker_id: str | None = None,
+) -> list[ArchiveClaimedItemRow]:
     batch_size = max(1, int(batch_size))
     with connect() as conn:
         with conn.cursor() as cur:
@@ -308,7 +327,7 @@ def claim_next_items(retry_limit: int, batch_size: int = 20, worker_id: str | No
                 """,
                 (retry_limit, retry_limit, batch_size, worker_id, LEASE_SECONDS),
             )
-            rows = list(cur.fetchall())
+            rows = [ArchiveClaimedItemRow.model_validate(dict(row)) for row in cur.fetchall()]
             if rows:
                 run_id = int(rows[0]["archive_run_id"])
                 cur.execute(
@@ -470,7 +489,7 @@ def count_run_items(run_id: int) -> dict[str, int]:
                 "select status, count(*) as count from archive_run_items where archive_run_id = %s group by status",
                 (run_id,),
             )
-            rows = list(cur.fetchall())
+            rows = [StatusCountRow.model_validate(dict(row)) for row in cur.fetchall()]
     for row in rows:
         status = str(row["status"])
         value = int(row["count"])
@@ -507,7 +526,13 @@ def fetch_latest_item_errors(item_ids: list[int]) -> dict[int, dict[str, object]
                 """,
                 (item_ids,),
             )
-            return {int(row["archive_run_item_id"]): dict(row) for row in cur.fetchall()}
+            return {
+                int(row.archive_run_item_id): dict(row)
+                for row in (
+                    LatestItemErrorRow.model_validate(dict(row))
+                    for row in cur.fetchall()
+                )
+            }
 
 
 def build_run_result(
@@ -708,7 +733,7 @@ def submit_requeue_batch(statuses: list[str], limit: int | None = None) -> dict[
     with connect() as conn:
         with conn.cursor() as cur:
             cur.execute(sql, params)
-            rows = list(cur.fetchall())
+            rows = [UrlRow.model_validate(dict(row)) for row in cur.fetchall()]
     if not rows:
         return {"requeued": 0, "statuses": statuses}
     tweet_ids = [extract_tweet_id(str(row["url"])) for row in rows]
@@ -716,7 +741,7 @@ def submit_requeue_batch(statuses: list[str], limit: int | None = None) -> dict[
     return submit_archive_batch([{"url": row["url"]} for row in rows], "manual_requeue")
 
 
-def fetch_retry_urls(run_id: int) -> list[dict[str, object]]:
+def fetch_retry_urls(run_id: int) -> list[UrlRow]:
     with connect() as conn:
         with conn.cursor() as cur:
             cur.execute(
@@ -728,7 +753,7 @@ def fetch_retry_urls(run_id: int) -> list[dict[str, object]]:
                 """,
                 (run_id,),
             )
-            return list(cur.fetchall())
+            return [UrlRow.model_validate(dict(row)) for row in cur.fetchall()]
 
 
 def reset_tweets_for_retry(tweet_ids: list[str]) -> None:

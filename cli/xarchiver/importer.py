@@ -7,6 +7,7 @@ import orjson
 from psycopg.types.json import Jsonb
 
 from xarchiver.db import connect
+from xarchiver.row_models import TweetStatusRow
 
 
 def import_urls(path: Path, source_type: str = "url_list", source_url: str | None = None) -> int:
@@ -112,7 +113,10 @@ def fetch_existing_tweet_statuses(tweet_ids: list[str]) -> dict[str, str]:
                 "select tweet_id, download_status from tweets where tweet_id = any(%s)",
                 (tweet_ids,),
             )
-            return {str(row["tweet_id"]): str(row["download_status"]) for row in cur.fetchall()}
+            return {
+                row.tweet_id: row.download_status
+                for row in (TweetStatusRow.model_validate(dict(row)) for row in cur.fetchall())
+            }
 
 
 def upsert_tweets(rows: list[dict[str, Any]], connection: Any | None = None) -> None:

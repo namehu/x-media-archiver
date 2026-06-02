@@ -2,6 +2,12 @@ from __future__ import annotations
 
 from xarchiver.api.deps import stop_worker, write_lock_held
 from xarchiver.db import connect, get_pool_stats
+from xarchiver.row_models import (
+    QueueLatestRunRow,
+    RecentErrorRow,
+    SourceLatestScanRow,
+    StatusCountRow,
+)
 
 
 def get_health_detail() -> dict[str, object]:
@@ -28,7 +34,10 @@ def get_queue_summary(cur) -> dict[str, object]:
         group by status
         """
     )
-    item_counts = {str(row["status"]): int(row["count"]) for row in cur.fetchall()}
+    item_counts = {
+        row.status: row.count
+        for row in (StatusCountRow.model_validate(dict(row)) for row in cur.fetchall())
+    }
 
     cur.execute(
         """
@@ -37,7 +46,10 @@ def get_queue_summary(cur) -> dict[str, object]:
         group by status
         """
     )
-    run_counts = {str(row["status"]): int(row["count"]) for row in cur.fetchall()}
+    run_counts = {
+        row.status: row.count
+        for row in (StatusCountRow.model_validate(dict(row)) for row in cur.fetchall())
+    }
 
     cur.execute(
         """
@@ -47,7 +59,12 @@ def get_queue_summary(cur) -> dict[str, object]:
         limit 1
         """
     )
-    latest_run = cur.fetchone()
+    latest_run_row = cur.fetchone()
+    latest_run = (
+        QueueLatestRunRow.model_validate(dict(latest_run_row))
+        if latest_run_row
+        else None
+    )
 
     return {
         "pending_items": item_counts.get("pending", 0),
@@ -68,7 +85,10 @@ def get_source_summary(cur) -> dict[str, object]:
         group by status
         """
     )
-    source_counts = {str(row["status"]): int(row["count"]) for row in cur.fetchall()}
+    source_counts = {
+        row.status: row.count
+        for row in (StatusCountRow.model_validate(dict(row)) for row in cur.fetchall())
+    }
 
     cur.execute(
         """
@@ -98,7 +118,12 @@ def get_source_summary(cur) -> dict[str, object]:
         limit 1
         """
     )
-    latest_scan = cur.fetchone()
+    latest_scan_row = cur.fetchone()
+    latest_scan = (
+        SourceLatestScanRow.model_validate(dict(latest_scan_row))
+        if latest_scan_row
+        else None
+    )
 
     return {
         "active_sources": source_counts.get("active", 0),
@@ -147,4 +172,4 @@ def get_recent_errors(cur, limit: int = 5) -> list[dict[str, object]]:
         """,
         (limit,),
     )
-    return [dict(row) for row in cur.fetchall()]
+    return [dict(RecentErrorRow.model_validate(dict(row))) for row in cur.fetchall()]

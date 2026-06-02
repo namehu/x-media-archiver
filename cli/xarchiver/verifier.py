@@ -5,6 +5,7 @@ from pathlib import Path
 
 from xarchiver.db import connect
 from xarchiver.media import sha256_file
+from xarchiver.row_models import DownloadStatusCountRow, VerifiableAssetRow
 
 
 VERIFY_MEDIA_STATUSES = ("downloaded", "verified", "missing", "corrupt")
@@ -32,7 +33,10 @@ def verify_media_assets(limit: int | None = None, media_ids: list[int] | None = 
     return counts
 
 
-def fetch_verifiable_assets(limit: int | None, media_ids: list[int] | None = None) -> list[dict[str, object]]:
+def fetch_verifiable_assets(
+    limit: int | None,
+    media_ids: list[int] | None = None,
+) -> list[VerifiableAssetRow]:
     sql = """
         select id, tweet_id, local_path, sha256
         from media_assets
@@ -50,10 +54,10 @@ def fetch_verifiable_assets(limit: int | None, media_ids: list[int] | None = Non
     with connect() as conn:
         with conn.cursor() as cur:
             cur.execute(sql, params)
-            return list(cur.fetchall())
+            return [VerifiableAssetRow.model_validate(dict(row)) for row in cur.fetchall()]
 
 
-def verify_asset(asset: dict[str, object]) -> VerificationResult:
+def verify_asset(asset: VerifiableAssetRow) -> VerificationResult:
     media_id = int(asset["id"])
     tweet_id = str(asset["tweet_id"])
     local_path = Path(str(asset["local_path"] or ""))
@@ -133,7 +137,13 @@ def update_tweet_statuses(tweet_ids: list[str]) -> None:
                     """,
                     (tweet_id,),
                 )
-                status_counts = {row["download_status"]: int(row["count"]) for row in cur.fetchall()}
+                status_counts = {
+                    row.download_status: row.count
+                    for row in (
+                        DownloadStatusCountRow.model_validate(dict(row))
+                        for row in cur.fetchall()
+                    )
+                }
                 next_status = aggregate_tweet_status(status_counts)
                 cur.execute(
                     """

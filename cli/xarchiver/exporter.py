@@ -9,6 +9,7 @@ from urllib.parse import quote
 
 from xarchiver.archive import ensure_archive_dirs
 from xarchiver.db import connect
+from xarchiver.row_models import DuplicateRow, ExportMediaRow, FailureRow
 
 
 CSV_FIELDS = [
@@ -156,7 +157,7 @@ def default_duplicates_export_path(archive_dir: Path) -> Path:
     return archive_dir / "exports" / f"duplicates-{timestamp}.csv"
 
 
-def fetch_export_rows(status: str | None) -> list[dict[str, object]]:
+def fetch_export_rows(status: str | None) -> list[ExportMediaRow]:
     sql = """
         select
             t.tweet_id,
@@ -191,10 +192,10 @@ def fetch_export_rows(status: str | None) -> list[dict[str, object]]:
     with connect() as conn:
         with conn.cursor() as cur:
             cur.execute(sql, params)
-            return list(cur.fetchall())
+            return [ExportMediaRow.model_validate(dict(row)) for row in cur.fetchall()]
 
 
-def fetch_failure_rows(limit: int | None = None, offset: int = 0) -> list[dict[str, object]]:
+def fetch_failure_rows(limit: int | None = None, offset: int = 0) -> list[FailureRow]:
     sql = """
         select
             t.tweet_id,
@@ -227,7 +228,7 @@ def fetch_failure_rows(limit: int | None = None, offset: int = 0) -> list[dict[s
     with connect() as conn:
         with conn.cursor() as cur:
             cur.execute(sql, tuple(params))
-            return list(cur.fetchall())
+            return [FailureRow.model_validate(dict(row)) for row in cur.fetchall()]
 
 
 def count_failure_rows() -> int:
@@ -243,7 +244,7 @@ def count_failure_rows() -> int:
             return int(cur.fetchone()["count"])
 
 
-def fetch_duplicate_rows(limit: int | None = None, offset: int = 0) -> list[dict[str, object]]:
+def fetch_duplicate_rows(limit: int | None = None, offset: int = 0) -> list[DuplicateRow]:
     sql = """
         with duplicate_hashes as (
             select sha256,
@@ -278,7 +279,7 @@ def fetch_duplicate_rows(limit: int | None = None, offset: int = 0) -> list[dict
     with connect() as conn:
         with conn.cursor() as cur:
             cur.execute(sql, tuple(params))
-            return list(cur.fetchall())
+            return [DuplicateRow.model_validate(dict(row)) for row in cur.fetchall()]
 
 
 def count_duplicate_rows() -> int:
