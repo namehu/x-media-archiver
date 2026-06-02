@@ -93,7 +93,10 @@ https://x.com/earthcurated/media
 
 每次实际扫描批次，以及因为下载队列仍在工作而跳过的批次尝试，都会写入
 `source_scan_runs`。记录中包含扫描范围、触发方式、执行结果、发现/新增/已存在 Tweet 数、
-媒体预估数、扫描前后 cursor 和失败摘要。随机等待下一轮的当前调度状态保存在
+媒体预估数、扫描前后 cursor、失败摘要，以及 `gallery-dl --verbose` 的最近日志尾部。
+运行中的批次会流式更新 `progress_message`、`log_tail` 和 `last_log_at`，WebUI 的
+log box 通过详情轮询展示这些信息。最终 Tweet 发现结果仍等 `gallery-dl` 完整返回后统一
+解析和落库，不提前提交半批结果。随机等待下一轮的当前调度状态保存在
 `archive_sources.cursor_state` 与 `next_scan_at` 中。
 如果 API 在一批扫描执行途中停止，下次启动会把遗留的执行中记录标记为中断失败，
 页面可以看到该批未正常完成，再由保存的 cursor 继续后续操作。
@@ -110,8 +113,8 @@ https://x.com/earthcurated/media
 
 ```env
 SOURCE_SCAN_BATCH_SIZE=20
-SOURCE_SCAN_SLEEP_MIN_SECONDS=20
-SOURCE_SCAN_SLEEP_MAX_SECONDS=45
+SOURCE_SCAN_SLEEP_MIN_SECONDS=2
+SOURCE_SCAN_SLEEP_MAX_SECONDS=6
 ```
 
 `SOURCE_SCAN_BATCH_SIZE` 在 native cursor 模式下表示每批目标 Tweet 窗口数量；一条
@@ -131,7 +134,7 @@ flowchart TD
     F --> G["保存 Tweet 正文<br/>及媒体数量/类型预估"]
     G --> H{"本批是否为空"}
     H -->|"非空"| I["推进 cursor<br/>例如下一批 41-60"]
-    I --> J["随机等待 20-45 秒"]
+    I --> J["随机等待 2-6 秒"]
     J --> C
     H -->|"为空"| K["历史扫描完成"]
     G --> L["未入队发现项"]
@@ -155,12 +158,13 @@ flowchart TD
 | 扫描发现媒体 | 扫描元数据中聚合得到的媒体项数量，下载前为预估信息 |
 | 未入队发现 | 已发现但尚未提交至下载队列的 Tweet 数量 |
 | 下一批范围 | 后台或手工继续扫描时将使用的范围 |
+| 扫描每批数量 | 来源历史扫描启动时保存到 `archive_sources.cursor_state.automation_limit`，刷新页面后从数据库回填 |
 | 历史扫描任务 | 后台任务是否运行、暂停、等待下载队列或已停止 |
 | 下次自动扫描 | 下一轮后台扫描计划执行时间 |
 | 累计扫描批次 | 实际发起过枚举的批次数；因下载队列忙而等待的事件不计入该数 |
 | 累计新增 Tweet | 扫描批次首次发现并写入当前来源的 Tweet 数 |
 | 最近成功扫描 / 最近扫描错误 | 用于判断后台停止增长是否源于成功完成或失败 |
-| 扫描历史（最近 20 批） | 每批范围、触发方式、结果、统计与错误摘要；API 重启后仍保留 |
+| 扫描历史（最近 20 批） | 每批范围、触发方式、结果、统计、错误摘要与最近日志；API 重启后仍保留 |
 
 扫描发现的媒体数量来自页面元数据。最终归档文件的准确数量和状态，以下载后的
 `media_assets` 记录与文件校验结果为准。

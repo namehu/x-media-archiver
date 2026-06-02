@@ -404,6 +404,9 @@ class SourceScanRunResponse(FlexibleResponse):
     discovered_media_count: int
     error_category: str | None = None
     error_message: str | None = None
+    progress_message: str | None = None
+    log_tail: str | None = None
+    last_log_at: datetime | None = None
     started_at: datetime | None = None
     finished_at: datetime | None = None
     created_at: datetime

@@ -189,7 +189,7 @@ class SourceServiceTests(unittest.TestCase):
 
     def test_latest_refresh_empty_batch_does_not_advance_or_complete_history_cursor(self) -> None:
         cursor = {"next_start_index": 81, "last_completed": False}
-        settings = SimpleNamespace(source_scan_sleep_min_seconds=20, source_scan_sleep_max_seconds=45)
+        settings = SimpleNamespace(source_scan_sleep_min_seconds=2, source_scan_sleep_max_seconds=6)
         with (
             patch(
                 "xarchiver.services.sources.get_source",
@@ -232,7 +232,7 @@ class SourceServiceTests(unittest.TestCase):
         )
 
     def test_schedule_next_history_scan_does_not_reschedule_paused_source(self) -> None:
-        settings = SimpleNamespace(source_scan_sleep_min_seconds=20, source_scan_sleep_max_seconds=45)
+        settings = SimpleNamespace(source_scan_sleep_min_seconds=2, source_scan_sleep_max_seconds=6)
         with (
             patch(
                 "xarchiver.services.sources.get_source",

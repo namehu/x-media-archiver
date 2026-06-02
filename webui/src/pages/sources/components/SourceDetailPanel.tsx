@@ -69,6 +69,12 @@ export function SourceDetailPanel({
   onManualSubmitted: () => void;
 }) {
   const scanLimit = useNumberInput("20");
+  const persistedScanLimit = source ? preferredScanLimit(source, policy) : 20;
+
+  React.useEffect(() => {
+    if (!source) return;
+    scanLimit.set(String(persistedScanLimit));
+  }, [source?.id, persistedScanLimit]);
 
   if (!source) {
     return (
@@ -226,7 +232,7 @@ function ActiveScan({
           {t("sources.scanEngine")}: gallery-dl
         </span>
         <span>
-          {t("sources.scanPhase")}: {t("sources.scanPhaseCollecting")}
+          {t("sources.scanPhase")}: {run.progress_message || t("sources.scanPhaseCollecting")}
         </span>
         <span>
           {t("sources.scanRange")}: {formatRunRange(run.range_start, run.range_end)}
@@ -250,8 +256,29 @@ function ActiveScan({
       <div className="mt-2 break-all rounded-md bg-bg-elevated/70 px-2 py-1 text-xs text-fg-secondary">
         {t("sources.scanTarget")}: {scanUrl}
       </div>
+      {run.last_log_at ? (
+        <p className="mt-2 text-xs text-fg-secondary">
+          {t("sources.lastLogAt")}: {formatDateTime(run.last_log_at)}
+        </p>
+      ) : null}
+      <ScanLogBox run={run} t={t} />
       <p className="mt-2 text-xs text-fg-secondary">{t("sources.activeScanHint")}</p>
       {sourcePaused ? <p className="mt-1 text-xs text-warning">{t("sources.activeScanPauseHint")}</p> : null}
+    </div>
+  );
+}
+
+function ScanLogBox({ run, t }: { run: NonNullable<ArchiveSource["scan_runs"]>[number]; t: TFunction }) {
+  const log = run.log_tail?.trim();
+  return (
+    <div className="mt-3 overflow-hidden rounded-md border border-border-subtle bg-bg-elevated">
+      <div className="flex items-center justify-between border-b border-border-subtle px-3 py-2 text-xs">
+        <span className="font-semibold text-fg-primary">{t("sources.scanLog")}</span>
+        <span className="text-fg-secondary">{log ? t("sources.scanLogLive") : t("sources.scanLogEmpty")}</span>
+      </div>
+      <pre className="max-h-56 overflow-auto whitespace-pre-wrap break-words px-3 py-2 font-mono text-xs leading-relaxed text-fg-secondary">
+        {log || t("sources.scanLogWaiting")}
+      </pre>
     </div>
   );
 }
@@ -502,6 +529,7 @@ function useNumberInput(initial: string) {
   const input = useTextInput(initial);
   return {
     value: input.value,
+    set: input.set,
     onChange: input.onChange,
     clamped: (max: number) => Math.max(1, Math.min(max, Number(input.value) || 20)),
   };
@@ -516,4 +544,19 @@ function useTextInput(initial: string) {
     set: setValue,
     onChange: (event: React.ChangeEvent<HTMLInputElement | HTMLTextAreaElement>) => setValue(event.target.value),
   };
+}
+
+function preferredScanLimit(source: ArchiveSource, policy?: DownloadPolicy) {
+  const candidates = [
+    source.cursor_state?.automation_limit,
+    source.cursor_state?.last_limit,
+    source.scan_runs?.[0]?.requested_limit,
+    policy?.source_scan_batch_size,
+    20,
+  ];
+  for (const candidate of candidates) {
+    const value = Number(candidate);
+    if (Number.isFinite(value) && value >= 1) return Math.min(200, Math.floor(value));
+  }
+  return 20;
 }

@@ -306,7 +306,8 @@ def get_source(source_id: int) -> dict[str, object] | None:
                 select id, trigger_type, status, range_start, range_end, requested_limit,
                        cursor_before, cursor_after, discovered_tweet_count, new_tweet_count,
                        duplicate_tweet_count, discovered_media_count, error_category,
-                       error_message, started_at, finished_at, created_at
+                       error_message, progress_message, log_tail, last_log_at,
+                       started_at, finished_at, created_at
                 from source_scan_runs
                 where source_id = %s
                 order by created_at desc, id desc
@@ -796,6 +797,8 @@ def scan_source(
                 settings.source_scan_sleep_max_seconds,
                 continuation_cursor=str(scan_cursor) if scan_cursor else None,
                 cookie_path=prepare_cookies(settings),
+                scan_run_id=scan_run_id,
+                worker_id=worker_id,
             )
             ensure_source_scan_lease(scan_run_id, worker_id)
             result = finish_scan_source_result(
@@ -959,6 +962,8 @@ def discover_records_with_gallery_dl(
     sleep_max_seconds: float = 45.0,
     continuation_cursor: str | None = None,
     cookie_path: Path | None = None,
+    scan_run_id: int | None = None,
+    worker_id: str | None = None,
 ) -> tuple[list[dict[str, Any]], dict[str, object]]:
     if start < 1 or end < start:
         raise ValueError("scan_limit_required")
@@ -986,7 +991,11 @@ def discover_records_with_gallery_dl(
     if continuation_cursor:
         command.extend(["-o", f"cursor={continuation_cursor}"])
     command.append(source_url)
-    result = subprocess.run(command, capture_output=True, text=True, check=False)
+    result = (
+        run_gallery_dl_streaming(command, scan_run_id, worker_id)
+        if scan_run_id is not None
+        else subprocess.run(command, capture_output=True, text=True, check=False)
+    )
     stderr_excerpt = result.stderr[-4000:] if result.stderr else None
     if result.returncode != 0:
         return [], {
@@ -1005,6 +1014,85 @@ def discover_records_with_gallery_dl(
         "cursor_mode": "native",
         "continuation_cursor": extract_gallery_dl_cursor(result.stderr),
     }
+
+
+def run_gallery_dl_streaming(command: list[str], scan_run_id: int, worker_id: str | None) -> subprocess.CompletedProcess[str]:
+    append_source_scan_log(scan_run_id, "Starting gallery-dl.", worker_id=worker_id)
+    process = subprocess.Popen(
+        command,
+        stdout=subprocess.PIPE,
+        stderr=subprocess.PIPE,
+        text=True,
+        bufsize=1,
+    )
+    stdout_chunks: list[str] = []
+    stderr_chunks: list[str] = []
+
+    def read_stdout() -> None:
+        assert process.stdout is not None
+        for chunk in process.stdout:
+            stdout_chunks.append(chunk)
+
+    def read_stderr() -> None:
+        assert process.stderr is not None
+        for line in process.stderr:
+            stderr_chunks.append(line)
+            append_source_scan_log(scan_run_id, line, worker_id=worker_id)
+
+    stdout_thread = Thread(target=read_stdout, name="source-scan-gallery-dl-stdout", daemon=True)
+    stderr_thread = Thread(target=read_stderr, name="source-scan-gallery-dl-stderr", daemon=True)
+    stdout_thread.start()
+    stderr_thread.start()
+    return_code = process.wait()
+    stdout_thread.join(timeout=5)
+    stderr_thread.join(timeout=5)
+    append_source_scan_log(scan_run_id, f"gallery-dl exited with {return_code}.", worker_id=worker_id)
+    return subprocess.CompletedProcess(
+        args=command,
+        returncode=return_code,
+        stdout="".join(stdout_chunks),
+        stderr="".join(stderr_chunks),
+    )
+
+
+def append_source_scan_log(
+    scan_run_id: int,
+    message: str,
+    *,
+    worker_id: str | None = None,
+    max_chars: int = 12000,
+) -> None:
+    text = redact_sensitive_log(message).strip()
+    if not text:
+        return
+    line = f"{text}\n"
+    progress = text[-500:]
+    with connect() as conn:
+        with conn.cursor() as cur:
+            cur.execute(
+                """
+                update source_scan_runs
+                set progress_message = %s,
+                    log_tail = right(coalesce(log_tail, '') || %s, %s),
+                    last_log_at = now()
+                where id = %s
+                  and status = 'running'
+                  and (%s::text is null or worker_id = %s)
+                """,
+                (progress, line, max_chars, scan_run_id, worker_id, worker_id),
+            )
+        conn.commit()
+    publish_event(
+        "source_scans",
+        "source.scan.log",
+        {"scan_run_id": scan_run_id, "progress_message": progress},
+    )
+
+
+def redact_sensitive_log(message: str) -> str:
+    redacted = re.sub(r"(auth_token=)[^\s;&]+", r"\1[redacted]", message)
+    redacted = re.sub(r"(ct0=)[^\s;&]+", r"\1[redacted]", redacted)
+    return redacted
 
 
 def format_sleep_range(min_seconds: float, max_seconds: float) -> str:

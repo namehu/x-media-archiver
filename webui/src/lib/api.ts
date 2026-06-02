@@ -179,6 +179,9 @@ export type SourceScanRun = {
   discovered_media_count: number;
   error_category?: string | null;
   error_message?: string | null;
+  progress_message?: string | null;
+  log_tail?: string | null;
+  last_log_at?: string | null;
   started_at?: string | null;
   finished_at?: string | null;
   created_at: string;

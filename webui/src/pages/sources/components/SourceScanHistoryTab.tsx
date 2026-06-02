@@ -48,6 +48,11 @@ export function SourceScanHistoryTab({ source, now, t }: { source: ArchiveSource
                 {run.error_category || t("sources.scanFailed")}: {run.error_message}
               </p>
             ) : null}
+            {run.progress_message ? (
+              <p className="mt-2 break-words text-xs text-fg-secondary">
+                {t("sources.scanLastLog")}: {run.progress_message}
+              </p>
+            ) : null}
           </div>
         ))}
         {runs.length === 0 ? <p className="text-sm text-fg-secondary">{t("sources.noScanHistory")}</p> : null}
