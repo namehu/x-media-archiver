@@ -14,15 +14,15 @@
     {
       "label": "Dev: Maybe build API image",
       "type": "shell",
-      "command": "$ErrorActionPreference = 'Stop'; $timeoutSeconds = 3; Write-Host \"Build API image before debug? [Y/n] Default: Y in $timeoutSeconds seconds\"; $choice = $null; $deadline = (Get-Date).AddSeconds($timeoutSeconds); while ((Get-Date) -lt $deadline -and $null -eq $choice) { try { if ([Console]::KeyAvailable) { $choice = [Console]::ReadKey($true).KeyChar } } catch { break }; Start-Sleep -Milliseconds 100 }; if ($choice -eq 'n' -or $choice -eq 'N') { Write-Host 'Skipping API image build.' } else { docker-compose build xarchiver }",
+      "command": "$ErrorActionPreference = 'Stop'; $timeoutSeconds = 3; Write-Host \"Build API image before debug? [y/N] Default: N in $timeoutSeconds seconds\"; $choice = $null; $deadline = (Get-Date).AddSeconds($timeoutSeconds); while ((Get-Date) -lt $deadline -and $null -eq $choice) { try { if ([Console]::KeyAvailable) { $choice = [Console]::ReadKey($true).KeyChar } } catch { break }; Start-Sleep -Milliseconds 100 }; if ($choice -eq 'y' -or $choice -eq 'Y') { docker-compose build xarchiver } else { Write-Host 'Skipping API image build.' }",
       "windows": {
-        "command": "$ErrorActionPreference = 'Stop'; $timeoutSeconds = 3; Write-Host \"Build API image before debug? [Y/n] Default: Y in $timeoutSeconds seconds\"; $choice = $null; $deadline = (Get-Date).AddSeconds($timeoutSeconds); while ((Get-Date) -lt $deadline -and $null -eq $choice) { try { if ([Console]::KeyAvailable) { $choice = [Console]::ReadKey($true).KeyChar } } catch { break }; Start-Sleep -Milliseconds 100 }; if ($choice -eq 'n' -or $choice -eq 'N') { Write-Host 'Skipping API image build.' } else { docker-compose build xarchiver }"
+        "command": "$ErrorActionPreference = 'Stop'; $timeoutSeconds = 3; Write-Host \"Build API image before debug? [y/N] Default: N in $timeoutSeconds seconds\"; $choice = $null; $deadline = (Get-Date).AddSeconds($timeoutSeconds); while ((Get-Date) -lt $deadline -and $null -eq $choice) { try { if ([Console]::KeyAvailable) { $choice = [Console]::ReadKey($true).KeyChar } } catch { break }; Start-Sleep -Milliseconds 100 }; if ($choice -eq 'y' -or $choice -eq 'Y') { docker-compose build xarchiver } else { Write-Host 'Skipping API image build.' }"
       },
       "osx": {
-        "command": "bash -lc 'echo \"Build API image before debug? [Y/n] Default: Y in 3 seconds\"; if read -r -n 1 -t 3 choice; then echo; else choice=\"\"; echo; fi; case \"$choice\" in n|N) echo \"Skipping API image build.\" ;; *) docker-compose build xarchiver ;; esac'"
+        "command": "bash -lc 'echo \"Build API image before debug? [y/N] Default: N in 3 seconds\"; if read -r -n 1 -t 3 choice; then echo; else choice=\"\"; echo; fi; case \"$choice\" in y|Y) docker-compose build xarchiver ;; *) echo \"Skipping API image build.\" ;; esac'"
       },
       "linux": {
-        "command": "bash -lc 'echo \"Build API image before debug? [Y/n] Default: Y in 3 seconds\"; if read -r -n 1 -t 3 choice; then echo; else choice=\"\"; echo; fi; case \"$choice\" in n|N) echo \"Skipping API image build.\" ;; *) docker-compose build xarchiver ;; esac'"
+        "command": "bash -lc 'echo \"Build API image before debug? [y/N] Default: N in 3 seconds\"; if read -r -n 1 -t 3 choice; then echo; else choice=\"\"; echo; fi; case \"$choice\" in y|Y) docker-compose build xarchiver ;; *) echo \"Skipping API image build.\" ;; esac'"
       },
       "problemMatcher": [],
       "presentation": {
