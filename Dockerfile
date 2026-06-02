@@ -40,11 +40,8 @@ COPY cli/requirements.txt /app/requirements.txt
 RUN pip install --upgrade pip \
     && pip install -r /app/requirements.txt
 
-# Backend source (xarchiver package, gallery-dl.conf, entrypoint).
+# Backend source (xarchiver package, Alembic migrations, gallery-dl.conf, entrypoint).
 COPY cli/ /app/
-
-# Database migrations (settings.sql_dir defaults to /app/sql).
-COPY sql/ /app/sql/
 
 # Built WebUI from stage 1.
 COPY --from=webui-builder /webui/dist /app/webui
