@@ -1,57 +1,68 @@
-from hashlib import sha256
 from pathlib import Path
 
-from xarchiver.db import connect
+from alembic import command
+from alembic.config import Config
+from alembic.script import ScriptDirectory
+from sqlalchemy import create_engine, text
+
+from xarchiver.config import get_settings
 
 
-CREATE_MIGRATIONS_TABLE_SQL = """
-    create table if not exists xarchiver_schema_migrations (
-      filename text primary key,
-      checksum text not null,
-      applied_at timestamptz not null default now()
-    )
-"""
+def migrate() -> list[Path]:
+    """Upgrade the database to the latest Alembic revision."""
+    settings = get_settings()
+    config = alembic_config(settings.database_url)
+    pending = pending_upgrade_paths(config, settings.database_url)
+    command.upgrade(config, "head")
+    return pending
 
 
-def migrate(sql_dir: Path) -> list[Path]:
-    applied: list[Path] = []
-    files = sorted(sql_dir.glob("*.sql"))
+def downgrade(revision: str = "-1") -> None:
+    settings = get_settings()
+    command.downgrade(alembic_config(settings.database_url), revision)
 
-    with connect() as conn:
-        with conn.cursor() as cur:
-            cur.execute(CREATE_MIGRATIONS_TABLE_SQL)
-        conn.commit()
 
-        for file in files:
-            checksum = file_checksum(file)
-            with conn.cursor() as cur:
-                cur.execute(
-                    "select checksum from xarchiver_schema_migrations where filename = %s",
-                    (file.name,),
-                )
-                row = cur.fetchone()
-                if row:
-                    if row["checksum"] != checksum:
-                        raise RuntimeError(
-                            f"Migration checksum mismatch for {file.name}. "
-                            "Do not edit an applied migration; add a new SQL migration file."
-                        )
-                    continue
+def alembic_config(database_url: str) -> Config:
+    config = Config()
+    config.set_main_option("script_location", str(Path(__file__).with_name("alembic")))
+    config.set_main_option("sqlalchemy.url", sqlalchemy_url(database_url))
+    return config
 
-                cur.execute(file.read_text(encoding="utf-8"))
-                cur.execute(
+
+def pending_upgrade_paths(config: Config, database_url: str) -> list[Path]:
+    script = ScriptDirectory.from_config(config)
+    head_revision = script.get_current_head()
+    current_revision = current_alembic_revision(database_url)
+    if current_revision == head_revision:
+        return []
+
+    lower = current_revision or "base"
+    revisions = list(script.iterate_revisions(head_revision, lower))
+    revisions.reverse()
+    return [Path(revision.path) for revision in revisions]
+
+
+def current_alembic_revision(database_url: str) -> str | None:
+    engine = create_engine(sqlalchemy_url(database_url), pool_pre_ping=True)
+    try:
+        with engine.connect() as conn:
+            exists = conn.execute(
+                text(
                     """
-                    insert into xarchiver_schema_migrations (filename, checksum)
-                    values (%s, %s)
-                    """,
-                    (file.name, checksum),
+                    select to_regclass('public.alembic_version') is not null
+                    """
                 )
-            conn.commit()
-            applied.append(file)
+            ).scalar()
+            if not exists:
+                return None
+            return conn.execute(
+                text("select version_num from alembic_version")
+            ).scalar_one_or_none()
+    finally:
+        engine.dispose()
 
-    return applied
 
-
-def file_checksum(file: Path) -> str:
-    return sha256(file.read_bytes()).hexdigest()
-
+def sqlalchemy_url(database_url: str) -> str:
+    if database_url.startswith("postgresql://"):
+        return database_url.replace("postgresql://", "postgresql+psycopg://", 1)
+    return database_url

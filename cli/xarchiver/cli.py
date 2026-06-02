@@ -9,7 +9,7 @@ from xarchiver.config import get_settings
 from xarchiver.db import execute_sql
 from xarchiver.exporter import export_media_gallery
 from xarchiver.importer import import_jsonl, import_urls
-from xarchiver.migrations import migrate
+from xarchiver.migrations import downgrade, migrate
 from xarchiver.search import compact_text, search_media
 from xarchiver.services.library import list_duplicates
 from xarchiver.services.queue import submit_jsonl_file, submit_urls_file
@@ -54,20 +54,31 @@ def init(archive_dir: Path | None = typer.Argument(None, help="Archive directory
 
 @db_app.command("migrate")
 def db_migrate() -> None:
-    settings = get_settings()
-    files = migrate(settings.sql_dir)
+    files = migrate()
     if not files:
-        console.print(f"No pending migrations in {settings.sql_dir}")
+        console.print("No pending migrations")
         return
     for file in files:
         console.print(f"Applied migration: {file}")
+
+
+@db_app.command("downgrade")
+def db_downgrade(
+    revision: str = typer.Option(
+        "-1",
+        "--revision",
+        "-r",
+        help="Alembic target revision, such as -1, base, or 001_initial_schema.",
+    ),
+) -> None:
+    downgrade(revision)
+    console.print(f"Downgraded database to: {revision}")
 
 
 @db_app.command("reset")
 def db_reset(yes: bool = typer.Option(False, "--yes", help="Confirm destructive database reset.")) -> None:
     if not yes:
         raise typer.BadParameter("Pass --yes to confirm resetting the database schema.")
-    settings = get_settings()
     execute_sql(
         """
         drop schema public cascade;
@@ -76,7 +87,7 @@ def db_reset(yes: bool = typer.Option(False, "--yes", help="Confirm destructive 
         grant all on schema public to public;
         """
     )
-    files = migrate(settings.sql_dir)
+    files = migrate()
     console.print("Database schema reset.")
     for file in files:
         console.print(f"Applied migration: {file}")

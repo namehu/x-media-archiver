@@ -227,15 +227,18 @@ DATABASE_URL=postgresql://postgres.PROJECT_REF:URL_ENCODED_PASSWORD@aws-0-REGION
 
 ### 5.4 迁移机制
 
-迁移执行器维护 `xarchiver_schema_migrations` 表：
+数据库迁移由 Alembic 管理，版本记录在 `alembic_version` 表中。当前项目从单一
+baseline revision 初始化 schema，后续 schema 变更继续新增 Alembic revision。
 
 ```text
-new SQL file       -> applied once and recorded with checksum
-known SQL file     -> skipped
-changed known file -> refused; add a new numbered migration instead
+db migrate                       -> upgrade to the latest Alembic revision
+db downgrade                     -> roll back one Alembic revision
+db downgrade --revision base     -> roll back all revisions
 ```
 
-迁移脚本位于 [`sql/`](../../sql/)，按编号顺序应用（`001_init.sql` … `009_worker_lease.sql`）。新增 schema 变更时**追加一个新的编号迁移**，不要修改已应用的旧脚本——执行器会因校验和不一致而拒绝。镜像启动时自动运行；也可手动 `... run --rm app db migrate`。
+迁移脚本位于 [`cli/xarchiver/alembic/versions/`](../../cli/xarchiver/alembic/versions/)。
+新增 schema 变更时**新增 Alembic revision**，不要修改已发布的 revision。镜像启动时
+自动运行；也可手动 `... run --rm app db migrate`。
 
 ### 5.5 验证新数据库
 
@@ -246,10 +249,10 @@ docker compose --env-file .env.production -f docker-compose.prod.yml run --rm ap
 docker compose --env-file .env.production -f docker-compose.prod.yml run --rm app status
 ```
 
-然后在 SQL Editor 中检查迁移历史与状态分布（见 [`read-only-queries.sql`](./read-only-queries.sql)）：
+然后在 SQL Editor 中检查迁移版本与状态分布（见 [`read-only-queries.sql`](./read-only-queries.sql)）：
 
 ```sql
-select filename, applied_at from xarchiver_schema_migrations order by filename;
+select version_num from alembic_version;
 select download_status, count(*) from tweets group by download_status order by download_status;
 ```
 
@@ -402,7 +405,7 @@ psql "$RESTORE_DATABASE_URL" -f data.sql
 select count(*) as tweets from tweets;
 select count(*) as media_assets from media_assets;
 select download_status, count(*) from tweets group by download_status order by download_status;
-select filename, checksum from xarchiver_schema_migrations order by filename;
+select version_num from alembic_version;
 ```
 
 挂载一份本地 `archive/` 备份副本并运行（不要指向唯一的那份媒体数据）：
@@ -435,7 +438,9 @@ GET /api/v1/health/detail 详情，含 db_pool（active / idle / waiting）等
 
 ### 10.2 后台 worker 与崩溃恢复
 
-`serve` 在进程内拉起两个 daemon：归档队列 worker 与来源扫描 worker。两者用持久化 lease + 心跳续约（[`sql/009_worker_lease.sql`](../../sql/009_worker_lease.sql)）防止进程崩溃后任务永久卡死——重启后过期 lease 的行会被新 worker 重新认领。若仍有遗留卡住的任务：
+`serve` 在进程内拉起两个 daemon：归档队列 worker 与来源扫描 worker。两者用持久化 lease
+和心跳续约防止进程崩溃后任务永久卡死，重启后过期 lease 的行会被新 worker 重新认领。
+若仍有遗留卡住的任务：
 
 ```bash
 docker compose --env-file .env.production -f docker-compose.prod.yml run --rm app recover-interrupted

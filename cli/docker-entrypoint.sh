@@ -2,7 +2,7 @@
 # Container entrypoint for the self-contained x-media-archiver image.
 #
 # Default behaviour (no args, or first arg is "serve"):
-#   1. Apply database migrations (idempotent, checksum-guarded).
+#   1. Apply Alembic database migrations.
 #   2. Start the API server bound to 0.0.0.0:8000.
 #
 # The container always listens on the fixed internal port 8000 (matching EXPOSE).

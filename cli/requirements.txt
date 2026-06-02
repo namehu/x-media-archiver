@@ -2,6 +2,7 @@ typer
 rich
 pydantic
 pydantic-settings
+alembic
 orjson
 psycopg[binary]
 psycopg_pool

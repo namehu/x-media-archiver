@@ -41,7 +41,6 @@ services:
       - ./archive:/app/archive
       - ./examples:/app/examples
       - ./secrets:/app/secrets:ro
-      - ./sql:/app/sql:ro
       - ./docs:/app/docs:ro
       - ./cli/xarchiver:/app/xarchiver
       - ./cli/tests:/app/tests

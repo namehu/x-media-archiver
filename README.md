@@ -318,6 +318,10 @@ Run migrations before first use:
 docker-compose run --rm xarchiver db migrate
 ```
 
+Database migrations are managed by Alembic under
+`cli/xarchiver/alembic/versions`. The current schema starts from a single
+baseline revision and can be downgraded with `xarchiver db downgrade`.
+
 Open the WebUI `Archive Queue` page to:
 
 ```text

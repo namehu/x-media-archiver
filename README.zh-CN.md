@@ -71,7 +71,7 @@ archive/state/       下载器状态与运行时 cookie 副本
 archive/media/<author_id>/<tweet_id>/<tweet_id>--p<media_index>.<ext>
 ```
 
-用户名会保存在 Postgres 元数据中用于搜索与展示，但不作为文件系统目录名的主键（主目录名使用更稳定的 `author_id`）。
+用户名保存在 Postgres 元数据中用于搜索与展示，但不作为文件系统目录名的主键。
 
 从浏览器扩展导出 URL 后，推荐的一条命令式工作流：
 
@@ -161,7 +161,7 @@ docker-compose run --rm xarchiver duplicates
 docker-compose run --rm xarchiver export-duplicates
 ```
 
-生产部署的完整说明（Supabase 元数据存储、连接选择、迁移检查、服务运行、调优、备份与恢复）见统一手册 [docs/deploy/](docs/deploy/README.md)。
+生产部署的完整说明（包括 Supabase 元数据存储、连接选择、迁移检查、服务运行、调优以及备份/恢复流程）见统一手册 [`docs/deploy/`](docs/deploy/README.md)。
 
 如果本地端口 5432 已被占用，可覆盖开发 Postgres 的宿主机映射端口：
 
@@ -185,11 +185,11 @@ API_HOST=0.0.0.0
 API_PORT=8000
 ```
 
-`QUEUE_BATCH_SIZE` 限制 API worker 每次领取多少条 queued tweet。下载器 sleep 设置会透传到 `gallery-dl` / `yt-dlp`，用于避免大批量任务对 X/Twitter 发起紧密的连续请求。`SOURCE_SCAN_BATCH_SIZE` 与 `SOURCE_SCAN_SLEEP_*` 用于单独控制历史 source 发现（与下载分离）。
+`QUEUE_BATCH_SIZE` 限制 API worker 每次领取多少条 queued tweet。下载器的 sleep 设置会透传到 `gallery-dl` / `yt-dlp`，避免大批量任务对 X/Twitter 发起紧密的连续请求。`SOURCE_SCAN_BATCH_SIZE` 与 `SOURCE_SCAN_SLEEP_*` 用于单独控制历史 source 发现（与下载分离）。
 
 ## 本地 API 与 WebUI
 
-Phase 2 在同一套 Python 归档内核（CLI 与 API 共用）之上增加本地 FastAPI 服务与 React WebUI。
+Phase 2 在 CLI 使用的同一套 Python 归档内核之上，增加了本地 FastAPI 服务与 React WebUI。
 
 在 Docker 中启动 API：
 
@@ -222,7 +222,7 @@ GET /api/v1/settings/download-policy
 GET /api/v1/health/detail
 ```
 
-可用的写 API endpoints 由进程内锁串行化。如果已有写动作在运行，API 返回 `409 write_action_in_progress`。
+可用的写 API endpoints 由进程内锁串行化。如果已有写动作正在运行，API 返回 `409 write_action_in_progress`。
 
 ```text
 POST /api/v1/actions/verify
@@ -273,14 +273,14 @@ Sources
 
 Archive Queue 支持粘贴 URL 或选择本地 TXT/JSONL 文件（浏览器侧解析后提交）来创建结构化的数据库任务。Operations 可触发 requeue、recover-interrupted 与数据库快照 export。完整 backfill 与完整 verify 被隔离在 Maintenance 下，并要求显式确认磁盘扫描。WebUI 不提供破坏性的文件删除能力。
 
-Sources 记录长期存在的 X/Twitter 来源，例如个人页、媒体页、likes、bookmarks、搜索页或手工集合。一个 source 可向同一 Archive Queue 提交发现的 tweet URL，并保留 source-to-tweet 的可追溯关系。当前实现提供可恢复的 source 模型、手动提交 discovered-URL，以及用于 profile timeline 与用户媒体页的小批量 `gallery-dl` 扫描。source 扫描只记录 discovered tweets；不会自动提交到下载队列。准备下载受控批次时，需使用显式的 submit 动作。每次受控扫描会记录其逻辑 batch window、重复/新增数量，以及 `archive_sources.cursor_state` 中的 cursor 诊断信息。
-2026-05-27 的真实验证表明，数值区间不是深历史媒体的高效延续机制。source collector 现已持久化 Twitter extractor 的原生 continuation cursor，并用于历史批次。扫描只做发现记录，绝不自动提交下载。每次 source scan 尝试（以及因下载进行中导致的 defer）都会写入 `source_scan_runs`，包含其 range、cursor 快照、计数、结果与错误摘要，从而可在重启后不依赖容器日志诊断停滞的 history scan。Sources 详情页展示最近 20 次扫描事件与累计统计。
+Sources 记录长期存在的 X/Twitter 来源，例如个人页、媒体页、likes、bookmarks、搜索页或手工集合。一个 source 可向同一 Archive Queue 提交发现的 tweet URL，同时保留 source-to-tweet 的可追溯关系。当前实现提供了可恢复的 source 模型、手动 discovered-URL 提交，以及用于 profile timeline 和用户媒体页的小批量 `gallery-dl` 扫描。source 扫描只记录 discovered tweets，不会自动提交到下载队列。准备下载受控批次时，需使用显式的 submit 动作。每次受控扫描会在 `archive_sources.cursor_state` 中记录其逻辑 batch window、重复/新增数量以及 cursor 诊断信息。
+2026-05-27 的真实验证表明，数值区间不是深层媒体历史的高效延续机制。source collector 现已持久化 Twitter extractor 的原生 continuation cursor，并将其用于历史批次。扫描只做发现记录，绝不自动提交下载。每次 source scan 尝试，以及因下载进行中导致的每次 defer，都会写入 `source_scan_runs`，包含其 range、cursor 快照、计数、结果与错误摘要。Sources 详情页展示最近 20 次扫描事件与累计统计，使得停滞的 history scan 可在重启后脱离容器日志进行诊断。
 
-按钮含义与操作流程见 [docs/source-scanning-workflow.md](docs/source-scanning-workflow.md)，原生 cursor 的阻塞问题见 [docs/source-scanning-acceptance.md](docs/source-scanning-acceptance.md)。
+按钮含义与操作流程见 [`docs/source-scanning-workflow.md`](docs/source-scanning-workflow.md)，真实验证中发现的原生 cursor 阻塞问题见 [`docs/source-scanning-acceptance.md`](docs/source-scanning-acceptance.md)。
 
 ## Archive Queue
 
-归档提交会在 Postgres 中存为 runs 与 per-tweet task items：
+归档提交在 Postgres 中存为 runs 与 per-tweet task items：
 
 ```text
 WebUI records / CLI file parser
@@ -294,6 +294,8 @@ WebUI records / CLI file parser
 ```bash
 docker-compose run --rm xarchiver db migrate
 ```
+
+数据库迁移由 Alembic 管理，位于 `cli/xarchiver/alembic/versions` 目录下。当前 schema 从单个基线版本起步，可使用 `xarchiver db downgrade` 进行降级。
 
 打开 WebUI 的 `Archive Queue` 页面可：
 
@@ -312,7 +314,7 @@ docker-compose run --rm xarchiver db migrate
 3. 已在其他 run 中 pending 的 tweets 会标记为 linked_pending，不重复下载。
 4. 只有在 API 服务运行时，API worker 才会消费 pending/retryable 的 task items。
 5. run 的 verify 只校验本次新影响的媒体，并从 Postgres 汇报全库总数。
-6. CLI 的 TXT/JSONL 路径只是输入适配器；系统不使用“被监视的输入目录”。
+6. CLI 的 TXT/JSONL 路径只是输入适配器；系统不使用"被监视的输入目录"。
 ```
 
 全盘维护为显式动作：
@@ -322,7 +324,7 @@ docker-compose run --rm xarchiver backfill-media --full
 docker-compose run --rm xarchiver verify --full
 ```
 
-这些维护命令会遍历归档文件，对大库可能产生显著磁盘 I/O。CSV export 只读取数据库快照，不会进行媒体文件 hash 扫描。
+这些维护命令会遍历归档文件，对大库可能产生显著磁盘 I/O。CSV export 仅读取数据库快照，不会进行媒体文件 hash 扫描。
 
 ## 状态规则
 
@@ -383,7 +385,7 @@ verify aggregation rules
 missing/corrupt/recovery integration flow
 ```
 
-GitHub Actions CI 会在重置后的测试数据库上运行同一套后端测试，并在 `webui/` 与 `extension/` 中执行 `npm run check`。测试隔离契约见 [docs/engineering-ci-and-test-isolation.md](docs/engineering-ci-and-test-isolation.md)。
+GitHub Actions CI 流水线会在重置后的测试数据库上运行同一套后端测试，并在 `webui/` 与 `extension/` 中执行 `npm run check`。测试隔离契约见 [`docs/engineering-ci-and-test-isolation.md`](docs/engineering-ci-and-test-isolation.md)。
 
 ## 浏览器扩展 V0
 
@@ -437,7 +439,7 @@ tweets_<timestamp>.jsonl      更丰富的记录（供 xarchiver 导入）
 scan_stats_<timestamp>.json   扫描来源、耗时、计数与 auto-scroll 结果
 ```
 
-弹窗也允许设置最大滚动轮次、连续空轮次数，以及开始长时间 auto-scroll 扫描前的扫描间隔。
+弹窗也允许你在启动长时间 auto-scroll 扫描前，设置最大滚动轮次、连续空轮次数以及扫描间隔。
 
 Popup UI 文案位于：
 
@@ -453,5 +455,4 @@ docker-compose run --rm xarchiver import-urls /app/examples/tweet_urls.example.t
 docker-compose run --rm xarchiver import /app/examples/tweets.example.jsonl
 ```
 
-从浏览器下载导出文件后，请将其放到 `examples/` 或其他已挂载目录下，再在 Docker 中导入。
-
+从浏览器导出文件后，请将其放到 `examples/` 或其他已挂载目录下，再在 Docker 中导入。

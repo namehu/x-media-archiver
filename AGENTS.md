@@ -26,7 +26,7 @@
 | --- | --- |
 | `cli/xarchiver/` | Python 3.12 CLI、归档内核、FastAPI API 与共享 services |
 | `cli/tests/` | Python 单元测试及集成测试 |
-| `sql/` | 顺序执行的 Postgres 迁移 |
+| `cli/xarchiver/alembic/` | Alembic 数据库迁移 |
 | `webui/` | Vite + React + TypeScript + Tailwind 管理界面 |
 | `extension/` | WXT + React 浏览器采集扩展 |
 | `docs/` | 部署、备份、下载契约与设计文档 |
@@ -80,7 +80,7 @@ npm run zip
 - CLI 与 API 可共用的业务流程放在 `cli/xarchiver/services/`；避免在 HTTP 路由或 CLI 命令中重复实现归档规则。
 - API 写操作当前由进程内锁串行化；新增写入口必须保持此行为或明确更新其并发策略和测试。
 - 常规归档流程应使用 scoped 下载、回填与校验；不要将全库扫描隐式加入普通请求。
-- 修改数据库结构时只新增编号递增的 `sql/*.sql` 迁移。已应用迁移有校验和保护，禁止修改历史迁移来变更现状。
+- 修改数据库结构时只新增 Alembic revision。禁止修改已发布的历史 revision 来变更现状。
 - 数据库查询、API 响应和日志中不得暴露 `COOKIE_FILE` 内容、生产 `DATABASE_URL` 或其他凭据。
 
 ### WebUI
@@ -109,7 +109,7 @@ npm run zip
 
 | 改动范围 | 最低验证 |
 | --- | --- |
-| `cli/xarchiver/`、`cli/tests/`、`sql/` | `docker-compose run --rm --entrypoint python xarchiver -m unittest discover -s /app/tests` |
+| `cli/xarchiver/`、`cli/tests/` | `docker-compose run --rm --entrypoint python xarchiver -m unittest discover -s /app/tests` |
 | `webui/` | 在 `webui/` 运行 `npm run build` |
 | `extension/` | 在 `extension/` 运行 `npm run typecheck` 与 `npm run build` |
 | API 与 WebUI 联动 | 启动 API 与 WebUI，检查涉及页面及对应 API 流程 |

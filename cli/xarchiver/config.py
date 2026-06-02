@@ -24,8 +24,6 @@ class Settings(BaseSettings):
     api_host: str = Field(default="127.0.0.1", alias="API_HOST")
     api_port: int = Field(default=8000, alias="API_PORT")
 
-    sql_dir: Path = Path("/app/sql")
-
 
 @lru_cache
 def get_settings() -> Settings:
