@@ -12,10 +12,30 @@
       }
     },
     {
+      "label": "Dev: Maybe build API image",
+      "type": "shell",
+      "command": "$ErrorActionPreference = 'Stop'; $timeoutSeconds = 3; Write-Host \"Build API image before debug? [Y/n] Default: Y in $timeoutSeconds seconds\"; $choice = $null; $deadline = (Get-Date).AddSeconds($timeoutSeconds); while ((Get-Date) -lt $deadline -and $null -eq $choice) { try { if ([Console]::KeyAvailable) { $choice = [Console]::ReadKey($true).KeyChar } } catch { break }; Start-Sleep -Milliseconds 100 }; if ($choice -eq 'n' -or $choice -eq 'N') { Write-Host 'Skipping API image build.' } else { docker-compose build xarchiver }",
+      "windows": {
+        "command": "$ErrorActionPreference = 'Stop'; $timeoutSeconds = 3; Write-Host \"Build API image before debug? [Y/n] Default: Y in $timeoutSeconds seconds\"; $choice = $null; $deadline = (Get-Date).AddSeconds($timeoutSeconds); while ((Get-Date) -lt $deadline -and $null -eq $choice) { try { if ([Console]::KeyAvailable) { $choice = [Console]::ReadKey($true).KeyChar } } catch { break }; Start-Sleep -Milliseconds 100 }; if ($choice -eq 'n' -or $choice -eq 'N') { Write-Host 'Skipping API image build.' } else { docker-compose build xarchiver }"
+      },
+      "osx": {
+        "command": "bash -lc 'echo \"Build API image before debug? [Y/n] Default: Y in 3 seconds\"; if read -r -n 1 -t 3 choice; then echo; else choice=\"\"; echo; fi; case \"$choice\" in n|N) echo \"Skipping API image build.\" ;; *) docker-compose build xarchiver ;; esac'"
+      },
+      "linux": {
+        "command": "bash -lc 'echo \"Build API image before debug? [Y/n] Default: Y in 3 seconds\"; if read -r -n 1 -t 3 choice; then echo; else choice=\"\"; echo; fi; case \"$choice\" in n|N) echo \"Skipping API image build.\" ;; *) docker-compose build xarchiver ;; esac'"
+      },
+      "problemMatcher": [],
+      "presentation": {
+        "reveal": "always",
+        "panel": "dedicated",
+        "focus": true
+      }
+    },
+    {
       "label": "Dev: API debug container",
       "type": "shell",
       "command": "docker-compose run --rm --service-ports --entrypoint python xarchiver -m debugpy --listen 0.0.0.0:5678 -m xarchiver.cli serve --host 0.0.0.0 --port 8000",
-      "dependsOn": "Dev: Build API image",
+      "dependsOn": "Dev: Maybe build API image",
       "dependsOrder": "sequence",
       "isBackground": true,
       "problemMatcher": {
@@ -38,6 +58,8 @@
       "label": "Dev: WebUI",
       "type": "shell",
       "command": "npm run dev",
+      "dependsOn": "Dev: API debug container",
+      "dependsOrder": "sequence",
       "options": {
         "cwd": "${workspaceFolder}/webui"
       },
@@ -60,10 +82,7 @@
     },
     {
       "label": "Dev: API + WebUI",
-      "dependsOn": [
-        "Dev: API debug container",
-        "Dev: WebUI"
-      ],
+      "dependsOn": "Dev: WebUI",
       "dependsOrder": "sequence",
       "problemMatcher": []
     }
