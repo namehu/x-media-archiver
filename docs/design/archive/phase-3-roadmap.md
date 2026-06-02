@@ -233,7 +233,7 @@ P2.0–P2.8.0 已交付"数据库队列 + 三层架构（CLI / FastAPI / WebUI�
 
 - ✅ services/ 复用良好，CLI 与 API 无重复业务逻辑（[cli/xarchiver/services/](../../cli/xarchiver/services/)）
 - ✅ 数据库队列 + 进程内锁 + Postgres advisory lock 满足单进程单写的初衷
-- ✅ SQL 迁移有 SHA256 校验和保护（[cli/xarchiver/migrations.py](../../cli/xarchiver/migrations.py)）
+- ✅ 数据库迁移已切换为 Alembic revision 管理（[cli/xarchiver/migrations.py](../../cli/xarchiver/migrations.py)、[cli/xarchiver/alembic/versions/](../../cli/xarchiver/alembic/versions/)）
 - ✅ [api/app.py](../../cli/xarchiver/api/app.py) 已瘦身为 app 装配入口，业务路由拆到 `api/v1/`
 - ✅ `core/errors.py` 已建立错误分类基础，后续继续收敛 downloader/source/WebUI 中的剩余映射
 - ✅ API 层已有结构化 JSON logging / request id
@@ -483,7 +483,7 @@ P3 已启动。后续每个批次应独立可验证、可上线、可暂停；�
 - 错误分类源头：[cli/xarchiver/downloader.py](../../cli/xarchiver/downloader.py) → 新建 `cli/xarchiver/core/errors.py`
 - 队列与状态机：[cli/xarchiver/services/queue.py](../../cli/xarchiver/services/queue.py)
 - 锁与 worker：[cli/xarchiver/api/app.py](../../cli/xarchiver/api/app.py)
-- 迁移机制：[cli/xarchiver/migrations.py](../../cli/xarchiver/migrations.py)
+- 迁移机制：[cli/xarchiver/migrations.py](../../cli/xarchiver/migrations.py)、[cli/xarchiver/alembic/versions/](../../cli/xarchiver/alembic/versions/)
 
 **WebUI**
 - API 客户端：[webui/src/lib/api.ts](../../webui/src/lib/api.ts) → 拆为 `webui/src/api/{client,generated,queries}.ts`

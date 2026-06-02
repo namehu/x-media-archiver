@@ -89,7 +89,7 @@ docker compose --env-file .env.production -f docker-compose.prod.yml up -d
 docker compose --env-file .env.production -f docker-compose.prod.yml logs -f app
 ```
 
-容器入口（[`cli/docker-entrypoint.sh`](../../cli/docker-entrypoint.sh)）在启动 API 前会**自动执行数据库迁移**（幂等、带校验和保护，重复启动安全）。首次启动日志会出现 `Applied migration: ...`。随后访问：
+容器入口（[`cli/docker-entrypoint.sh`](../../cli/docker-entrypoint.sh)）在启动 API 前会**自动执行 Alembic 数据库迁移**（幂等、按 `alembic_version` 记录版本，重复启动安全）。首次启动日志会出现 `Applied migration: ...` 或 `No pending migrations`。随后访问：
 
 ```text
 http://127.0.0.1:8000
@@ -239,6 +239,9 @@ db downgrade --revision base     -> roll back all revisions
 迁移脚本位于 [`cli/xarchiver/alembic/versions/`](../../cli/xarchiver/alembic/versions/)。
 新增 schema 变更时**新增 Alembic revision**，不要修改已发布的 revision。镜像启动时
 自动运行；也可手动 `... run --rm app db migrate`。
+
+本项目不再使用仓库根目录的顺序 `sql/*.sql` migration。一次性本地验证可用
+`db reset --yes` 删除 public schema 并重新应用 Alembic baseline 与后续 revision；该命令只适合可丢弃数据库。
 
 ### 5.5 验证新数据库
 

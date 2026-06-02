@@ -1195,6 +1195,9 @@ x-media-archiver/
       cli.py
       db.py
       migrations.py
+      alembic/
+        env.py
+        versions/
       importer.py
       downloader.py
       gallerydl.py
@@ -1203,9 +1206,6 @@ x-media-archiver/
       exporter.py
       config.py
       models.py
-
-  sql/
-    001_init.sql
 
   docs/
     architecture.md

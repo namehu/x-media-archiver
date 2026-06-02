@@ -102,7 +102,7 @@ Goal: make the tool suitable for recurring large archive runs and long-term mana
 ### V1.3 Production Database
 
 - [x] Supabase connection guide.
-- [x] Migration history tracking and applied-file checksum protection.
+- [x] Alembic migration history tracking and rollback support.
 - [x] Supabase migration validation runbook.
 - [ ] Run migration validation against an owned Supabase project.
 - [x] Backup and restore instructions.

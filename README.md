@@ -329,6 +329,20 @@ Database migrations are managed by Alembic under
 `cli/xarchiver/alembic/versions`. The current schema starts from a single
 baseline revision and can be downgraded with `xarchiver db downgrade`.
 
+Backend data access intentionally stays layered rather than using a full ORM:
+
+```text
+Alembic revisions                  -> schema changes and rollback
+SQLAlchemy Core query builders      -> dynamic filters, pagination, and CTE/lateral query assembly
+Pydantic row models                 -> typed row validation at service boundaries
+Fixed SQL strings                   -> allowed for stable writes, locks, and compact Postgres-specific statements
+```
+
+Shared Core table metadata lives in `cli/xarchiver/tables.py`, and compiled
+queries use `cli/xarchiver/sql_builder.py` so psycopg receives named parameters.
+New dynamic `WHERE`, `IN`, `LIMIT/OFFSET`, CTE, or lateral queries should use
+SQLAlchemy Core instead of string concatenation.
+
 Open the WebUI `Archive Queue` page to:
 
 ```text
