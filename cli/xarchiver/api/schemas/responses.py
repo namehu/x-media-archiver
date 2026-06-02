@@ -42,6 +42,13 @@ class DownloadPolicyResponse(FlexibleResponse):
     source_scan_sleep_max_seconds: float
 
 
+class CookieConfigResponse(FlexibleResponse):
+    configured: bool
+    source: str
+    label: str | None = None
+    updated_at: datetime | None = None
+
+
 class WorkerHealthResponse(FlexibleResponse):
     stop_requested: bool
     write_lock_held: bool

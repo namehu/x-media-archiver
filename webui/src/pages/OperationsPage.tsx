@@ -4,6 +4,7 @@ import { useI18n } from "../lib/i18n";
 import { OperationResultPanel } from "./operations/components/OperationResultPanel";
 import { useMaintenanceOps } from "./operations/hooks/useMaintenanceOps";
 import { useSystemHealth } from "./operations/hooks/useSystemHealth";
+import { CookiesTab } from "./operations/tabs/CookiesTab";
 import { DatabaseTab } from "./operations/tabs/DatabaseTab";
 import { MaintenanceTab } from "./operations/tabs/MaintenanceTab";
 import { SystemStatusTab } from "./operations/tabs/SystemStatusTab";
@@ -30,6 +31,7 @@ export function OperationsPage() {
       <Tabs defaultValue="maintenance">
         <TabsList>
           <TabsTrigger value="maintenance">{t("operations.maintenanceTab")}</TabsTrigger>
+          <TabsTrigger value="cookies">{t("operations.cookiesTab")}</TabsTrigger>
           <TabsTrigger value="system">{t("operations.systemStatus")}</TabsTrigger>
           <TabsTrigger value="database">{t("operations.databaseTab")}</TabsTrigger>
         </TabsList>
@@ -49,6 +51,10 @@ export function OperationsPage() {
             setRecoverTimeout={ops.setRecoverTimeout}
             run={ops.run}
           />
+        </TabsContent>
+
+        <TabsContent value="cookies">
+          <CookiesTab />
         </TabsContent>
 
         <TabsContent value="system">

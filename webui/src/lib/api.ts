@@ -1,4 +1,4 @@
-export { ApiError, apiGet, apiPost, apiRequest, apiUrl } from "../api/client";
+export { ApiError, apiDelete, apiGet, apiPost, apiRequest, apiUrl } from "../api/client";
 
 export type Summary = {
   tweet_status_counts: Record<string, number>;
@@ -254,6 +254,13 @@ export type DownloadPolicy = {
   source_scan_batch_size: number;
   source_scan_sleep_min_seconds: number;
   source_scan_sleep_max_seconds: number;
+};
+
+export type CookieConfig = {
+  configured: boolean;
+  source: "database" | "file" | "none";
+  label?: string | null;
+  updated_at?: string | null;
 };
 
 export type HealthDetail = {

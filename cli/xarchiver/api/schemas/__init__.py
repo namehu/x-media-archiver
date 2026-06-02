@@ -11,6 +11,7 @@ from xarchiver.api.schemas.requests import (
     SourceScanRequest,
     SourceStatusRequest,
     SourceSubmitDiscoveredRequest,
+    UpdateCookiesRequest,
     VerifyRequest,
 )
 from xarchiver.api.schemas.responses import (
@@ -26,6 +27,7 @@ from xarchiver.api.schemas.responses import (
     ArchiveSourceResponse,
     ArchiveSubmissionResponse,
     ArchiveTaskCountsResponse,
+    CookieConfigResponse,
     DownloadAttemptResponse,
     DownloadPolicyResponse,
     DuplicateRowResponse,
@@ -70,6 +72,7 @@ __all__ = [
     "ArchiveSubmissionResponse",
     "ArchiveTaskCountsResponse",
     "BackfillRequest",
+    "CookieConfigResponse",
     "DownloadPolicyResponse",
     "DownloadAttemptResponse",
     "DuplicateRowResponse",
@@ -103,6 +106,7 @@ __all__ = [
     "SummaryResponse",
     "TweetDetailResponse",
     "TweetResponse",
+    "UpdateCookiesRequest",
     "VerifyRequest",
     "WorkerHealthResponse",
     "WriteActionResponse",

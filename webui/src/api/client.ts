@@ -37,6 +37,10 @@ export async function apiPost<T>(path: string, body: unknown, options: ApiReques
   return apiRequest<T>(path, { ...options, method: "POST", body });
 }
 
+export async function apiDelete<T>(path: string, options: ApiRequestOptions = {}): Promise<T> {
+  return apiRequest<T>(path, { ...options, method: "DELETE" });
+}
+
 export async function apiRequest<T>(path: string, options: ApiRequestOptions = {}): Promise<T> {
   const response = await fetch(apiUrl(path), buildRequestInit(options));
   if (!response.ok) {

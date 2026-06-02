@@ -70,3 +70,8 @@ class SourceSubmitDiscoveredRequest(BaseModel):
 class SourceHistoryScanRequest(BaseModel):
     limit: int = Field(default=20, ge=1, le=200)
     restart: bool = False
+
+
+class UpdateCookiesRequest(BaseModel):
+    content: str
+    label: str | None = None

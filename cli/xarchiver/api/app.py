@@ -16,7 +16,7 @@ from starlette.exceptions import HTTPException as StarletteHTTPException
 
 from xarchiver.api.deps import stop_worker
 from xarchiver.api.middleware import RequestIdMiddleware, configure_api_logging
-from xarchiver.api.v1 import actions, archive_runs, library, maintenance, misc, sources
+from xarchiver.api.v1 import actions, archive_runs, library, maintenance, misc, settings, sources
 from xarchiver.config import get_settings
 from xarchiver.core.errors import ArchiverError, error_response_payload
 from xarchiver.core.lock_manager import lock_manager
@@ -71,7 +71,7 @@ def create_app() -> FastAPI:
             "http://127.0.0.1:5173",
         ],
         allow_credentials=False,
-        allow_methods=["GET", "POST"],
+        allow_methods=["GET", "POST", "DELETE"],
         allow_headers=["*"],
     )
 
@@ -105,6 +105,7 @@ def create_app() -> FastAPI:
     app.include_router(actions.router, prefix="/api/v1")
     app.include_router(maintenance.router, prefix="/api/v1")
     app.include_router(misc.router, prefix="/api/v1")
+    app.include_router(settings.router, prefix="/api/v1")
 
     mount_webui(app)
 

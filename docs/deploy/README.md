@@ -168,7 +168,9 @@ docker manifest inspect ghcr.io/<owner>/x-media-archiver:latest
 
 ### 4.2 cookies
 
-把导出的 X/Twitter cookies 放到部署目录的 `secrets/` 下：
+推荐在 WebUI 的 Operations / Cookies 页面粘贴或上传导出的 X/Twitter cookies。WebUI 保存后，cookies 会以明文保存在本地 Postgres 的 `cookie_config` 表中，并优先用于下载和来源扫描。
+
+如果不使用 WebUI 配置，也可以继续把 cookies 放到部署目录的 `secrets/` 下作为兼容回退：
 
 ```text
 secrets/cookies.txt
@@ -179,6 +181,14 @@ secrets/cookies.txt
 2. 该文件被 .gitignore 忽略，仅保留在本地，绝不提交。
 3. compose 以只读方式挂载 secrets/ 到容器 /app/secrets。
 ```
+
+优先级固定为：
+
+```text
+Postgres cookie_config.content -> COOKIE_FILE -> 未配置
+```
+
+如果想强制使用 `secrets/cookies.txt`，请先在 WebUI 清空数据库 cookies。不要将暴露了 `cookie_config.content` 的数据库备份共享给他人。
 
 ### 4.3 不要提交的内容
 
@@ -336,7 +346,7 @@ cd webui && npm run generate:api-types   # 需 Docker 起后端；然后提交�
 ```env
 DATABASE_URL=...            # Postgres 连接串
 ARCHIVE_DIR=/app/archive    # 容器内归档根目录
-COOKIE_FILE=/app/secrets/cookies.txt
+COOKIE_FILE=/app/secrets/cookies.txt # WebUI 未配置 cookies 时的兼容回退
 API_PORT=8000               # 发布端口；容器内 API_HOST 固定为 0.0.0.0
 ```
 
@@ -372,7 +382,7 @@ SOURCE_SCAN_SLEEP_MAX_SECONDS=45
 
 1. 将 `archive/media/` 和 `archive/state/` 备份到独立磁盘或其他位置。
 2. 执行迁移或批量修改元数据前，先创建数据库逻辑导出。
-3. 不要把 `secrets/cookies.txt`、数据库密码和证书放进会被共享的备份位置。
+3. 不要把 `secrets/cookies.txt`、包含 `cookie_config.content` 的数据库备份、数据库密码和证书放进会被共享的备份位置。
 
 ### 9.2 数据库逻辑备份
 

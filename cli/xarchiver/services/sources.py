@@ -6,6 +6,7 @@ import random
 import re
 import shutil
 import subprocess
+from pathlib import Path
 from threading import Event, Thread
 from typing import Any
 from urllib.parse import urlparse
@@ -25,6 +26,7 @@ from xarchiver.config import Settings, get_settings
 from xarchiver.core.errors import ErrorCategory, category_value, classify_x_error
 from xarchiver.core.events import publish_event
 from xarchiver.db import connect
+from xarchiver.downloader import prepare_cookies
 from xarchiver.importer import extract_tweet_id, upsert_tweets
 from xarchiver.row_models import (
     ArchiveSourceListRow,
@@ -793,6 +795,7 @@ def scan_source(
                 settings.source_scan_sleep_min_seconds,
                 settings.source_scan_sleep_max_seconds,
                 continuation_cursor=str(scan_cursor) if scan_cursor else None,
+                cookie_path=prepare_cookies(settings),
             )
             ensure_source_scan_lease(scan_run_id, worker_id)
             result = finish_scan_source_result(
@@ -955,6 +958,7 @@ def discover_records_with_gallery_dl(
     sleep_min_seconds: float = 20.0,
     sleep_max_seconds: float = 45.0,
     continuation_cursor: str | None = None,
+    cookie_path: Path | None = None,
 ) -> tuple[list[dict[str, Any]], dict[str, object]]:
     if start < 1 or end < start:
         raise ValueError("scan_limit_required")
@@ -968,6 +972,15 @@ def discover_records_with_gallery_dl(
         "--sleep-request",
         format_sleep_range(sleep_min_seconds, sleep_max_seconds),
     ]
+    if cookie_path is not None:
+        command.extend(
+            [
+                "-o",
+                f"extractor.twitter.cookies={cookie_path}",
+                "-o",
+                "extractor.twitter.cookies-update=false",
+            ]
+        )
     limit = end - start + 1
     command.extend(["--verbose", "-o", f"limit={limit}", "--post-range", f"1-{limit}"])
     if continuation_cursor:

@@ -11,6 +11,7 @@ from xarchiver.downloader import (
     classify_error,
     fetch_download_candidates,
     format_sleep_range,
+    prepare_cookies,
     validate_cookie_file,
 )
 
@@ -19,8 +20,11 @@ class DownloaderTests(unittest.TestCase):
     def test_validate_cookie_file_reports_missing_for_yt_dlp(self) -> None:
         self.assertEqual(validate_cookie_file("yt-dlp", Path("missing-cookies.txt")), "cookie_missing")
 
-    def test_validate_cookie_file_ignores_gallery_dl(self) -> None:
-        self.assertIsNone(validate_cookie_file("gallery-dl", Path("missing-cookies.txt")))
+    def test_validate_cookie_file_reports_missing_for_gallery_dl(self) -> None:
+        self.assertEqual(validate_cookie_file("gallery-dl", Path("missing-cookies.txt")), "cookie_missing")
+
+    def test_validate_cookie_file_reports_missing_for_none_path(self) -> None:
+        self.assertEqual(validate_cookie_file("yt-dlp", None), "cookie_missing")
 
     def test_validate_cookie_file_reports_empty(self) -> None:
         with tempfile.TemporaryDirectory() as tmp:
@@ -57,25 +61,51 @@ class DownloaderTests(unittest.TestCase):
             downloader_sleep_max_seconds=6,
         )
 
-        command = build_command("gallery-dl", settings, Path("/app/archive/raw/input.txt"))
+        command = build_command(
+            "gallery-dl",
+            settings,
+            Path("/app/archive/raw/input.txt"),
+            Path("/app/archive/state/runtime-cookies.txt"),
+        )
 
         self.assertIn("--sleep-request", command)
         self.assertIn("2-6", command)
+        self.assertIn("extractor.twitter.cookies=/app/archive/state/runtime-cookies.txt", command)
+        self.assertIn("extractor.twitter.cookies-update=false", command)
 
     def test_yt_dlp_command_includes_sleep_options(self) -> None:
         settings = SimpleNamespace(
             archive_dir=Path("/app/archive"),
-            cookie_file=Path("/app/secrets/cookies.txt"),
             downloader_sleep_min_seconds=2,
             downloader_sleep_max_seconds=6,
         )
 
-        with patch("xarchiver.downloader.shutil.copyfile"):
-            command = build_command("yt-dlp", settings, Path("/app/archive/raw/input.txt"))
+        command = build_command(
+            "yt-dlp",
+            settings,
+            Path("/app/archive/raw/input.txt"),
+            Path("/app/archive/state/runtime-cookies.txt"),
+        )
 
         self.assertIn("--sleep-requests", command)
         self.assertIn("--sleep-interval", command)
         self.assertIn("--max-sleep-interval", command)
+        self.assertIn("/app/archive/state/runtime-cookies.txt", command)
+
+    def test_prepare_cookies_writes_file_fallback_to_runtime_path(self) -> None:
+        with tempfile.TemporaryDirectory() as tmp:
+            root = Path(tmp)
+            cookie_file = root / "secrets" / "cookies.txt"
+            cookie_file.parent.mkdir()
+            cookie_file.write_text("# Netscape\n.example\tTRUE\t/\tTRUE\t0\tname\tvalue\n", encoding="utf-8")
+            settings = SimpleNamespace(archive_dir=root / "archive", cookie_file=cookie_file)
+
+            with patch("xarchiver.downloader.resolve_cookie_content") as mock:
+                mock.return_value = SimpleNamespace(content=cookie_file.read_text(encoding="utf-8"))
+                runtime_path = prepare_cookies(settings)
+
+            self.assertEqual(runtime_path, root / "archive" / "state" / "runtime-cookies.txt")
+            self.assertIn("name\tvalue", runtime_path.read_text(encoding="utf-8"))
 
 
 class DownloadCandidateIntegrationTests(unittest.TestCase):

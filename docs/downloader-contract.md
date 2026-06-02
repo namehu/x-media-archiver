@@ -10,7 +10,7 @@ date: 2026-05-26 16:51:23 +08:00
 docker image: x-media-archiver-xarchiver
 gallery-dl version: 1.32.1
 yt-dlp version: 2026.03.17
-cookie mode: /app/secrets/cookies.txt
+cookie mode: database cookie_config first, /app/secrets/cookies.txt fallback
 sample count: 2
 ```
 
@@ -51,7 +51,8 @@ pass/fail: pass for photo tweet
 notes:
   - Do not put absolute paths in gallery-dl directory config. Absolute paths are sanitized into literal path names.
   - Use --destination /app/archive/media plus relative directory template.
-  - Use -o cookies-update=false because secrets/cookies.txt is mounted read-only.
+  - Cookies are injected at runtime with -o extractor.twitter.cookies=<archive/state/runtime-cookies.txt>.
+  - Use -o extractor.twitter.cookies-update=false because the runtime copy is managed by the CLI.
   - For the tested video tweet, gallery-dl returned exit code 0 but emitted "No results" and did not download files.
   - CLI must not treat process exit code 0 as enough; it must verify that files or metadata map back to each tweet.
 ```
@@ -81,9 +82,27 @@ pass/fail: pass for single video tweet
 notes:
   - For tested video tweet, yt-dlp id was 2059071834138509312, while tweet/status id was 2059072547585433944.
   - The original tweet id is available in display_id, webpage_url_basename, webpage_url, and _old_archive_ids.
-  - yt-dlp writes cookies back to the file passed with --cookies. Since secrets/cookies.txt is read-only, CLI copies it to archive/state/yt-dlp-cookies.txt and passes that runtime copy to yt-dlp.
+  - yt-dlp writes cookies back to the file passed with --cookies. The CLI writes the selected cookie source to archive/state/runtime-cookies.txt and passes that runtime copy to yt-dlp.
   - yt-dlp downloaded .mp4, .jpg thumbnail, and .info.json.
 ```
+
+## Cookies 来源契约
+
+下载与来源扫描共用同一 cookies 解析规则：
+
+```text
+1. 如果 Postgres cookie_config.content 有非空内容，优先使用数据库内容。
+2. 否则，如果 COOKIE_FILE 指向的文件存在且非空，读取该文件。
+3. 否则按 cookies 缺失处理。
+```
+
+实际下载前，CLI/API worker 会把选中的 cookies 内容写入：
+
+```text
+archive/state/runtime-cookies.txt
+```
+
+`gallery-dl` 与 `yt-dlp` 都只接收这个运行时文件路径。API 和 WebUI 只返回 cookies 配置状态、来源、备注和更新时间，不返回 cookies 正文。
 
 ## 统一输出契约
 

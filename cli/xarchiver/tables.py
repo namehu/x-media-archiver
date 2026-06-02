@@ -1,9 +1,18 @@
 from __future__ import annotations
 
-from sqlalchemy import BigInteger, Column, DateTime, Integer, MetaData, Table, Text
+from sqlalchemy import BigInteger, Column, DateTime, Integer, MetaData, SmallInteger, Table, Text
 from sqlalchemy.dialects.postgresql import JSONB
 
 metadata = MetaData()
+
+cookie_config = Table(
+    "cookie_config",
+    metadata,
+    Column("id", SmallInteger),
+    Column("content", Text),
+    Column("label", Text),
+    Column("updated_at", DateTime(timezone=True)),
+)
 
 tweets = Table(
     "tweets",

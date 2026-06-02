@@ -81,9 +81,9 @@ npm run zip
 - API 写操作当前由进程内锁串行化；新增写入口必须保持此行为或明确更新其并发策略和测试。
 - 常规归档流程应使用 scoped 下载、回填与校验；不要将全库扫描隐式加入普通请求。
 - 修改数据库结构时只新增 Alembic revision。禁止修改已发布的历史 revision 来变更现状。
-- 动态查询（可选 `WHERE`、`IN`、分页、CTE/lateral 组合）优先使用 SQLAlchemy Core，表定义集中在 `cli/xarchiver/tables.py`，编译入口使用 `cli/xarchiver/sql_builder.py`。
+- 数据库查询与 DML（`select` / `insert` / `update` / `delete` / `upsert`）默认使用 SQLAlchemy Core，表定义集中在 `cli/xarchiver/tables.py`，编译入口使用 `cli/xarchiver/sql_builder.py`。
 - 查询结果在 service 边界优先映射为 `cli/xarchiver/row_models.py` 中的 Pydantic row model；API page 响应返回前应转换为普通 `dict`，避免 response schema 直接接收内部 row model。
-- 固定 SQL 字符串仍可用于稳定写入、advisory lock、upsert、状态更新等 Postgres 特定语句；不要为追求 ORM 化而引入 SQLAlchemy ORM / SQLModel。
+- 固定 SQL 字符串仅允许用于 Alembic 迁移、Postgres advisory lock、SQLAlchemy Core 难以合理表达的数据库特性，或已有历史代码的渐进迁移场景；新增固定 SQL 必须在代码旁说明原因。不要为追求 ORM 化而引入 SQLAlchemy ORM / SQLModel。
 - 数据库查询、API 响应和日志中不得暴露 `COOKIE_FILE` 内容、生产 `DATABASE_URL` 或其他凭据。
 
 ### WebUI

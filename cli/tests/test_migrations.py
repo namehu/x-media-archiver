@@ -19,7 +19,7 @@ class MigrationTests(unittest.TestCase):
         ):
             files = migrate()
 
-        self.assertEqual([file.name for file in files], ["001_initial_schema.py"])
+        self.assertEqual([file.name for file in files], ["001_initial_schema.py", "002_add_cookie_config.py"])
         upgrade.assert_called_once()
 
     def test_migrate_returns_empty_list_at_head(self) -> None:
@@ -29,7 +29,7 @@ class MigrationTests(unittest.TestCase):
 
         with (
             patch("xarchiver.migrations.get_settings", return_value=settings),
-            patch("xarchiver.migrations.current_alembic_revision", return_value="001_initial_schema"),
+            patch("xarchiver.migrations.current_alembic_revision", return_value="002_add_cookie_config"),
             patch("xarchiver.migrations.command.upgrade") as upgrade,
         ):
             self.assertEqual(migrate(), [])
@@ -51,7 +51,7 @@ class MigrationTests(unittest.TestCase):
                 settings.database_url,
             )
 
-        self.assertEqual(files, [])
+        self.assertEqual([file.name for file in files], ["002_add_cookie_config.py"])
 
     def test_sqlalchemy_url_uses_psycopg_driver(self) -> None:
         self.assertEqual(
@@ -75,6 +75,17 @@ class MigrationTests(unittest.TestCase):
         self.assertIn("create table if not exists media_assets", sql)
         self.assertIn("create table if not exists archive_run_items", sql)
         self.assertIn("create table if not exists source_scan_runs", sql)
+
+    def test_cookie_config_revision_contains_singleton_table(self) -> None:
+        module = importlib.import_module("xarchiver.alembic.versions.002_add_cookie_config")
+        captured_sql: list[str] = []
+
+        with patch.object(module.op, "execute", side_effect=captured_sql.append):
+            module.upgrade()
+
+        sql = captured_sql[0]
+        self.assertIn("create table if not exists cookie_config", sql)
+        self.assertIn("constraint chk_cookie_config_singleton check (id = 1)", sql)
 
 
 if __name__ == "__main__":

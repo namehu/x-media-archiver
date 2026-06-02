@@ -19,6 +19,7 @@ from xarchiver.core.errors import (
 from xarchiver.db import connect
 from xarchiver.media import backfill_media_assets
 from xarchiver.row_models import DownloadCandidateRow, IdRow
+from xarchiver.services.cookies import resolve_cookie_content
 from xarchiver.sql_builder import compile_query
 from xarchiver.tables import tweets
 
@@ -82,7 +83,8 @@ def download(
             "media_backfill": empty_backfill_result(),
         }
 
-    cookie_error = validate_cookie_file(engine, settings.cookie_file)
+    cookie_path = prepare_cookies(settings)
+    cookie_error = validate_cookie_file(engine, cookie_path)
     if cookie_error:
         category = ErrorCategory.AUTH_REQUIRED.value
         mark_attempts(
@@ -112,7 +114,7 @@ def download(
             "exit_code": 0,
         }
 
-    command = build_command(engine, settings, input_path)
+    command = build_command(engine, settings, input_path, cookie_path)
     executable = command[0]
     if shutil.which(executable) is None:
         category = ErrorCategory.COMMAND_NOT_FOUND.value
@@ -316,7 +318,19 @@ def write_input_file(archive_dir: Path, engine: str, urls: list[str]) -> Path:
     return path
 
 
-def build_command(engine: str, settings: Settings, input_path: Path) -> list[str]:
+def prepare_cookies(settings: Settings) -> Path | None:
+    cookie = resolve_cookie_content(settings)
+    if cookie is None:
+        return None
+
+    runtime_cookie_file = settings.archive_dir / "state" / "runtime-cookies.txt"
+    runtime_cookie_file.parent.mkdir(parents=True, exist_ok=True)
+    content = cookie.content if cookie.content.endswith("\n") else f"{cookie.content}\n"
+    runtime_cookie_file.write_text(content, encoding="utf-8")
+    return runtime_cookie_file
+
+
+def build_command(engine: str, settings: Settings, input_path: Path, cookie_path: Path | None) -> list[str]:
     sleep_min = format_sleep_seconds(getattr(settings, "downloader_sleep_min_seconds", 2.0))
     sleep_max = format_sleep_seconds(getattr(settings, "downloader_sleep_max_seconds", 6.0))
     sleep_range = format_sleep_range(
@@ -324,10 +338,14 @@ def build_command(engine: str, settings: Settings, input_path: Path) -> list[str
         getattr(settings, "downloader_sleep_max_seconds", 6.0),
     )
     if engine == "gallery-dl":
-        return [
+        command = [
             "gallery-dl",
             "--config",
             "/app/gallery-dl.conf",
+            "-o",
+            f"extractor.twitter.cookies={cookie_path}" if cookie_path is not None else "extractor.twitter.cookies=",
+            "-o",
+            "extractor.twitter.cookies-update=false",
             "--destination",
             str(settings.archive_dir / "media"),
             "--sleep-request",
@@ -340,14 +358,12 @@ def build_command(engine: str, settings: Settings, input_path: Path) -> list[str
             "-i",
             str(input_path),
         ]
-
-    runtime_cookie_file = settings.archive_dir / "state" / "yt-dlp-cookies.txt"
-    shutil.copyfile(settings.cookie_file, runtime_cookie_file)
+        return command
 
     return [
         "yt-dlp",
         "--cookies",
-        str(runtime_cookie_file),
+        str(cookie_path) if cookie_path is not None else "",
         "--sleep-requests",
         sleep_min,
         "--sleep-interval",
@@ -375,10 +391,10 @@ def format_sleep_seconds(seconds: float) -> str:
     return f"{max(0.0, float(seconds)):g}"
 
 
-def validate_cookie_file(engine: str, cookie_file: Path) -> str | None:
-    if engine != "yt-dlp":
+def validate_cookie_file(engine: str, cookie_file: Path | None) -> str | None:
+    if engine not in SUPPORTED_ENGINES:
         return None
-    if not cookie_file.exists():
+    if cookie_file is None or not cookie_file.exists():
         return "cookie_missing"
     if cookie_file.stat().st_size == 0:
         return "cookie_empty"

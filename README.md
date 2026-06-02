@@ -113,15 +113,16 @@ Backend data access intentionally stays layered rather than using a full ORM:
 
 ```text
 Alembic revisions                  -> schema changes and rollback
-SQLAlchemy Core query builders      -> dynamic filters, pagination, and CTE/lateral query assembly
+SQLAlchemy Core query builders      -> default for queries and DML, including inserts, updates, deletes, and upserts
 Pydantic row models                 -> typed row validation at service boundaries
-Fixed SQL strings                   -> allowed for stable writes, locks, and compact Postgres-specific statements
+Fixed SQL strings                   -> limited to migrations, advisory locks, hard-to-model Postgres features, or legacy migration work
 ```
 
 Shared Core table metadata lives in `cli/xarchiver/tables.py`, and compiled
 queries use `cli/xarchiver/sql_builder.py` so psycopg receives named parameters.
-New dynamic `WHERE`, `IN`, `LIMIT/OFFSET`, CTE, or lateral queries should use
-SQLAlchemy Core instead of string concatenation.
+New database reads and writes should use SQLAlchemy Core instead of hand-written
+SQL strings. If a new fixed SQL string is unavoidable, document the reason next
+to the call site.
 
 Open the WebUI `Archive Queue` page to:
 

@@ -11,6 +11,7 @@ from xarchiver.api.schemas import (
     SourceCreateRequest,
     SourcesPageResponse,
     SourceStatusRequest,
+    UpdateCookiesRequest,
     VerifyRequest,
 )
 from xarchiver.row_models import ArchiveRunRow, ArchiveSourceListRow
@@ -31,6 +32,11 @@ class V1RouterSmokeTests(unittest.TestCase):
             for route in self.app.routes
             if "POST" in getattr(route, "methods", set())
         }
+        self.delete_paths = {
+            route.path: route.endpoint
+            for route in self.app.routes
+            if "DELETE" in getattr(route, "methods", set())
+        }
 
     # ── Route registration ─────────────────────────────────────────────────────
 
@@ -47,6 +53,7 @@ class V1RouterSmokeTests(unittest.TestCase):
             "/api/v1/sources/{source_id}",
             "/api/v1/events",
             "/api/v1/settings/download-policy",
+            "/api/v1/settings/cookies",
             "/api/v1/health/detail",
             "/api/v1/media-file/{relative_path:path}",
         ]
@@ -70,9 +77,13 @@ class V1RouterSmokeTests(unittest.TestCase):
             "/api/v1/actions/export",
             "/api/v1/maintenance/backfill",
             "/api/v1/maintenance/verify",
+            "/api/v1/settings/cookies",
         ]
         for path in expected:
             self.assertIn(path, self.post_paths, f"POST {path} not registered")
+
+    def test_v1_delete_routes_registered(self):
+        self.assertIn("/api/v1/settings/cookies", self.delete_paths)
 
     # ── Error parity: v1 endpoints enforce same guards as legacy ──────────────
 
@@ -176,6 +187,22 @@ class V1RouterSmokeTests(unittest.TestCase):
         self.assertIn("/api/v1/library/media", paths)
         self.assertIn("/api/v1/actions/verify", paths)
         self.assertIn("/api/v1/health/detail", paths)
+        self.assertIn("/api/v1/settings/cookies", paths)
+
+    def test_v1_cookies_endpoints_do_not_return_content(self):
+        with (
+            patch("xarchiver.api.v1.settings.save_cookie_content") as save_mock,
+            patch(
+                "xarchiver.api.v1.settings.get_cookie_config",
+                return_value={"configured": True, "source": "database", "label": "test", "updated_at": None},
+            ),
+        ):
+            result = self.post_paths["/api/v1/settings/cookies"](
+                UpdateCookiesRequest(content="secret-cookie-content", label="test")
+            )
+
+        save_mock.assert_called_once_with("secret-cookie-content", "test")
+        self.assertNotIn("content", result)
 
 
 if __name__ == "__main__":

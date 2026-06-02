@@ -213,6 +213,7 @@ class SourceServiceTests(unittest.TestCase):
                     },
                 ),
             ),
+            patch("xarchiver.services.sources.prepare_cookies", return_value=None),
             patch("xarchiver.services.sources.update_source_cursor") as update_cursor,
             patch("xarchiver.services.sources.mark_source_scan_result"),
             patch("xarchiver.services.sources.finish_source_scan_run") as finish_run,
