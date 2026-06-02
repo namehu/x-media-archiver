@@ -1,8 +1,10 @@
 import unittest
+from datetime import UTC, datetime
 from pathlib import Path
 from types import SimpleNamespace
 from unittest.mock import patch
 
+from xarchiver.row_models import ArchiveRunRow, TweetMediaAssetRow
 from xarchiver.services.library import archive_relative_path, attach_media_url, get_summary, list_media
 
 
@@ -25,6 +27,36 @@ class LibraryServiceTests(unittest.TestCase):
 
         self.assertEqual(row["media_relative_path"], "media/alice/1.jpg")
         self.assertEqual(row["media_url"], "/api/v1/media-file/media/alice/1.jpg")
+
+    def test_attach_media_url_accepts_row_model(self) -> None:
+        row = TweetMediaAssetRow.model_validate(
+            {
+                "id": 1,
+                "media_status": "verified",
+                "local_path": "/app/archive/media/alice/1.jpg",
+                "updated_at": datetime(2026, 1, 1, tzinfo=UTC),
+            }
+        )
+
+        result = attach_media_url(row, Path("/app/archive"))
+
+        self.assertEqual(result["media_relative_path"], "media/alice/1.jpg")
+        self.assertEqual(result["media_url"], "/api/v1/media-file/media/alice/1.jpg")
+
+    def test_archive_run_row_supports_dict_style_access(self) -> None:
+        row = ArchiveRunRow.model_validate(
+            {
+                "id": 1,
+                "trigger_type": "manual",
+                "status": "queued",
+                "started_at": datetime(2026, 1, 1, tzinfo=UTC),
+                "result": {"tasks": {"queued_count": 1}},
+            }
+        )
+
+        self.assertEqual(row["id"], 1)
+        self.assertEqual(row.get("status"), "queued")
+        self.assertEqual(dict(row)["result"], {"tasks": {"queued_count": 1}})
 
     def test_get_summary_never_exposes_sensitive_settings(self) -> None:
         settings = SimpleNamespace(

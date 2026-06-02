@@ -1,7 +1,10 @@
 import unittest
+from pathlib import Path
+from types import SimpleNamespace
 
 from xarchiver.db import connect
 from xarchiver.search import search_media
+from xarchiver.services.library import get_tweet_detail
 
 
 class SearchIntegrationTests(unittest.TestCase):
@@ -39,6 +42,21 @@ class SearchIntegrationTests(unittest.TestCase):
                     """,
                     (self.tweet_id,),
                 )
+                cur.execute(
+                    """
+                    insert into download_attempts (
+                        tweet_id,
+                        engine,
+                        status,
+                        exit_code,
+                        error_category,
+                        error_message,
+                        finished_at
+                    )
+                    values (%s, 'test', 'succeeded', 0, null, null, now())
+                    """,
+                    (self.tweet_id,),
+                )
             conn.commit()
 
     def tearDown(self) -> None:
@@ -60,6 +78,18 @@ class SearchIntegrationTests(unittest.TestCase):
         rows = search_media(author="search", media_status="verified", limit=10, offset=1)
 
         self.assertNotIn(self.tweet_id, {row["tweet_id"] for row in rows})
+
+    def test_get_tweet_detail_maps_rows_to_response_dicts(self) -> None:
+        detail = get_tweet_detail(
+            settings=SimpleNamespace(archive_dir=Path("/app/archive")),
+            tweet_id=self.tweet_id,
+        )
+
+        self.assertIsNotNone(detail)
+        assert detail is not None
+        self.assertEqual(detail["tweet"]["tweet_id"], self.tweet_id)
+        self.assertEqual(detail["media"][0]["media_status"], "verified")
+        self.assertEqual(detail["attempts"][0]["status"], "succeeded")
 
 
 if __name__ == "__main__":

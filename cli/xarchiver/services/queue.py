@@ -11,6 +11,7 @@ from xarchiver.config import Settings
 from xarchiver.core.events import publish_event
 from xarchiver.db import connect
 from xarchiver.importer import extract_tweet_id, parse_jsonl_rows, parse_url_rows, upsert_tweets
+from xarchiver.row_models import ArchiveRunAttemptRow, ArchiveRunItemRow, ArchiveRunRow
 from xarchiver.services.library import get_library_snapshot
 from xarchiver.workflow import process_tweet_scope
 
@@ -545,7 +546,7 @@ def list_runs(
     status: str | None = None,
     tweet_id: str | None = None,
     failed_only: bool = False,
-) -> list[dict[str, object]]:
+) -> list[ArchiveRunRow]:
     where, params = build_runs_filters(status=status, tweet_id=tweet_id, failed_only=failed_only)
     params.extend([limit, offset])
     with connect() as conn:
@@ -561,7 +562,7 @@ def list_runs(
                 """,
                 tuple(params),
             )
-            return list(cur.fetchall())
+            return [ArchiveRunRow.model_validate(dict(row)) for row in cur.fetchall()]
 
 
 def list_runs_page(
@@ -617,7 +618,7 @@ def build_runs_filters(
     return where, params
 
 
-def get_run(run_id: int) -> dict[str, object] | None:
+def get_run(run_id: int) -> ArchiveRunRow | None:
     with connect() as conn:
         with conn.cursor() as cur:
             cur.execute(
@@ -627,7 +628,10 @@ def get_run(run_id: int) -> dict[str, object] | None:
                 """,
                 (run_id,),
             )
-            return cur.fetchone()
+            row = cur.fetchone()
+            if not row:
+                return None
+            return ArchiveRunRow.model_validate(dict(row))
 
 
 def get_run_detail(run_id: int) -> dict[str, object] | None:
@@ -645,7 +649,7 @@ def get_run_detail(run_id: int) -> dict[str, object] | None:
                 """,
                 (run_id,),
             )
-            items = list(cur.fetchall())
+            items = [ArchiveRunItemRow.model_validate(dict(row)) for row in cur.fetchall()]
             item_ids = [int(item["id"]) for item in items]
             attempts_by_item: dict[int, list[dict[str, object]]] = {item_id: [] for item_id in item_ids}
             if item_ids:
@@ -660,8 +664,15 @@ def get_run_detail(run_id: int) -> dict[str, object] | None:
                     (item_ids,),
                 )
                 for attempt in cur.fetchall():
-                    attempts_by_item[int(attempt["archive_run_item_id"])].append(dict(attempt))
-    return {**run, "items": [{**dict(item), "attempts": attempts_by_item.get(int(item["id"]), [])} for item in items]}
+                    attempt_row = ArchiveRunAttemptRow.model_validate(dict(attempt))
+                    attempts_by_item[int(attempt_row.archive_run_item_id)].append(dict(attempt_row))
+    return {
+        **dict(run),
+        "items": [
+            {**dict(item), "attempts": attempts_by_item.get(int(item["id"]), [])}
+            for item in items
+        ],
+    }
 
 
 def retry_run(run_id: int) -> dict[str, object]:

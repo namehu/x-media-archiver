@@ -12,7 +12,7 @@ from xarchiver.exporter import (
     fetch_duplicate_rows,
     fetch_export_rows,
 )
-from xarchiver.row_models import RowModel
+from xarchiver.row_models import DownloadAttemptRow, RowModel, TweetDetailRow, TweetMediaAssetRow
 from xarchiver.search import count_search_media, search_media
 from xarchiver.status import get_media_count, get_media_status_counts, get_status_counts
 
@@ -117,9 +117,10 @@ def get_tweet_detail(settings: Settings, tweet_id: str) -> dict[str, object] | N
                 """,
                 (tweet_id,),
             )
-            tweet = cur.fetchone()
-            if not tweet:
+            tweet_row = cur.fetchone()
+            if not tweet_row:
                 return None
+            tweet = TweetDetailRow.model_validate(dict(tweet_row))
 
             cur.execute(
                 """
@@ -146,7 +147,13 @@ def get_tweet_detail(settings: Settings, tweet_id: str) -> dict[str, object] | N
                 """,
                 (tweet_id,),
             )
-            media = [attach_media_url(row, settings.archive_dir) for row in cur.fetchall()]
+            media = [
+                attach_media_url(
+                    TweetMediaAssetRow.model_validate(dict(row)),
+                    settings.archive_dir,
+                )
+                for row in cur.fetchall()
+            ]
 
             cur.execute(
                 """
@@ -166,9 +173,12 @@ def get_tweet_detail(settings: Settings, tweet_id: str) -> dict[str, object] | N
                 """,
                 (tweet_id,),
             )
-            attempts = list(cur.fetchall())
+            attempts = [
+                dict(DownloadAttemptRow.model_validate(dict(row)))
+                for row in cur.fetchall()
+            ]
 
-    return {"tweet": tweet, "media": media, "attempts": attempts}
+    return {"tweet": dict(tweet), "media": media, "attempts": attempts}
 
 
 def list_export_media(settings: Settings, status: str | None = "verified") -> list[dict[str, object]]:
