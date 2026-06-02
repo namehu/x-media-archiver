@@ -1,10 +1,19 @@
 import unittest
+from datetime import UTC, datetime
 from unittest.mock import patch
 
 from fastapi import HTTPException
 
 from xarchiver.api.app import create_app
-from xarchiver.api.schemas import BackfillRequest, SourceCreateRequest, SourceStatusRequest, VerifyRequest
+from xarchiver.api.schemas import (
+    ArchiveRunsPageResponse,
+    BackfillRequest,
+    SourceCreateRequest,
+    SourceStatusRequest,
+    SourcesPageResponse,
+    VerifyRequest,
+)
+from xarchiver.row_models import ArchiveRunRow, ArchiveSourceListRow
 
 
 class V1RouterSmokeTests(unittest.TestCase):
@@ -102,6 +111,27 @@ class V1RouterSmokeTests(unittest.TestCase):
         self.assertEqual(result, page)
         mock.assert_called_once_with(limit=10, offset=20, status="queued", tweet_id="123", failed_only=True)
 
+    def test_v1_archive_runs_response_serializes_row_models(self):
+        row = ArchiveRunRow.model_validate(
+            {
+                "id": 1,
+                "trigger_type": "manual",
+                "status": "queued",
+                "started_at": datetime(2026, 1, 1, tzinfo=UTC),
+                "finished_at": None,
+                "result": {"tasks": {"queued_count": 1}},
+                "error_message": None,
+            }
+        )
+        page = {"rows": [row], "count": 1, "total_count": 1, "limit": 10, "offset": 0}
+
+        with patch("xarchiver.api.v1.archive_runs.list_runs_page", return_value=page):
+            result = self.get_paths["/api/v1/archive-runs"](limit=10)
+
+        payload = ArchiveRunsPageResponse.model_validate(result).model_dump(mode="json")
+        self.assertEqual(payload["rows"][0]["id"], 1)
+        self.assertEqual(payload["rows"][0]["result"]["tasks"]["queued_count"], 1)
+
     def test_v1_sources_list_delegates_all_filters(self):
         page = {"rows": [], "count": 0, "total_count": 0, "limit": 5, "offset": 0}
         with patch("xarchiver.api.v1.sources.list_sources_page", return_value=page) as mock:
@@ -110,6 +140,32 @@ class V1RouterSmokeTests(unittest.TestCase):
             )
         self.assertEqual(result, page)
         mock.assert_called_once_with(status="active", source_type="profile", limit=5, offset=0)
+
+    def test_v1_sources_response_serializes_row_models(self):
+        row = ArchiveSourceListRow.model_validate(
+            {
+                "id": 2,
+                "source_type": "profile",
+                "source_url": "https://x.com/example",
+                "status": "active",
+                "cursor_state": {},
+                "discovered_count": 0,
+                "submitted_count": 0,
+                "created_at": datetime(2026, 1, 1, tzinfo=UTC),
+                "updated_at": datetime(2026, 1, 2, tzinfo=UTC),
+                "discovered_tweet_count": 3,
+                "unsubmitted_tweet_count": 2,
+                "discovered_media_count": 4,
+            }
+        )
+        page = {"rows": [row], "count": 1, "total_count": 1, "limit": 5, "offset": 0}
+
+        with patch("xarchiver.api.v1.sources.list_sources_page", return_value=page):
+            result = self.get_paths["/api/v1/sources"](limit=5)
+
+        payload = SourcesPageResponse.model_validate(result).model_dump(mode="json")
+        self.assertEqual(payload["rows"][0]["id"], 2)
+        self.assertEqual(payload["rows"][0]["discovered_media_count"], 4)
 
     # ── OpenAPI schema: v1 routes appear in the spec ──────────────────────────
 

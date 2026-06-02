@@ -33,7 +33,8 @@ def archive_runs(
     tweet_id: str | None = None,
     failed_only: bool = False,
 ) -> dict[str, object]:
-    return list_runs_page(limit=limit, offset=offset, status=run_status, tweet_id=tweet_id, failed_only=failed_only)
+    page = list_runs_page(limit=limit, offset=offset, status=run_status, tweet_id=tweet_id, failed_only=failed_only)
+    return {**page, "rows": [dict(row) for row in page.get("rows", [])]}
 
 
 @router.get("/{run_id}", response_model=ArchiveRunDetailResponse)

@@ -1,7 +1,12 @@
 import unittest
 from unittest.mock import MagicMock, patch
 
-from xarchiver.recovery import DEFAULT_REQUEUE_STATUSES, fetch_requeue_candidates, requeue_tweets
+from xarchiver.recovery import (
+    DEFAULT_REQUEUE_STATUSES,
+    build_requeue_candidates_query,
+    fetch_requeue_candidates,
+    requeue_tweets,
+)
 
 
 class RecoveryServiceTests(unittest.TestCase):
@@ -35,8 +40,16 @@ class RecoveryServiceTests(unittest.TestCase):
 
         self.assertEqual(result, ["1", "2"])
         sql, params = cursor.execute.call_args.args
-        self.assertIn("limit %s", sql.lower())
-        self.assertEqual(params, [["missing"], 2])
+        self.assertIn("limit %(limit)s", sql.lower())
+        self.assertEqual(params, {"download_status_1_1": "missing", "limit": 2})
+
+    def test_build_requeue_candidates_query_uses_named_params(self) -> None:
+        sql, params = build_requeue_candidates_query(["missing", "corrupt"], 2)
+
+        self.assertIn("tweets.download_status in", sql.lower())
+        self.assertIn("limit %(limit)s", sql.lower())
+        self.assertEqual(params["limit"], 2)
+        self.assertEqual({params["download_status_1_1"], params["download_status_1_2"]}, {"missing", "corrupt"})
 
 
 if __name__ == "__main__":

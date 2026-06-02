@@ -1,8 +1,20 @@
 from __future__ import annotations
 
+from sqlalchemy import (
+    Integer,
+    and_,
+    bindparam,
+    func,
+    literal_column,
+    or_,
+    select,
+)
+from sqlalchemy.sql import ColumnElement, Select
+
 from xarchiver.db import connect
 from xarchiver.row_models import SearchMediaRow
-
+from xarchiver.sql_builder import compile_query
+from xarchiver.tables import media_assets, tweets
 
 def search_media(
     author: str | None = None,
@@ -27,17 +39,10 @@ def count_search_media(
     media_status: str | None = "verified",
     media_type: str | None = None,
 ) -> int:
-    where, params = build_search_filters(author, text, tweet_status, media_status, media_type)
-    sql = """
-        select count(*)::int as count
-        from media_assets m
-        join tweets t on t.tweet_id = m.tweet_id
-    """
-    if where:
-        sql += "\n        where " + "\n          and ".join(where)
+    sql, params = build_count_query(author, text, tweet_status, media_status, media_type)
     with connect() as conn:
         with conn.cursor() as cur:
-            cur.execute(sql, tuple(params))
+            cur.execute(sql, params)
             return int(cur.fetchone()["count"])
 
 
@@ -49,66 +54,96 @@ def build_search_query(
     media_type: str | None,
     limit: int,
     offset: int = 0,
-) -> tuple[str, tuple[object, ...]]:
-    where, params = build_search_filters(author, text, tweet_status, media_status, media_type)
+) -> tuple[str, dict[str, object]]:
+    statement = (
+        select(
+            tweets.c.tweet_id,
+            tweets.c.url.label("tweet_url"),
+            tweets.c.author_username,
+            tweets.c.author_display_name,
+            tweets.c.published_at,
+            func.coalesce(tweets.c.text, literal_column("''")).label("tweet_text"),
+            tweets.c.download_status.label("tweet_status"),
+            media_assets.c.media_index,
+            media_assets.c.media_type,
+            media_assets.c.download_status.label("media_status"),
+            media_assets.c.source_engine,
+            media_assets.c.local_path,
+            media_assets.c.file_size,
+            media_assets.c.width,
+            media_assets.c.height,
+            media_assets.c.duration_ms,
+        )
+        .select_from(media_assets.join(tweets, tweets.c.tweet_id == media_assets.c.tweet_id))
+        .order_by(
+            tweets.c.published_at.desc().nulls_last(),
+            tweets.c.imported_at.desc(),
+            media_assets.c.media_index.asc().nulls_last(),
+            media_assets.c.id.asc(),
+        )
+        .limit(bindparam("limit", limit))
+        .offset(bindparam("offset", offset))
+    )
+    statement = apply_search_filters(statement, author, text, tweet_status, media_status, media_type)
+    return compile_query(statement)
 
-    sql = """
-        select
-            t.tweet_id,
-            t.url as tweet_url,
-            t.author_username,
-            t.author_display_name,
-            t.published_at,
-            coalesce(t.text, '') as tweet_text,
-            t.download_status as tweet_status,
-            m.media_index,
-            m.media_type,
-            m.download_status as media_status,
-            m.source_engine,
-            m.local_path,
-            m.file_size,
-            m.width,
-            m.height,
-            m.duration_ms
-        from media_assets m
-        join tweets t on t.tweet_id = m.tweet_id
-    """
-    if where:
-        sql += "\n        where " + "\n          and ".join(where)
-    sql += "\n        order by t.published_at desc nulls last, t.imported_at desc, m.media_index nulls last, m.id"
-    sql += "\n        limit %s offset %s"
-    params.extend([limit, offset])
 
-    return sql, tuple(params)
-
-
-def build_search_filters(
+def build_count_query(
     author: str | None,
     text: str | None,
     tweet_status: str | None,
     media_status: str | None,
     media_type: str | None,
-) -> tuple[list[str], list[object]]:
-    where: list[str] = []
-    params: list[object] = []
+) -> tuple[str, dict[str, object]]:
+    statement = select(func.count().cast(Integer).label("count")).select_from(
+        media_assets.join(tweets, tweets.c.tweet_id == media_assets.c.tweet_id)
+    )
+    statement = apply_search_filters(statement, author, text, tweet_status, media_status, media_type)
+    return compile_query(statement)
+
+
+def apply_search_filters(
+    statement: Select,
+    author: str | None,
+    text: str | None,
+    tweet_status: str | None,
+    media_status: str | None,
+    media_type: str | None,
+) -> Select:
+    conditions = build_search_conditions(author, text, tweet_status, media_status, media_type)
+    if not conditions:
+        return statement
+    return statement.where(and_(*conditions))
+
+
+def build_search_conditions(
+    author: str | None,
+    text: str | None,
+    tweet_status: str | None,
+    media_status: str | None,
+    media_type: str | None,
+) -> list[ColumnElement[bool]]:
+    conditions: list[ColumnElement[bool]] = []
 
     if author:
-        where.append("(t.author_username ilike %s or t.author_display_name ilike %s)")
         pattern = f"%{author}%"
-        params.extend([pattern, pattern])
+        author_pattern = bindparam("author_pattern", pattern)
+        conditions.append(
+            or_(
+                tweets.c.author_username.ilike(author_pattern),
+                tweets.c.author_display_name.ilike(author_pattern),
+            )
+        )
     if text:
-        where.append("t.text ilike %s")
-        params.append(f"%{text}%")
+        conditions.append(tweets.c.text.ilike(bindparam("text_pattern", f"%{text}%")))
     if tweet_status:
-        where.append("t.download_status = %s")
-        params.append(tweet_status)
+        conditions.append(tweets.c.download_status == bindparam("tweet_status", tweet_status))
     if media_status and media_status != "all":
-        where.append("m.download_status = %s")
-        params.append(media_status)
+        conditions.append(media_assets.c.download_status == bindparam("media_status", media_status))
     if media_type:
-        where.append("m.media_type = %s")
-        params.append(media_type)
-    return where, params
+        conditions.append(media_assets.c.media_type == bindparam("media_type", media_type))
+    return conditions
+
 
 
 def compact_text(value: object, max_length: int = 90) -> str:

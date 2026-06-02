@@ -3,9 +3,13 @@ from __future__ import annotations
 from dataclasses import dataclass
 from pathlib import Path
 
+from sqlalchemy import bindparam, select
+
 from xarchiver.db import connect
 from xarchiver.media import sha256_file
 from xarchiver.row_models import DownloadStatusCountRow, VerifiableAssetRow
+from xarchiver.sql_builder import compile_query
+from xarchiver.tables import media_assets
 
 
 VERIFY_MEDIA_STATUSES = ("downloaded", "verified", "missing", "corrupt")
@@ -37,24 +41,34 @@ def fetch_verifiable_assets(
     limit: int | None,
     media_ids: list[int] | None = None,
 ) -> list[VerifiableAssetRow]:
-    sql = """
-        select id, tweet_id, local_path, sha256
-        from media_assets
-        where download_status = any(%s)
-    """
-    params: list[object] = [list(VERIFY_MEDIA_STATUSES)]
-    if media_ids is not None:
-        sql += " and id = any(%s)"
-        params.append(media_ids)
-    sql += " order by updated_at asc, id asc"
-    if limit:
-        sql += " limit %s"
-        params.append(limit)
+    sql, params = build_verifiable_assets_query(limit=limit, media_ids=media_ids)
 
     with connect() as conn:
         with conn.cursor() as cur:
             cur.execute(sql, params)
             return [VerifiableAssetRow.model_validate(dict(row)) for row in cur.fetchall()]
+
+
+def build_verifiable_assets_query(
+    limit: int | None,
+    media_ids: list[int] | None = None,
+) -> tuple[str, dict[str, object]]:
+    statement = (
+        select(
+            media_assets.c.id,
+            media_assets.c.tweet_id,
+            media_assets.c.local_path,
+            media_assets.c.sha256,
+        )
+        .select_from(media_assets)
+        .where(media_assets.c.download_status.in_(VERIFY_MEDIA_STATUSES))
+        .order_by(media_assets.c.updated_at.asc(), media_assets.c.id.asc())
+    )
+    if media_ids is not None:
+        statement = statement.where(media_assets.c.id.in_(media_ids))
+    if limit:
+        statement = statement.limit(bindparam("limit", limit))
+    return compile_query(statement)
 
 
 def verify_asset(asset: VerifiableAssetRow) -> VerificationResult:

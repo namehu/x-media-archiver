@@ -12,6 +12,14 @@ from urllib.parse import urlparse
 
 from psycopg.errors import UniqueViolation
 from psycopg.types.json import Jsonb
+from sqlalchemy import (
+    Integer,
+    and_,
+    bindparam,
+    func,
+    select,
+)
+from sqlalchemy.sql import ColumnElement, Select
 
 from xarchiver.config import Settings, get_settings
 from xarchiver.core.errors import ErrorCategory, category_value, classify_x_error
@@ -31,6 +39,8 @@ from xarchiver.row_models import (
     TweetRow,
 )
 from xarchiver.services.queue import has_pending_download_work, submit_archive_batch
+from xarchiver.sql_builder import compile_query
+from xarchiver.tables import archive_sources, source_discovered_tweets, tweets
 
 VALID_SOURCE_TYPES = {"profile", "user_media", "likes", "bookmarks", "search", "manual"}
 VALID_SOURCE_STATUSES = {"active", "paused", "completed", "failed"}
@@ -109,26 +119,15 @@ def list_sources(
     limit: int = 50,
     offset: int = 0,
 ) -> list[ArchiveSourceListRow]:
-    where, params = build_source_filters(status=status, source_type=source_type)
-    params.extend([limit, offset])
+    sql, params = build_sources_query(
+        status=status,
+        source_type=source_type,
+        limit=limit,
+        offset=offset,
+    )
     with connect() as conn:
         with conn.cursor() as cur:
-            cur.execute(
-                f"""
-                select s.*,
-                       count(d.id)::int as discovered_tweet_count,
-                       count(d.id) filter (where d.archive_run_id is null)::int as unsubmitted_tweet_count,
-                       coalesce(sum(coalesce((d.raw_payload->>'media_count')::int, 0)), 0)::int as discovered_media_count,
-                       max(d.discovered_at) as latest_discovered_at
-                from archive_sources s
-                left join source_discovered_tweets d on d.source_id = s.id
-                {where}
-                group by s.id
-                order by s.updated_at desc, s.id desc
-                limit %s offset %s
-                """,
-                tuple(params),
-            )
+            cur.execute(sql, params)
             return [ArchiveSourceListRow.model_validate(dict(row)) for row in cur.fetchall()]
 
 
@@ -140,41 +139,111 @@ def list_sources_page(
 ) -> dict[str, object]:
     rows = list_sources(status=status, source_type=source_type, limit=limit, offset=offset)
     total_count = count_sources(status=status, source_type=source_type)
-    return {"rows": rows, "count": len(rows), "total_count": total_count, "limit": limit, "offset": offset}
+    return {
+        "rows": [dict(row) for row in rows],
+        "count": len(rows),
+        "total_count": total_count,
+        "limit": limit,
+        "offset": offset,
+    }
 
 
 def count_sources(
     status: str | None = None,
     source_type: str | None = None,
 ) -> int:
-    where, params = build_source_filters(status=status, source_type=source_type)
+    sql, params = build_count_sources_query(status=status, source_type=source_type)
     with connect() as conn:
         with conn.cursor() as cur:
-            cur.execute(
-                f"""
-                select count(*)::int as count
-                from archive_sources s
-                {where}
-                """,
-                tuple(params),
-            )
+            cur.execute(sql, params)
             return int(cur.fetchone()["count"])
+
+
+def build_sources_query(
+    status: str | None = None,
+    source_type: str | None = None,
+    limit: int = 50,
+    offset: int = 0,
+) -> tuple[str, dict[str, object]]:
+    discovery_count = func.count(source_discovered_tweets.c.id).cast(Integer)
+    unsubmitted_count = (
+        func.count(source_discovered_tweets.c.id)
+        .filter(source_discovered_tweets.c.archive_run_id.is_(None))
+        .cast(Integer)
+    )
+    media_count = func.coalesce(
+        func.sum(
+            func.coalesce(
+                source_discovered_tweets.c.raw_payload["media_count"].astext.cast(Integer),
+                0,
+            )
+        ),
+        0,
+    ).cast(Integer)
+
+    statement = (
+        select(
+            archive_sources,
+            discovery_count.label("discovered_tweet_count"),
+            unsubmitted_count.label("unsubmitted_tweet_count"),
+            media_count.label("discovered_media_count"),
+            func.max(source_discovered_tweets.c.discovered_at).label("latest_discovered_at"),
+        )
+        .select_from(
+            archive_sources.outerjoin(
+                source_discovered_tweets,
+                source_discovered_tweets.c.source_id == archive_sources.c.id,
+            )
+        )
+        .group_by(archive_sources.c.id)
+        .order_by(archive_sources.c.updated_at.desc(), archive_sources.c.id.desc())
+        .limit(bindparam("limit", limit))
+        .offset(bindparam("offset", offset))
+    )
+    statement = apply_source_filters(statement, status=status, source_type=source_type)
+    return compile_query(statement)
+
+
+def build_count_sources_query(
+    status: str | None = None,
+    source_type: str | None = None,
+) -> tuple[str, dict[str, object]]:
+    statement = select(func.count().cast(Integer).label("count")).select_from(archive_sources)
+    statement = apply_source_filters(statement, status=status, source_type=source_type)
+    return compile_query(statement)
+
+
+def apply_source_filters(
+    statement: Select,
+    status: str | None = None,
+    source_type: str | None = None,
+) -> Select:
+    filters = build_source_filters(status=status, source_type=source_type)
+    if not filters:
+        return statement
+    return statement.where(and_(*filters))
 
 
 def build_source_filters(
     status: str | None = None,
     source_type: str | None = None,
-) -> tuple[str, list[object]]:
-    filters: list[str] = []
-    params: list[object] = []
+) -> list[ColumnElement[bool]]:
+    filters: list[ColumnElement[bool]] = []
     if status:
-        filters.append("s.status = %s")
-        params.append(normalize_source_status(status))
+        filters.append(
+            archive_sources.c.status == bindparam(
+                "source_status",
+                normalize_source_status(status),
+            )
+        )
     if source_type:
-        filters.append("s.source_type = %s")
-        params.append(normalize_source_type(source_type))
-    where = f"where {' and '.join(filters)}" if filters else ""
-    return where, params
+        filters.append(
+            archive_sources.c.source_type == bindparam(
+                "source_type",
+                normalize_source_type(source_type),
+            )
+        )
+    return filters
 
 
 def get_source(source_id: int) -> dict[str, object] | None:
@@ -1346,25 +1415,40 @@ def fetch_unsubmitted_discoveries(
     limit: int | None = None,
     tweet_ids: list[str] | None = None,
 ) -> list[TweetRow]:
-    filters = ["d.source_id = %s", "d.archive_run_id is null"]
-    params: list[object] = [source_id]
-    if tweet_ids is not None:
-        filters.append("d.tweet_id = any(%s)")
-        params.append(tweet_ids)
-    sql = f"""
-        select t.*
-        from source_discovered_tweets d
-        join tweets t on t.tweet_id = d.tweet_id
-        where {' and '.join(filters)}
-        order by d.discovered_at asc, d.id asc
-    """
-    if limit:
-        sql += " limit %s"
-        params.append(limit)
+    sql, params = build_unsubmitted_discoveries_query(source_id, limit=limit, tweet_ids=tweet_ids)
     with connect() as conn:
         with conn.cursor() as cur:
-            cur.execute(sql, tuple(params))
+            cur.execute(sql, params)
             return [TweetRow.model_validate(dict(row)) for row in cur.fetchall()]
+
+
+def build_unsubmitted_discoveries_query(
+    source_id: int,
+    limit: int | None = None,
+    tweet_ids: list[str] | None = None,
+) -> tuple[str, dict[str, object]]:
+    statement = (
+        select(tweets)
+        .select_from(
+            source_discovered_tweets.join(
+                tweets,
+                tweets.c.tweet_id == source_discovered_tweets.c.tweet_id,
+            )
+        )
+        .where(
+            source_discovered_tweets.c.source_id == bindparam("source_id", source_id),
+            source_discovered_tweets.c.archive_run_id.is_(None),
+        )
+        .order_by(
+            source_discovered_tweets.c.discovered_at.asc(),
+            source_discovered_tweets.c.id.asc(),
+        )
+    )
+    if tweet_ids is not None:
+        statement = statement.where(source_discovered_tweets.c.tweet_id.in_(tweet_ids))
+    if limit:
+        statement = statement.limit(bindparam("limit", limit))
+    return compile_query(statement)
 
 
 def classify_source_error(stderr: str | None) -> str:

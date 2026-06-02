@@ -5,6 +5,9 @@ import shutil
 import subprocess
 from pathlib import Path
 
+from sqlalchemy import and_, bindparam, func, literal_column, or_, select
+from sqlalchemy.sql import ColumnElement
+
 from xarchiver.archive import ensure_archive_dirs, normalize_path
 from xarchiver.config import Settings
 from xarchiver.core.errors import (
@@ -16,6 +19,8 @@ from xarchiver.core.errors import (
 from xarchiver.db import connect
 from xarchiver.media import backfill_media_assets
 from xarchiver.row_models import DownloadCandidateRow, IdRow
+from xarchiver.sql_builder import compile_query
+from xarchiver.tables import tweets
 
 
 SUPPORTED_ENGINES = {"gallery-dl", "yt-dlp"}
@@ -247,36 +252,63 @@ def fetch_download_candidates(
     retry_backoff_minutes: int = 0,
     tweet_ids: list[str] | None = None,
 ) -> list[DownloadCandidateRow]:
-    sql = """
-        select tweet_id, url
-        from tweets
-        where download_status in ('pending', 'failed_retryable', 'missing', 'corrupt')
-    """
-    params: list[object] = []
-    if retry_limit is not None:
-        sql += " and retry_count < %s"
-        params.append(retry_limit)
-    if retry_backoff_minutes > 0:
-        sql += """
-          and (
-              download_status = 'pending'
-              or last_attempt_at is null
-              or last_attempt_at <= now() - make_interval(mins => %s * greatest(retry_count, 1))
-          )
-        """
-        params.append(retry_backoff_minutes)
-    if tweet_ids is not None:
-        sql += " and tweet_id = any(%s)"
-        params.append(tweet_ids)
-    sql += " order by imported_at asc"
-    if limit:
-        sql += " limit %s"
-        params.append(limit)
+    sql, params = build_download_candidates_query(
+        limit=limit,
+        retry_limit=retry_limit,
+        retry_backoff_minutes=retry_backoff_minutes,
+        tweet_ids=tweet_ids,
+    )
 
     with connect() as conn:
         with conn.cursor() as cur:
-            cur.execute(sql, tuple(params))
+            cur.execute(sql, params)
             return [DownloadCandidateRow.model_validate(dict(row)) for row in cur.fetchall()]
+
+
+def build_download_candidates_query(
+    limit: int | None,
+    retry_limit: int | None = None,
+    retry_backoff_minutes: int = 0,
+    tweet_ids: list[str] | None = None,
+) -> tuple[str, dict[str, object]]:
+    statement = (
+        select(tweets.c.tweet_id, tweets.c.url)
+        .select_from(tweets)
+        .where(and_(*build_download_candidate_conditions(retry_limit, retry_backoff_minutes, tweet_ids)))
+        .order_by(tweets.c.imported_at.asc())
+    )
+    if limit:
+        statement = statement.limit(bindparam("limit", limit))
+    return compile_query(statement)
+
+
+def build_download_candidate_conditions(
+    retry_limit: int | None = None,
+    retry_backoff_minutes: int = 0,
+    tweet_ids: list[str] | None = None,
+) -> list[ColumnElement[bool]]:
+    conditions: list[ColumnElement[bool]] = [
+        tweets.c.download_status.in_(("pending", "failed_retryable", "missing", "corrupt"))
+    ]
+    if retry_limit is not None:
+        conditions.append(tweets.c.retry_count < bindparam("retry_limit", retry_limit))
+    if retry_backoff_minutes > 0:
+        conditions.append(
+            or_(
+                tweets.c.download_status == "pending",
+                tweets.c.last_attempt_at.is_(None),
+                tweets.c.last_attempt_at
+                <= func.now()
+                - (
+                    bindparam("retry_backoff_minutes", retry_backoff_minutes)
+                    * func.greatest(tweets.c.retry_count, 1)
+                    * literal_column("interval '1 minute'")
+                ),
+            )
+        )
+    if tweet_ids is not None:
+        conditions.append(tweets.c.tweet_id.in_(tweet_ids))
+    return conditions
 
 
 def write_input_file(archive_dir: Path, engine: str, urls: list[str]) -> Path:

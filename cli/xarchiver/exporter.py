@@ -7,9 +7,13 @@ from html import escape
 from pathlib import Path
 from urllib.parse import quote
 
+from sqlalchemy import Integer, bindparam, func, lateral, select, true
+
 from xarchiver.archive import ensure_archive_dirs
 from xarchiver.db import connect
 from xarchiver.row_models import DuplicateRow, ExportMediaRow, FailureRow
+from xarchiver.sql_builder import compile_query
+from xarchiver.tables import download_attempts, media_assets, tweets
 
 
 CSV_FIELDS = [
@@ -158,36 +162,7 @@ def default_duplicates_export_path(archive_dir: Path) -> Path:
 
 
 def fetch_export_rows(status: str | None) -> list[ExportMediaRow]:
-    sql = """
-        select
-            t.tweet_id,
-            t.url as tweet_url,
-            t.author_username,
-            t.author_display_name,
-            t.published_at,
-            t.text as tweet_text,
-            t.download_status as tweet_status,
-            m.media_index,
-            m.media_type,
-            m.download_status as media_status,
-            m.source_engine,
-            m.local_path,
-            m.metadata_path,
-            m.original_filename,
-            m.file_ext,
-            m.file_size,
-            m.sha256,
-            m.width,
-            m.height,
-            m.duration_ms
-        from media_assets m
-        join tweets t on t.tweet_id = m.tweet_id
-    """
-    params: tuple[str, ...] = ()
-    if status:
-        sql += " where m.download_status = %s"
-        params = (status,)
-    sql += " order by t.author_username nulls last, t.tweet_id, m.media_index nulls last, m.id"
+    sql, params = build_export_rows_query(status)
 
     with connect() as conn:
         with conn.cursor() as cur:
@@ -195,40 +170,88 @@ def fetch_export_rows(status: str | None) -> list[ExportMediaRow]:
             return [ExportMediaRow.model_validate(dict(row)) for row in cur.fetchall()]
 
 
+def build_export_rows_query(status: str | None) -> tuple[str, dict[str, object]]:
+    statement = (
+        select(
+            tweets.c.tweet_id,
+            tweets.c.url.label("tweet_url"),
+            tweets.c.author_username,
+            tweets.c.author_display_name,
+            tweets.c.published_at,
+            tweets.c.text.label("tweet_text"),
+            tweets.c.download_status.label("tweet_status"),
+            media_assets.c.media_index,
+            media_assets.c.media_type,
+            media_assets.c.download_status.label("media_status"),
+            media_assets.c.source_engine,
+            media_assets.c.local_path,
+            media_assets.c.metadata_path,
+            media_assets.c.original_filename,
+            media_assets.c.file_ext,
+            media_assets.c.file_size,
+            media_assets.c.sha256,
+            media_assets.c.width,
+            media_assets.c.height,
+            media_assets.c.duration_ms,
+        )
+        .select_from(media_assets.join(tweets, tweets.c.tweet_id == media_assets.c.tweet_id))
+        .order_by(
+            tweets.c.author_username.asc().nulls_last(),
+            tweets.c.tweet_id.asc(),
+            media_assets.c.media_index.asc().nulls_last(),
+            media_assets.c.id.asc(),
+        )
+    )
+    if status:
+        statement = statement.where(media_assets.c.download_status == bindparam("media_status", status))
+    return compile_query(statement)
+
+
 def fetch_failure_rows(limit: int | None = None, offset: int = 0) -> list[FailureRow]:
-    sql = """
-        select
-            t.tweet_id,
-            t.url as tweet_url,
-            t.author_username,
-            t.download_status as tweet_status,
-            t.last_error,
-            t.retry_count,
-            latest.engine as latest_engine,
-            latest.status as latest_attempt_status,
-            latest.error_category as latest_error_category,
-            latest.error_message as latest_error_message,
-            latest.exit_code as latest_exit_code,
-            latest.finished_at as latest_finished_at
-        from tweets t
-        left join lateral (
-            select engine, status, error_category, error_message, exit_code, finished_at
-            from download_attempts da
-            where da.tweet_id = t.tweet_id
-            order by da.finished_at desc nulls last, da.id desc
-            limit 1
-        ) latest on true
-        where t.download_status not in ('downloaded', 'verified', 'skipped')
-        order by t.updated_at desc, t.tweet_id
-    """
-    params: list[object] = []
-    if limit is not None:
-        sql += " limit %s offset %s"
-        params.extend([limit, offset])
+    sql, params = build_failure_rows_query(limit=limit, offset=offset)
     with connect() as conn:
         with conn.cursor() as cur:
-            cur.execute(sql, tuple(params))
+            cur.execute(sql, params)
             return [FailureRow.model_validate(dict(row)) for row in cur.fetchall()]
+
+
+def build_failure_rows_query(limit: int | None = None, offset: int = 0) -> tuple[str, dict[str, object]]:
+    latest_attempt = lateral(
+        select(
+            download_attempts.c.engine,
+            download_attempts.c.status,
+            download_attempts.c.error_category,
+            download_attempts.c.error_message,
+            download_attempts.c.exit_code,
+            download_attempts.c.finished_at,
+        )
+        .select_from(download_attempts)
+        .where(download_attempts.c.tweet_id == tweets.c.tweet_id)
+        .order_by(download_attempts.c.finished_at.desc().nulls_last(), download_attempts.c.id.desc())
+        .limit(1)
+    ).alias("latest")
+    statement = (
+        select(
+            tweets.c.tweet_id,
+            tweets.c.url.label("tweet_url"),
+            tweets.c.author_username,
+            tweets.c.download_status.label("tweet_status"),
+            tweets.c.last_error,
+            tweets.c.retry_count,
+            latest_attempt.c.engine.label("latest_engine"),
+            latest_attempt.c.status.label("latest_attempt_status"),
+            latest_attempt.c.error_category.label("latest_error_category"),
+            latest_attempt.c.error_message.label("latest_error_message"),
+            latest_attempt.c.exit_code.label("latest_exit_code"),
+            latest_attempt.c.finished_at.label("latest_finished_at"),
+        )
+        .select_from(tweets.outerjoin(latest_attempt, true()))
+        .where(tweets.c.download_status.not_in(("downloaded", "verified", "skipped")))
+        .order_by(tweets.c.updated_at.desc(), tweets.c.tweet_id.asc())
+    )
+    if limit is not None:
+        statement = statement.limit(bindparam("limit", limit)).offset(bindparam("offset", offset))
+    return compile_query(statement)
 
 
 def count_failure_rows() -> int:
@@ -245,41 +268,60 @@ def count_failure_rows() -> int:
 
 
 def fetch_duplicate_rows(limit: int | None = None, offset: int = 0) -> list[DuplicateRow]:
-    sql = """
-        with duplicate_hashes as (
-            select sha256,
-                   count(*) as duplicate_count,
-                   sum(coalesce(file_size, 0)) as total_size
-            from media_assets
-            where sha256 is not null
-              and download_status in ('downloaded', 'verified')
-            group by sha256
-            having count(*) > 1
-        )
-        select
-            d.sha256,
-            d.duplicate_count,
-            d.total_size,
-            t.tweet_id,
-            t.url as tweet_url,
-            t.author_username,
-            m.media_type,
-            m.download_status as media_status,
-            m.local_path,
-            m.file_size
-        from duplicate_hashes d
-        join media_assets m on m.sha256 = d.sha256
-        join tweets t on t.tweet_id = m.tweet_id
-        order by d.duplicate_count desc, d.sha256, t.tweet_id, m.media_index nulls last, m.id
-    """
-    params: list[object] = []
-    if limit is not None:
-        sql += " limit %s offset %s"
-        params.extend([limit, offset])
+    sql, params = build_duplicate_rows_query(limit=limit, offset=offset)
     with connect() as conn:
         with conn.cursor() as cur:
-            cur.execute(sql, tuple(params))
+            cur.execute(sql, params)
             return [DuplicateRow.model_validate(dict(row)) for row in cur.fetchall()]
+
+
+def build_duplicate_rows_query(limit: int | None = None, offset: int = 0) -> tuple[str, dict[str, object]]:
+    duplicate_count = func.count().label("duplicate_count")
+    duplicate_hashes = (
+        select(
+            media_assets.c.sha256,
+            duplicate_count,
+            func.sum(func.coalesce(media_assets.c.file_size, 0)).label("total_size"),
+        )
+        .select_from(media_assets)
+        .where(
+            media_assets.c.sha256.is_not(None),
+            media_assets.c.download_status.in_(("downloaded", "verified")),
+        )
+        .group_by(media_assets.c.sha256)
+        .having(func.count() > 1)
+        .cte("duplicate_hashes")
+    )
+    statement = (
+        select(
+            duplicate_hashes.c.sha256,
+            duplicate_hashes.c.duplicate_count.cast(Integer).label("duplicate_count"),
+            duplicate_hashes.c.total_size,
+            tweets.c.tweet_id,
+            tweets.c.url.label("tweet_url"),
+            tweets.c.author_username,
+            media_assets.c.media_type,
+            media_assets.c.download_status.label("media_status"),
+            media_assets.c.local_path,
+            media_assets.c.file_size,
+        )
+        .select_from(
+            duplicate_hashes.join(media_assets, media_assets.c.sha256 == duplicate_hashes.c.sha256).join(
+                tweets,
+                tweets.c.tweet_id == media_assets.c.tweet_id,
+            )
+        )
+        .order_by(
+            duplicate_hashes.c.duplicate_count.desc(),
+            duplicate_hashes.c.sha256.asc(),
+            tweets.c.tweet_id.asc(),
+            media_assets.c.media_index.asc().nulls_last(),
+            media_assets.c.id.asc(),
+        )
+    )
+    if limit is not None:
+        statement = statement.limit(bindparam("limit", limit)).offset(bindparam("offset", offset))
+    return compile_query(statement)
 
 
 def count_duplicate_rows() -> int:

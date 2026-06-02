@@ -6,6 +6,15 @@ from threading import Event, Thread
 from typing import Any
 
 from psycopg.types.json import Jsonb
+from sqlalchemy import (
+    Integer,
+    and_,
+    bindparam,
+    exists,
+    func,
+    select,
+)
+from sqlalchemy.sql import ColumnElement, Select
 
 from xarchiver.config import Settings
 from xarchiver.core.events import publish_event
@@ -24,6 +33,8 @@ from xarchiver.row_models import (
     UrlRow,
 )
 from xarchiver.services.library import get_library_snapshot
+from xarchiver.sql_builder import compile_query
+from xarchiver.tables import archive_run_items, archive_runs, tweets
 from xarchiver.workflow import process_tweet_scope
 
 logger = logging.getLogger(__name__)
@@ -572,21 +583,16 @@ def list_runs(
     tweet_id: str | None = None,
     failed_only: bool = False,
 ) -> list[ArchiveRunRow]:
-    where, params = build_runs_filters(status=status, tweet_id=tweet_id, failed_only=failed_only)
-    params.extend([limit, offset])
+    sql, params = build_runs_query(
+        status=status,
+        tweet_id=tweet_id,
+        failed_only=failed_only,
+        limit=limit,
+        offset=offset,
+    )
     with connect() as conn:
         with conn.cursor() as cur:
-            cur.execute(
-                f"""
-                select r.id, r.trigger_type, r.input_path, r.status, r.started_at, r.finished_at,
-                       r.result, r.error_message
-                from archive_runs r
-                {where}
-                order by r.started_at desc, r.id desc
-                limit %s offset %s
-                """,
-                tuple(params),
-            )
+            cur.execute(sql, params)
             return [ArchiveRunRow.model_validate(dict(row)) for row in cur.fetchall()]
 
 
@@ -599,7 +605,13 @@ def list_runs_page(
 ) -> dict[str, object]:
     rows = list_runs(limit=limit, offset=offset, status=status, tweet_id=tweet_id, failed_only=failed_only)
     total_count = count_runs(status=status, tweet_id=tweet_id, failed_only=failed_only)
-    return {"rows": rows, "count": len(rows), "total_count": total_count, "limit": limit, "offset": offset}
+    return {
+        "rows": [dict(row) for row in rows],
+        "count": len(rows),
+        "total_count": total_count,
+        "limit": limit,
+        "offset": offset,
+    }
 
 
 def count_runs(
@@ -607,40 +619,105 @@ def count_runs(
     tweet_id: str | None = None,
     failed_only: bool = False,
 ) -> int:
-    where, params = build_runs_filters(status=status, tweet_id=tweet_id, failed_only=failed_only)
+    sql, params = build_count_runs_query(status=status, tweet_id=tweet_id, failed_only=failed_only)
     with connect() as conn:
         with conn.cursor() as cur:
-            cur.execute(
-                f"""
-                select count(*)::int as count
-                from archive_runs r
-                {where}
-                """,
-                tuple(params),
-            )
+            cur.execute(sql, params)
             return int(cur.fetchone()["count"])
+
+
+def build_runs_query(
+    status: str | None = None,
+    tweet_id: str | None = None,
+    failed_only: bool = False,
+    limit: int = 50,
+    offset: int = 0,
+) -> tuple[str, dict[str, object]]:
+    statement = (
+        select(
+            archive_runs.c.id,
+            archive_runs.c.trigger_type,
+            archive_runs.c.input_path,
+            archive_runs.c.status,
+            archive_runs.c.started_at,
+            archive_runs.c.finished_at,
+            archive_runs.c.result,
+            archive_runs.c.error_message,
+        )
+        .select_from(archive_runs)
+        .order_by(archive_runs.c.started_at.desc(), archive_runs.c.id.desc())
+        .limit(bindparam("limit", limit))
+        .offset(bindparam("offset", offset))
+    )
+    statement = apply_runs_filters(
+        statement,
+        status=status,
+        tweet_id=tweet_id,
+        failed_only=failed_only,
+    )
+    return compile_query(statement)
+
+
+def build_count_runs_query(
+    status: str | None = None,
+    tweet_id: str | None = None,
+    failed_only: bool = False,
+) -> tuple[str, dict[str, object]]:
+    statement = select(func.count().cast(Integer).label("count")).select_from(archive_runs)
+    statement = apply_runs_filters(
+        statement,
+        status=status,
+        tweet_id=tweet_id,
+        failed_only=failed_only,
+    )
+    return compile_query(statement)
+
+
+def apply_runs_filters(
+    statement: Select,
+    status: str | None = None,
+    tweet_id: str | None = None,
+    failed_only: bool = False,
+) -> Select:
+    filters = build_runs_filters(status=status, tweet_id=tweet_id, failed_only=failed_only)
+    if not filters:
+        return statement
+    return statement.where(and_(*filters))
 
 
 def build_runs_filters(
     status: str | None = None,
     tweet_id: str | None = None,
     failed_only: bool = False,
-) -> tuple[str, list[object]]:
-    filters: list[str] = []
-    params: list[object] = []
+) -> list[ColumnElement[bool]]:
+    filters: list[ColumnElement[bool]] = []
     if status:
-        filters.append("r.status = %s")
-        params.append(status)
+        filters.append(archive_runs.c.status == bindparam("run_status", status))
     if tweet_id:
-        filters.append("exists (select 1 from archive_run_items i where i.archive_run_id = r.id and i.tweet_id like %s)")
-        params.append(f"%{tweet_id}%")
+        filters.append(
+            exists(
+                select(1)
+                .select_from(archive_run_items)
+                .where(
+                    archive_run_items.c.archive_run_id == archive_runs.c.id,
+                    archive_run_items.c.tweet_id.like(
+                        bindparam("tweet_id_pattern", f"%{tweet_id}%")
+                    ),
+                )
+            )
+        )
     if failed_only:
         filters.append(
-            "exists (select 1 from archive_run_items i where i.archive_run_id = r.id "
-            "and i.status in ('failed_retryable', 'failed_permanent'))"
+            exists(
+                select(1)
+                .select_from(archive_run_items)
+                .where(
+                    archive_run_items.c.archive_run_id == archive_runs.c.id,
+                    archive_run_items.c.status.in_(("failed_retryable", "failed_permanent")),
+                )
+            )
         )
-    where = f"where {' and '.join(filters)}" if filters else ""
-    return where, params
+    return filters
 
 
 def get_run(run_id: int) -> ArchiveRunRow | None:
@@ -721,15 +798,7 @@ def retry_run(run_id: int) -> dict[str, object]:
 
 
 def submit_requeue_batch(statuses: list[str], limit: int | None = None) -> dict[str, object]:
-    sql = """
-        select url from tweets
-        where download_status = any(%s)
-        order by updated_at asc, imported_at asc
-    """
-    params: list[object] = [statuses]
-    if limit:
-        sql += " limit %s"
-        params.append(limit)
+    sql, params = build_requeue_urls_query(statuses=statuses, limit=limit)
     with connect() as conn:
         with conn.cursor() as cur:
             cur.execute(sql, params)
@@ -739,6 +808,18 @@ def submit_requeue_batch(statuses: list[str], limit: int | None = None) -> dict[
     tweet_ids = [extract_tweet_id(str(row["url"])) for row in rows]
     reset_tweets_for_retry(tweet_ids)
     return submit_archive_batch([{"url": row["url"]} for row in rows], "manual_requeue")
+
+
+def build_requeue_urls_query(statuses: list[str], limit: int | None = None) -> tuple[str, dict[str, object]]:
+    statement = (
+        select(tweets.c.url)
+        .select_from(tweets)
+        .where(tweets.c.download_status.in_(statuses))
+        .order_by(tweets.c.updated_at.asc(), tweets.c.imported_at.asc())
+    )
+    if limit:
+        statement = statement.limit(bindparam("limit", limit))
+    return compile_query(statement)
 
 
 def fetch_retry_urls(run_id: int) -> list[UrlRow]:

@@ -52,7 +52,8 @@ def archive_sources(
     source_type: str | None = None,
 ) -> dict[str, object]:
     try:
-        return list_sources_page(status=source_status, source_type=source_type, limit=limit, offset=offset)
+        page = list_sources_page(status=source_status, source_type=source_type, limit=limit, offset=offset)
+        return {**page, "rows": [dict(row) for row in page.get("rows", [])]}
     except ValueError as exc:
         raise_api_error(exc)
 

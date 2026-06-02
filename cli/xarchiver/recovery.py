@@ -1,7 +1,11 @@
 from __future__ import annotations
 
+from sqlalchemy import bindparam, select
+
 from xarchiver.db import connect
 from xarchiver.row_models import TweetIdRow
+from xarchiver.sql_builder import compile_query
+from xarchiver.tables import tweets
 
 
 DEFAULT_REQUEUE_STATUSES = ["failed_retryable", "missing", "corrupt"]
@@ -95,18 +99,21 @@ def recover_interrupted_runs(stuck_timeout_minutes: int) -> dict[str, int]:
 
 
 def fetch_requeue_candidates(statuses: list[str], limit: int | None) -> list[str]:
-    sql = """
-        select tweet_id
-        from tweets
-        where download_status = any(%s)
-        order by updated_at asc, imported_at asc
-    """
-    params: list[object] = [statuses]
-    if limit:
-        sql += " limit %s"
-        params.append(limit)
+    sql, params = build_requeue_candidates_query(statuses, limit)
 
     with connect() as conn:
         with conn.cursor() as cur:
             cur.execute(sql, params)
             return [row.tweet_id for row in (TweetIdRow.model_validate(dict(row)) for row in cur.fetchall())]
+
+
+def build_requeue_candidates_query(statuses: list[str], limit: int | None) -> tuple[str, dict[str, object]]:
+    statement = (
+        select(tweets.c.tweet_id)
+        .select_from(tweets)
+        .where(tweets.c.download_status.in_(statuses))
+        .order_by(tweets.c.updated_at.asc(), tweets.c.imported_at.asc())
+    )
+    if limit:
+        statement = statement.limit(bindparam("limit", limit))
+    return compile_query(statement)

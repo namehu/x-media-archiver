@@ -18,18 +18,31 @@ class SearchUnitTests(unittest.TestCase):
             limit=10,
         )
 
-        self.assertIn("author_username ilike", sql)
-        self.assertIn("t.text ilike", sql)
-        self.assertIn("t.download_status = %s", sql)
-        self.assertIn("m.download_status = %s", sql)
-        self.assertIn("m.media_type = %s", sql)
-        self.assertEqual(params, ("%physics%", "%physics%", "%chaos%", "verified", "verified", "video", 10, 0))
+        normalized_sql = sql.lower()
+
+        self.assertIn("author_username ilike", normalized_sql)
+        self.assertIn("tweets.text ilike", normalized_sql)
+        self.assertIn("tweets.download_status = %(tweet_status)s", sql)
+        self.assertIn("media_assets.download_status = %(media_status)s", sql)
+        self.assertIn("media_assets.media_type = %(media_type)s", sql)
+        self.assertEqual(
+            params,
+            {
+                "author_pattern": "%physics%",
+                "text_pattern": "%chaos%",
+                "tweet_status": "verified",
+                "media_status": "verified",
+                "media_type": "video",
+                "limit": 10,
+                "offset": 0,
+            },
+        )
 
     def test_build_search_query_skips_media_status_for_all(self) -> None:
         sql, params = build_search_query(None, None, None, "all", None, 5)
 
-        self.assertNotIn("m.download_status = %s", sql)
-        self.assertEqual(params, (5, 0))
+        self.assertNotIn("media_assets.download_status = %(media_status)s", sql)
+        self.assertEqual(params, {"limit": 5, "offset": 0})
 
     def test_compact_text_normalizes_whitespace_and_truncates(self) -> None:
         self.assertEqual(compact_text("a\n\nb\tc", 20), "a b c")
