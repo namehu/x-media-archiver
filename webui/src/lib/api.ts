@@ -171,6 +171,8 @@ export type SourceScanRun = {
   range_start?: number | null;
   range_end?: number | null;
   requested_limit?: number | null;
+  cursor_before?: Record<string, unknown> | null;
+  cursor_after?: Record<string, unknown> | null;
   discovered_tweet_count: number;
   new_tweet_count: number;
   duplicate_tweet_count: number;

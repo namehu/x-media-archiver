@@ -96,6 +96,7 @@ export function SourcesPage() {
           source={selected}
           policy={policyQuery.data}
           now={now}
+          detailUpdatedAt={detailQuery.dataUpdatedAt}
           feedback={feedback}
           scanFeedback={scanFeedback}
           t={t}

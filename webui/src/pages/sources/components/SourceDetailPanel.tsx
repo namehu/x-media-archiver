@@ -49,6 +49,7 @@ export function SourceDetailPanel({
   source,
   policy,
   now,
+  detailUpdatedAt,
   feedback,
   scanFeedback,
   t,
@@ -59,6 +60,7 @@ export function SourceDetailPanel({
   source?: ArchiveSource;
   policy?: DownloadPolicy;
   now: number;
+  detailUpdatedAt: number;
   feedback: ArchiveSubmission | null;
   scanFeedback: Record<string, unknown> | null;
   t: TFunction;
@@ -101,7 +103,14 @@ export function SourceDetailPanel({
             <TabsTrigger value="config">{t("sources.advancedActions")}</TabsTrigger>
           </TabsList>
           <TabsContent value="overview" className="space-y-4">
-            <OverviewTab source={source} policy={policy} now={now} scanLimit={scanLimit.clamped(200)} t={t} />
+            <OverviewTab
+              source={source}
+              policy={policy}
+              now={now}
+              detailUpdatedAt={detailUpdatedAt}
+              scanLimit={scanLimit.clamped(200)}
+              t={t}
+            />
             <PrimaryActions source={source} t={t} actions={actions} scanLimit={scanLimit} />
             <DownloadActions source={source} t={t} actions={actions} feedback={feedback} />
           </TabsContent>
@@ -131,12 +140,14 @@ function OverviewTab({
   source,
   policy,
   now,
+  detailUpdatedAt,
   scanLimit,
   t,
 }: {
   source: ArchiveSource;
   policy?: DownloadPolicy;
   now: number;
+  detailUpdatedAt: number;
   scanLimit: number;
   t: TFunction;
 }) {
@@ -146,7 +157,7 @@ function OverviewTab({
   return (
     <>
       {policy ? <PolicySummary policy={policy} t={t} /> : null}
-      {activeScanRun ? <ActiveScan run={activeScanRun} now={now} t={t} /> : null}
+      {activeScanRun ? <ActiveScan run={activeScanRun} source={source} now={now} t={t} /> : null}
       <div className="grid gap-2 rounded-lg bg-bg-muted p-3 text-sm">
         <DetailRow label={t("sources.url")} value={source.source_url || "-"} breakAll />
         <DetailRow label={t("sources.updated")} value={formatDateTime(source.updated_at)} />
@@ -161,7 +172,9 @@ function OverviewTab({
         <DetailRow label={t("sources.scanState")} value={formatScanState(source.cursor_state, t)} />
         <DetailRow label={t("sources.historyState")} value={formatHistoryState(source, t)} />
         {historyEnabled && source.next_scan_at ? <DetailRow label={t("sources.nextScheduled")} value={formatDateTime(source.next_scan_at)} /> : null}
+        <DetailRow label={t("sources.detailRefreshed")} value={formatDateTime(new Date(detailUpdatedAt || now).toISOString())} />
       </div>
+      <ScanPipelineNote source={source} policy={policy} t={t} />
       <div className="grid gap-2 rounded-lg border border-border-subtle p-3 text-sm sm:grid-cols-2 lg:grid-cols-4">
         <Metric label={t("sources.scanBatches")} value={source.scan_summary?.batch_count ?? 0} />
         <Metric label={t("sources.scanAdded")} value={source.scan_summary?.added_tweet_count ?? 0} />
@@ -186,7 +199,22 @@ function PolicySummary({ policy, t }: { policy: DownloadPolicy; t: TFunction }) 
   );
 }
 
-function ActiveScan({ run, now, t }: { run: NonNullable<ArchiveSource["scan_runs"]>[number]; now: number; t: TFunction }) {
+function ActiveScan({
+  run,
+  source,
+  now,
+  t,
+}: {
+  run: NonNullable<ArchiveSource["scan_runs"]>[number];
+  source: ArchiveSource;
+  now: number;
+  t: TFunction;
+}) {
+  const cursorBefore = run.cursor_before ?? source.cursor_state ?? {};
+  const scanUrl = String(cursorBefore.last_scan_url || source.source_url || "-");
+  const hasCursor = Boolean(cursorBefore.extractor_cursor);
+  const sourcePaused = source.status === "paused" || source.cursor_state?.automation_state === "paused";
+
   return (
     <div className="rounded-lg border border-brand/30 bg-brand-soft p-3 text-sm">
       <div className="flex flex-wrap items-center justify-between gap-2">
@@ -195,7 +223,16 @@ function ActiveScan({ run, now, t }: { run: NonNullable<ArchiveSource["scan_runs
       </div>
       <div className="mt-2 grid gap-2 text-xs text-fg-secondary sm:grid-cols-2">
         <span>
+          {t("sources.scanEngine")}: gallery-dl
+        </span>
+        <span>
+          {t("sources.scanPhase")}: {t("sources.scanPhaseCollecting")}
+        </span>
+        <span>
           {t("sources.scanRange")}: {formatRunRange(run.range_start, run.range_end)}
+        </span>
+        <span>
+          {t("sources.scanRequested")}: {run.requested_limit ?? "-"}
         </span>
         <span>
           {t("sources.activeScanElapsed")}: {formatElapsed(run.started_at, now)}
@@ -206,8 +243,36 @@ function ActiveScan({ run, now, t }: { run: NonNullable<ArchiveSource["scan_runs
         <span>
           {t("sources.activeScanMode")}: {scanTriggerLabel(run.trigger_type, t)}
         </span>
+        <span>
+          {t("sources.scanCursor")}: {hasCursor ? t("sources.scanCursorResume") : t("sources.scanCursorFirstPage")}
+        </span>
+      </div>
+      <div className="mt-2 break-all rounded-md bg-bg-elevated/70 px-2 py-1 text-xs text-fg-secondary">
+        {t("sources.scanTarget")}: {scanUrl}
       </div>
       <p className="mt-2 text-xs text-fg-secondary">{t("sources.activeScanHint")}</p>
+      {sourcePaused ? <p className="mt-1 text-xs text-warning">{t("sources.activeScanPauseHint")}</p> : null}
+    </div>
+  );
+}
+
+function ScanPipelineNote({ source, policy, t }: { source: ArchiveSource; policy?: DownloadPolicy; t: TFunction }) {
+  const historyEnabled = Boolean(source.cursor_state?.automation_enabled);
+  if (!historyEnabled && !source.scan_runs?.length) return null;
+  const scanDelay = policy
+    ? `${policy.source_scan_sleep_min_seconds}-${policy.source_scan_sleep_max_seconds}s`
+    : t("common.none");
+
+  return (
+    <div className="rounded-lg border border-border-subtle bg-bg-surface p-3 text-xs text-fg-secondary">
+      <div className="font-semibold text-fg-primary">{t("sources.scanPipelineTitle")}</div>
+      <div className="mt-2 grid gap-2 sm:grid-cols-2">
+        <span>{t("sources.scanPipelineStep1")}</span>
+        <span>{t("sources.scanPipelineStep2")}</span>
+        <span>{t("sources.scanPipelineStep3")}</span>
+        <span>{t("sources.scanPipelineStep4", { delay: scanDelay })}</span>
+      </div>
+      <p className="mt-2">{t("sources.pauseSemantics")}</p>
     </div>
   );
 }
