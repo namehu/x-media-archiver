@@ -11,3 +11,4 @@ gallery-dl
 yt-dlp
 fastapi
 uvicorn[standard]
+debugpy

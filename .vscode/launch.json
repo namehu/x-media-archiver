@@ -1,0 +1,21 @@
+{
+  "version": "0.2.0",
+  "configurations": [
+    {
+      "name": "Dev: API + WebUI",
+      "type": "debugpy",
+      "request": "attach",
+      "connect": {
+        "host": "127.0.0.1",
+        "port": 5678
+      },
+      "pathMappings": [
+        {
+          "localRoot": "${workspaceFolder}/cli/xarchiver",
+          "remoteRoot": "/app/xarchiver"
+        }
+      ],
+      "preLaunchTask": "Dev: API + WebUI"
+    }
+  ]
+}

@@ -1,0 +1,71 @@
+{
+  "version": "2.0.0",
+  "tasks": [
+    {
+      "label": "Dev: Build API image",
+      "type": "shell",
+      "command": "docker-compose build xarchiver",
+      "problemMatcher": [],
+      "presentation": {
+        "reveal": "always",
+        "panel": "dedicated"
+      }
+    },
+    {
+      "label": "Dev: API debug container",
+      "type": "shell",
+      "command": "docker-compose run --rm --service-ports --entrypoint python xarchiver -m debugpy --listen 0.0.0.0:5678 -m xarchiver.cli serve --host 0.0.0.0 --port 8000",
+      "dependsOn": "Dev: Build API image",
+      "dependsOrder": "sequence",
+      "isBackground": true,
+      "problemMatcher": {
+        "owner": "xarchiver-api",
+        "pattern": {
+          "regexp": "^$"
+        },
+        "background": {
+          "activeOnStart": true,
+          "beginsPattern": ".",
+          "endsPattern": "Uvicorn running on"
+        }
+      },
+      "presentation": {
+        "reveal": "always",
+        "panel": "dedicated"
+      }
+    },
+    {
+      "label": "Dev: WebUI",
+      "type": "shell",
+      "command": "npm run dev",
+      "options": {
+        "cwd": "${workspaceFolder}/webui"
+      },
+      "isBackground": true,
+      "problemMatcher": {
+        "owner": "xarchiver-webui",
+        "pattern": {
+          "regexp": "^$"
+        },
+        "background": {
+          "activeOnStart": true,
+          "beginsPattern": ".",
+          "endsPattern": "Local:"
+        }
+      },
+      "presentation": {
+        "reveal": "always",
+        "panel": "dedicated"
+      }
+    },
+    {
+      "label": "Dev: API + WebUI",
+      "dependsOn": [
+        "Dev: API debug container",
+        "Dev: WebUI"
+      ],
+      "dependsOrder": "sequence",
+      "problemMatcher": []
+    }
+  ]
+}

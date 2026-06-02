@@ -209,6 +209,13 @@ The compose file maps the API to the host loopback address:
 http://127.0.0.1:8000
 ```
 
+VS Code can build the API image, start the API container, attach the Python debugger, and start the
+WebUI dev server from one debug entry. Open Run and Debug, select `Dev: API + WebUI`, and press F5.
+The API starts through `debugpy` on `127.0.0.1:5678` and serves requests immediately; breakpoints are
+hit after VS Code attaches. This debug entry intentionally does not enable uvicorn reload, so restart
+the debug session after Python code changes. The WebUI still runs locally through Vite, proxies API
+requests to `http://127.0.0.1:8000`, and can be opened manually at `http://127.0.0.1:5173`.
+
 Available read-only API endpoints:
 
 ```text
