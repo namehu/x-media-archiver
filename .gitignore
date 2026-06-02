@@ -24,3 +24,5 @@ extension/.wxt/
 webui/dist/
 webui/.openapi.json
 webui/src/api/openapi.json
+webui/playwright-report/
+webui/test-results/

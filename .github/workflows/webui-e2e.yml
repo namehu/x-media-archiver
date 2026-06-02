@@ -2,9 +2,21 @@ name: WebUI E2E
 
 on:
   pull_request:
+    paths:
+      - ".github/workflows/webui-e2e.yml"
+      - "cli/**"
+      - "webui/**"
+      - "docker-compose.yml"
+      - "scripts/**"
   push:
     branches:
       - main
+    paths:
+      - ".github/workflows/webui-e2e.yml"
+      - "cli/**"
+      - "webui/**"
+      - "docker-compose.yml"
+      - "scripts/**"
 
 jobs:
   smoke:
@@ -25,6 +37,14 @@ jobs:
       - name: Install WebUI dependencies
         working-directory: webui
         run: npm ci
+
+      - name: Cache Playwright browsers
+        uses: actions/cache@v4
+        with:
+          path: ~/.cache/ms-playwright
+          key: playwright-${{ runner.os }}-${{ hashFiles('webui/package-lock.json') }}
+          restore-keys: |
+            playwright-${{ runner.os }}-
 
       - name: Install Playwright browser
         working-directory: webui
