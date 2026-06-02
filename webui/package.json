@@ -9,6 +9,7 @@
     "sync-types": "openapi-typescript .openapi.json -o src/api/generated.ts",
     "generate:api-types": "npm run generate:openapi && npm run sync-types",
     "typecheck": "tsc --noEmit",
+    "e2e": "playwright test",
     "check": "npm run build",
     "build": "tsc --noEmit && vite build",
     "preview": "vite preview --host 127.0.0.1"
@@ -38,6 +39,7 @@
     "tailwind-merge": "^3.6.0"
   },
   "devDependencies": {
+    "@playwright/test": "^1.60.0",
     "@types/react": "^19.1.6",
     "@types/react-dom": "^19.1.5",
     "autoprefixer": "^10.4.21",

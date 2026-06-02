@@ -1,0 +1,66 @@
+name: WebUI E2E
+
+on:
+  pull_request:
+  push:
+    branches:
+      - main
+
+jobs:
+  smoke:
+    name: Playwright smoke
+    runs-on: ubuntu-latest
+    defaults:
+      run:
+        shell: bash
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+          cache-dependency-path: webui/package-lock.json
+
+      - name: Install WebUI dependencies
+        working-directory: webui
+        run: npm ci
+
+      - name: Install Playwright browser
+        working-directory: webui
+        run: npx playwright install --with-deps chromium
+
+      - name: Build backend image
+        run: docker compose build xarchiver
+
+      - name: Reset database
+        run: docker compose run --rm xarchiver db reset --yes
+
+      - name: Seed WebUI fixtures
+        run: docker compose run --rm --entrypoint python xarchiver /app/tests/seed_webui.py
+
+      - name: Start API
+        run: |
+          docker compose run --rm --service-ports xarchiver serve > /tmp/xarchiver-api.log 2>&1 &
+          for attempt in {1..60}; do
+            if curl -fsS http://127.0.0.1:8000/health >/dev/null; then
+              exit 0
+            fi
+            sleep 1
+          done
+          cat /tmp/xarchiver-api.log
+          exit 1
+
+      - name: Run WebUI smoke tests
+        working-directory: webui
+        run: npm run e2e
+
+      - name: Upload Playwright report
+        if: failure()
+        uses: actions/upload-artifact@v4
+        with:
+          name: webui-e2e-artifacts
+          path: |
+            webui/playwright-report
+            webui/test-results
+            /tmp/xarchiver-api.log
