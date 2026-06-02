@@ -465,6 +465,25 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/api/v1/settings/cookies": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** Cookies Config */
+        get: operations["cookies_config_api_v1_settings_cookies_get"];
+        put?: never;
+        /** Update Cookies Config */
+        post: operations["update_cookies_config_api_v1_settings_cookies_post"];
+        /** Delete Cookies Config */
+        delete: operations["delete_cookies_config_api_v1_settings_cookies_delete"];
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
 }
 export type webhooks = Record<string, never>;
 export interface components {
@@ -870,6 +889,19 @@ export interface components {
              * @default true
              */
             normalize_files: boolean;
+        };
+        /** CookieConfigResponse */
+        CookieConfigResponse: {
+            /** Configured */
+            configured: boolean;
+            /** Source */
+            source: string;
+            /** Label */
+            label?: string | null;
+            /** Updated At */
+            updated_at?: string | null;
+        } & {
+            [key: string]: unknown;
         };
         /** DbPoolHealthResponse */
         DbPoolHealthResponse: {
@@ -1515,6 +1547,13 @@ export interface components {
             updated_at: string;
         } & {
             [key: string]: unknown;
+        };
+        /** UpdateCookiesRequest */
+        UpdateCookiesRequest: {
+            /** Content */
+            content: string;
+            /** Label */
+            label?: string | null;
         };
         /** ValidationError */
         ValidationError: {
@@ -2476,6 +2515,79 @@ export interface operations {
                 };
                 content: {
                     "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    cookies_config_api_v1_settings_cookies_get: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["CookieConfigResponse"];
+                };
+            };
+        };
+    };
+    update_cookies_config_api_v1_settings_cookies_post: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["UpdateCookiesRequest"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["CookieConfigResponse"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    delete_cookies_config_api_v1_settings_cookies_delete: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["CookieConfigResponse"];
                 };
             };
         };
