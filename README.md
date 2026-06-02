@@ -1,12 +1,12 @@
 # x-media-archiver
 
-Local-first X/Twitter media archiver. V0 focuses on a Dockerized CLI pipeline:
+Local-first X/Twitter media archiver built around a Dockerized pipeline:
 
 ```text
 tweet URLs -> scoped download -> scoped media_assets backfill -> scoped verify
 ```
 
-## V0 Quick Start
+## Quick Start
 
 Build the CLI image and initialize the local archive directories:
 
@@ -39,7 +39,7 @@ https://x.com/PhysInHistory/status/2058554692586885322
 https://x.com/dpoddolphinpro/status/2059072547585433944
 ```
 
-Profile URLs such as `https://x.com/XiangHupt/likes` are not valid V0 inputs. V0 expects concrete `/status/<tweet_id>` URLs.
+Profile URLs such as `https://x.com/XiangHupt/likes` are not valid inputs. The archiver expects concrete `/status/<tweet_id>` URLs.
 
 Import and inspect the queue:
 
@@ -88,114 +88,73 @@ Queue JSONL input through the same service:
 docker-compose run --rm xarchiver archive-jsonl /app/examples/tweets.example.jsonl
 ```
 
-## Commands
+## Archive Queue
 
-Dry-run a download job without calling the downloader:
+Archive submissions are stored as runs and per-tweet task items in Postgres:
 
-```bash
-docker-compose run --rm xarchiver download --engine gallery-dl --dry-run
+```text
+WebUI records / CLI file parser
+  -> archive_runs + archive_run_items
+  -> API background worker
+  -> scoped download / backfill / verify
 ```
 
-Rebuild `media_assets` from all existing files under `archive/media` (explicit full-disk maintenance):
+Run migrations before first use:
+
+```bash
+docker-compose run --rm xarchiver db migrate
+```
+
+Database migrations are managed by Alembic under
+`cli/xarchiver/alembic/versions`. The current schema starts from a single
+baseline revision and can be downgraded with `xarchiver db downgrade`.
+
+Backend data access intentionally stays layered rather than using a full ORM:
+
+```text
+Alembic revisions                  -> schema changes and rollback
+SQLAlchemy Core query builders      -> dynamic filters, pagination, and CTE/lateral query assembly
+Pydantic row models                 -> typed row validation at service boundaries
+Fixed SQL strings                   -> allowed for stable writes, locks, and compact Postgres-specific statements
+```
+
+Shared Core table metadata lives in `cli/xarchiver/tables.py`, and compiled
+queries use `cli/xarchiver/sql_builder.py` so psycopg receives named parameters.
+New dynamic `WHERE`, `IN`, `LIMIT/OFFSET`, CTE, or lateral queries should use
+SQLAlchemy Core instead of string concatenation.
+
+Open the WebUI `Archive Queue` page to:
+
+```text
+1. Submit one or more tweet URLs.
+2. Select a local TXT or JSONL export for browser-side parsing and submission.
+3. Review runs and per-tweet task outcomes.
+4. Retry failed items as a new auditable run.
+```
+
+Queue behavior:
+
+```text
+1. Each submission creates an archive run and de-duplicates repeated tweet IDs inside that run.
+2. Already verified tweets are recorded as skipped_verified without disk I/O.
+3. Tweets already pending in another run are recorded as linked_pending without duplicate download.
+4. The API worker consumes pending/retryable task items only while the API service is running.
+5. Runs verify only newly affected media and report full-library totals from Postgres.
+6. CLI TXT/JSONL paths are input adapters only; no watched input directory is used.
+```
+
+Full-disk maintenance is explicit:
 
 ```bash
 docker-compose run --rm xarchiver backfill-media --full
-```
-
-Verify file existence and hashes for the entire media library (explicit full-disk maintenance):
-
-```bash
 docker-compose run --rm xarchiver verify --full
 ```
 
-Export verified media:
-
-```bash
-docker-compose run --rm xarchiver export --format csv
-```
-
-Export every media status:
-
-```bash
-docker-compose run --rm xarchiver export --format csv --status all
-```
-
-Export failures:
-
-```bash
-docker-compose run --rm xarchiver export-failures
-```
-
-Requeue retryable, missing, or corrupt tweets:
-
-```bash
-docker-compose run --rm xarchiver requeue
-docker-compose run --rm xarchiver requeue --status failed_retryable --status missing
-```
-
-Recover interrupted runs that left jobs or tweets in running/downloading states:
-
-```bash
-docker-compose run --rm xarchiver recover-interrupted
-docker-compose run --rm xarchiver recover-interrupted --timeout-minutes 30
-```
-
-Export a static HTML gallery for verified media:
-
-```bash
-docker-compose run --rm xarchiver export-gallery
-docker-compose run --rm xarchiver export-gallery --status all
-```
-
-Search archived media:
-
-```bash
-docker-compose run --rm xarchiver search --author veritasium
-docker-compose run --rm xarchiver search --text chaos --media-type video
-docker-compose run --rm xarchiver search --media-status all --limit 50
-```
-
-Find duplicate media by sha256:
-
-```bash
-docker-compose run --rm xarchiver duplicates
-docker-compose run --rm xarchiver export-duplicates
-```
-
-Production deployment — including Supabase metadata storage, connection selection, migration
-checks, service operation, tuning, and backup/restore procedures — is documented in the unified
-[`docs/deploy/`](docs/deploy/README.md) handbook.
-
-If local port 5432 is already in use, override the development Postgres host port:
-
-```bash
-POSTGRES_PORT=5434 docker-compose up -d postgres
-```
-
-Retry behavior is controlled by environment variables:
-
-```text
-RETRY_LIMIT=3
-RETRY_BACKOFF_MINUTES=15
-QUEUE_BATCH_SIZE=20
-DOWNLOADER_SLEEP_MIN_SECONDS=2
-DOWNLOADER_SLEEP_MAX_SECONDS=6
-SOURCE_SCAN_BATCH_SIZE=20
-SOURCE_SCAN_SLEEP_MIN_SECONDS=20
-SOURCE_SCAN_SLEEP_MAX_SECONDS=45
-STUCK_TIMEOUT_MINUTES=120
-API_HOST=0.0.0.0
-API_PORT=8000
-```
-
-`QUEUE_BATCH_SIZE` limits how many queued tweets the API worker claims in one pass. The downloader
-sleep settings are passed through to `gallery-dl` / `yt-dlp` so large batches do not hammer X/Twitter
-with back-to-back requests. `SOURCE_SCAN_BATCH_SIZE` and `SOURCE_SCAN_SLEEP_*` control historical
-source discovery separately from downloading.
+These maintenance commands traverse archived files and can generate significant disk I/O on large libraries. CSV export reads the database snapshot and does not perform a media-file hash scan.
 
 ## Local API and WebUI
 
-Phase 2 adds a local FastAPI service and a React WebUI on top of the same Python archive core used by the CLI.
+The project includes a local FastAPI service and a React WebUI on top of the same Python archive core used by the CLI.
 
 Start the API in Docker:
 
@@ -308,69 +267,110 @@ See [`docs/source-scanning-workflow.md`](docs/source-scanning-workflow.md) for t
 workflow, and [`docs/source-scanning-acceptance.md`](docs/source-scanning-acceptance.md) for the
 native-cursor blocker found during real source validation.
 
-## Archive Queue
+## Commands
 
-Archive submissions are stored as runs and per-tweet task items in Postgres:
-
-```text
-WebUI records / CLI file parser
-  -> archive_runs + archive_run_items
-  -> API background worker
-  -> scoped download / backfill / verify
-```
-
-Run migrations before first use:
+Dry-run a download job without calling the downloader:
 
 ```bash
-docker-compose run --rm xarchiver db migrate
+docker-compose run --rm xarchiver download --engine gallery-dl --dry-run
 ```
 
-Database migrations are managed by Alembic under
-`cli/xarchiver/alembic/versions`. The current schema starts from a single
-baseline revision and can be downgraded with `xarchiver db downgrade`.
-
-Backend data access intentionally stays layered rather than using a full ORM:
-
-```text
-Alembic revisions                  -> schema changes and rollback
-SQLAlchemy Core query builders      -> dynamic filters, pagination, and CTE/lateral query assembly
-Pydantic row models                 -> typed row validation at service boundaries
-Fixed SQL strings                   -> allowed for stable writes, locks, and compact Postgres-specific statements
-```
-
-Shared Core table metadata lives in `cli/xarchiver/tables.py`, and compiled
-queries use `cli/xarchiver/sql_builder.py` so psycopg receives named parameters.
-New dynamic `WHERE`, `IN`, `LIMIT/OFFSET`, CTE, or lateral queries should use
-SQLAlchemy Core instead of string concatenation.
-
-Open the WebUI `Archive Queue` page to:
-
-```text
-1. Submit one or more tweet URLs.
-2. Select a local TXT or JSONL export for browser-side parsing and submission.
-3. Review runs and per-tweet task outcomes.
-4. Retry failed items as a new auditable run.
-```
-
-Queue behavior:
-
-```text
-1. Each submission creates an archive run and de-duplicates repeated tweet IDs inside that run.
-2. Already verified tweets are recorded as skipped_verified without disk I/O.
-3. Tweets already pending in another run are recorded as linked_pending without duplicate download.
-4. The API worker consumes pending/retryable task items only while the API service is running.
-5. Runs verify only newly affected media and report full-library totals from Postgres.
-6. CLI TXT/JSONL paths are input adapters only; no watched input directory is used.
-```
-
-Full-disk maintenance is explicit:
+Rebuild `media_assets` from all existing files under `archive/media` (explicit full-disk maintenance):
 
 ```bash
 docker-compose run --rm xarchiver backfill-media --full
+```
+
+Verify file existence and hashes for the entire media library (explicit full-disk maintenance):
+
+```bash
 docker-compose run --rm xarchiver verify --full
 ```
 
-These maintenance commands traverse archived files and can generate significant disk I/O on large libraries. CSV export reads the database snapshot and does not perform a media-file hash scan.
+Export verified media:
+
+```bash
+docker-compose run --rm xarchiver export --format csv
+```
+
+Export every media status:
+
+```bash
+docker-compose run --rm xarchiver export --format csv --status all
+```
+
+Export failures:
+
+```bash
+docker-compose run --rm xarchiver export-failures
+```
+
+Requeue retryable, missing, or corrupt tweets:
+
+```bash
+docker-compose run --rm xarchiver requeue
+docker-compose run --rm xarchiver requeue --status failed_retryable --status missing
+```
+
+Recover interrupted runs that left jobs or tweets in running/downloading states:
+
+```bash
+docker-compose run --rm xarchiver recover-interrupted
+docker-compose run --rm xarchiver recover-interrupted --timeout-minutes 30
+```
+
+Export a static HTML gallery for verified media:
+
+```bash
+docker-compose run --rm xarchiver export-gallery
+docker-compose run --rm xarchiver export-gallery --status all
+```
+
+Search archived media:
+
+```bash
+docker-compose run --rm xarchiver search --author veritasium
+docker-compose run --rm xarchiver search --text chaos --media-type video
+docker-compose run --rm xarchiver search --media-status all --limit 50
+```
+
+Find duplicate media by sha256:
+
+```bash
+docker-compose run --rm xarchiver duplicates
+docker-compose run --rm xarchiver export-duplicates
+```
+
+Production deployment — including Supabase metadata storage, connection selection, migration
+checks, service operation, tuning, and backup/restore procedures — is documented in the unified
+[`docs/deploy/`](docs/deploy/README.md) handbook.
+
+If local port 5432 is already in use, override the development Postgres host port:
+
+```bash
+POSTGRES_PORT=5434 docker-compose up -d postgres
+```
+
+Retry behavior is controlled by environment variables:
+
+```text
+RETRY_LIMIT=3
+RETRY_BACKOFF_MINUTES=15
+QUEUE_BATCH_SIZE=20
+DOWNLOADER_SLEEP_MIN_SECONDS=2
+DOWNLOADER_SLEEP_MAX_SECONDS=6
+SOURCE_SCAN_BATCH_SIZE=20
+SOURCE_SCAN_SLEEP_MIN_SECONDS=20
+SOURCE_SCAN_SLEEP_MAX_SECONDS=45
+STUCK_TIMEOUT_MINUTES=120
+API_HOST=0.0.0.0
+API_PORT=8000
+```
+
+`QUEUE_BATCH_SIZE` limits how many queued tweets the API worker claims in one pass. The downloader
+sleep settings are passed through to `gallery-dl` / `yt-dlp` so large batches do not hammer X/Twitter
+with back-to-back requests. `SOURCE_SCAN_BATCH_SIZE` and `SOURCE_SCAN_SLEEP_*` control historical
+source discovery separately from downloading.
 
 ## State Rules
 
@@ -441,7 +441,7 @@ The GitHub Actions CI pipeline runs the same backend suite on a freshly reset te
 [`docs/engineering-ci-and-test-isolation.md`](docs/engineering-ci-and-test-isolation.md) for the
 test isolation contract.
 
-## Browser Extension V0
+## Browser Extension
 
 The extension is a WXT + React project with TypeScript and native Chrome extension i18n.
 
