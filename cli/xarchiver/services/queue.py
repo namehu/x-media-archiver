@@ -54,7 +54,7 @@ class ArchiveItemLeaseHeartbeat:
         self.lost = Event()
         self.thread: Thread | None = None
 
-    def __enter__(self) -> "ArchiveItemLeaseHeartbeat":
+    def __enter__(self) -> ArchiveItemLeaseHeartbeat:
         if self.worker_id and self.item_ids:
             self.thread = Thread(target=self._run, name="archive-item-lease-heartbeat", daemon=True)
             self.thread.start()

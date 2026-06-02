@@ -3,6 +3,7 @@
 P3 first stage keeps the validation pipeline small and runnable:
 
 ```text
+backend ruff lint in Docker
 backend unittest in Docker
 webui typecheck + build
 extension typecheck + build
@@ -14,9 +15,12 @@ Backend tests run inside the same Docker image used by local development. The CI
 metadata database before running tests:
 
 ```bash
+bash scripts/lint_python.sh
 docker-compose run --rm xarchiver db reset --yes
 docker-compose run --rm --entrypoint python xarchiver -m unittest discover -s /app/tests
 ```
+
+On Windows PowerShell, use `.\scripts\lint_python.ps1` for the same ruff check.
 
 The reset is intentional. This project is still new, and the integration tests use the configured
 Postgres database directly. A clean database avoids leaking local exploratory runs into automated
@@ -33,8 +37,9 @@ cd webui
 npm run check
 ```
 
-At this stage `check` delegates to the existing TypeScript and Vite build. Lint and generated API
-types are planned P3 follow-ups, not prerequisites for this first CI slice.
+At this stage `check` delegates to the existing TypeScript and Vite build. API types are generated
+with `npm run generate:api-types` after backend response schema changes, and the API contract job
+checks the committed `generated.ts` for drift.
 
 Extension validation uses:
 

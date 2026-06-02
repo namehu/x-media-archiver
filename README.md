@@ -396,14 +396,18 @@ otherwise mixed     -> partial
 Run the backend test suite inside Docker:
 
 ```bash
+bash scripts/lint_python.sh
 docker-compose run --rm xarchiver db reset --yes
 docker-compose run --rm --entrypoint python xarchiver -m unittest discover -s /app/tests
 ```
+
+On Windows PowerShell, use `.\scripts\lint_python.ps1` for the lint step.
 
 Run the full local validation set before a larger handoff:
 
 ```bash
 # Backend: reset disposable metadata DB and run all Python tests.
+bash scripts/lint_python.sh
 docker-compose run --rm xarchiver db reset --yes
 docker-compose run --rm --entrypoint python xarchiver -m unittest discover -s /app/tests
 

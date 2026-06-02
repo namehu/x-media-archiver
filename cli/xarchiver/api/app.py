@@ -1,12 +1,12 @@
 from __future__ import annotations
 
-from contextlib import asynccontextmanager
 import logging
 import os
-from pathlib import Path
 import socket
-from threading import Thread
 import uuid
+from contextlib import asynccontextmanager
+from pathlib import Path
+from threading import Thread
 
 from fastapi import FastAPI, HTTPException, Request
 from fastapi.middleware.cors import CORSMiddleware
@@ -22,7 +22,10 @@ from xarchiver.core.errors import ArchiverError, error_response_payload
 from xarchiver.core.lock_manager import lock_manager
 from xarchiver.db import close_pool, open_pool
 from xarchiver.services.queue import count_expired_archive_item_leases, process_next_queued_run
-from xarchiver.services.sources import recover_expired_source_scan_leases, process_next_source_history_scan
+from xarchiver.services.sources import (
+    process_next_source_history_scan,
+    recover_expired_source_scan_leases,
+)
 
 logger = logging.getLogger(__name__)
 

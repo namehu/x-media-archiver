@@ -4,7 +4,12 @@ from pathlib import Path
 
 import orjson
 
-from xarchiver.media import asset_from_gallery_dl_metadata, asset_from_yt_dlp_metadata, iter_metadata_paths, safe_path_segment
+from xarchiver.media import (
+    asset_from_gallery_dl_metadata,
+    asset_from_yt_dlp_metadata,
+    iter_metadata_paths,
+    safe_path_segment,
+)
 
 
 class MediaMetadataTests(unittest.TestCase):

@@ -16,6 +16,7 @@ from xarchiver.row_models import SearchMediaRow
 from xarchiver.sql_builder import compile_query
 from xarchiver.tables import media_assets, tweets
 
+
 def search_media(
     author: str | None = None,
     text: str | None = None,

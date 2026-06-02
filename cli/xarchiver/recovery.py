@@ -7,7 +7,6 @@ from xarchiver.row_models import TweetIdRow
 from xarchiver.sql_builder import compile_query
 from xarchiver.tables import tweets
 
-
 DEFAULT_REQUEUE_STATUSES = ["failed_retryable", "missing", "corrupt"]
 
 

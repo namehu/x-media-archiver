@@ -4,8 +4,7 @@ import logging
 import unittest
 from pathlib import Path
 
-from fastapi import HTTPException
-from fastapi import Request
+from fastapi import HTTPException, Request
 from fastapi.responses import JSONResponse
 from starlette.exceptions import HTTPException as StarletteHTTPException
 
@@ -19,11 +18,11 @@ from xarchiver.api.deps import (
     resolve_archive_file,
     write_action_lock,
 )
-from xarchiver.core.lock_manager import lock_manager
 from xarchiver.api.middleware import JsonLogFormatter, RequestIdMiddleware
-from xarchiver.api.schemas import ArchiveSubmitRequest, SourceCreateRequest, VerifyRequest
+from xarchiver.api.schemas import ArchiveSubmitRequest, VerifyRequest
 from xarchiver.core.errors import ArchiverError
 from xarchiver.core.events import EventBroker, format_sse_event
+from xarchiver.core.lock_manager import lock_manager
 
 
 class ApiAppTests(unittest.TestCase):
@@ -118,6 +117,16 @@ class ApiAppTests(unittest.TestCase):
         self.assertIn("WriteActionResponse", component_names)
         self.assertIn("DownloadPolicyResponse", component_names)
         self.assertIn("HealthDetailResponse", component_names)
+
+    def test_openapi_uses_concrete_page_and_archive_result_schemas(self) -> None:
+        components = create_app().openapi()["components"]["schemas"]
+
+        self.assertNotIn("PageResponse", components)
+        archive_run_result = components["ArchiveRunRowResponse"]["properties"]["result"]
+        self.assertEqual(
+            archive_run_result["anyOf"],
+            [{"$ref": "#/components/schemas/ArchiveRunResultResponse"}, {"type": "null"}],
+        )
 
     def test_request_id_middleware_sets_response_header(self) -> None:
         async def call_next(_: Request) -> JSONResponse:

@@ -43,6 +43,7 @@ services:
       - ./examples:/app/examples
       - ./secrets:/app/secrets:ro
       - ./docs:/app/docs:ro
+      - ./cli/pyproject.toml:/app/pyproject.toml:ro
       - ./cli/xarchiver:/app/xarchiver
       - ./cli/tests:/app/tests
       - ./cli/gallery-dl.conf:/app/gallery-dl.conf:ro

@@ -11,8 +11,8 @@ from sqlalchemy.sql import ColumnElement
 from xarchiver.archive import ensure_archive_dirs, normalize_path
 from xarchiver.config import Settings
 from xarchiver.core.errors import (
-    ErrorCategory,
     PERMANENT_DOWNLOAD_CATEGORIES,
+    ErrorCategory,
     category_value,
     classify_x_error,
 )
@@ -21,7 +21,6 @@ from xarchiver.media import backfill_media_assets
 from xarchiver.row_models import DownloadCandidateRow, IdRow
 from xarchiver.sql_builder import compile_query
 from xarchiver.tables import tweets
-
 
 SUPPORTED_ENGINES = {"gallery-dl", "yt-dlp"}
 logger = logging.getLogger(__name__)

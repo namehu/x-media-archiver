@@ -15,7 +15,6 @@ from xarchiver.row_models import DuplicateRow, ExportMediaRow, FailureRow
 from xarchiver.sql_builder import compile_query
 from xarchiver.tables import download_attempts, media_assets, tweets
 
-
 CSV_FIELDS = [
     "tweet_id",
     "tweet_url",

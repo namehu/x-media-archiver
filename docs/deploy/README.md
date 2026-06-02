@@ -477,7 +477,7 @@ Tweet 状态由其子媒体资产聚合：
 
 ### 10.5 CI 与测试隔离
 
-CI 会构建后端镜像、在重置后的测试库上跑后端测试，并在 `webui/` 与 `extension/` 执行 `npm run check`，外加 API 契约校验。详见 [../engineering-ci-and-test-isolation.md](../engineering-ci-and-test-isolation.md)。
+CI 会构建后端镜像、运行后端 ruff lint、在重置后的测试库上跑后端测试，并在 `webui/` 与 `extension/` 执行 `npm run check`，外加 API 契约校验。详见 [../engineering-ci-and-test-isolation.md](../engineering-ci-and-test-isolation.md)。
 
 > 重要：不要在 CI 中提供真实 X/Twitter cookies。测试必须使用 mock、fixture 或本地文件。
 

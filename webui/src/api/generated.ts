@@ -550,10 +550,7 @@ export interface components {
             started_at: string;
             /** Finished At */
             finished_at?: string | null;
-            /** Result */
-            result?: components["schemas"]["ArchiveRunResultResponse"] | {
-                [key: string]: unknown;
-            } | null;
+            result?: components["schemas"]["ArchiveRunResultResponse"] | null;
             /** Error Message */
             error_message?: string | null;
             /** Items */
@@ -602,22 +599,10 @@ export interface components {
             pipeline_version?: string | null;
             /** Scope */
             scope?: string | null;
-            /** Input */
-            input?: components["schemas"]["ArchiveInputSummaryResponse"] | {
-                [key: string]: unknown;
-            };
-            /** Tasks */
-            tasks?: components["schemas"]["ArchiveTaskCountsResponse"] | {
-                [key: string]: unknown;
-            };
-            /** Media */
-            media?: components["schemas"]["ArchiveMediaCountsResponse"] | {
-                [key: string]: unknown;
-            };
-            /** Library Snapshot */
-            library_snapshot?: components["schemas"]["LibrarySnapshotResponse"] | {
-                [key: string]: unknown;
-            };
+            input?: components["schemas"]["ArchiveInputSummaryResponse"];
+            tasks?: components["schemas"]["ArchiveTaskCountsResponse"];
+            media?: components["schemas"]["ArchiveMediaCountsResponse"];
+            library_snapshot?: components["schemas"]["LibrarySnapshotResponse"];
         } & {
             [key: string]: unknown;
         };
@@ -638,10 +623,7 @@ export interface components {
             started_at: string;
             /** Finished At */
             finished_at?: string | null;
-            /** Result */
-            result?: components["schemas"]["ArchiveRunResultResponse"] | {
-                [key: string]: unknown;
-            } | null;
+            result?: components["schemas"]["ArchiveRunResultResponse"] | null;
             /** Error Message */
             error_message?: string | null;
         } & {
@@ -889,6 +871,21 @@ export interface components {
              */
             normalize_files: boolean;
         };
+        /** DbPoolHealthResponse */
+        DbPoolHealthResponse: {
+            /** Active */
+            active: number;
+            /** Idle */
+            idle: number;
+            /** Waiting */
+            waiting: number;
+            /** Min Size */
+            min_size: number;
+            /** Max Size */
+            max_size: number;
+        } & {
+            [key: string]: unknown;
+        };
         /** DownloadAttemptResponse */
         DownloadAttemptResponse: {
             /** Id */
@@ -1066,21 +1063,6 @@ export interface components {
             sources: components["schemas"]["SourceHealthResponse"];
             /** Recent Errors */
             recent_errors: components["schemas"]["RecentErrorResponse"][];
-        } & {
-            [key: string]: unknown;
-        };
-        /** DbPoolHealthResponse */
-        DbPoolHealthResponse: {
-            /** Active */
-            active: number;
-            /** Idle */
-            idle: number;
-            /** Waiting */
-            waiting: number;
-            /** Min Size */
-            min_size: number;
-            /** Max Size */
-            max_size: number;
         } & {
             [key: string]: unknown;
         };
@@ -2468,7 +2450,9 @@ export interface operations {
     media_file_api_v1_media_file__relative_path__get: {
         parameters: {
             query?: never;
-            header?: never;
+            header?: {
+                Range?: string | null;
+            };
             path: {
                 relative_path: string;
             };

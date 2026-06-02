@@ -11,7 +11,6 @@ from xarchiver.row_models import DownloadStatusCountRow, VerifiableAssetRow
 from xarchiver.sql_builder import compile_query
 from xarchiver.tables import media_assets
 
-
 VERIFY_MEDIA_STATUSES = ("downloaded", "verified", "missing", "corrupt")
 
 

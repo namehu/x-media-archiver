@@ -1,5 +1,4 @@
 import unittest
-from pathlib import Path
 
 from xarchiver.archive import ensure_archive_dirs
 from xarchiver.config import get_settings

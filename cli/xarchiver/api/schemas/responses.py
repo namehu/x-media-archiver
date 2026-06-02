@@ -10,14 +10,6 @@ class FlexibleResponse(BaseModel):
     model_config = ConfigDict(extra="allow")
 
 
-class PageResponse(FlexibleResponse):
-    rows: list[dict[str, Any]]
-    count: int
-    total_count: int
-    limit: int
-    offset: int
-
-
 class PageMetaResponse(FlexibleResponse):
     count: int
     total_count: int
@@ -30,7 +22,7 @@ class SummaryResponse(FlexibleResponse):
     media_count: int
     failure_count: int
     archive_dir: str
-    exports: list["ExportSummaryResponse"]
+    exports: list[ExportSummaryResponse]
 
 
 class ExportSummaryResponse(FlexibleResponse):
@@ -166,10 +158,10 @@ class LibrarySnapshotResponse(FlexibleResponse):
 class ArchiveRunResultResponse(FlexibleResponse):
     pipeline_version: str | None = None
     scope: str | None = None
-    input: ArchiveInputSummaryResponse | dict[str, Any] = Field(default_factory=dict)
-    tasks: ArchiveTaskCountsResponse | dict[str, Any] = Field(default_factory=dict)
-    media: ArchiveMediaCountsResponse | dict[str, Any] = Field(default_factory=dict)
-    library_snapshot: LibrarySnapshotResponse | dict[str, Any] = Field(default_factory=dict)
+    input: ArchiveInputSummaryResponse = Field(default_factory=ArchiveInputSummaryResponse)
+    tasks: ArchiveTaskCountsResponse = Field(default_factory=ArchiveTaskCountsResponse)
+    media: ArchiveMediaCountsResponse = Field(default_factory=ArchiveMediaCountsResponse)
+    library_snapshot: LibrarySnapshotResponse = Field(default_factory=LibrarySnapshotResponse)
 
 
 class ArchiveSubmissionResponse(FlexibleResponse):
@@ -215,7 +207,7 @@ class ArchiveRunRowResponse(FlexibleResponse):
     status: str
     started_at: datetime
     finished_at: datetime | None = None
-    result: ArchiveRunResultResponse | dict[str, Any] | None = None
+    result: ArchiveRunResultResponse | None = None
     error_message: str | None = None
 
 
@@ -226,7 +218,7 @@ class ArchiveRunDetailResponse(FlexibleResponse):
     status: str
     started_at: datetime
     finished_at: datetime | None = None
-    result: ArchiveRunResultResponse | dict[str, Any] | None = None
+    result: ArchiveRunResultResponse | None = None
     error_message: str | None = None
     items: list[ArchiveRunItemResponse]
 
@@ -336,7 +328,7 @@ class ArchiveRunsPageResponse(PageMetaResponse):
 
 
 class SourcesPageResponse(PageMetaResponse):
-    rows: list["ArchiveSourceListResponse"]
+    rows: list[ArchiveSourceListResponse]
 
 
 class DuplicatesPageResponse(PageMetaResponse):

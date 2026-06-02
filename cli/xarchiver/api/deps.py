@@ -6,8 +6,8 @@ from threading import Event, Lock
 
 from fastapi import HTTPException, status
 
-from xarchiver.core.lock_manager import lock_manager
 from xarchiver.core.errors import ArchiverError, http_status_for_error_code
+from xarchiver.core.lock_manager import lock_manager
 
 write_action_lock = Lock()
 stop_worker = Event()

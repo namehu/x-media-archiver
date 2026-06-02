@@ -5,7 +5,12 @@ from types import SimpleNamespace
 from unittest.mock import patch
 
 from xarchiver.row_models import ArchiveRunRow, TweetMediaAssetRow
-from xarchiver.services.library import archive_relative_path, attach_media_url, get_summary, list_media
+from xarchiver.services.library import (
+    archive_relative_path,
+    attach_media_url,
+    get_summary,
+    list_media,
+)
 
 
 class LibraryServiceTests(unittest.TestCase):

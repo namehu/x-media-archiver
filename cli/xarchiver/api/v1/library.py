@@ -11,7 +11,12 @@ from xarchiver.api.schemas import (
 )
 from xarchiver.config import get_settings
 from xarchiver.services.failures import list_failures
-from xarchiver.services.library import get_summary, get_tweet_detail, list_duplicates_page, list_media_page
+from xarchiver.services.library import (
+    get_summary,
+    get_tweet_detail,
+    list_duplicates_page,
+    list_media_page,
+)
 
 router = APIRouter(prefix="/library", tags=["library"])
 

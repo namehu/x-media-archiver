@@ -1,6 +1,5 @@
 from pathlib import Path
 
-
 ARCHIVE_SUBDIRS = (
     "raw/imports",
     "raw/downloader_inputs",

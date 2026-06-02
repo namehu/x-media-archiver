@@ -2,12 +2,13 @@ from __future__ import annotations
 
 import asyncio
 import mimetypes
+from collections.abc import Iterator
 from pathlib import Path
-from typing import Iterator, NamedTuple
+from queue import Empty
+from typing import NamedTuple
 
 from fastapi import APIRouter, Header, HTTPException, Request
 from fastapi.responses import StreamingResponse
-from queue import Empty
 
 from xarchiver.api.deps import parse_event_topics, resolve_archive_file
 from xarchiver.api.schemas import DownloadPolicyResponse, HealthDetailResponse

@@ -3,8 +3,8 @@ from datetime import UTC, datetime
 
 from pydantic import ValidationError
 
-from xarchiver.search import build_search_query, compact_text
 from xarchiver.row_models import SearchMediaRow
+from xarchiver.search import build_search_query, compact_text
 
 
 class SearchUnitTests(unittest.TestCase):

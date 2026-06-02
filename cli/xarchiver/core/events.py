@@ -1,12 +1,13 @@
 from __future__ import annotations
 
-from dataclasses import dataclass
-from datetime import datetime, timezone
 import json
 import logging
+from collections.abc import Iterable
+from dataclasses import dataclass
+from datetime import UTC, datetime
 from queue import Empty, Full, Queue
 from threading import Lock
-from typing import Any, Iterable
+from typing import Any
 
 logger = logging.getLogger(__name__)
 
@@ -76,7 +77,7 @@ class EventBroker:
             topic=topic,
             type=event_type,
             payload=json_safe_payload(payload or {}),
-            created_at=datetime.now(timezone.utc).isoformat(),
+            created_at=datetime.now(UTC).isoformat(),
         )
         with self._lock:
             subscriptions = [subscription for subscription in self._subscriptions if subscription.matches(topic)]

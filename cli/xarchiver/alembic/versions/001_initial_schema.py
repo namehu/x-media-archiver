@@ -1,6 +1,5 @@
 from alembic import op
 
-
 revision = "001_initial_schema"
 down_revision = None
 branch_labels = None

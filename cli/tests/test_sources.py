@@ -21,8 +21,8 @@ from xarchiver.services.sources import (
     parse_gallery_dl_records,
     record_source_discoveries,
     recover_expired_source_scan_leases,
-    scan_source,
     scan_run_status,
+    scan_source,
     schedule_next_history_scan,
 )
 

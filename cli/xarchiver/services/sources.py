@@ -62,7 +62,7 @@ class SourceScanLeaseHeartbeat:
         self.lost = Event()
         self.thread: Thread | None = None
 
-    def __enter__(self) -> "SourceScanLeaseHeartbeat":
+    def __enter__(self) -> SourceScanLeaseHeartbeat:
         if self.worker_id:
             self.thread = Thread(target=self._run, name="source-scan-lease-heartbeat", daemon=True)
             self.thread.start()

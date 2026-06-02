@@ -2,8 +2,8 @@ from collections.abc import Iterator
 from contextlib import contextmanager
 
 import psycopg
-from psycopg_pool import ConnectionPool
 from psycopg.rows import dict_row
+from psycopg_pool import ConnectionPool
 
 from xarchiver.config import get_settings
 

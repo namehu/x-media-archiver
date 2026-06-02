@@ -5,6 +5,7 @@ from types import SimpleNamespace
 from unittest.mock import patch
 
 from xarchiver.core.errors import ErrorCategory, classify_x_error
+from xarchiver.db import connect
 from xarchiver.downloader import (
     build_command,
     classify_error,
@@ -12,7 +13,6 @@ from xarchiver.downloader import (
     format_sleep_range,
     validate_cookie_file,
 )
-from xarchiver.db import connect
 
 
 class DownloaderTests(unittest.TestCase):

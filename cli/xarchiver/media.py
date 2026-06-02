@@ -14,7 +14,6 @@ from xarchiver.archive import normalize_path
 from xarchiver.db import connect
 from xarchiver.row_models import IdRow
 
-
 MEDIA_EXTENSIONS = {".jpg", ".jpeg", ".png", ".gif", ".webp", ".mp4", ".mov", ".m4v"}
 VIDEO_EXTENSIONS = {".mp4", ".mov", ".m4v"}
 

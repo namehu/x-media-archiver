@@ -8,8 +8,8 @@ from xarchiver.exporter import export_duplicates_csv, export_failures_csv, expor
 from xarchiver.importer import import_jsonl, import_urls
 from xarchiver.media import backfill_media_assets
 from xarchiver.recovery import recover_interrupted_runs
-from xarchiver.verifier import verify_media_assets
 from xarchiver.services.queue import submit_jsonl_file, submit_requeue_batch, submit_urls_file
+from xarchiver.verifier import verify_media_assets
 
 
 def run_archive_urls(path: Path, settings: Settings, limit: int | None = None) -> dict[str, object]:
