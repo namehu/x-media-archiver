@@ -202,6 +202,7 @@ class ArchiveSourceListRow(ArchiveSourceRow):
     discovered_tweet_count: int
     unsubmitted_tweet_count: int
     discovered_media_count: int
+    scan_batch_count: int = 0
     latest_discovered_at: datetime | None = None
 
 

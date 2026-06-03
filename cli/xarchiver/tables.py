@@ -131,6 +131,16 @@ source_discovered_tweets = Table(
     Column("raw_payload", JSONB),
 )
 
+source_scan_runs = Table(
+    "source_scan_runs",
+    metadata,
+    Column("id", BigInteger),
+    Column("source_id", BigInteger),
+    Column("status", Text),
+    Column("new_tweet_count", Integer),
+    Column("created_at", DateTime(timezone=True)),
+)
+
 download_attempts = Table(
     "download_attempts",
     metadata,

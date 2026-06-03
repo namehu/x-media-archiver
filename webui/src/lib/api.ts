@@ -253,6 +253,7 @@ type ArchiveSourceBase = {
   discovered_tweet_count?: number | null;
   discovered_media_count?: number | null;
   unsubmitted_tweet_count?: number | null;
+  scan_batch_count?: number | null;
   latest_discovered_at?: string | null;
   last_seen_tweet_id?: string | null;
   newest_seen_tweet_id?: string | null;

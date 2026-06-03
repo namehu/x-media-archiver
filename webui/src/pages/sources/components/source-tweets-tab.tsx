@@ -1,5 +1,5 @@
 import { Virtuoso } from "react-virtuoso";
-import type { ArchiveSourceDetail, SourceDiscoveryPageResponse } from "@/lib/api";
+import type { SourceDiscoveryPageResponse } from "@/lib/api";
 import { Badge } from "@/components/ui/badge";
 import { Pagination } from "@/components/ui/pagination";
 import { formatDateTime } from "@/lib/utils";
@@ -9,7 +9,6 @@ import { formatDiscoveredMedia } from "../utils";
 const PAGE_SIZE = 50;
 
 export function SourceTweetsTab({
-  source,
   data,
   isLoading,
   error,
@@ -17,7 +16,6 @@ export function SourceTweetsTab({
   onOffsetChange,
   statusLabel,
 }: {
-  source: ArchiveSourceDetail;
   data?: SourceDiscoveryPageResponse;
   isLoading: boolean;
   error: unknown;
@@ -60,21 +58,21 @@ export function SourceTweetsTab({
             <div className="rounded-lg border border-border-subtle bg-bg-surface p-3 text-sm">
               <div className="flex items-start justify-between gap-3">
                 <div className="min-w-0 space-y-1">
-                  <div className="text-xs text-fg-secondary">
-                    @{tweet.author_username || source.author_username || "-"} · {tweet.tweet_id}
-                  </div>
                   <div className="whitespace-pre-wrap break-words text-sm leading-6 text-fg-primary">
                     {tweet.text || t("tweet.noText")}
                   </div>
                   <div className="flex flex-wrap gap-2 text-xs text-fg-secondary">
                     {formatDiscoveredMedia(tweet.raw_payload, t)}
                   </div>
+                  <div className="flex flex-wrap gap-x-2 gap-y-1 text-xs text-fg-secondary">
+                    <span>{tweet.tweet_id}</span>
+                    <span>{formatDateTime(tweet.discovered_at)}</span>
+                    <span>{tweet.archive_run_id ? `Run #${tweet.archive_run_id}` : t("sources.notQueued")}</span>
+                  </div>
                 </div>
-                <Badge>{statusLabel(tweet.download_status)}</Badge>
-              </div>
-              <div className="mt-1 text-xs text-fg-secondary">
-                {formatDateTime(tweet.discovered_at)} ·{" "}
-                {tweet.archive_run_id ? `Run #${tweet.archive_run_id}` : t("sources.notQueued")}
+                <div className="shrink-0 whitespace-nowrap text-center">
+                  <Badge>{statusLabel(tweet.download_status)}</Badge>
+                </div>
               </div>
             </div>
           </div>

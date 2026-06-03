@@ -368,6 +368,7 @@ class ArchiveSourceListResponse(ArchiveSourceResponse):
     discovered_tweet_count: int = 0
     unsubmitted_tweet_count: int = 0
     discovered_media_count: int = 0
+    scan_batch_count: int = 0
     latest_discovered_at: datetime | None = None
 
 

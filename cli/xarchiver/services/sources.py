@@ -49,7 +49,7 @@ from xarchiver.services.operation_logs import (
 )
 from xarchiver.services.queue import has_pending_download_work, submit_archive_batch
 from xarchiver.sql_builder import compile_query
-from xarchiver.tables import archive_sources, source_discovered_tweets, tweets
+from xarchiver.tables import archive_sources, source_discovered_tweets, source_scan_runs, tweets
 
 VALID_SOURCE_TYPES = {"profile", "user_media", "likes", "bookmarks", "search", "manual"}
 VALID_SOURCE_STATUSES = {"active", "paused", "completed", "failed"}
@@ -189,6 +189,16 @@ def build_sources_query(
         ),
         0,
     ).cast(Integer)
+    scan_batch_count = (
+        select(func.count(source_scan_runs.c.id).cast(Integer))
+        .where(
+            and_(
+                source_scan_runs.c.source_id == archive_sources.c.id,
+                source_scan_runs.c.status != "waiting_downloads",
+            )
+        )
+        .scalar_subquery()
+    )
 
     statement = (
         select(
@@ -196,6 +206,7 @@ def build_sources_query(
             discovery_count.label("discovered_tweet_count"),
             unsubmitted_count.label("unsubmitted_tweet_count"),
             media_count.label("discovered_media_count"),
+            scan_batch_count.label("scan_batch_count"),
             func.max(source_discovered_tweets.c.discovered_at).label("latest_discovered_at"),
         )
         .select_from(
@@ -264,6 +275,12 @@ def get_source(source_id: int) -> dict[str, object] | None:
                        count(d.id)::int as discovered_tweet_count,
                        count(d.id) filter (where d.archive_run_id is null)::int as unsubmitted_tweet_count,
                        coalesce(sum(coalesce((d.raw_payload->>'media_count')::int, 0)), 0)::int as discovered_media_count,
+                       (
+                         select count(*)::int
+                         from source_scan_runs r
+                         where r.source_id = s.id
+                           and r.status <> 'waiting_downloads'
+                       ) as scan_batch_count,
                        max(d.discovered_at) as latest_discovered_at
                 from archive_sources s
                 left join source_discovered_tweets d on d.source_id = s.id

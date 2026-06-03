@@ -130,7 +130,6 @@ export function SourceDetailPanel({
         </TabsList>
         <TabsContent value="tweets" className="min-h-0 flex-1 overflow-hidden">
           <SourceTweetsTab
-            source={source}
             data={discoveredQuery.data}
             isLoading={discoveredQuery.isLoading}
             error={discoveredQuery.error}
@@ -184,11 +183,13 @@ function SourceHeader({
 
   return (
     <div className="mb-4 space-y-3 pr-8">
-      <div className="flex flex-wrap items-start justify-between gap-3">
-        <div className="min-w-0">
-          <h2 className="text-xl font-semibold text-fg-primary">
-            {source.label || source.author_username || t("sources.detail")}
-          </h2>
+      <div className="flex items-start justify-between gap-3">
+        <div className="flex min-w-0 items-start gap-2">
+          <Badge tone={sourceStatusTone(source.status)}>{statusLabel(source.status)}</Badge>
+          <div className="min-w-0">
+            <h2 className="text-xl font-semibold text-fg-primary">
+              {source.label || source.author_username || t("sources.detail")}
+            </h2>
           {source.source_url ? (
             <a
               className="mt-0.5 inline-flex min-w-0 items-center gap-1 break-all text-sm text-brand hover:text-brand-hover"
@@ -202,24 +203,21 @@ function SourceHeader({
           ) : (
             <p className="mt-0.5 text-sm text-fg-secondary">{t("common.none")}</p>
           )}
+          </div>
         </div>
-        <Badge tone={sourceStatusTone(source.status)}>{statusLabel(source.status)}</Badge>
+        <button
+          type="button"
+          className="shrink-0 rounded-md px-2 py-1 text-xs font-semibold text-brand hover:bg-bg-muted hover:text-brand-hover"
+          onClick={() => setShowAllDetails((v) => !v)}
+        >
+          {showAllDetails ? t("sources.collapseMore") : t("sources.expandMore")}
+        </button>
       </div>
 
       {activeScanRun ? <ActiveScan run={activeScanRun} source={source} now={now} /> : null}
 
-      <div className="grid gap-2 rounded-lg border border-border-subtle p-3 text-sm sm:grid-cols-2 lg:grid-cols-4">
-        <Metric
-          label={t("sources.discoveredTweets")}
-          value={source.discovered_tweet_count ?? source.discovered_count ?? 0}
-        />
-        <Metric label={t("sources.discoveredMedia")} value={source.discovered_media_count ?? 0} />
-        <Metric label={t("sources.unsubmitted")} value={source.unsubmitted_tweet_count ?? 0} />
-        <Metric label={t("sources.scanBatches")} value={source.scan_summary?.batch_count ?? 0} />
-      </div>
-
-      <div className="grid gap-2 rounded-lg bg-bg-muted p-3 text-sm">
-        {showAllDetails ? (
+      {showAllDetails ? (
+        <div className="grid gap-2 rounded-lg bg-bg-muted p-3 text-sm">
           <>
             <DetailRow label={t("sources.updated")} value={formatDateTime(source.updated_at)} />
             <DetailRow label={t("sources.nextRange")} value={formatNextRange(source.cursor_state, scanLimit)} />
@@ -248,16 +246,8 @@ function SourceHeader({
             {policy ? <PolicySummary policy={policy} /> : null}
             <ScanPipelineNote source={source} policy={policy} />
           </>
-        ) : null}
-
-        <button
-          type="button"
-          className="mt-1 text-left text-xs text-brand hover:text-brand-hover"
-          onClick={() => setShowAllDetails((v) => !v)}
-        >
-          {showAllDetails ? t("sources.collapseMore") : t("sources.expandMore")}
-        </button>
-      </div>
+        </div>
+      ) : null}
     </div>
   );
 }

@@ -164,19 +164,31 @@ function SourceListItem({
         </div>
       </div>
       <div className="flex shrink-0 items-center gap-4 text-xs text-fg-secondary">
-        <div className="hidden sm:flex sm:flex-col sm:items-end sm:gap-0.5">
-          <span>
-            {t("sources.discovered")}: {source.discovered_tweet_count ?? source.discovered_count ?? 0} /{" "}
-            {source.discovered_media_count ?? 0} {t("sources.mediaUnit")}
-          </span>
-          {(source.unsubmitted_tweet_count ?? 0) > 0 ? (
-            <span className="text-warning">
-              {t("sources.unsubmitted")}: {source.unsubmitted_tweet_count}
-            </span>
-          ) : null}
+        <div className="hidden grid-cols-4 gap-3 sm:grid">
+          <ListMetric label={t("sources.discoveredTweets")} value={source.discovered_tweet_count ?? source.discovered_count ?? 0} />
+          <ListMetric label={t("sources.discoveredMedia")} value={source.discovered_media_count ?? 0} />
+          <ListMetric label={t("sources.unsubmitted")} value={source.unsubmitted_tweet_count ?? 0} warning={(source.unsubmitted_tweet_count ?? 0) > 0} />
+          <ListMetric label={t("sources.scanBatches")} value={source.scan_batch_count ?? 0} />
         </div>
         <Badge tone={sourceStatusTone(source.status)}>{statusLabel(source.status)}</Badge>
       </div>
     </button>
+  );
+}
+
+function ListMetric({
+  label,
+  value,
+  warning,
+}: {
+  label: string;
+  value: number;
+  warning?: boolean;
+}) {
+  return (
+    <div className="w-24 text-right">
+      <div className="truncate text-[11px] text-fg-tertiary">{label}</div>
+      <div className={warning ? "font-semibold text-warning" : "font-semibold text-fg-primary"}>{value}</div>
+    </div>
   );
 }
