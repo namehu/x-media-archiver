@@ -26,7 +26,7 @@
   --chart-3: var(--warning);
   --chart-4: var(--accent);
   --chart-5: var(--danger);
-  --radius: 10px;
+  --radius: 6px;
   --bg-base: 0 0% 100%;
   --bg-surface: 210 20% 98%;
   --bg-elevated: 0 0% 100%;

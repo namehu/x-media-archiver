@@ -30,21 +30,6 @@ export function sourceTypeLabel(type: string, t: TFunction) {
   return t(`sources.type.${type}`);
 }
 
-export function inferSourceType(url: string) {
-  try {
-    const parsed = new URL(url.trim());
-    const parts = parsed.pathname.split("/").filter(Boolean);
-    if (parts.includes("search")) return "search";
-    if (parts.includes("bookmarks")) return "bookmarks";
-    if (parts.includes("likes")) return "likes";
-    if (parts[1] === "media") return "user_media";
-    if (parts.length === 1 && !["home", "i"].includes(parts[0])) return "profile";
-  } catch (_error) {
-    return null;
-  }
-  return null;
-}
-
 export function unwrapActionResult(response: Record<string, unknown>) {
   const result = response.result;
   return result && typeof result === "object" ? (result as Record<string, unknown>) : response;

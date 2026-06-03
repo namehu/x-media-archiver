@@ -37,3 +37,7 @@ export function DialogTitle({ className, ...props }: React.ComponentPropsWithout
 export function DialogDescription({ className, ...props }: React.ComponentPropsWithoutRef<typeof DialogPrimitive.Description>) {
   return <DialogPrimitive.Description className={cn("text-sm text-fg-secondary", className)} {...props} />;
 }
+
+export function DialogFooter({ className, ...props }: React.HTMLAttributes<HTMLDivElement>) {
+  return <div className={cn("flex flex-row justify-end gap-2 pt-4", className)} {...props} />;
+}

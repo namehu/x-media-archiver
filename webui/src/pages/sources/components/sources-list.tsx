@@ -4,10 +4,13 @@ import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Pagination } from "@/components/ui/pagination";
-import { Select } from "@/components/ui/select";
+import { Select, SelectContent, SelectGroup, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { useI18n } from "@/lib/i18n";
 import { SOURCE_TYPES, sourceStatusTone, sourceTypeLabel } from "../utils";
 import { SOURCES_PAGE_SIZE } from "../hooks/useSourcesQuery";
+
+const ALL_STATUS_VALUE = "__all_status__";
+const ALL_TYPE_VALUE = "__all_type__";
 
 export function SourcesList({
   statusLabel,
@@ -52,31 +55,45 @@ export function SourcesList({
       <CardContent className="space-y-3">
         <div className="grid gap-2 sm:grid-cols-2">
           <Select
-            value={statusFilter}
-            onChange={(event) => {
+            value={statusFilter || ALL_STATUS_VALUE}
+            onValueChange={(value) => {
               onOffsetChange(0);
-              onStatusFilterChange(event.target.value);
+              onStatusFilterChange(value === ALL_STATUS_VALUE ? "" : value);
             }}
           >
-            <option value="">{t("common.status.all")}</option>
-            <option value="active">{statusLabel("active")}</option>
-            <option value="paused">{statusLabel("paused")}</option>
-            <option value="completed">{statusLabel("completed")}</option>
-            <option value="failed">{statusLabel("failed")}</option>
+            <SelectTrigger>
+              <SelectValue />
+            </SelectTrigger>
+            <SelectContent>
+              <SelectGroup>
+                <SelectItem value={ALL_STATUS_VALUE}>{t("common.status.all")}</SelectItem>
+                <SelectItem value="active">{statusLabel("active")}</SelectItem>
+                <SelectItem value="paused">{statusLabel("paused")}</SelectItem>
+                <SelectItem value="completed">{statusLabel("completed")}</SelectItem>
+                <SelectItem value="failed">{statusLabel("failed")}</SelectItem>
+              </SelectGroup>
+            </SelectContent>
           </Select>
           <Select
-            value={typeFilter}
-            onChange={(event) => {
+            value={typeFilter || ALL_TYPE_VALUE}
+            onValueChange={(value) => {
               onOffsetChange(0);
-              onTypeFilterChange(event.target.value);
+              onTypeFilterChange(value === ALL_TYPE_VALUE ? "" : value);
             }}
           >
-            <option value="">{t("sources.type.all")}</option>
-            {SOURCE_TYPES.map((type) => (
-              <option key={type} value={type}>
-                {t(`sources.type.${type}`)}
-              </option>
-            ))}
+            <SelectTrigger>
+              <SelectValue />
+            </SelectTrigger>
+            <SelectContent>
+              <SelectGroup>
+                <SelectItem value={ALL_TYPE_VALUE}>{t("sources.type.all")}</SelectItem>
+                {SOURCE_TYPES.map((type) => (
+                  <SelectItem key={type} value={type}>
+                    {t(`sources.type.${type}`)}
+                  </SelectItem>
+                ))}
+              </SelectGroup>
+            </SelectContent>
           </Select>
         </div>
         {data ? (
