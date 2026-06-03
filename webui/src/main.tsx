@@ -9,15 +9,42 @@ import { I18nProvider } from "./lib/i18n";
 import { applyTheme, getStoredTheme, ThemeProvider } from "./lib/theme";
 import "./styles.css";
 
-const DashboardPage = lazy(() => import("./pages/dashboard").then((module) => ({ default: module.DashboardPage })));
-const DuplicatesPage = lazy(() => import("./pages/duplicates").then((module) => ({ default: module.DuplicatesPage })));
-const FailuresPage = lazy(() => import("./pages/failures").then((module) => ({ default: module.FailuresPage })));
-const ArchiveQueuePage = lazy(() => import("./pages/archive-queue").then((module) => ({ default: module.ArchiveQueuePage })));
-const LibraryPage = lazy(() => import("./pages/library").then((module) => ({ default: module.LibraryPage })));
-const OperationsPage = lazy(() => import("./pages/operations").then((module) => ({ default: module.OperationsPage })));
-const SourcesPage = lazy(() => import("./pages/sources").then((module) => ({ default: module.SourcesPage })));
-const TweetDetailPage = lazy(() => import("./pages/tweet-detail").then((module) => ({ default: module.TweetDetailPage })));
-const UiDemoPage = lazy(() => import("./pages/ui-demo").then((module) => ({ default: module.UiDemoPage })));
+const DashboardPage = lazy(() =>
+  import("./pages/dashboard").then((module) => ({
+    default: module.DashboardPage,
+  })),
+);
+const DuplicatesPage = lazy(() =>
+  import("./pages/duplicates").then((module) => ({
+    default: module.DuplicatesPage,
+  })),
+);
+const FailuresPage = lazy(() =>
+  import("./pages/failures").then((module) => ({
+    default: module.FailuresPage,
+  })),
+);
+const ArchiveQueuePage = lazy(() =>
+  import("./pages/archive-queue").then((module) => ({
+    default: module.ArchiveQueuePage,
+  })),
+);
+const LibraryPage = lazy(() =>
+  import("./pages/library").then((module) => ({ default: module.LibraryPage })),
+);
+const OperationsPage = lazy(() =>
+  import("./pages/operations").then((module) => ({
+    default: module.OperationsPage,
+  })),
+);
+const SourcesPage = lazy(() =>
+  import("./pages/sources").then((module) => ({ default: module.SourcesPage })),
+);
+const TweetDetailPage = lazy(() =>
+  import("./pages/tweet-detail").then((module) => ({
+    default: module.TweetDetailPage,
+  })),
+);
 
 applyTheme(getStoredTheme());
 
@@ -36,13 +63,14 @@ const router = createBrowserRouter([
       { path: "operations", element: route(<OperationsPage />) },
       { path: "queue", element: route(<ArchiveQueuePage />) },
       { path: "sources", element: route(<SourcesPage />) },
-      { path: "demo", element: route(<UiDemoPage />) },
     ],
   },
 ]);
 
 function route(element: React.ReactNode) {
-  return <Suspense fallback={<Skeleton className="h-64" />}>{element}</Suspense>;
+  return (
+    <Suspense fallback={<Skeleton className="h-64" />}>{element}</Suspense>
+  );
 }
 
 ReactDOM.createRoot(document.getElementById("root")!).render(
