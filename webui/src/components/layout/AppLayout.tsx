@@ -4,6 +4,9 @@ import { useQuery } from "@tanstack/react-query";
 import { useServerEvents } from "../../hooks/useServerEvents";
 import { LiveIndicator } from "../ui/live-indicator";
 import { CommandPalette, type CommandPaletteItem } from "../ui/command-palette";
+import { Badge } from "../ui/badge";
+import { Button } from "../ui/button";
+import { Separator } from "../ui/separator";
 import { apiGet, type HealthDetail } from "../../lib/api";
 import { useI18n } from "../../lib/i18n";
 import { useTheme, type Theme } from "../../lib/theme";
@@ -34,7 +37,11 @@ const navGroups = [
   },
 ];
 
-const themeIcons: Record<Theme, string> = { light: "Light", dark: "Dark", auto: "Auto" };
+const themeIcons: Record<Theme, string> = {
+  light: "Light",
+  dark: "Dark",
+  auto: "Auto",
+};
 const themeOrder: Theme[] = ["light", "dark", "auto"];
 
 export function AppLayout() {
@@ -60,14 +67,54 @@ export function AppLayout() {
   };
   const commands = useMemo<CommandPaletteItem[]>(
     () => [
-      { id: "dashboard", label: t("nav.dashboard"), description: "/", onSelect: () => navigate("/") },
-      { id: "library", label: t("nav.library"), description: "/library", onSelect: () => navigate("/library") },
-      { id: "queue", label: t("nav.queue"), description: "/queue", onSelect: () => navigate("/queue") },
-      { id: "sources", label: t("nav.sources"), description: "/sources", onSelect: () => navigate("/sources") },
-      { id: "failures", label: t("nav.failures"), description: "/failures", onSelect: () => navigate("/failures") },
-      { id: "duplicates", label: t("nav.duplicates"), description: "/duplicates", onSelect: () => navigate("/duplicates") },
-      { id: "operations", label: t("nav.operations"), description: "/operations", onSelect: () => navigate("/operations") },
-      { id: "demo", label: t("nav.demo"), description: "/demo", onSelect: () => navigate("/demo") },
+      {
+        id: "dashboard",
+        label: t("nav.dashboard"),
+        description: "/",
+        onSelect: () => navigate("/"),
+      },
+      {
+        id: "library",
+        label: t("nav.library"),
+        description: "/library",
+        onSelect: () => navigate("/library"),
+      },
+      {
+        id: "queue",
+        label: t("nav.queue"),
+        description: "/queue",
+        onSelect: () => navigate("/queue"),
+      },
+      {
+        id: "sources",
+        label: t("nav.sources"),
+        description: "/sources",
+        onSelect: () => navigate("/sources"),
+      },
+      {
+        id: "failures",
+        label: t("nav.failures"),
+        description: "/failures",
+        onSelect: () => navigate("/failures"),
+      },
+      {
+        id: "duplicates",
+        label: t("nav.duplicates"),
+        description: "/duplicates",
+        onSelect: () => navigate("/duplicates"),
+      },
+      {
+        id: "operations",
+        label: t("nav.operations"),
+        description: "/operations",
+        onSelect: () => navigate("/operations"),
+      },
+      {
+        id: "demo",
+        label: t("nav.demo"),
+        description: "/demo",
+        onSelect: () => navigate("/demo"),
+      },
     ],
     [navigate, t],
   );
@@ -80,7 +127,7 @@ export function AppLayout() {
           <h1 className="text-base font-bold tracking-tight text-fg-primary">x-media-archiver</h1>
           <p className="mt-0.5 text-xs text-fg-secondary">{t("app.subtitle")}</p>
         </div>
-        <nav className="flex-1 space-y-1 px-2 pb-4">
+        <nav className="flex flex-1 flex-col gap-1 px-2 pb-4">
           <NavLink
             to="/"
             end
@@ -93,12 +140,10 @@ export function AppLayout() {
           >
             {t("nav.dashboard")}
           </NavLink>
-          <div className="my-2 border-t border-border-subtle" />
+          <Separator className="my-2" />
           {navGroups.map((group) => (
             <div key={group.labelKey} className="pt-2">
-              <p className="mb-1 px-2 text-xs font-semibold uppercase text-fg-tertiary">
-                {t(group.labelKey)}
-              </p>
+              <p className="mb-1 px-2 text-xs font-semibold uppercase text-fg-tertiary">{t(group.labelKey)}</p>
               {group.items.map((item) => (
                 <NavLink
                   key={item.to}
@@ -127,37 +172,55 @@ export function AppLayout() {
               state={events.status === "connected" ? "open" : events.status === "connecting" ? "connecting" : "closed"}
               label={t(`events.${events.status}`)}
             />
-            <StatusPill
-              tone={healthQuery.isError ? "danger" : writeLockHeld ? "warning" : "neutral"}
-              label={healthQuery.isError ? t("health.unavailable") : writeLockHeld ? t("health.writeLocked") : t("health.idle")}
-            />
-            <StatusPill label={t("health.queue", { count: queueWork })} tone={queueWork ? "warning" : "neutral"} />
-            <StatusPill label={t("health.scans", { count: activeScans })} tone={activeScans ? "warning" : "neutral"} />
-            <StatusPill label={t("health.errors", { count: recentErrors })} tone={recentErrors ? "danger" : "neutral"} />
+            <Badge
+              tone={healthQuery.isError ? "danger" : writeLockHeld ? "warning" : "secondary"}
+              className="hidden md:inline-flex"
+            >
+              {healthQuery.isError
+                ? t("health.unavailable")
+                : writeLockHeld
+                  ? t("health.writeLocked")
+                  : t("health.idle")}
+            </Badge>
+            <Badge tone={queueWork ? "warning" : "secondary"} className="hidden md:inline-flex">
+              {t("health.queue", { count: queueWork })}
+            </Badge>
+            <Badge tone={activeScans ? "warning" : "secondary"} className="hidden md:inline-flex">
+              {t("health.scans", { count: activeScans })}
+            </Badge>
+            <Badge tone={recentErrors ? "danger" : "secondary"} className="hidden md:inline-flex">
+              {t("health.errors", { count: recentErrors })}
+            </Badge>
           </div>
           <div className="flex items-center gap-1">
-            <button
+            <Button
+              variant="secondary"
+              size="sm"
               onClick={() => setCommandOpen(true)}
-              className="hidden rounded-md border border-border-subtle bg-bg-surface px-3 py-1 text-xs font-medium text-fg-secondary transition hover:bg-bg-muted hover:text-fg-primary focus:outline-none focus-visible:ring-2 focus-visible:ring-brand/50 md:inline-flex"
+              className="hidden text-xs font-medium md:inline-flex"
               title={t("command.open")}
             >
               {t("command.search")}
               <span className="ml-2 text-fg-tertiary">⌘K</span>
-            </button>
-            <button
+            </Button>
+            <Button
+              variant="ghost"
+              size="sm"
               onClick={() => setLocale(locale === "zh" ? "en" : "zh")}
-              className="rounded-md px-2 py-1 text-xs font-medium text-fg-secondary transition hover:bg-bg-muted hover:text-fg-primary focus:outline-none focus-visible:ring-2 focus-visible:ring-brand/50"
+              className="text-xs font-medium"
               title={locale === "zh" ? "Switch to English" : "切换为中文"}
             >
               {locale === "zh" ? "EN" : "中文"}
-            </button>
-            <button
+            </Button>
+            <Button
+              variant="ghost"
+              size="sm"
               onClick={cycleTheme}
-              className="rounded-md px-2 py-1 text-xs font-medium text-fg-secondary transition hover:bg-bg-muted hover:text-fg-primary focus:outline-none focus-visible:ring-2 focus-visible:ring-brand/50"
+              className="text-xs font-medium"
               title={t(`theme.${theme}`)}
             >
               {themeIcons[theme]}
-            </button>
+            </Button>
           </div>
         </header>
         <main className="flex-1 overflow-auto bg-bg-base p-6">
@@ -172,20 +235,5 @@ export function AppLayout() {
         emptyLabel={t("command.empty")}
       />
     </div>
-  );
-}
-
-function StatusPill({ label, tone = "neutral" }: { label: string; tone?: "neutral" | "warning" | "danger" }) {
-  return (
-    <span
-      className={cn(
-        "hidden rounded-md border px-2 py-1 text-xs font-medium md:inline-flex",
-        tone === "neutral" && "border-border-subtle bg-bg-muted text-fg-secondary",
-        tone === "warning" && "border-warning/25 bg-warning/10 text-warning",
-        tone === "danger" && "border-danger/20 bg-danger/10 text-danger",
-      )}
-    >
-      {label}
-    </span>
   );
 }
