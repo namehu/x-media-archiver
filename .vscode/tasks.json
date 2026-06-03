@@ -34,7 +34,7 @@
     {
       "label": "Dev: API debug container",
       "type": "shell",
-      "command": "docker-compose run --rm --service-ports --entrypoint python xarchiver -m debugpy --listen 0.0.0.0:5678 -m xarchiver.cli serve --host 0.0.0.0 --port 8000",
+      "command": "docker-compose run --rm -p 127.0.0.1:18000:8000 -p 127.0.0.1:5678:5678 --entrypoint python xarchiver -m debugpy --listen 0.0.0.0:5678 -m xarchiver.cli serve --host 0.0.0.0 --port 8000",
       "dependsOn": "Dev: Maybe build API image",
       "dependsOrder": "sequence",
       "isBackground": true,
@@ -61,7 +61,10 @@
       "dependsOn": "Dev: API debug container",
       "dependsOrder": "sequence",
       "options": {
-        "cwd": "${workspaceFolder}/webui"
+        "cwd": "${workspaceFolder}/webui",
+        "env": {
+          "VITE_API_PROXY_TARGET": "http://127.0.0.1:18000"
+        }
       },
       "isBackground": true,
       "problemMatcher": {
