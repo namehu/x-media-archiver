@@ -1,5 +1,7 @@
+import { Plus } from "lucide-react";
 import type { ArchiveSource, SourcePageResponse } from "../../../lib/api";
 import { Badge } from "../../../components/ui/badge";
+import { Button } from "../../../components/ui/button";
 import { Card, CardContent, CardHeader, CardTitle } from "../../../components/ui/card";
 import { Pagination } from "../../../components/ui/pagination";
 import { Select } from "../../../components/ui/select";
@@ -18,6 +20,7 @@ export function SourcesList({
   onTypeFilterChange,
   onOffsetChange,
   onSelectSource,
+  onAddClick,
 }: {
   t: TFunction;
   statusLabel: (status?: string | null) => string;
@@ -30,13 +33,20 @@ export function SourcesList({
   onTypeFilterChange: (value: string) => void;
   onOffsetChange: (offset: number) => void;
   onSelectSource: (sourceId: number) => void;
+  onAddClick: () => void;
 }) {
   return (
-    <Card className="lg:sticky lg:top-4 lg:self-start">
+    <Card>
       <CardHeader>
         <div className="flex items-center justify-between gap-3">
-          <CardTitle>{t("sources.list")}</CardTitle>
-          <Badge tone="default">{data?.total_count ?? 0}</Badge>
+          <div className="flex items-center gap-2">
+            <CardTitle>{t("sources.list")}</CardTitle>
+            <Badge tone="default">{data?.total_count ?? 0}</Badge>
+          </div>
+          <Button type="button" variant="secondary" onClick={onAddClick}>
+            <Plus className="mr-1.5 h-4 w-4" />
+            {t("sources.create")}
+          </Button>
         </div>
       </CardHeader>
       <CardContent className="space-y-3">
@@ -132,15 +142,26 @@ function SourceListItem({
       ].join(" ")}
       onClick={() => onSelectSource(source.id)}
     >
-      <div className="min-w-0">
+      <div className="min-w-0 flex-1">
         <div className="truncate text-sm font-semibold text-fg-primary">{source.label || source.source_url}</div>
-        <div className="text-xs text-fg-secondary">
-          {sourceTypeLabel(source.source_type, t)} · {source.author_username || "-"} · {t("sources.discovered")}:{" "}
-          {source.discovered_tweet_count ?? source.discovered_count ?? 0} / {source.discovered_media_count ?? 0}{" "}
-          {t("sources.mediaUnit")}
+        <div className="mt-0.5 text-xs text-fg-secondary">
+          {sourceTypeLabel(source.source_type, t)} · @{source.author_username || "-"}
         </div>
       </div>
-      <Badge tone={sourceStatusTone(source.status)}>{statusLabel(source.status)}</Badge>
+      <div className="flex shrink-0 items-center gap-4 text-xs text-fg-secondary">
+        <div className="hidden sm:flex sm:flex-col sm:items-end sm:gap-0.5">
+          <span>
+            {t("sources.discovered")}: {source.discovered_tweet_count ?? source.discovered_count ?? 0} / {source.discovered_media_count ?? 0}{" "}
+            {t("sources.mediaUnit")}
+          </span>
+          {(source.unsubmitted_tweet_count ?? 0) > 0 ? (
+            <span className="text-warning">
+              {t("sources.unsubmitted")}: {source.unsubmitted_tweet_count}
+            </span>
+          ) : null}
+        </div>
+        <Badge tone={sourceStatusTone(source.status)}>{statusLabel(source.status)}</Badge>
+      </div>
     </button>
   );
 }

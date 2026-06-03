@@ -1,13 +1,14 @@
 import * as React from "react";
 import { Link } from "react-router-dom";
+import { HelpCircle } from "lucide-react";
 import { useQuery } from "@tanstack/react-query";
 import { apiGet, type ArchiveSource, type ArchiveSubmission, type DownloadPolicy, type OperationLogEntriesResponse } from "../../../lib/api";
 import { Badge } from "../../../components/ui/badge";
 import { Button } from "../../../components/ui/button";
-import { Card, CardContent, CardHeader, CardTitle } from "../../../components/ui/card";
 import { Input } from "../../../components/ui/input";
 import { Select } from "../../../components/ui/select";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "../../../components/ui/tabs";
+import { Tooltip, TooltipContent, TooltipTrigger } from "../../../components/ui/tooltip";
 import { formatDateTime } from "../../../lib/utils";
 import { SourceScanHistoryTab } from "./SourceScanHistoryTab";
 import { SourceTweetsTab } from "./SourceTweetsTab";
@@ -81,67 +82,62 @@ export function SourceDetailPanel({
 
   if (!source) {
     return (
-      <Card>
-        <CardHeader>
-          <CardTitle>{t("sources.detail")}</CardTitle>
-        </CardHeader>
-        <CardContent>
-          <p className="text-sm text-fg-secondary">{t("sources.select")}</p>
-        </CardContent>
-      </Card>
+      <div className="flex h-full items-center justify-center py-16">
+        <p className="text-sm text-fg-secondary">{t("sources.select")}</p>
+      </div>
     );
   }
 
   return (
-    <Card>
-      <CardHeader>
-        <div className="flex flex-wrap items-start justify-between gap-3">
-          <div>
-            <CardTitle>{source.label || source.author_username || t("sources.detail")}</CardTitle>
-            <p className="mt-1 break-all text-sm text-fg-secondary">{source.source_url}</p>
-          </div>
-          <Badge tone={sourceStatusTone(source.status)}>{statusLabel(source.status)}</Badge>
+    <div className="flex h-full flex-col">
+      {/* Sheet header content */}
+      <div className="mb-4 flex flex-wrap items-start justify-between gap-3 pr-8">
+        <div className="min-w-0">
+          <h2 className="text-xl font-semibold text-fg-primary">{source.label || source.author_username || t("sources.detail")}</h2>
+          <p className="mt-0.5 break-all text-sm text-fg-secondary">{source.source_url}</p>
         </div>
-      </CardHeader>
-      <CardContent>
-        <Tabs defaultValue="overview">
-          <TabsList className="flex-wrap">
-            <TabsTrigger value="overview">{t("sources.detail")}</TabsTrigger>
-            <TabsTrigger value="tweets">{t("sources.recentDiscovered")}</TabsTrigger>
-            <TabsTrigger value="history">{t("sources.scanHistory")}</TabsTrigger>
-            <TabsTrigger value="config">{t("sources.advancedActions")}</TabsTrigger>
-          </TabsList>
-          <TabsContent value="overview" className="space-y-4">
-            <OverviewTab
-              source={source}
-              policy={policy}
-              now={now}
-              detailUpdatedAt={detailUpdatedAt}
-              scanLimit={scanLimit.clamped(200)}
-              t={t}
-            />
-            <PrimaryActions source={source} t={t} actions={actions} scanLimit={scanLimit} />
-            <DownloadActions source={source} t={t} actions={actions} feedback={feedback} />
-          </TabsContent>
-          <TabsContent value="tweets">
-            <SourceTweetsTab source={source} t={t} statusLabel={statusLabel} />
-          </TabsContent>
-          <TabsContent value="history">
+        <Badge tone={sourceStatusTone(source.status)}>{statusLabel(source.status)}</Badge>
+      </div>
+
+      <Tabs defaultValue="overview" className="flex flex-1 flex-col">
+        <TabsList className="flex-wrap">
+          <TabsTrigger value="overview">{t("sources.detail")}</TabsTrigger>
+          <TabsTrigger value="tweets">{t("sources.recentDiscovered")}</TabsTrigger>
+          <TabsTrigger value="history">{t("sources.scanHistory")}</TabsTrigger>
+          <TabsTrigger value="config">{t("sources.advancedActions")}</TabsTrigger>
+        </TabsList>
+        <TabsContent value="overview" className="flex-1 space-y-4 overflow-y-auto">
+          <OverviewTab
+            source={source}
+            policy={policy}
+            now={now}
+            detailUpdatedAt={detailUpdatedAt}
+            scanLimit={scanLimit.clamped(200)}
+            t={t}
+          />
+          <PrimaryActions source={source} t={t} actions={actions} scanLimit={scanLimit} />
+          <DownloadActions source={source} t={t} actions={actions} feedback={feedback} />
+        </TabsContent>
+        <TabsContent value="tweets" className="flex-1 overflow-hidden">
+          <SourceTweetsTab source={source} t={t} statusLabel={statusLabel} />
+        </TabsContent>
+        <TabsContent value="history" className="flex-1 overflow-hidden">
+          <div className="relative border-l-2 border-border-subtle pl-0">
             <SourceScanHistoryTab source={source} now={now} t={t} />
-          </TabsContent>
-          <TabsContent value="config" className="space-y-4">
-            <AdvancedActions source={source} t={t} actions={actions} scanFeedback={scanFeedback} scanLimit={scanLimit} />
-            <ManualImport
-              source={source}
-              t={t}
-              actions={actions}
-              feedback={feedback}
-              onSubmitted={onManualSubmitted}
-            />
-          </TabsContent>
-        </Tabs>
-      </CardContent>
-    </Card>
+          </div>
+        </TabsContent>
+        <TabsContent value="config" className="flex-1 space-y-4 overflow-y-auto">
+          <AdvancedActions source={source} t={t} actions={actions} scanFeedback={scanFeedback} scanLimit={scanLimit} />
+          <ManualImport
+            source={source}
+            t={t}
+            actions={actions}
+            feedback={feedback}
+            onSubmitted={onManualSubmitted}
+          />
+        </TabsContent>
+      </Tabs>
+    </div>
   );
 }
 
@@ -162,48 +158,83 @@ function OverviewTab({
 }) {
   const activeScanRun = source.scan_runs?.find((run) => run.status === "running");
   const historyEnabled = Boolean(source.cursor_state?.automation_enabled);
+  const [showAllDetails, setShowAllDetails] = React.useState(false);
 
   return (
     <>
-      {policy ? <PolicySummary policy={policy} t={t} /> : null}
       {activeScanRun ? <ActiveScan run={activeScanRun} source={source} now={now} t={t} /> : null}
+
+      {/* 核心指标 */}
+      <div className="grid gap-2 rounded-lg border border-border-subtle p-3 text-sm sm:grid-cols-2 lg:grid-cols-4">
+        <Metric label={t("sources.discoveredTweets")} value={source.discovered_tweet_count ?? source.discovered_count ?? 0} />
+        <Metric label={t("sources.discoveredMedia")} value={source.discovered_media_count ?? 0} />
+        <Metric label={t("sources.unsubmitted")} value={source.unsubmitted_tweet_count ?? 0} />
+        <Metric label={t("sources.scanBatches")} value={source.scan_summary?.batch_count ?? 0} />
+      </div>
+
+      {/* 详情行 */}
       <div className="grid gap-2 rounded-lg bg-bg-muted p-3 text-sm">
         <DetailRow label={t("sources.url")} value={source.source_url || "-"} breakAll />
         <DetailRow label={t("sources.updated")} value={formatDateTime(source.updated_at)} />
-        <DetailRow label={t("sources.lastSeen")} value={source.last_seen_tweet_id || "-"} />
-        <DetailRow label={t("sources.discoveredTweets")} value={source.discovered_tweet_count ?? source.discovered_count ?? 0} />
-        <DetailRow label={t("sources.discoveredMedia")} value={source.discovered_media_count ?? 0} />
-        <DetailRow label={t("sources.unsubmitted")} value={source.unsubmitted_tweet_count ?? 0} />
         <DetailRow label={t("sources.nextRange")} value={formatNextRange(source.cursor_state, scanLimit)} />
-        {source.cursor_state?.last_range_start ? (
-          <DetailRow label={t("sources.lastRange")} value={`${source.cursor_state.last_range_start}-${source.cursor_state.last_range_end}`} />
-        ) : null}
         <DetailRow label={t("sources.scanState")} value={formatScanState(source.cursor_state, t)} />
         <DetailRow label={t("sources.historyState")} value={formatHistoryState(source, t)} />
         {historyEnabled && source.next_scan_at ? <DetailRow label={t("sources.nextScheduled")} value={formatDateTime(source.next_scan_at)} /> : null}
-        <DetailRow label={t("sources.detailRefreshed")} value={formatDateTime(new Date(detailUpdatedAt || now).toISOString())} />
+
+        {showAllDetails ? (
+          <>
+            <DetailRow label={t("sources.lastSeen")} value={source.last_seen_tweet_id || "-"} />
+            {source.cursor_state?.last_range_start ? (
+              <DetailRow label={t("sources.lastRange")} value={`${source.cursor_state.last_range_start}-${source.cursor_state.last_range_end}`} />
+            ) : null}
+            <DetailRow label={t("sources.detailRefreshed")} value={formatDateTime(new Date(detailUpdatedAt || now).toISOString())} />
+            <DetailRow label={t("sources.scanAdded")} value={source.scan_summary?.added_tweet_count ?? 0} />
+            <DetailRow label={t("sources.lastScanSuccess")} value={formatDateTime(source.scan_summary?.last_success_at)} />
+            <DetailRow label={t("sources.lastScanError")} value={formatDateTime(source.scan_summary?.last_error_at)} />
+          </>
+        ) : null}
+
+        <button
+          type="button"
+          className="mt-1 text-left text-xs text-brand hover:text-brand-hover"
+          onClick={() => setShowAllDetails((v) => !v)}
+        >
+          {showAllDetails ? "▲ 收起" : "▼ 展开更多"}
+        </button>
       </div>
+
+      {/* 策略摘要 */}
+      {policy ? <PolicySummary policy={policy} t={t} /> : null}
+
+      {/* 扫描流水线说明（折叠） */}
       <ScanPipelineNote source={source} policy={policy} t={t} />
-      <div className="grid gap-2 rounded-lg border border-border-subtle p-3 text-sm sm:grid-cols-2 lg:grid-cols-4">
-        <Metric label={t("sources.scanBatches")} value={source.scan_summary?.batch_count ?? 0} />
-        <Metric label={t("sources.scanAdded")} value={source.scan_summary?.added_tweet_count ?? 0} />
-        <Metric label={t("sources.lastScanSuccess")} value={formatDateTime(source.scan_summary?.last_success_at)} />
-        <Metric label={t("sources.lastScanError")} value={formatDateTime(source.scan_summary?.last_error_at)} />
-      </div>
     </>
   );
 }
 
 function PolicySummary({ policy, t }: { policy: DownloadPolicy; t: TFunction }) {
+  const [open, setOpen] = React.useState(false);
   return (
-    <div className="grid gap-2 rounded-lg border border-border-subtle p-3 text-sm sm:grid-cols-2 lg:grid-cols-4">
-      <Metric label={t("sources.policyBatch")} value={policy.queue_batch_size} />
-      <Metric label={t("sources.policyDelay")} value={`${policy.downloader_sleep_min_seconds}-${policy.downloader_sleep_max_seconds}s`} />
-      <Metric label={t("sources.policyEngine")} value={policy.default_download_engine} />
-      <Metric
-        label={t("sources.policyScan")}
-        value={`${policy.source_scan_batch_size} / ${policy.source_scan_sleep_min_seconds}-${policy.source_scan_sleep_max_seconds}s`}
-      />
+    <div className="rounded-lg border border-border-subtle text-sm">
+      <button
+        type="button"
+        className="flex w-full items-center justify-between px-3 py-2 text-left text-sm font-semibold text-fg-primary hover:bg-bg-muted"
+        onClick={() => setOpen((v) => !v)}
+      >
+        <span>{t("sources.policyBatch").replace(/:.+/, "").trim() || "下载策略"}</span>
+        <span className="text-xs text-fg-tertiary">{open ? "▲" : "▼"}</span>
+      </button>
+      {open ? (
+        <div className="grid gap-2 border-t border-border-subtle p-3 sm:grid-cols-2 lg:grid-cols-4">
+          <Metric label={t("sources.policyBatch")} value={policy.queue_batch_size} />
+          <Metric label={t("sources.policyDelay")} value={`${policy.downloader_sleep_min_seconds}-${policy.downloader_sleep_max_seconds}s`} />
+          <Metric label={t("sources.policyEngine")} value={policy.default_download_engine} />
+          <Metric
+            label={t("sources.policyScan")}
+            value={`${policy.source_scan_batch_size} / ${policy.source_scan_sleep_min_seconds}-${policy.source_scan_sleep_max_seconds}s`}
+          />
+        </div>
+      ) : null}
     </div>
   );
 }
@@ -231,30 +262,14 @@ function ActiveScan({
         <Badge tone={scanStatusTone(run.status)}>{scanStatusLabel(run.status, t)}</Badge>
       </div>
       <div className="mt-2 grid gap-2 text-xs text-fg-secondary sm:grid-cols-2">
-        <span>
-          {t("sources.scanEngine")}: gallery-dl
-        </span>
-        <span>
-          {t("sources.scanPhase")}: {run.progress_message || t("sources.scanPhaseCollecting")}
-        </span>
-        <span>
-          {t("sources.scanRange")}: {formatRunRange(run.range_start, run.range_end)}
-        </span>
-        <span>
-          {t("sources.scanRequested")}: {run.requested_limit ?? "-"}
-        </span>
-        <span>
-          {t("sources.activeScanElapsed")}: {formatElapsed(run.started_at, now)}
-        </span>
-        <span>
-          {t("sources.activeScanStarted")}: {formatDateTime(run.started_at)}
-        </span>
-        <span>
-          {t("sources.activeScanMode")}: {scanTriggerLabel(run.trigger_type, t)}
-        </span>
-        <span>
-          {t("sources.scanCursor")}: {hasCursor ? t("sources.scanCursorResume") : t("sources.scanCursorFirstPage")}
-        </span>
+        <span>{t("sources.scanEngine")}: gallery-dl</span>
+        <span>{t("sources.scanPhase")}: {run.progress_message || t("sources.scanPhaseCollecting")}</span>
+        <span>{t("sources.scanRange")}: {formatRunRange(run.range_start, run.range_end)}</span>
+        <span>{t("sources.scanRequested")}: {run.requested_limit ?? "-"}</span>
+        <span>{t("sources.activeScanElapsed")}: {formatElapsed(run.started_at, now)}</span>
+        <span>{t("sources.activeScanStarted")}: {formatDateTime(run.started_at)}</span>
+        <span>{t("sources.activeScanMode")}: {scanTriggerLabel(run.trigger_type, t)}</span>
+        <span>{t("sources.scanCursor")}: {hasCursor ? t("sources.scanCursorResume") : t("sources.scanCursorFirstPage")}</span>
       </div>
       <div className="mt-2 break-all rounded-md bg-bg-elevated/70 px-2 py-1 text-xs text-fg-secondary">
         {t("sources.scanTarget")}: {scanUrl}
@@ -338,6 +353,7 @@ function formatLogEntry(entry: OperationLogEntriesResponse["entries"][number]) {
 }
 
 function ScanPipelineNote({ source, policy, t }: { source: ArchiveSource; policy?: DownloadPolicy; t: TFunction }) {
+  const [open, setOpen] = React.useState(false);
   const historyEnabled = Boolean(source.cursor_state?.automation_enabled);
   if (!historyEnabled && !source.scan_runs?.length) return null;
   const scanDelay = policy
@@ -345,15 +361,26 @@ function ScanPipelineNote({ source, policy, t }: { source: ArchiveSource; policy
     : t("common.none");
 
   return (
-    <div className="rounded-lg border border-border-subtle bg-bg-surface p-3 text-xs text-fg-secondary">
-      <div className="font-semibold text-fg-primary">{t("sources.scanPipelineTitle")}</div>
-      <div className="mt-2 grid gap-2 sm:grid-cols-2">
-        <span>{t("sources.scanPipelineStep1")}</span>
-        <span>{t("sources.scanPipelineStep2")}</span>
-        <span>{t("sources.scanPipelineStep3")}</span>
-        <span>{t("sources.scanPipelineStep4", { delay: scanDelay })}</span>
-      </div>
-      <p className="mt-2">{t("sources.pauseSemantics")}</p>
+    <div className="rounded-lg border border-border-subtle text-xs">
+      <button
+        type="button"
+        className="flex w-full items-center justify-between px-3 py-2 text-left font-semibold text-fg-primary hover:bg-bg-muted"
+        onClick={() => setOpen((v) => !v)}
+      >
+        <span>{t("sources.scanPipelineTitle")}</span>
+        <span className="text-fg-tertiary">{open ? "▲" : "▼"}</span>
+      </button>
+      {open ? (
+        <div className="border-t border-border-subtle p-3 text-fg-secondary">
+          <div className="grid gap-2 sm:grid-cols-2">
+            <span>{t("sources.scanPipelineStep1")}</span>
+            <span>{t("sources.scanPipelineStep2")}</span>
+            <span>{t("sources.scanPipelineStep3")}</span>
+            <span>{t("sources.scanPipelineStep4", { delay: scanDelay })}</span>
+          </div>
+          <p className="mt-2">{t("sources.pauseSemantics")}</p>
+        </div>
+      ) : null}
     </div>
   );
 }
@@ -537,9 +564,20 @@ function ManualImport({
 function ActionBlock({ title, hint, children }: { title: string; hint?: string; children: React.ReactNode }) {
   return (
     <div className="space-y-3 rounded-lg border border-border-subtle p-3">
-      <div className="text-sm font-semibold text-fg-primary">{title}</div>
+      <div className="flex items-center gap-1.5">
+        <span className="text-sm font-semibold text-fg-primary">{title}</span>
+        {hint ? (
+          <Tooltip>
+            <TooltipTrigger asChild>
+              <button type="button" className="text-fg-tertiary hover:text-fg-secondary focus:outline-none">
+                <HelpCircle className="h-3.5 w-3.5" />
+              </button>
+            </TooltipTrigger>
+            <TooltipContent className="max-w-xs">{hint}</TooltipContent>
+          </Tooltip>
+        ) : null}
+      </div>
       <div className="flex flex-wrap gap-2">{children}</div>
-      {hint ? <p className="text-xs text-fg-secondary">{hint}</p> : null}
     </div>
   );
 }

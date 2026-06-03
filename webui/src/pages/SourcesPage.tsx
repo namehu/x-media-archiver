@@ -3,6 +3,9 @@ import { useQueryClient } from "@tanstack/react-query";
 import { useSearchParams } from "react-router-dom";
 import type { ArchiveSubmission } from "../lib/api";
 import { useFormatters, useI18n } from "../lib/i18n";
+import { Dialog, DialogContent } from "../components/ui/dialog";
+import { Sheet, SheetContent, SheetTitle } from "../components/ui/sheet";
+import { TooltipProvider } from "../components/ui/tooltip";
 import { CreateSource } from "./sources/components/CreateSource";
 import { SourceDetailPanel } from "./sources/components/SourceDetailPanel";
 import { SourcesList } from "./sources/components/SourcesList";
@@ -23,6 +26,8 @@ export function SourcesPage() {
   const [scanFeedback, setScanFeedback] = useState<Record<string, unknown> | null>(null);
   const [now, setNow] = useState(() => Date.now());
   const [createResetKey, setCreateResetKey] = useState(0);
+  const [createDialogOpen, setCreateDialogOpen] = useState(false);
+  const [detailSheetOpen, setDetailSheetOpen] = useState(false);
 
   const sourcesQuery = useSourcesQuery(sourceStatusFilter, sourceTypeFilter, offset);
   const detailQuery = useSourceDetail(selectedSourceId);
@@ -41,6 +46,7 @@ export function SourcesPage() {
 
   const createMutation = useCreateSource(async (source) => {
     setCreateResetKey((key) => key + 1);
+    setCreateDialogOpen(false);
     await refresh(source.id);
   });
 
@@ -53,7 +59,10 @@ export function SourcesPage() {
 
   useEffect(() => {
     const sourceId = Number(searchParams.get("sourceId"));
-    if (Number.isFinite(sourceId) && sourceId > 0) setSelectedSourceId(sourceId);
+    if (Number.isFinite(sourceId) && sourceId > 0) {
+      setSelectedSourceId(sourceId);
+      setDetailSheetOpen(true);
+    }
   }, [searchParams]);
 
   useEffect(() => {
@@ -66,19 +75,19 @@ export function SourcesPage() {
     setFeedback(null);
     setScanFeedback(null);
     setSelectedSourceId(sourceId);
+    setDetailSheetOpen(true);
     setSearchParams({ sourceId: String(sourceId) });
   };
 
+  const closeDetail = () => {
+    setDetailSheetOpen(false);
+    setSelectedSourceId(null);
+    setSearchParams({});
+  };
+
   return (
-    <div className="space-y-5">
-      <CreateSource
-        t={t}
-        isPending={createMutation.isPending}
-        error={createMutation.error}
-        resetKey={createResetKey}
-        onCreate={(input) => createMutation.mutate(input)}
-      />
-      <section className="grid gap-4 lg:grid-cols-[minmax(340px,0.9fr)_minmax(0,1.3fr)]">
+    <TooltipProvider>
+      <div className="space-y-5">
         <SourcesList
           t={t}
           statusLabel={statusLabel}
@@ -91,41 +100,63 @@ export function SourcesPage() {
           onTypeFilterChange={setSourceTypeFilter}
           onOffsetChange={setOffset}
           onSelectSource={selectSource}
+          onAddClick={() => setCreateDialogOpen(true)}
         />
-        <SourceDetailPanel
-          source={selected}
-          policy={policyQuery.data}
-          now={now}
-          detailUpdatedAt={detailQuery.dataUpdatedAt}
-          feedback={feedback}
-          scanFeedback={scanFeedback}
-          t={t}
-          statusLabel={statusLabel}
-          actions={{
-            submitRecords: actions.submitMutation.mutate,
-            setStatus: actions.statusMutation.mutate,
-            scan: actions.scanMutation.mutate,
-            submitDiscovered: actions.submitDiscoveredMutation.mutate,
-            startHistory: actions.historyScanMutation.mutate,
-            stopHistory: actions.stopHistoryScanMutation.mutate,
-            pending: {
-              submit: actions.submitMutation.isPending,
-              status: actions.statusMutation.isPending,
-              scan: actions.scanMutation.isPending,
-              submitDiscovered: actions.submitDiscoveredMutation.isPending,
-              history: actions.historyScanMutation.isPending || actions.stopHistoryScanMutation.isPending,
-            },
-            errors: {
-              submit: actions.submitMutation.error,
-              status: actions.statusMutation.error,
-              scan: actions.scanMutation.error,
-              submitDiscovered: actions.submitDiscoveredMutation.error,
-              history: actions.historyScanMutation.error || actions.stopHistoryScanMutation.error,
-            },
-          }}
-          onManualSubmitted={() => setFeedback(null)}
-        />
-      </section>
-    </div>
+
+        {/* 新增来源弹窗 */}
+        <Dialog open={createDialogOpen} onOpenChange={setCreateDialogOpen}>
+          <DialogContent>
+            <CreateSource
+              t={t}
+              isPending={createMutation.isPending}
+              error={createMutation.error}
+              resetKey={createResetKey}
+              onCreate={(input) => createMutation.mutate(input)}
+              onClose={() => setCreateDialogOpen(false)}
+            />
+          </DialogContent>
+        </Dialog>
+
+        {/* 来源详情抽屉 */}
+        <Sheet open={detailSheetOpen} onOpenChange={(open) => { if (!open) closeDetail(); }}>
+          <SheetContent className="w-[min(100vw,780px)] overflow-y-auto p-6">
+            <SheetTitle className="sr-only">{selected?.label || selected?.author_username || t("sources.detail")}</SheetTitle>
+            <SourceDetailPanel
+              source={selected}
+              policy={policyQuery.data}
+              now={now}
+              detailUpdatedAt={detailQuery.dataUpdatedAt}
+              feedback={feedback}
+              scanFeedback={scanFeedback}
+              t={t}
+              statusLabel={statusLabel}
+              actions={{
+                submitRecords: actions.submitMutation.mutate,
+                setStatus: actions.statusMutation.mutate,
+                scan: actions.scanMutation.mutate,
+                submitDiscovered: actions.submitDiscoveredMutation.mutate,
+                startHistory: actions.historyScanMutation.mutate,
+                stopHistory: actions.stopHistoryScanMutation.mutate,
+                pending: {
+                  submit: actions.submitMutation.isPending,
+                  status: actions.statusMutation.isPending,
+                  scan: actions.scanMutation.isPending,
+                  submitDiscovered: actions.submitDiscoveredMutation.isPending,
+                  history: actions.historyScanMutation.isPending || actions.stopHistoryScanMutation.isPending,
+                },
+                errors: {
+                  submit: actions.submitMutation.error,
+                  status: actions.statusMutation.error,
+                  scan: actions.scanMutation.error,
+                  submitDiscovered: actions.submitDiscoveredMutation.error,
+                  history: actions.historyScanMutation.error || actions.stopHistoryScanMutation.error,
+                },
+              }}
+              onManualSubmitted={() => setFeedback(null)}
+            />
+          </SheetContent>
+        </Sheet>
+      </div>
+    </TooltipProvider>
   );
 }

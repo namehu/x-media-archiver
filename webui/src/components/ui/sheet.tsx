@@ -9,10 +9,11 @@ export const SheetClose = DialogPrimitive.Close;
 export function SheetContent({ className, children, ...props }: React.ComponentPropsWithoutRef<typeof DialogPrimitive.Content>) {
   return (
     <DialogPrimitive.Portal>
-      <DialogPrimitive.Overlay className="fixed inset-0 z-50 bg-black/30" />
+      <DialogPrimitive.Overlay className="fixed inset-0 z-50 bg-black/30 data-[state=open]:animate-overlay-in data-[state=closed]:animate-overlay-out" />
       <DialogPrimitive.Content
         className={cn(
-          "fixed bottom-0 right-0 top-0 z-50 flex w-[min(100vw,520px)] flex-col border-l border-border-subtle bg-bg-elevated p-6 text-fg-primary shadow-3 outline-none transition duration-slow ease-spring",
+          "fixed bottom-0 right-0 top-0 z-50 flex w-[min(100vw,520px)] flex-col border-l border-border-subtle bg-bg-elevated p-6 text-fg-primary shadow-3 outline-none",
+          "data-[state=open]:animate-sheet-in data-[state=closed]:animate-sheet-out",
           className,
         )}
         {...props}

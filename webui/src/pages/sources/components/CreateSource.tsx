@@ -1,8 +1,8 @@
 import { useEffect, useState } from "react";
 import { Button } from "../../../components/ui/button";
-import { Card, CardContent, CardHeader, CardTitle } from "../../../components/ui/card";
 import { Input } from "../../../components/ui/input";
 import { Select } from "../../../components/ui/select";
+import { DialogHeader, DialogTitle } from "../../../components/ui/dialog";
 import { inferSourceType, SOURCE_TYPES, type TFunction } from "../utils";
 
 export function CreateSource({
@@ -11,12 +11,14 @@ export function CreateSource({
   error,
   resetKey,
   onCreate,
+  onClose,
 }: {
   t: TFunction;
   isPending: boolean;
   error: unknown;
   resetKey: number;
   onCreate: (input: { sourceType: string; sourceUrl: string; label?: string }) => void;
+  onClose?: () => void;
 }) {
   const [sourceType, setSourceType] = useState("profile");
   const [sourceUrl, setSourceUrl] = useState("");
@@ -29,11 +31,11 @@ export function CreateSource({
   }, [resetKey]);
 
   return (
-    <Card>
-      <CardHeader>
-        <CardTitle>{t("sources.createTitle")}</CardTitle>
-      </CardHeader>
-      <CardContent className="grid gap-3 lg:grid-cols-[180px_1fr_220px_auto]">
+    <div className="space-y-4">
+      <DialogHeader>
+        <DialogTitle>{t("sources.createTitle")}</DialogTitle>
+      </DialogHeader>
+      <div className="grid gap-3">
         <label className="space-y-1">
           <Select value={sourceType} onChange={(event) => setSourceType(event.target.value)}>
             {SOURCE_TYPES.map((type) => (
@@ -57,15 +59,22 @@ export function CreateSource({
           }}
         />
         <Input placeholder={t("sources.label")} value={label} onChange={(event) => setLabel(event.target.value)} />
-        <Button
-          type="button"
-          disabled={!canCreate}
-          onClick={() => onCreate({ sourceType, sourceUrl, label })}
-        >
-          {t("sources.create")}
-        </Button>
-        {error ? <p className="text-sm text-danger lg:col-span-4">{String(error)}</p> : null}
-      </CardContent>
-    </Card>
+        {error ? <p className="text-sm text-danger">{String(error)}</p> : null}
+        <div className="flex justify-end gap-2 pt-1">
+          {onClose ? (
+            <Button type="button" variant="secondary" onClick={onClose}>
+              关闭
+            </Button>
+          ) : null}
+          <Button
+            type="button"
+            disabled={!canCreate}
+            onClick={() => onCreate({ sourceType, sourceUrl, label })}
+          >
+            {t("sources.create")}
+          </Button>
+        </div>
+      </div>
+    </div>
   );
 }

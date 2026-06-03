@@ -62,10 +62,30 @@ export default {
           "0%, 100%": { opacity: "1" },
           "50%": { opacity: "0.55" },
         },
+        "slide-in-from-right": {
+          from: { transform: "translateX(100%)" },
+          to: { transform: "translateX(0)" },
+        },
+        "slide-out-to-right": {
+          from: { transform: "translateX(0)" },
+          to: { transform: "translateX(100%)" },
+        },
+        "fade-in": {
+          from: { opacity: "0" },
+          to: { opacity: "1" },
+        },
+        "fade-out": {
+          from: { opacity: "1" },
+          to: { opacity: "0" },
+        },
       },
       animation: {
         shimmer: "shimmer 1.6s linear infinite",
         breathe: "breathe 1.8s ease-in-out infinite",
+        "sheet-in": "slide-in-from-right var(--dur-slow) var(--ease-spring) forwards",
+        "sheet-out": "slide-out-to-right var(--dur-slow) var(--ease-out) forwards",
+        "overlay-in": "fade-in var(--dur-base) var(--ease-out) forwards",
+        "overlay-out": "fade-out var(--dur-base) var(--ease-out) forwards",
       },
     },
   },
