@@ -1,5 +1,8 @@
-export function cn(...parts: Array<string | false | null | undefined>) {
-  return parts.filter(Boolean).join(" ");
+import { clsx, type ClassValue } from "clsx";
+import { twMerge } from "tailwind-merge";
+
+export function cn(...inputs: ClassValue[]) {
+  return twMerge(clsx(inputs));
 }
 
 export function formatDateTime(value?: string | number | null) {
@@ -23,4 +26,3 @@ export function formatBytes(value?: number | null) {
   }
   return `${size.toFixed(index === 0 ? 0 : 1)} ${units[index]}`;
 }
-

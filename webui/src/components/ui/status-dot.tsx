@@ -1,4 +1,4 @@
-import { cn } from "./_utils/cn";
+import { cn } from "@/lib/utils";
 
 type StatusTone = "running" | "success" | "warning" | "danger" | "idle";
 

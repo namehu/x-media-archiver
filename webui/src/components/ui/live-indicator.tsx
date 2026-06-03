@@ -1,5 +1,5 @@
 import { Wifi, WifiOff } from "lucide-react";
-import { cn } from "./_utils/cn";
+import { cn } from "@/lib/utils";
 import { StatusDot } from "./status-dot";
 
 type LiveState = "connecting" | "open" | "reconnecting" | "closed";

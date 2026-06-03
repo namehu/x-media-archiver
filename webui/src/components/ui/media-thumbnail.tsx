@@ -1,7 +1,7 @@
 import { useState } from "react";
 import { Film, ImageOff, Image as ImageIcon } from "lucide-react";
 import { Badge } from "./badge";
-import { cn } from "./_utils/cn";
+import { cn } from "@/lib/utils";
 
 export function MediaThumbnail({
   src,

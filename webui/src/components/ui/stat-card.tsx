@@ -1,6 +1,6 @@
 import type { ReactNode } from "react";
 import { ArrowDownRight, ArrowUpRight } from "lucide-react";
-import { cn } from "./_utils/cn";
+import { cn } from "@/lib/utils";
 import { Card, CardContent } from "./card";
 import { Sparkline } from "./sparkline";
 

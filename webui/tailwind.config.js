@@ -1,3 +1,5 @@
+import tailwindcssAnimate from "tailwindcss-animate";
+
 /** @type {import('tailwindcss').Config} */
 export default {
   content: ["./index.html", "./src/**/*.{ts,tsx}"],
@@ -5,6 +7,46 @@ export default {
   theme: {
     extend: {
       colors: {
+        border: "hsl(var(--border))",
+        input: "hsl(var(--input))",
+        ring: "hsl(var(--ring))",
+        background: "hsl(var(--background))",
+        foreground: "hsl(var(--foreground))",
+        primary: {
+          DEFAULT: "hsl(var(--primary))",
+          foreground: "hsl(var(--primary-foreground))",
+        },
+        secondary: {
+          DEFAULT: "hsl(var(--secondary))",
+          foreground: "hsl(var(--secondary-foreground))",
+        },
+        destructive: {
+          DEFAULT: "hsl(var(--destructive))",
+          foreground: "hsl(var(--destructive-foreground))",
+        },
+        muted: {
+          DEFAULT: "hsl(var(--muted))",
+          foreground: "hsl(var(--muted-foreground))",
+        },
+        accent: {
+          DEFAULT: "hsl(var(--accent))",
+          foreground: "hsl(var(--accent-foreground))",
+        },
+        popover: {
+          DEFAULT: "hsl(var(--popover))",
+          foreground: "hsl(var(--popover-foreground))",
+        },
+        card: {
+          DEFAULT: "hsl(var(--card))",
+          foreground: "hsl(var(--card-foreground))",
+        },
+        chart: {
+          1: "hsl(var(--chart-1))",
+          2: "hsl(var(--chart-2))",
+          3: "hsl(var(--chart-3))",
+          4: "hsl(var(--chart-4))",
+          5: "hsl(var(--chart-5))",
+        },
         "bg-base": "hsl(var(--bg-base))",
         "bg-surface": "hsl(var(--bg-surface))",
         "bg-elevated": "hsl(var(--bg-elevated))",
@@ -23,12 +65,12 @@ export default {
         warning: "hsl(var(--warning))",
         danger: "hsl(var(--danger))",
         info: "hsl(var(--info))",
-        accent: "hsl(var(--accent))",
       },
       borderRadius: {
-        md: "6px",
-        lg: "10px",
-        xl: "14px",
+        lg: "var(--radius)",
+        md: "calc(var(--radius) - 4px)",
+        sm: "calc(var(--radius) - 6px)",
+        xl: "calc(var(--radius) + 4px)",
       },
       boxShadow: {
         1: "var(--shadow-1)",
@@ -78,6 +120,14 @@ export default {
           from: { opacity: "1" },
           to: { opacity: "0" },
         },
+        "accordion-down": {
+          from: { height: "0" },
+          to: { height: "var(--radix-accordion-content-height)" },
+        },
+        "accordion-up": {
+          from: { height: "var(--radix-accordion-content-height)" },
+          to: { height: "0" },
+        },
       },
       animation: {
         shimmer: "shimmer 1.6s linear infinite",
@@ -86,8 +136,10 @@ export default {
         "sheet-out": "slide-out-to-right var(--dur-slow) var(--ease-out) forwards",
         "overlay-in": "fade-in var(--dur-base) var(--ease-out) forwards",
         "overlay-out": "fade-out var(--dur-base) var(--ease-out) forwards",
+        "accordion-down": "accordion-down 0.2s ease-out",
+        "accordion-up": "accordion-up 0.2s ease-out",
       },
     },
   },
-  plugins: [],
+  plugins: [tailwindcssAnimate],
 };

@@ -1,5 +1,5 @@
 import { Command as CommandPrimitive } from "cmdk";
-import { cn } from "./_utils/cn";
+import { cn } from "@/lib/utils";
 
 export function Command({ className, ...props }: React.ComponentPropsWithoutRef<typeof CommandPrimitive>) {
   return <CommandPrimitive className={cn("flex h-full w-full flex-col overflow-hidden rounded-xl bg-bg-elevated text-fg-primary", className)} {...props} />;

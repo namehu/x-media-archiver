@@ -3,6 +3,30 @@
 @tailwind utilities;
 
 :root {
+  --background: var(--bg-base);
+  --foreground: var(--fg-primary);
+  --card: var(--bg-elevated);
+  --card-foreground: var(--fg-primary);
+  --popover: var(--bg-elevated);
+  --popover-foreground: var(--fg-primary);
+  --primary: var(--brand);
+  --primary-foreground: 0 0% 100%;
+  --secondary: var(--bg-muted);
+  --secondary-foreground: var(--fg-primary);
+  --muted: var(--bg-muted);
+  --muted-foreground: var(--fg-secondary);
+  --accent-foreground: var(--fg-primary);
+  --destructive: var(--danger);
+  --destructive-foreground: 0 0% 100%;
+  --border: var(--border-subtle);
+  --input: var(--border-strong);
+  --ring: var(--brand);
+  --chart-1: var(--brand);
+  --chart-2: var(--success);
+  --chart-3: var(--warning);
+  --chart-4: var(--accent);
+  --chart-5: var(--danger);
+  --radius: 10px;
   --bg-base: 0 0% 100%;
   --bg-surface: 210 20% 98%;
   --bg-elevated: 0 0% 100%;

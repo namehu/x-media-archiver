@@ -5,6 +5,11 @@ const apiProxyTarget = process.env.VITE_API_PROXY_TARGET ?? "http://127.0.0.1:80
 
 export default defineConfig({
   plugins: [react()],
+  resolve: {
+    alias: {
+      "@": "/src",
+    },
+  },
   build: {
     rollupOptions: {
       input: "index.html",
