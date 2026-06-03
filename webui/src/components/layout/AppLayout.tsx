@@ -122,7 +122,7 @@ export function AppLayout() {
   return (
     <div className="flex min-h-screen bg-bg-base text-fg-primary">
       {/* Sidebar */}
-      <aside className="flex w-60 flex-shrink-0 flex-col border-r border-border-subtle bg-bg-surface">
+      <aside className="flex w-60 flex-shrink-0 flex-col border-r border-border-subtle bg-bg-base">
         <div className="px-4 py-5">
           <h1 className="text-base font-bold tracking-tight text-fg-primary">x-media-archiver</h1>
           <p className="mt-0.5 text-xs text-fg-secondary">{t("app.subtitle")}</p>
@@ -166,7 +166,7 @@ export function AppLayout() {
       {/* Main area */}
       <div className="flex flex-1 flex-col overflow-hidden">
         {/* TopBar */}
-        <header className="flex h-12 flex-shrink-0 items-center justify-between gap-3 border-b border-border-subtle bg-bg-elevated px-4">
+        <header className="flex h-12 flex-shrink-0 items-center justify-between gap-3 border-b border-border-subtle bg-bg-base px-4">
           <div className="flex min-w-0 items-center gap-2">
             <LiveIndicator
               state={events.status === "connected" ? "open" : events.status === "connecting" ? "connecting" : "closed"}
@@ -223,7 +223,7 @@ export function AppLayout() {
             </Button>
           </div>
         </header>
-        <main className="flex-1 overflow-auto bg-bg-base p-6">
+        <main className="flex-1 overflow-auto bg-bg-surface p-6">
           <Outlet />
         </main>
       </div>

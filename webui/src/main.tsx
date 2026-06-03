@@ -5,6 +5,7 @@ import { createBrowserRouter, RouterProvider } from "react-router-dom";
 import { AppLayout } from "./components/layout/AppLayout";
 import { Skeleton } from "./components/ui/skeleton";
 import { Toaster } from "./components/ui/toaster";
+import { TooltipProvider } from "./components/ui/tooltip";
 import { I18nProvider } from "./lib/i18n";
 import { applyTheme, getStoredTheme, ThemeProvider } from "./lib/theme";
 import "./styles.css";
@@ -78,8 +79,10 @@ ReactDOM.createRoot(document.getElementById("root")!).render(
     <ThemeProvider>
       <I18nProvider locale="zh">
         <QueryClientProvider client={queryClient}>
-          <RouterProvider router={router} />
-          <Toaster />
+          <TooltipProvider>
+            <RouterProvider router={router} />
+            <Toaster />
+          </TooltipProvider>
         </QueryClientProvider>
       </I18nProvider>
     </ThemeProvider>

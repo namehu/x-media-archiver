@@ -14,7 +14,7 @@ import { ErrorState } from "../../components/ui/error-state";
 import { MediaThumbnail } from "../../components/ui/media-thumbnail";
 import { Skeleton } from "../../components/ui/skeleton";
 import { StatusDot } from "../../components/ui/status-dot";
-import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from "../../components/ui/tooltip";
+import { Tooltip, TooltipContent, TooltipTrigger } from "../../components/ui/tooltip";
 
 type Attempt = TweetDetail["attempts"][number];
 type Tone = "default" | "secondary" | "success" | "warning" | "danger";
@@ -52,8 +52,7 @@ export function TweetDetailPage() {
   const statusTone = toneForStatus(data.tweet.tweet_status);
 
   return (
-    <TooltipProvider>
-      <div className="space-y-4">
+    <div className="space-y-4">
         <Card className="overflow-hidden">
           <CardContent className="p-4">
             <div className="flex flex-col gap-4 lg:flex-row lg:items-start lg:justify-between">
@@ -129,8 +128,7 @@ export function TweetDetailPage() {
             if (!open) setPreviewIndex(null);
           }}
         />
-      </div>
-    </TooltipProvider>
+    </div>
   );
 }
 
