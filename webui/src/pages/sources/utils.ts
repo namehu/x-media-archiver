@@ -1,6 +1,10 @@
 import type { ArchiveSourceDetail, SourceDiscovery } from "@/lib/api";
+import { scanStatusLabel, scanTriggerLabel, sourceTypeLabel } from "@/lib/formatters";
 
-export type TFunction = (key: string, params?: Record<string, string | number>) => string;
+export function unwrapActionResult(response: Record<string, unknown>) {
+  const result = response.result;
+  return result && typeof result === "object" ? (result as Record<string, unknown>) : response;
+}
 
 export const SOURCE_TYPES = ["profile", "user_media", "likes", "bookmarks", "search", "manual"] as const;
 
@@ -26,15 +30,6 @@ export function sourceQueryString(status: string, type: string, limit: number, o
   return search.toString();
 }
 
-export function sourceTypeLabel(type: string, t: TFunction) {
-  return t(`sources.type.${type}`);
-}
-
-export function unwrapActionResult(response: Record<string, unknown>) {
-  const result = response.result;
-  return result && typeof result === "object" ? (result as Record<string, unknown>) : response;
-}
-
 export function formatNextRange(cursorState: ArchiveSourceDetail["cursor_state"], fallbackLimit: number) {
   if (cursorState?.last_completed) return "-";
   const start = Math.max(1, Number(cursorState?.next_start_index) || 1);
@@ -42,23 +37,23 @@ export function formatNextRange(cursorState: ArchiveSourceDetail["cursor_state"]
   return `${start}-${start + limit - 1}`;
 }
 
-export function formatScanState(cursorState: ArchiveSourceDetail["cursor_state"], t: TFunction) {
-  if (cursorState?.last_completed) return t("sources.scanCompleted");
-  if (cursorState?.last_reached_known_region) return t("sources.scanKnownRegion");
-  return t("sources.scanContinuing");
+export function formatScanState(cursorState: ArchiveSourceDetail["cursor_state"]) {
+  if (cursorState?.last_completed) return "可能已到结尾";
+  if (cursorState?.last_reached_known_region) return "已进入重复区";
+  return "可继续扫描";
 }
 
-export function formatHistoryState(source: ArchiveSourceDetail, t: TFunction) {
+export function formatHistoryState(source: ArchiveSourceDetail) {
   const state = source.cursor_state?.automation_state;
-  if (source.status === "completed" || state === "completed") return t("sources.historyCompleted");
-  if (!source.cursor_state?.automation_enabled) return t("sources.historyIdle");
-  if (source.status === "paused" || state === "paused") return t("sources.historyPaused");
-  if (state === "waiting_downloads") return t("sources.historyWaitingDownloads");
-  if (state === "retry_wait") return t("sources.historyRetryWait");
-  if (state === "rate_limited") return t("sources.historyRateLimited");
-  if (state === "auth_required") return t("sources.historyAuthRequired");
-  if (state === "running" && source.next_scan_at) return t("sources.historyScheduled");
-  return t("sources.historyRunning");
+  if (source.status === "completed" || state === "completed") return "历史扫描已完成";
+  if (!source.cursor_state?.automation_enabled) return "未启动";
+  if (source.status === "paused" || state === "paused") return "已暂停";
+  if (state === "waiting_downloads") return "等待下载队列清空";
+  if (state === "retry_wait") return "错误后等待重试";
+  if (state === "rate_limited") return "限流后已暂停";
+  if (state === "auth_required") return "需认证，已暂停";
+  if (state === "running" && source.next_scan_at) return "等待随机间隔后扫描";
+  return "后台扫描中";
 }
 
 export function formatRunRange(start?: number | null, end?: number | null) {
@@ -77,14 +72,6 @@ export function formatElapsed(startedAt?: string | null, now = Date.now()) {
   return `${hours}h ${(minutes % 60).toString().padStart(2, "0")}m`;
 }
 
-export function scanTriggerLabel(trigger: string, t: TFunction) {
-  return t(`sources.scanTrigger.${trigger}`);
-}
-
-export function scanStatusLabel(status: string, t: TFunction) {
-  return t(`sources.scanStatus.${status}`);
-}
-
 export function scanStatusTone(status: string) {
   if (["rate_limited", "auth_required", "network_error", "failed"].includes(status)) return "danger" as const;
   if (status === "succeeded" || status === "completed_empty_batch" || status === "completed_end_of_source")
@@ -100,12 +87,12 @@ export function sourceStatusTone(status: string) {
   return "secondary" as const;
 }
 
-export function formatDiscoveredMedia(payload: SourceDiscovery["raw_payload"], t: TFunction) {
+export function formatDiscoveredMedia(payload: SourceDiscovery["raw_payload"]) {
   const count = Number(payload?.media_count || 0);
-  if (!count) return t("sources.mediaUnknown");
+  if (!count) return "媒体数量未知";
   const types = new Set(payload?.media_types || []);
-  if (types.has("photo") && types.has("video")) return t("sources.mediaMixed", { count });
-  if (types.has("video")) return t("sources.mediaVideo", { count });
-  if (types.has("photo")) return t("sources.mediaPhoto", { count });
-  return t("sources.mediaCount", { count });
+  if (types.has("photo") && types.has("video")) return `图片/视频 ${count}`;
+  if (types.has("video")) return `视频 ${count}`;
+  if (types.has("photo")) return `图片 ${count}`;
+  return `媒体 ${count}`;
 }

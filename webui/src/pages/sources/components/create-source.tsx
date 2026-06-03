@@ -4,7 +4,6 @@ import {
   Dialog,
   DialogClose,
   DialogContent,
-  DialogDescription,
   DialogFooter,
   DialogHeader,
   DialogTitle,
@@ -12,7 +11,7 @@ import {
 import { Field, FieldDescription, FieldError, FieldGroup, FieldLabel } from "@/components/ui/field";
 import { Input } from "@/components/ui/input";
 import { Select, SelectContent, SelectGroup, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
-import { useI18n } from "@/lib/i18n";
+import { sourceTypeLabel } from "@/lib/formatters";
 import { SOURCE_TYPES } from "../utils";
 
 export function CreateSource({
@@ -30,7 +29,6 @@ export function CreateSource({
   onCreate: (input: { sourceType: string; sourceUrl: string; label?: string }) => void;
   onOpenChange: (open: boolean) => void;
 }) {
-  const { t } = useI18n();
   const [sourceType, setSourceType] = useState("profile");
   const [sourceUrl, setSourceUrl] = useState("");
   const [label, setLabel] = useState("");
@@ -60,8 +58,7 @@ export function CreateSource({
     <Dialog open={open} onOpenChange={onOpenChange}>
       <DialogContent className="sm:max-w-sm">
         <DialogHeader>
-          <DialogTitle>{t("sources.createTitle")}</DialogTitle>
-          {/* <DialogDescription>{t("sources.typeHelp")}</DialogDescription> */}
+          <DialogTitle>新增来源</DialogTitle>
         </DialogHeader>
         <form
           onSubmit={(e) => {
@@ -71,17 +68,17 @@ export function CreateSource({
         >
           <FieldGroup>
             <Field>
-              <FieldLabel htmlFor="source-label">{t("sources.label")}</FieldLabel>
+              <FieldLabel htmlFor="source-label">名称（可选）</FieldLabel>
               <Input
                 id="source-label"
-                placeholder={t("sources.label")}
+                placeholder="名称（可选）"
                 value={label}
                 onChange={(e) => setLabel(e.target.value)}
               />
             </Field>
 
             <Field data-invalid={error ? true : undefined}>
-              <FieldLabel htmlFor="source-url">{t("sources.url")}</FieldLabel>
+              <FieldLabel htmlFor="source-url">来源 URL</FieldLabel>
               <Input
                 id="source-url"
                 placeholder="https://x.com/username/media"
@@ -97,7 +94,7 @@ export function CreateSource({
             </Field>
 
             <Field>
-              <FieldLabel htmlFor="source-type">{t("sources.typeLabel")}</FieldLabel>
+              <FieldLabel htmlFor="source-type">来源类型</FieldLabel>
               <Select value={sourceType} onValueChange={setSourceType}>
                 <SelectTrigger id="source-type">
                   <SelectValue />
@@ -106,24 +103,24 @@ export function CreateSource({
                   <SelectGroup>
                     {SOURCE_TYPES.map((type) => (
                       <SelectItem key={type} value={type}>
-                        {t(`sources.type.${type}`)}
+                        {sourceTypeLabel(type)}
                       </SelectItem>
                     ))}
                   </SelectGroup>
                 </SelectContent>
               </Select>
-              <FieldDescription>{t("sources.typeHelpTooltip")}</FieldDescription>
+              <FieldDescription>例如 /media 会识别为博主媒体页，/bookmarks 识别为书签，普通用户名主页识别为博主主页。</FieldDescription>
             </Field>
           </FieldGroup>
           {error ? <FieldError errors={[{ message: String(error) }]} /> : null}
           <DialogFooter>
             <DialogClose asChild>
               <Button type="button" variant="outline">
-                {t("common.cancel")}
+                取消
               </Button>
             </DialogClose>
             <Button type="submit" disabled={!canCreate}>
-              {t("sources.create")}
+              新增来源
             </Button>
           </DialogFooter>
         </form>

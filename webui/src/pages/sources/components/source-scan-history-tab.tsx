@@ -3,8 +3,8 @@ import type { SourceScanRunsPageResponse } from "@/lib/api";
 import { Badge } from "@/components/ui/badge";
 import { Pagination } from "@/components/ui/pagination";
 import { formatDateTime } from "@/lib/utils";
-import { useI18n } from "@/lib/i18n";
-import { formatElapsed, formatRunRange, scanStatusLabel, scanStatusTone, scanTriggerLabel } from "../utils";
+import { scanStatusLabel, scanTriggerLabel } from "@/lib/formatters";
+import { formatElapsed, formatRunRange, scanStatusTone } from "../utils";
 
 const PAGE_SIZE = 20;
 
@@ -23,11 +23,10 @@ export function SourceScanHistoryTab({
   onOffsetChange: (offset: number) => void;
   now: number;
 }) {
-  const { t } = useI18n();
   const runs = data?.rows ?? [];
 
   if (isLoading) {
-    return <p className="py-4 pl-5 text-sm text-fg-secondary">{t("common.loading")}</p>;
+    return <p className="py-4 pl-5 text-sm text-fg-secondary">加载中...</p>;
   }
 
   if (error) {
@@ -35,7 +34,7 @@ export function SourceScanHistoryTab({
   }
 
   if (runs.length === 0) {
-    return <p className="py-4 text-sm text-fg-secondary">{t("sources.noScanHistory")}</p>;
+    return <p className="py-4 text-sm text-fg-secondary">还没有扫描批次记录。</p>;
   }
 
   return (
@@ -47,7 +46,7 @@ export function SourceScanHistoryTab({
           totalCount={data.total_count}
           pageSize={PAGE_SIZE}
           onOffsetChange={onOffsetChange}
-          label={t("common.pagination.range")}
+          label="第 {start}-{end} 项，共 {total} 项"
         />
       ) : null}
       <Virtuoso
@@ -65,38 +64,38 @@ export function SourceScanHistoryTab({
             />
             <div className="text-xs text-fg-secondary">
               {run.status === "running"
-                ? t("sources.activeScanElapsedValue", { elapsed: formatElapsed(run.started_at, now) })
+                ? `已运行 ${formatElapsed(run.started_at, now)}`
                 : formatDateTime(run.finished_at || run.created_at)}
             </div>
             <div className="mt-1 flex flex-wrap items-center gap-2">
-              <Badge>{scanTriggerLabel(run.trigger_type, t)}</Badge>
-              <Badge tone={scanStatusTone(run.status)}>{scanStatusLabel(run.status, t)}</Badge>
+              <Badge>{scanTriggerLabel(run.trigger_type)}</Badge>
+              <Badge tone={scanStatusTone(run.status)}>{scanStatusLabel(run.status)}</Badge>
             </div>
             <div className="mt-1.5 flex flex-wrap gap-x-4 gap-y-0.5 text-xs text-fg-secondary">
               <span>
-                {t("sources.scanRange")}: {formatRunRange(run.range_start, run.range_end)}
+                范围: {formatRunRange(run.range_start, run.range_end)}
               </span>
               <span>
-                {t("sources.scanFound")}: {run.discovered_tweet_count}
+                发现: {run.discovered_tweet_count}
               </span>
               <span>
-                {t("sources.scanNew")}: {run.new_tweet_count}
+                新增: {run.new_tweet_count}
               </span>
               <span>
-                {t("sources.scanDuplicate")}: {run.duplicate_tweet_count}
+                已存在: {run.duplicate_tweet_count}
               </span>
               <span>
-                {t("sources.scanMedia")}: {run.discovered_media_count}
+                媒体预估: {run.discovered_media_count}
               </span>
             </div>
             {run.error_message ? (
               <p className="mt-1.5 break-words text-xs text-danger">
-                {run.error_category || t("sources.scanFailed")}: {run.error_message}
+                {run.error_category || "失败"}: {run.error_message}
               </p>
             ) : null}
             {run.progress_message ? (
               <p className="mt-1.5 break-words text-xs text-fg-secondary">
-                {t("sources.scanLastLog")}: {run.progress_message}
+                最近日志: {run.progress_message}
               </p>
             ) : null}
           </div>

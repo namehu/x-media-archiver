@@ -2,7 +2,7 @@ import { useMemo, useState } from "react";
 import { Activity, AlertTriangle, Clock3, FileInput, ListFilter, RefreshCw, Search, UploadCloud } from "lucide-react";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { apiGet, apiPost, type ArchiveRun, type ArchiveRunDetail, type ArchiveRunPageResponse, type ArchiveSubmission } from "../../lib/api";
-import { useFormatters, useI18n } from "../../lib/i18n";
+import { errorLabel, statusLabel, triggerLabel } from "../../lib/formatters";
 import { formatDateTime } from "../../lib/utils";
 import { useServerEvents } from "../../hooks/useServerEvents";
 import { Badge, type BadgeProps } from "../../components/ui/badge";
@@ -38,9 +38,13 @@ const TAB_TO_QUERY: Record<QueueTab, { status: string; failedOnly: boolean }> = 
   failed: { status: "", failedOnly: true },
 };
 
+const eventLabels: Record<string, string> = {
+  connected: "实时事件已连接",
+  connecting: "正在连接实时事件",
+  offline: "实时事件离线，使用轮询刷新",
+};
+
 export function ArchiveQueuePage() {
-  const { t } = useI18n();
-  const { statusLabel, errorLabel, triggerLabel } = useFormatters();
   const queryClient = useQueryClient();
   const events = useServerEvents(["archive_runs", "worker"]);
   const [urls, setUrls] = useState("");
@@ -121,18 +125,16 @@ export function ArchiveQueuePage() {
     <div className="space-y-6">
       <section className="flex flex-col justify-between gap-4 md:flex-row md:items-end">
         <div>
-          <h1 className="text-2xl font-bold tracking-tight text-fg-primary">{t("nav.queue")}</h1>
-          <p className="mt-1 text-sm text-fg-secondary">{t("queue.submitTitle")} · {t("queue.runs")} · {t("queue.detail")}</p>
+          <h1 className="text-2xl font-bold tracking-tight text-fg-primary">归档队列</h1>
+          <p className="mt-1 text-sm text-fg-secondary">提交归档批次 · 批次 · 批次详情</p>
         </div>
-        <LiveIndicator state={liveState} label={t(`events.${events.status}`)} />
+        <LiveIndicator state={liveState} label={eventLabels[events.status] ?? "离线"} />
       </section>
 
       <section className="grid gap-4 xl:grid-cols-[1.25fr_0.75fr]">
         <QueueHero
           progress={queueModel.progress}
           activeRun={queueModel.activeRun}
-          statusLabel={statusLabel}
-          triggerLabel={triggerLabel}
           totalCount={runsQuery.data?.total_count ?? 0}
         />
         <SubmitPanel
@@ -148,40 +150,35 @@ export function ArchiveQueuePage() {
           setParseError={setParseError}
           submitError={submitMutation.error}
           retryError={retryMutation.error}
-          statusLabel={statusLabel}
         />
       </section>
 
       <section className="grid gap-4 md:grid-cols-2 xl:grid-cols-4">
         <StatCard
-          label={t("queue.runs")}
+          label="批次"
           value={(runsQuery.data?.total_count ?? 0).toLocaleString()}
-          detail={t("common.pagination.range", {
-            start: runsQuery.data?.total_count ? offset + 1 : 0,
-            end: Math.min(offset + (runsQuery.data?.count ?? 0), runsQuery.data?.total_count ?? 0),
-            total: runsQuery.data?.total_count ?? 0,
-          })}
+          detail={`第 ${runsQuery.data?.total_count ? offset + 1 : 0}-${Math.min(offset + (runsQuery.data?.count ?? 0), runsQuery.data?.total_count ?? 0)} 项，共 ${runsQuery.data?.total_count ?? 0} 项`}
           icon={<Activity className="h-4 w-4" />}
           sparklineData={queueModel.sparkline}
         />
         <StatCard
-          label={statusLabel("running")}
+          label="运行中"
           value={queueModel.runningCount.toLocaleString()}
-          detail={queueModel.runningCount ? t("events.connected") : t("health.idle")}
+          detail={queueModel.runningCount ? "实时事件已连接" : "空闲"}
           icon={<RefreshCw className="h-4 w-4" />}
-          trend={{ value: queueModel.runningCount ? statusLabel("running") : t("health.idle"), direction: queueModel.runningCount ? "up" : "flat" }}
+          trend={{ value: queueModel.runningCount ? "运行中" : "空闲", direction: queueModel.runningCount ? "up" : "flat" }}
         />
         <StatCard
-          label={statusLabel("failed")}
+          label="失败"
           value={queueModel.failedCount.toLocaleString()}
-          detail={queueModel.failedCount ? t("failures.title") : t("failures.empty")}
+          detail={queueModel.failedCount ? "失败队列" : "没有失败项。"}
           icon={<AlertTriangle className="h-4 w-4" />}
           tone={queueModel.failedCount ? "danger" : "success"}
         />
         <StatCard
-          label={t("queue.lastAttempt")}
+          label="最近尝试"
           value={queueModel.latestRun ? `#${queueModel.latestRun.id}` : "-"}
-          detail={queueModel.latestRun ? formatDateTime(queueModel.latestRun.started_at) : t("queue.empty")}
+          detail={queueModel.latestRun ? formatDateTime(queueModel.latestRun.started_at) : "还没有归档批次。"}
           icon={<Clock3 className="h-4 w-4" />}
         />
       </section>
@@ -191,9 +188,9 @@ export function ArchiveQueuePage() {
           <CardHeader className="gap-4">
             <div className="flex flex-col justify-between gap-3 lg:flex-row lg:items-start">
               <div>
-                <CardTitle>{t("queue.runs")}</CardTitle>
+                <CardTitle>批次</CardTitle>
                 <CardDescription>
-                  {t("queue.filterStatus")} · {t("queue.searchTweet")} · {t("queue.onlyFailed")}
+                  批次状态 · 搜索 tweet_id · 只看失败
                 </CardDescription>
               </div>
               {hasActiveFilters ? (
@@ -207,7 +204,7 @@ export function ArchiveQueuePage() {
                     setOffset(0);
                   }}
                 >
-                  {t("queue.clearFilters")}
+                  清空筛选
                 </Button>
               ) : null}
             </div>
@@ -220,10 +217,10 @@ export function ArchiveQueuePage() {
                 }}
               >
                 <TabsList>
-                  <TabsTrigger value="all">{t("common.status.all")}</TabsTrigger>
-                  <TabsTrigger value="running">{statusLabel("running")}</TabsTrigger>
-                  <TabsTrigger value="completed">{statusLabel("completed")}</TabsTrigger>
-                  <TabsTrigger value="failed">{statusLabel("failed")}</TabsTrigger>
+                  <TabsTrigger value="all">全部状态</TabsTrigger>
+                  <TabsTrigger value="running">运行中</TabsTrigger>
+                  <TabsTrigger value="completed">已完成</TabsTrigger>
+                  <TabsTrigger value="failed">失败</TabsTrigger>
                 </TabsList>
               </Tabs>
               <div className="flex min-w-0 flex-col gap-2 sm:flex-row sm:items-center">
@@ -231,7 +228,7 @@ export function ArchiveQueuePage() {
                   <Search className="pointer-events-none absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-fg-tertiary" />
                   <Input
                     className="pl-9"
-                    placeholder={t("queue.searchTweet")}
+                    placeholder="搜索 tweet_id"
                     value={tweetFilter}
                     onChange={(event) => {
                       setOffset(0);
@@ -248,7 +245,7 @@ export function ArchiveQueuePage() {
                   }}
                 >
                   <ListFilter className="h-4 w-4" />
-                  {t("queue.onlyFailed")}
+                  只看失败
                 </Button>
               </div>
             </div>
@@ -260,14 +257,12 @@ export function ArchiveQueuePage() {
                   {runsQuery.isLoading ? (
                     <QueueTableSkeleton />
                   ) : runsQuery.error ? (
-                    <ErrorState title={t("common.apiUnavailable")} detail={String(runsQuery.error)} />
+                    <ErrorState title="API 不可用" detail={String(runsQuery.error)} />
                   ) : (
                     <RunTable
                       runs={runsQuery.data?.rows ?? []}
                       selectedRunId={selectedRunId}
                       onSelect={setSelectedRunId}
-                      statusLabel={statusLabel}
-                      triggerLabel={triggerLabel}
                     />
                   )}
                   {runsQuery.data ? (
@@ -277,7 +272,7 @@ export function ArchiveQueuePage() {
                       totalCount={runsQuery.data.total_count}
                       pageSize={PAGE_SIZE}
                       onOffsetChange={setOffset}
-                      label={t("common.pagination.range")}
+                      label="第 {start}-{end} 项，共 {total} 项"
                     />
                   ) : null}
                 </CardContent>
@@ -292,8 +287,6 @@ export function ArchiveQueuePage() {
           error={detailQuery.error}
           pending={pending}
           onRetry={(runId) => retryMutation.mutate(runId)}
-          statusLabel={statusLabel}
-          errorLabel={errorLabel}
         />
       </section>
     </div>
@@ -303,17 +296,12 @@ export function ArchiveQueuePage() {
 function QueueHero({
   progress,
   activeRun,
-  statusLabel,
-  triggerLabel,
   totalCount,
 }: {
   progress: number;
   activeRun?: ArchiveRun;
-  statusLabel: (status?: string | null) => string;
-  triggerLabel: (trigger?: string | null) => string;
   totalCount: number;
 }) {
-  const { t } = useI18n();
   return (
     <Card className="overflow-hidden border-brand/20 bg-gradient-to-br from-brand-soft via-bg-elevated to-bg-surface">
       <CardContent className="grid gap-6 p-6 md:grid-cols-[auto_1fr] md:items-center">
@@ -322,16 +310,16 @@ function QueueHero({
         </div>
         <div className="min-w-0">
           <div className="flex flex-wrap items-center gap-2">
-            <Badge tone={activeRun ? statusTone(activeRun.status) : "secondary"}>{activeRun ? statusLabel(activeRun.status) : t("health.idle")}</Badge>
+            <Badge tone={activeRun ? statusTone(activeRun.status) : "secondary"}>{activeRun ? statusLabel(activeRun.status) : "空闲"}</Badge>
             <span className="text-xs font-medium text-fg-tertiary">
-              {totalCount.toLocaleString()} {t("queue.runs")}
+              {totalCount.toLocaleString()} 批次
             </span>
           </div>
           <h2 className="mt-3 text-2xl font-bold tracking-tight text-fg-primary">
-            {activeRun ? t("queue.run", { id: activeRun.id }) : t("queue.empty")}
+            {activeRun ? `Run #${activeRun.id}` : "还没有归档批次。"}
           </h2>
           <p className="mt-2 text-sm text-fg-secondary">
-            {activeRun ? `${triggerLabel(activeRun.trigger_type)} · ${formatDateTime(activeRun.started_at)}` : t("queue.selectRun")}
+            {activeRun ? `${triggerLabel(activeRun.trigger_type)} · ${formatDateTime(activeRun.started_at)}` : "选择一个批次。"}
           </p>
         </div>
       </CardContent>
@@ -352,7 +340,6 @@ function SubmitPanel({
   setParseError,
   submitError,
   retryError,
-  statusLabel,
 }: {
   urls: string;
   setUrls: (value: string) => void;
@@ -366,14 +353,12 @@ function SubmitPanel({
   setParseError: (value: string | null) => void;
   submitError: Error | null;
   retryError: Error | null;
-  statusLabel: (status?: string | null) => string;
 }) {
-  const { t } = useI18n();
   return (
     <Card>
       <CardHeader>
-        <CardTitle>{t("queue.submitTitle")}</CardTitle>
-        <CardDescription>{t("queue.inputPreview")}</CardDescription>
+        <CardTitle>提交归档批次</CardTitle>
+        <CardDescription>输入预览</CardDescription>
       </CardHeader>
       <CardContent className="space-y-4">
         <textarea
@@ -385,7 +370,7 @@ function SubmitPanel({
         <div className="grid gap-2 sm:grid-cols-2">
           <Button type="button" disabled={!canSubmit} onClick={submitUrls}>
             <UploadCloud className="h-4 w-4" />
-            {t("queue.submitUrls")}
+            提交 URL
           </Button>
           <label className="inline-flex h-9 cursor-pointer items-center justify-center gap-2 rounded-md border border-border-strong bg-transparent px-4 text-sm font-medium text-fg-primary transition duration-fast hover:bg-bg-muted focus-within:ring-2 focus-within:ring-brand/50">
             <FileInput className="h-4 w-4" />
@@ -404,7 +389,7 @@ function SubmitPanel({
                   setParseError(null);
                 } catch (error) {
                   setFeedback(null);
-                  setParseError(`${t("queue.fileParseError")}: ${String(error)}`);
+                  setParseError(`文件解析失败: ${String(error)}`);
                 } finally {
                   event.target.value = "";
                 }
@@ -414,20 +399,14 @@ function SubmitPanel({
         </div>
 
         <InputPreview preview={preview} />
-        {preview.invalidCount > 0 ? <p className="text-sm text-danger">{t("queue.submitDisabledByInvalid")}</p> : null}
-        {urls.trim() && preview.validCount === 0 ? <p className="text-sm text-fg-secondary">{t("queue.noValidUrls")}</p> : null}
+        {preview.invalidCount > 0 ? <p className="text-sm text-danger">存在无效行，修正后才能提交。</p> : null}
+        {urls.trim() && preview.validCount === 0 ? <p className="text-sm text-fg-secondary">没有可提交的有效 URL。</p> : null}
         {parseError || submitError || retryError ? (
           <p className="text-sm text-danger">{parseError || String(submitError || retryError)}</p>
         ) : null}
         {feedback ? (
           <div className="rounded-lg border border-brand/20 bg-brand-soft p-3 text-sm text-fg-primary">
-            {t("queue.feedback", {
-              runId: feedback.run_id,
-              status: statusLabel(feedback.status),
-              queued: feedback.tasks.queued_count,
-              skipped: feedback.tasks.skipped_verified_count,
-              linked: feedback.tasks.linked_pending_count,
-            })}
+            Run #{feedback.run_id} · {statusLabel(feedback.status)} · {feedback.tasks.queued_count} 个已入队 · {feedback.tasks.skipped_verified_count} 个已归档 · {feedback.tasks.linked_pending_count} 个已有任务
           </div>
         ) : null}
       </CardContent>
@@ -439,28 +418,23 @@ function RunTable({
   runs,
   selectedRunId,
   onSelect,
-  statusLabel,
-  triggerLabel,
 }: {
   runs: ArchiveRun[];
   selectedRunId: number | null;
   onSelect: (id: number) => void;
-  statusLabel: (status?: string | null) => string;
-  triggerLabel: (trigger?: string | null) => string;
 }) {
-  const { t } = useI18n();
-  if (runs.length === 0) return <p className="rounded-lg border border-border-subtle bg-bg-surface p-4 text-sm text-fg-secondary">{t("queue.empty")}</p>;
+  if (runs.length === 0) return <p className="rounded-lg border border-border-subtle bg-bg-surface p-4 text-sm text-fg-secondary">还没有归档批次。</p>;
 
   return (
     <div className="overflow-hidden rounded-lg border border-border-subtle">
       <Table>
         <TableHeader>
           <TableRow>
-            <TableHead>{t("operations.resultField.runId")}</TableHead>
-            <TableHead>{t("operations.status")}</TableHead>
-            <TableHead>{t("operations.trigger")}</TableHead>
-            <TableHead>{t("operations.startedAt")}</TableHead>
-            <TableHead className="text-right">{t("queue.metric.failed")}</TableHead>
+            <TableHead>批次 ID</TableHead>
+            <TableHead>状态</TableHead>
+            <TableHead>触发</TableHead>
+            <TableHead>开始</TableHead>
+            <TableHead className="text-right">失败</TableHead>
           </TableRow>
         </TableHeader>
         <TableBody>
@@ -505,25 +479,20 @@ function RunDetailPanel({
   error,
   pending,
   onRetry,
-  statusLabel,
-  errorLabel,
 }: {
   run?: ArchiveRunDetail;
   isLoading: boolean;
   error: Error | null;
   pending: boolean;
   onRetry: (runId: number) => void;
-  statusLabel: (status?: string | null) => string;
-  errorLabel: (error?: string | null) => string;
 }) {
-  const { t } = useI18n();
   return (
     <Card className="min-h-[520px]">
       <CardHeader>
         <div className="flex items-center justify-between gap-3">
           <div>
-            <CardTitle>{t("queue.detail")}</CardTitle>
-            <CardDescription>{run ? t("queue.run", { id: run.id }) : t("queue.selectRun")}</CardDescription>
+            <CardTitle>批次详情</CardTitle>
+            <CardDescription>{run ? `Run #${run.id}` : "选择一个批次。"}</CardDescription>
           </div>
           {run ? <Badge tone={statusTone(run.status)}>{statusLabel(run.status)}</Badge> : null}
         </div>
@@ -536,7 +505,7 @@ function RunDetailPanel({
             <Skeleton className="h-16" />
           </div>
         ) : error ? (
-          <ErrorState title={t("common.apiUnavailable")} detail={String(error)} />
+          <ErrorState title="API 不可用" detail={String(error)} />
         ) : run ? (
           <>
             <RunSummary run={run} />
@@ -548,10 +517,10 @@ function RunDetailPanel({
                       <div className="break-all text-sm font-semibold text-fg-primary">{item.tweet_id}</div>
                       <div className="mt-1 flex flex-wrap gap-x-3 gap-y-1 text-xs text-fg-secondary">
                         <span>
-                          {t("tweet.retryCount")}: <span className="tabular-nums">{item.retry_count}</span>
+                          重试次数: <span className="tabular-nums">{item.retry_count}</span>
                         </span>
-                        {item.last_attempt_at ? <span>{t("queue.lastAttempt")}: {formatDateTime(item.last_attempt_at)}</span> : null}
-                        {item.next_attempt_at ? <span>{t("queue.nextAttempt")}: {formatDateTime(item.next_attempt_at)}</span> : null}
+                        {item.last_attempt_at ? <span>最近尝试: {formatDateTime(item.last_attempt_at)}</span> : null}
+                        {item.next_attempt_at ? <span>下次重试: {formatDateTime(item.next_attempt_at)}</span> : null}
                       </div>
                     </div>
                     <Badge tone={statusTone(item.status)}>{statusLabel(item.status)}</Badge>
@@ -563,7 +532,7 @@ function RunDetailPanel({
                   ) : null}
                   {item.attempts?.length ? (
                     <div className="mt-3 space-y-1 text-xs text-fg-secondary">
-                      <div className="font-semibold text-fg-primary">{t("queue.itemAttempts")}</div>
+                      <div className="font-semibold text-fg-primary">下载尝试</div>
                       {item.attempts.map((attempt) => (
                         <div key={attempt.id} className="rounded-md bg-bg-elevated px-2 py-1">
                           {attempt.engine || "-"} · {statusLabel(attempt.status)} · {errorLabel(attempt.error_category || attempt.error_message)} ·{" "}
@@ -578,12 +547,12 @@ function RunDetailPanel({
             {hasFailure(run) ? (
               <Button type="button" variant="secondary" disabled={pending} onClick={() => onRetry(run.id)}>
                 <RefreshCw className="h-4 w-4" />
-                {t("queue.retryFailed")}
+                重试永久失败项
               </Button>
             ) : null}
           </>
         ) : (
-          <p className="rounded-lg border border-border-subtle bg-bg-surface p-4 text-sm text-fg-secondary">{t("queue.selectRun")}</p>
+          <p className="rounded-lg border border-border-subtle bg-bg-surface p-4 text-sm text-fg-secondary">选择一个批次。</p>
         )}
       </CardContent>
     </Card>
@@ -591,19 +560,18 @@ function RunDetailPanel({
 }
 
 function InputPreview({ preview }: { preview: ReturnType<typeof parseUrlInput> }) {
-  const { t } = useI18n();
   if (preview.totalLines === 0) return null;
   return (
     <div className="rounded-lg border border-border-subtle bg-bg-surface p-3 text-sm">
-      <div className="mb-2 font-semibold text-fg-primary">{t("queue.inputPreview")}</div>
+      <div className="mb-2 font-semibold text-fg-primary">输入预览</div>
       <div className="grid gap-2 sm:grid-cols-4">
-        <Metric label={t("queue.totalLines")} value={preview.totalLines} />
-        <Metric label={t("queue.validUrls")} value={preview.validCount} />
-        <Metric label={t("queue.duplicateUrls")} value={preview.duplicateCount} />
-        <Metric label={t("queue.invalidLines")} value={preview.invalidCount} />
+        <Metric label="总行数" value={preview.totalLines} />
+        <Metric label="有效 URL" value={preview.validCount} />
+        <Metric label="重复 URL" value={preview.duplicateCount} />
+        <Metric label="无效行" value={preview.invalidCount} />
       </div>
-      {preview.invalid.length ? <LineList title={t("queue.invalidLineList")} rows={preview.invalid} /> : null}
-      {preview.duplicates.length ? <LineList title={t("queue.duplicateLineList")} rows={preview.duplicates} /> : null}
+      {preview.invalid.length ? <LineList title="无效行" rows={preview.invalid} /> : null}
+      {preview.duplicates.length ? <LineList title="重复 URL" rows={preview.duplicates} /> : null}
     </div>
   );
 }
@@ -741,15 +709,14 @@ function hasFailure(run: ArchiveRunDetail) {
 }
 
 function RunSummary({ run }: { run: ArchiveRunDetail }) {
-  const { t } = useI18n();
   const tasks = run.result?.tasks;
-  if (!tasks) return <Badge>{t("queue.legacy")}</Badge>;
+  if (!tasks) return <Badge>旧版 run</Badge>;
   const metrics = [
-    [t("queue.metric.queued"), tasks.queued_count],
-    [t("queue.metric.skipped"), tasks.skipped_verified_count],
-    [t("queue.metric.linked"), tasks.linked_pending_count],
-    [t("queue.metric.verified"), tasks.verified_count],
-    [t("queue.metric.failed"), tasks.failed_count],
+    ["已入队", tasks.queued_count],
+    ["已归档", tasks.skipped_verified_count],
+    ["已有任务", tasks.linked_pending_count],
+    ["已校验", tasks.verified_count],
+    ["失败", tasks.failed_count],
   ];
   return (
     <div className="grid gap-2 rounded-lg border border-border-subtle bg-bg-surface p-3 sm:grid-cols-2">

@@ -4,7 +4,7 @@ import { Grid2X2, ListFilter, Search } from "lucide-react";
 import { VirtuosoGrid } from "react-virtuoso";
 import { useQuery } from "@tanstack/react-query";
 import { apiGet, mediaQueryString, type MediaRow, type PageResponse } from "../../lib/api";
-import { useFormatters, useI18n } from "../../lib/i18n";
+import { mediaTypeLabel, statusLabel } from "../../lib/formatters";
 import { formatBytes, formatDateTime } from "../../lib/utils";
 import { Badge } from "../../components/ui/badge";
 import { Button } from "../../components/ui/button";
@@ -19,7 +19,6 @@ import { Skeleton } from "../../components/ui/skeleton";
 const PAGE_SIZE = 60;
 
 export function LibraryPage() {
-  const { t } = useI18n();
   const [filters, setFilters] = useState({
     author: "",
     text: "",
@@ -46,10 +45,10 @@ export function LibraryPage() {
     <div className="space-y-5">
       <section className="flex flex-col justify-between gap-4 md:flex-row md:items-end">
         <div>
-          <h1 className="text-2xl font-bold tracking-tight text-fg-primary">{t("library.title")}</h1>
-          <p className="mt-1 text-sm text-fg-secondary">{t("library.subtitle")}</p>
+          <h1 className="text-2xl font-bold tracking-tight text-fg-primary">媒体库</h1>
+          <p className="mt-1 text-sm text-fg-secondary">本地已归档媒体文件索引与搜索。</p>
         </div>
-        {data ? <Badge tone="default">{t("library.resultCount", { count: data.total_count })}</Badge> : null}
+        {data ? <Badge tone="default">{data.total_count}</Badge> : null}
       </section>
 
       <Card className="sticky top-0 z-10">
@@ -62,12 +61,12 @@ export function LibraryPage() {
             }}
           >
             <Input
-              placeholder={t("library.author")}
+              placeholder="作者"
               value={filters.author}
               onChange={(event) => setFilters({ ...filters, author: event.target.value })}
             />
             <Input
-              placeholder={t("library.tweetText")}
+              placeholder="Tweet 文本"
               value={filters.text}
               onChange={(event) => setFilters({ ...filters, text: event.target.value })}
             />
@@ -76,31 +75,31 @@ export function LibraryPage() {
               value={filters.media_status}
               onChange={(event) => setFilters({ ...filters, media_status: event.target.value })}
             >
-              <option value="verified">{t("common.status.verified")}</option>
-              <option value="all">{t("common.status.all")}</option>
-              <option value="downloaded">{t("common.status.downloaded")}</option>
-              <option value="missing">{t("common.status.missing")}</option>
-              <option value="corrupt">{t("common.status.corrupt")}</option>
+              <option value="verified">已校验</option>
+              <option value="all">全部状态</option>
+              <option value="downloaded">已下载</option>
+              <option value="missing">文件缺失</option>
+              <option value="corrupt">文件损坏</option>
             </select>
             <select
               className="h-9 rounded-md border border-border-strong bg-bg-elevated px-3 text-sm text-fg-primary outline-none focus-visible:ring-2 focus-visible:ring-brand/50"
               value={filters.media_type}
               onChange={(event) => setFilters({ ...filters, media_type: event.target.value })}
             >
-              <option value="">{t("common.media.all")}</option>
-              <option value="photo">{t("common.media.photo")}</option>
-              <option value="video">{t("common.media.video")}</option>
+              <option value="">全部媒体</option>
+              <option value="photo">图片</option>
+              <option value="video">视频</option>
             </select>
             <Button type="submit">
               <Search className="h-4 w-4" />
-              {t("library.search")}
+              搜索
             </Button>
           </form>
         </CardContent>
       </Card>
 
       {isLoading ? <LibrarySkeleton /> : null}
-      {error ? <ErrorState title={t("common.apiUnavailable")} detail={String(error)} onRetry={() => void refetch()} /> : null}
+      {error ? <ErrorState title="API 不可用" detail={String(error)} onRetry={() => void refetch()} /> : null}
 
       {data ? (
         <>
@@ -110,9 +109,9 @@ export function LibraryPage() {
             totalCount={data.total_count}
             pageSize={PAGE_SIZE}
             onOffsetChange={setOffset}
-            label={t("common.pagination.range", { start: "{start}", end: "{end}", total: "{total}" })}
+            label="第 {start}-{end} 项，共 {total} 项"
           />
-          {data.rows.length ? <MediaGrid rows={data.rows} /> : <EmptyState icon={<ListFilter className="h-5 w-5" />} title={t("library.noMatched")} />}
+          {data.rows.length ? <MediaGrid rows={data.rows} /> : <EmptyState icon={<ListFilter className="h-5 w-5" />} title="当前筛选条件下没有媒体。" />}
           {data.rows.length ? (
             <Pagination
               offset={offset}
@@ -120,7 +119,7 @@ export function LibraryPage() {
               totalCount={data.total_count}
               pageSize={PAGE_SIZE}
               onOffsetChange={setOffset}
-              label={t("common.pagination.range", { start: "{start}", end: "{end}", total: "{total}" })}
+              label="第 {start}-{end} 项，共 {total} 项"
             />
           ) : null}
         </>
@@ -166,9 +165,7 @@ const gridComponents = {
 };
 
 function MediaCard({ row }: { row: MediaRow }) {
-  const { t } = useI18n();
-  const { statusLabel, mediaTypeLabel } = useFormatters();
-  const title = row.author_display_name || row.author_username || t("common.unknownAuthor");
+  const title = row.author_display_name || row.author_username || "未知作者";
 
   return (
     <Card className="group overflow-hidden hover:border-border-strong hover:shadow-2">
@@ -183,7 +180,7 @@ function MediaCard({ row }: { row: MediaRow }) {
             {statusLabel(row.media_status)}
           </Badge>
         </div>
-        <p className="line-clamp-3 min-h-[3.9rem] text-sm text-fg-secondary">{row.tweet_text || t("library.noTweetText")}</p>
+        <p className="line-clamp-3 min-h-[3.9rem] text-sm text-fg-secondary">{row.tweet_text || "暂无 Tweet 文本"}</p>
         <div className="flex flex-wrap items-center gap-2 text-xs text-fg-tertiary">
           <Badge tone="secondary">{mediaTypeLabel(row.media_type)}</Badge>
           <span>{formatBytes(row.file_size)}</span>
@@ -191,11 +188,11 @@ function MediaCard({ row }: { row: MediaRow }) {
         </div>
         <div className="flex flex-wrap gap-3">
           <Link className="text-sm font-semibold text-brand hover:text-brand-hover" to={`/tweets/${row.tweet_id}`}>
-            {t("library.details")}
+            详情
           </Link>
           {row.tweet_url ? (
             <a className="text-sm font-semibold text-brand hover:text-brand-hover" href={row.tweet_url} target="_blank" rel="noreferrer">
-              {t("library.openTweet")}
+              打开 Tweet
             </a>
           ) : null}
         </div>

@@ -7,12 +7,16 @@ import { Button } from "../../../components/ui/button";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "../../../components/ui/card";
 import { Input } from "../../../components/ui/input";
 import { apiDelete, apiGet, apiPost, type CookieConfig } from "../../../lib/api";
-import { useI18n } from "../../../lib/i18n";
 import { formatDateTime } from "../../../lib/utils";
 import { errorMessage } from "../utils";
 
+const cookiesSourceLabel: Record<string, string> = {
+  database: "数据库",
+  file: "COOKIE_FILE",
+  none: "无",
+};
+
 export function CookiesTab() {
-  const { t } = useI18n();
   const queryClient = useQueryClient();
   const [content, setContent] = useState("");
   const [label, setLabel] = useState("");
@@ -26,10 +30,10 @@ export function CookiesTab() {
     mutationFn: () => apiPost<CookieConfig>("/api/v1/settings/cookies", { content, label: label || null }),
     onSuccess: async () => {
       setContent("");
-      toast.success(t("operations.cookiesSaved"));
+      toast.success("Cookies 已保存");
       await queryClient.invalidateQueries({ queryKey: ["settings-cookies"] });
     },
-    onError: (error) => toast.error(t("operations.cookiesSaveFailed", { error: errorMessage(error) })),
+    onError: (error) => toast.error(`保存 Cookies 失败：${errorMessage(error)}`),
   });
 
   const clearMutation = useMutation({
@@ -37,10 +41,10 @@ export function CookiesTab() {
     onSuccess: async () => {
       setContent("");
       setLabel("");
-      toast.success(t("operations.cookiesCleared"));
+      toast.success("数据库 Cookies 已清空");
       await queryClient.invalidateQueries({ queryKey: ["settings-cookies"] });
     },
-    onError: (error) => toast.error(t("operations.cookiesClearFailed", { error: errorMessage(error) })),
+    onError: (error) => toast.error(`清空 Cookies 失败：${errorMessage(error)}`),
   });
 
   const pending = saveMutation.isPending || clearMutation.isPending;
@@ -56,37 +60,37 @@ export function CookiesTab() {
     <section className="grid gap-4 xl:grid-cols-[0.8fr_1.2fr]">
       <Card>
         <CardHeader>
-          <CardTitle>{t("operations.cookiesStatus")}</CardTitle>
-          <CardDescription>{t("operations.cookiesStatusHint")}</CardDescription>
+          <CardTitle>Cookies 状态</CardTitle>
+          <CardDescription>下载和来源扫描优先使用数据库中的 cookies，未配置时回退到 COOKIE_FILE。</CardDescription>
         </CardHeader>
         <CardContent className="space-y-3">
           <div className="flex items-center justify-between gap-3 rounded-md border border-border-subtle bg-bg-surface px-3 py-2 text-sm">
-            <span className="text-fg-secondary">{t("operations.cookiesConfigured")}</span>
+            <span className="text-fg-secondary">配置状态</span>
             <Badge tone={status?.configured ? "success" : "warning"}>
-              {status?.configured ? t("operations.cookiesConfiguredYes") : t("operations.cookiesConfiguredNo")}
+              {status?.configured ? "已配置" : "未配置"}
             </Badge>
           </div>
-          <InfoRow label={t("operations.cookiesSource")} value={status ? t(`operations.cookiesSource.${status.source}`) : "-"} />
-          <InfoRow label={t("operations.cookiesLabel")} value={status?.label || "-"} />
-          <InfoRow label={t("operations.cookiesUpdatedAt")} value={formatDateTime(status?.updated_at)} />
+          <InfoRow label="当前来源" value={status ? cookiesSourceLabel[status.source] ?? "-" : "-"} />
+          <InfoRow label="备注" value={status?.label || "-"} />
+          <InfoRow label="更新时间" value={formatDateTime(status?.updated_at)} />
           <Button type="button" variant="destructive" disabled={pending || status?.source !== "database"} onClick={() => clearMutation.mutate()}>
             <Trash2 className="h-4 w-4" />
-            {t("operations.cookiesClear")}
+            清空数据库 Cookies
           </Button>
         </CardContent>
       </Card>
 
       <Card>
         <CardHeader>
-          <CardTitle>{t("operations.cookiesUpdate")}</CardTitle>
-          <CardDescription>{t("operations.cookiesUpdateHint")}</CardDescription>
+          <CardTitle>更新 Cookies</CardTitle>
+          <CardDescription>粘贴或上传 Netscape cookies.txt 内容；正文不会在 API 响应中返回。</CardDescription>
         </CardHeader>
         <CardContent className="space-y-4">
           <div className="grid gap-3 md:grid-cols-[1fr_auto]">
-            <Input value={label} placeholder={t("operations.cookiesLabelPlaceholder")} onChange={(event) => setLabel(event.target.value)} />
+            <Input value={label} placeholder="备注，例如导出日期或账号说明" onChange={(event) => setLabel(event.target.value)} />
             <label className="inline-flex h-9 cursor-pointer items-center justify-center gap-2 rounded-md border border-border-subtle bg-bg-muted px-4 text-sm font-medium text-fg-primary hover:border-border-strong hover:bg-bg-surface">
               <Upload className="h-4 w-4" />
-              {t("operations.cookiesUpload")}
+              上传文件
               <input className="sr-only" type="file" accept=".txt,text/plain" onChange={(event) => void handleFileChange(event.target.files?.[0] ?? null)} />
             </label>
           </div>
@@ -94,14 +98,14 @@ export function CookiesTab() {
             className="min-h-72 w-full resize-y rounded-md border border-border-strong bg-bg-elevated p-3 font-mono text-xs text-fg-primary outline-none transition duration-fast placeholder:text-fg-tertiary focus-visible:ring-2 focus-visible:ring-brand/50"
             value={content}
             spellCheck={false}
-            placeholder={t("operations.cookiesPlaceholder")}
+            placeholder="# Netscape HTTP Cookie File\n.x.com\tTRUE\t/\tTRUE\t0\tauth_token\t..."
             onChange={(event) => setContent(event.target.value)}
           />
           <div className="flex flex-wrap items-center justify-between gap-3">
-            <p className="text-xs text-fg-secondary">{t("operations.cookiesSecretHint")}</p>
+            <p className="text-xs text-fg-secondary">Cookies 会以明文保存在本地 Postgres，请不要暴露本地 API。</p>
             <Button type="button" disabled={pending || !content.trim()} onClick={() => saveMutation.mutate()}>
               <Save className="h-4 w-4" />
-              {t("operations.cookiesSave")}
+              保存 Cookies
             </Button>
           </div>
         </CardContent>

@@ -3,7 +3,7 @@ import { Files, Gauge, GitCompare, HardDrive, Image as ImageIcon } from "lucide-
 import { Link } from "react-router-dom";
 import { useQuery } from "@tanstack/react-query";
 import { apiGet, type DuplicatesResponse, type MediaRow } from "../../lib/api";
-import { useFormatters, useI18n } from "../../lib/i18n";
+import { mediaTypeLabel } from "../../lib/formatters";
 import { formatBytes } from "../../lib/utils";
 import { Badge } from "../../components/ui/badge";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "../../components/ui/card";
@@ -17,8 +17,6 @@ import { StatCard } from "../../components/ui/stat-card";
 const PAGE_SIZE = 100;
 
 export function DuplicatesPage() {
-  const { t } = useI18n();
-  const { mediaTypeLabel } = useFormatters();
   const [offset, setOffset] = useState(0);
   const { data, isLoading, error, refetch } = useQuery({
     queryKey: ["duplicates", offset],
@@ -29,15 +27,15 @@ export function DuplicatesPage() {
   const model = useMemo(() => buildDuplicateModel(rows, data?.duplicate_groups ?? 0), [rows, data?.duplicate_groups]);
 
   if (isLoading) return <DuplicatesSkeleton />;
-  if (error) return <ErrorState title={t("common.apiUnavailable")} detail={String(error)} onRetry={() => void refetch()} />;
+  if (error) return <ErrorState title="API 不可用" detail={String(error)} onRetry={() => void refetch()} />;
 
   return (
     <div className="space-y-5">
       <section className="flex flex-col justify-between gap-4 md:flex-row md:items-end">
         <div>
-          <h1 className="text-2xl font-bold tracking-tight text-fg-primary">{t("duplicates.title")}</h1>
+          <h1 className="text-2xl font-bold tracking-tight text-fg-primary">重复媒体</h1>
           <p className="mt-1 text-sm text-fg-secondary">
-            {model.groupCount.toLocaleString()} {t("duplicates.groups")} · {model.fileCount.toLocaleString()} {t("duplicates.files")}
+            {model.groupCount.toLocaleString()} 组 · {model.fileCount.toLocaleString()} 个文件
           </p>
         </div>
         {data ? (
@@ -47,42 +45,38 @@ export function DuplicatesPage() {
             totalCount={data.total_count}
             pageSize={PAGE_SIZE}
             onOffsetChange={setOffset}
-            label={t("common.pagination.range")}
+            label="第 {start}-{end} 项，共 {total} 项"
           />
         ) : null}
       </section>
 
       <section className="grid gap-4 md:grid-cols-2 xl:grid-cols-4">
         <StatCard
-          label={t("operations.resultField.duplicateGroups")}
+          label="重复组"
           value={model.groupCount.toLocaleString()}
-          detail={t("duplicates.title")}
+          detail="重复媒体"
           icon={<GitCompare className="h-4 w-4" />}
           tone={model.groupCount ? "warning" : "success"}
           sparklineData={model.groupSizes}
         />
         <StatCard
-          label={t("duplicates.files")}
+          label="个文件"
           value={model.fileCount.toLocaleString()}
-          detail={t("common.pagination.range", {
-            start: data?.total_count ? offset + 1 : 0,
-            end: Math.min(offset + (data?.count ?? 0), data?.total_count ?? 0),
-            total: data?.total_count ?? 0,
-          })}
+          detail={`第 ${data?.total_count ? offset + 1 : 0}-${Math.min(offset + (data?.count ?? 0), data?.total_count ?? 0)} 项，共 ${data?.total_count ?? 0} 项`}
           icon={<Files className="h-4 w-4" />}
           tone="brand"
         />
         <StatCard
-          label={t("operations.resultField.checked")}
+          label="已检查"
           value={formatBytes(model.duplicateBytes)}
-          detail={t("operations.resultField.path")}
+          detail="文件路径"
           icon={<HardDrive className="h-4 w-4" />}
           tone={model.duplicateBytes ? "warning" : "brand"}
         />
         <StatCard
-          label={t("common.media.media")}
+          label="媒体"
           value={model.dominantMediaType ? mediaTypeLabel(model.dominantMediaType) : "-"}
-          detail={model.dominantMediaTypeCount ? `${model.dominantMediaTypeCount} ${t("duplicates.files")}` : t("duplicates.empty")}
+          detail={model.dominantMediaTypeCount ? `${model.dominantMediaTypeCount} 个文件` : "没有重复媒体。"}
           icon={<ImageIcon className="h-4 w-4" />}
           tone="brand"
         />
@@ -91,7 +85,7 @@ export function DuplicatesPage() {
       {model.groups.length ? (
         <section className="space-y-4">
           {model.groups.map((group) => (
-            <DuplicateGroupCard key={group.sha256} group={group} mediaTypeLabel={mediaTypeLabel} />
+            <DuplicateGroupCard key={group.sha256} group={group} />
           ))}
           {data && data.rows.length > 0 ? (
             <Pagination
@@ -100,12 +94,12 @@ export function DuplicatesPage() {
               totalCount={data.total_count}
               pageSize={PAGE_SIZE}
               onOffsetChange={setOffset}
-              label={t("common.pagination.range")}
+              label="第 {start}-{end} 项，共 {total} 项"
             />
           ) : null}
         </section>
       ) : (
-        <EmptyState icon={<GitCompare className="h-5 w-5" />} title={t("duplicates.empty")} description={t("dashboard.trendClean")} />
+        <EmptyState icon={<GitCompare className="h-5 w-5" />} title="没有重复媒体。" description="清洁" />
       )}
     </div>
   );
@@ -113,12 +107,9 @@ export function DuplicatesPage() {
 
 function DuplicateGroupCard({
   group,
-  mediaTypeLabel,
 }: {
   group: DuplicateGroup;
-  mediaTypeLabel: (mediaType?: string | null) => string;
 }) {
-  const { t } = useI18n();
   const primary = group.rows[0];
   const compareRows = group.rows.slice(0, 4);
   const extraCount = Math.max(0, group.rows.length - compareRows.length);
@@ -129,7 +120,7 @@ function DuplicateGroupCard({
         <div className="flex flex-col justify-between gap-3 lg:flex-row lg:items-start">
           <div className="min-w-0">
             <CardTitle className="flex flex-wrap items-center gap-2">
-              <Badge tone="warning">{group.displayCount} {t("duplicates.files")}</Badge>
+              <Badge tone="warning">{group.displayCount} 个文件</Badge>
               <span className="break-all font-mono text-sm font-semibold text-fg-primary">{group.shortHash}</span>
             </CardTitle>
             <CardDescription className="mt-1 break-all">{group.sha256}</CardDescription>
@@ -150,7 +141,7 @@ function DuplicateGroupCard({
         </div>
         {extraCount ? (
           <div className="rounded-lg border border-border-subtle bg-bg-surface p-3 text-sm text-fg-secondary">
-            +{extraCount} {t("duplicates.files")}
+            +{extraCount} 个文件
           </div>
         ) : null}
       </CardContent>
@@ -159,8 +150,6 @@ function DuplicateGroupCard({
 }
 
 function DuplicateMediaCard({ row, index }: { row: MediaRow; index: number }) {
-  const { t } = useI18n();
-  const { mediaTypeLabel } = useFormatters();
   return (
     <div className="min-w-0 overflow-hidden rounded-lg border border-border-subtle bg-bg-surface transition duration-fast hover:border-border-strong">
       <MediaThumbnail src={row.media_url} mediaType={row.media_type} alt={row.tweet_text || row.tweet_id} className="rounded-b-none" />
@@ -168,17 +157,17 @@ function DuplicateMediaCard({ row, index }: { row: MediaRow; index: number }) {
         <div className="flex items-start justify-between gap-3">
           <div className="min-w-0">
             <div className="text-xs font-semibold uppercase text-fg-tertiary">
-              {t("common.media.media")} #{index + 1}
+              媒体 #{index + 1}
             </div>
             <Link className="mt-1 block truncate text-sm font-semibold text-brand hover:text-brand-hover" to={`/tweets/${row.tweet_id}`}>
-              {t("duplicates.tweetDetail")}
+              Tweet 详情
             </Link>
           </div>
           <Badge tone="secondary">{mediaTypeLabel(row.media_type)}</Badge>
         </div>
         <div className="grid gap-2 text-xs text-fg-secondary">
           <div className="flex items-center justify-between gap-3">
-            <span>{t("operations.resultField.rows")}</span>
+            <span>导出行数</span>
             <span className="tabular-nums text-fg-primary">{formatBytes(row.file_size)}</span>
           </div>
           <div className="min-w-0 break-all rounded-md bg-bg-elevated px-2 py-1 font-mono text-[11px] text-fg-tertiary">
@@ -191,7 +180,6 @@ function DuplicateMediaCard({ row, index }: { row: MediaRow; index: number }) {
 }
 
 function HashMatchBar({ count, max }: { count: number; max: number }) {
-  const { t } = useI18n();
   const percent = max ? Math.max(10, Math.round((count / max) * 100)) : 0;
   return (
     <div className="rounded-lg border border-border-subtle bg-bg-surface p-3">
@@ -201,7 +189,7 @@ function HashMatchBar({ count, max }: { count: number; max: number }) {
           SHA-256
         </span>
         <span>
-          {count} / {max || count} {t("duplicates.files")}
+          {count} / {max || count} 个文件
         </span>
       </div>
       <div className="h-2 overflow-hidden rounded-full bg-bg-muted">
@@ -212,12 +200,11 @@ function HashMatchBar({ count, max }: { count: number; max: number }) {
 }
 
 function DuplicatesSkeleton() {
-  const { t } = useI18n();
   return (
     <div className="space-y-5">
       <section>
-        <h1 className="text-2xl font-bold tracking-tight text-fg-primary">{t("duplicates.title")}</h1>
-        <p className="mt-1 text-sm text-fg-secondary">{t("duplicates.loading")}</p>
+        <h1 className="text-2xl font-bold tracking-tight text-fg-primary">重复媒体</h1>
+        <p className="mt-1 text-sm text-fg-secondary">正在加载重复媒体</p>
       </section>
       <div className="grid gap-4 md:grid-cols-2 xl:grid-cols-4">
         {Array.from({ length: 4 }).map((_, index) => (

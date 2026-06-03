@@ -5,8 +5,8 @@ import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Pagination } from "@/components/ui/pagination";
 import { Select, SelectContent, SelectGroup, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
-import { useI18n } from "@/lib/i18n";
-import { SOURCE_TYPES, sourceStatusTone, sourceTypeLabel } from "../utils";
+import { sourceTypeLabel } from "@/lib/formatters";
+import { SOURCE_TYPES, sourceStatusTone } from "../utils";
 import { SOURCES_PAGE_SIZE } from "../hooks/useSourcesQuery";
 
 const ALL_STATUS_VALUE = "__all_status__";
@@ -37,18 +37,17 @@ export function SourcesList({
   onSelectSource: (sourceId: number) => void;
   onAddClick: () => void;
 }) {
-  const { t } = useI18n();
   return (
     <Card>
       <CardHeader>
         <div className="flex items-center justify-between gap-3">
           <div className="flex items-center gap-2">
-            <CardTitle>{t("sources.list")}</CardTitle>
+            <CardTitle>来源列表</CardTitle>
             <Badge tone="default">{data?.total_count ?? 0}</Badge>
           </div>
           <Button type="button" variant="secondary" onClick={onAddClick}>
             <Plus className="mr-1.5 h-4 w-4" />
-            {t("sources.create")}
+            新增来源
           </Button>
         </div>
       </CardHeader>
@@ -66,7 +65,7 @@ export function SourcesList({
             </SelectTrigger>
             <SelectContent>
               <SelectGroup>
-                <SelectItem value={ALL_STATUS_VALUE}>{t("common.status.all")}</SelectItem>
+                <SelectItem value={ALL_STATUS_VALUE}>全部状态</SelectItem>
                 <SelectItem value="active">{statusLabel("active")}</SelectItem>
                 <SelectItem value="paused">{statusLabel("paused")}</SelectItem>
                 <SelectItem value="completed">{statusLabel("completed")}</SelectItem>
@@ -86,10 +85,10 @@ export function SourcesList({
             </SelectTrigger>
             <SelectContent>
               <SelectGroup>
-                <SelectItem value={ALL_TYPE_VALUE}>{t("sources.type.all")}</SelectItem>
+                <SelectItem value={ALL_TYPE_VALUE}>全部来源</SelectItem>
                 {SOURCE_TYPES.map((type) => (
                   <SelectItem key={type} value={type}>
-                    {t(`sources.type.${type}`)}
+                    {sourceTypeLabel(type)}
                   </SelectItem>
                 ))}
               </SelectGroup>
@@ -103,7 +102,7 @@ export function SourcesList({
             totalCount={data.total_count}
             pageSize={SOURCES_PAGE_SIZE}
             onOffsetChange={onOffsetChange}
-            label={t("common.pagination.range")}
+            label="第 {start}-{end} 项，共 {total} 项"
           />
         ) : null}
         <div className="space-y-2">
@@ -117,7 +116,7 @@ export function SourcesList({
             />
           ))}
         </div>
-        {data?.rows.length === 0 ? <p className="text-sm text-fg-secondary">{t("sources.empty")}</p> : null}
+        {data?.rows.length === 0 ? <p className="text-sm text-fg-secondary">还没有登记来源。</p> : null}
         {data && data.rows.length > 0 ? (
           <Pagination
             offset={offset}
@@ -125,7 +124,7 @@ export function SourcesList({
             totalCount={data.total_count}
             pageSize={SOURCES_PAGE_SIZE}
             onOffsetChange={onOffsetChange}
-            label={t("common.pagination.range")}
+            label="第 {start}-{end} 项，共 {total} 项"
           />
         ) : null}
       </CardContent>
@@ -144,7 +143,6 @@ function SourceListItem({
   statusLabel: (status?: string | null) => string;
   onSelectSource: (sourceId: number) => void;
 }) {
-  const { t } = useI18n();
   return (
     <button
       type="button"
@@ -160,15 +158,15 @@ function SourceListItem({
       <div className="min-w-0 flex-1">
         <div className="truncate text-sm font-semibold text-fg-primary">{source.label || source.source_url}</div>
         <div className="mt-0.5 text-xs text-fg-secondary">
-          {sourceTypeLabel(source.source_type, t)} · @{source.author_username || "-"}
+          {sourceTypeLabel(source.source_type)} · @{source.author_username || "-"}
         </div>
       </div>
       <div className="flex shrink-0 items-center gap-4 text-xs text-fg-secondary">
         <div className="hidden grid-cols-4 gap-3 sm:grid">
-          <ListMetric label={t("sources.discoveredTweets")} value={source.discovered_tweet_count ?? source.discovered_count ?? 0} />
-          <ListMetric label={t("sources.discoveredMedia")} value={source.discovered_media_count ?? 0} />
-          <ListMetric label={t("sources.unsubmitted")} value={source.unsubmitted_tweet_count ?? 0} warning={(source.unsubmitted_tweet_count ?? 0) > 0} />
-          <ListMetric label={t("sources.scanBatches")} value={source.scan_batch_count ?? 0} />
+          <ListMetric label="已发现 Tweet" value={source.discovered_tweet_count ?? source.discovered_count ?? 0} />
+          <ListMetric label="扫描发现媒体" value={source.discovered_media_count ?? 0} />
+          <ListMetric label="未入队发现" value={source.unsubmitted_tweet_count ?? 0} warning={(source.unsubmitted_tweet_count ?? 0) > 0} />
+          <ListMetric label="累计扫描批次" value={source.scan_batch_count ?? 0} />
         </div>
         <Badge tone={sourceStatusTone(source.status)}>{statusLabel(source.status)}</Badge>
       </div>

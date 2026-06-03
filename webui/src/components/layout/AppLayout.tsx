@@ -8,31 +8,30 @@ import { Badge } from "../ui/badge";
 import { Button } from "../ui/button";
 import { Separator } from "../ui/separator";
 import { apiGet, type HealthDetail } from "../../lib/api";
-import { useI18n } from "../../lib/i18n";
 import { useTheme, type Theme } from "../../lib/theme";
 import { cn } from "../../lib/utils";
 
 const navGroups = [
   {
-    labelKey: "nav.group.operations",
+    labelKey: "运营",
     items: [
-      { to: "/queue", labelKey: "nav.queue" },
-      { to: "/sources", labelKey: "nav.sources" },
+      { to: "/queue", label: "归档队列" },
+      { to: "/sources", label: "来源" },
     ],
   },
   {
-    labelKey: "nav.group.data",
+    labelKey: "数据",
     items: [
-      { to: "/library", labelKey: "nav.library" },
-      { to: "/failures", labelKey: "nav.failures" },
-      { to: "/duplicates", labelKey: "nav.duplicates" },
+      { to: "/library", label: "媒体库" },
+      { to: "/failures", label: "失败项" },
+      { to: "/duplicates", label: "重复媒体" },
     ],
   },
   {
-    labelKey: "nav.group.maintenance",
+    labelKey: "维护",
     items: [
-      { to: "/operations", labelKey: "nav.operations" },
-      { to: "/demo", labelKey: "nav.demo" },
+      { to: "/operations", label: "操作" },
+      { to: "/demo", label: "组件预览" },
     ],
   },
 ];
@@ -43,9 +42,13 @@ const themeIcons: Record<Theme, string> = {
   auto: "Auto",
 };
 const themeOrder: Theme[] = ["light", "dark", "auto"];
+const themeLabels: Record<Theme, string> = {
+  light: "浅色",
+  dark: "深色",
+  auto: "跟随系统",
+};
 
 export function AppLayout() {
-  const { t, locale, setLocale } = useI18n();
   const { theme, setTheme } = useTheme();
   const navigate = useNavigate();
   const [commandOpen, setCommandOpen] = useState(false);
@@ -65,58 +68,65 @@ export function AppLayout() {
     const next = themeOrder[(themeOrder.indexOf(theme) + 1) % themeOrder.length];
     setTheme(next);
   };
+
+  const eventLabel: Record<string, string> = {
+    connected: "实时事件已连接",
+    connecting: "正在连接实时事件",
+    offline: "实时事件离线，使用轮询刷新",
+  };
+
   const commands = useMemo<CommandPaletteItem[]>(
     () => [
       {
         id: "dashboard",
-        label: t("nav.dashboard"),
+        label: "仪表盘",
         description: "/",
         onSelect: () => navigate("/"),
       },
       {
         id: "library",
-        label: t("nav.library"),
+        label: "媒体库",
         description: "/library",
         onSelect: () => navigate("/library"),
       },
       {
         id: "queue",
-        label: t("nav.queue"),
+        label: "归档队列",
         description: "/queue",
         onSelect: () => navigate("/queue"),
       },
       {
         id: "sources",
-        label: t("nav.sources"),
+        label: "来源",
         description: "/sources",
         onSelect: () => navigate("/sources"),
       },
       {
         id: "failures",
-        label: t("nav.failures"),
+        label: "失败项",
         description: "/failures",
         onSelect: () => navigate("/failures"),
       },
       {
         id: "duplicates",
-        label: t("nav.duplicates"),
+        label: "重复媒体",
         description: "/duplicates",
         onSelect: () => navigate("/duplicates"),
       },
       {
         id: "operations",
-        label: t("nav.operations"),
+        label: "操作",
         description: "/operations",
         onSelect: () => navigate("/operations"),
       },
       {
         id: "demo",
-        label: t("nav.demo"),
+        label: "组件预览",
         description: "/demo",
         onSelect: () => navigate("/demo"),
       },
     ],
-    [navigate, t],
+    [navigate],
   );
 
   return (
@@ -125,7 +135,7 @@ export function AppLayout() {
       <aside className="flex w-60 flex-shrink-0 flex-col border-r border-border-subtle bg-bg-base">
         <div className="px-4 py-5">
           <h1 className="text-base font-bold tracking-tight text-fg-primary">x-media-archiver</h1>
-          <p className="mt-0.5 text-xs text-fg-secondary">{t("app.subtitle")}</p>
+          <p className="mt-0.5 text-xs text-fg-secondary">本地归档控制台</p>
         </div>
         <nav className="flex flex-1 flex-col gap-1 px-2 pb-4">
           <NavLink
@@ -138,12 +148,12 @@ export function AppLayout() {
               )
             }
           >
-            {t("nav.dashboard")}
+            仪表盘
           </NavLink>
           <Separator className="my-2" />
           {navGroups.map((group) => (
             <div key={group.labelKey} className="pt-2">
-              <p className="mb-1 px-2 text-xs font-semibold uppercase text-fg-tertiary">{t(group.labelKey)}</p>
+              <p className="mb-1 px-2 text-xs font-semibold uppercase text-fg-tertiary">{group.labelKey}</p>
               {group.items.map((item) => (
                 <NavLink
                   key={item.to}
@@ -155,7 +165,7 @@ export function AppLayout() {
                     )
                   }
                 >
-                  {t(item.labelKey)}
+                  {item.label}
                 </NavLink>
               ))}
             </div>
@@ -170,26 +180,22 @@ export function AppLayout() {
           <div className="flex min-w-0 items-center gap-2">
             <LiveIndicator
               state={events.status === "connected" ? "open" : events.status === "connecting" ? "connecting" : "closed"}
-              label={t(`events.${events.status}`)}
+              label={eventLabel[events.status] ?? "离线"}
             />
             <Badge
               tone={healthQuery.isError ? "danger" : writeLockHeld ? "warning" : "secondary"}
               className="hidden md:inline-flex"
             >
-              {healthQuery.isError
-                ? t("health.unavailable")
-                : writeLockHeld
-                  ? t("health.writeLocked")
-                  : t("health.idle")}
+              {healthQuery.isError ? "健康详情不可用" : writeLockHeld ? "写操作中" : "空闲"}
             </Badge>
             <Badge tone={queueWork ? "warning" : "secondary"} className="hidden md:inline-flex">
-              {t("health.queue", { count: queueWork })}
+              队列 {queueWork}
             </Badge>
             <Badge tone={activeScans ? "warning" : "secondary"} className="hidden md:inline-flex">
-              {t("health.scans", { count: activeScans })}
+              扫描 {activeScans}
             </Badge>
             <Badge tone={recentErrors ? "danger" : "secondary"} className="hidden md:inline-flex">
-              {t("health.errors", { count: recentErrors })}
+              错误 {recentErrors}
             </Badge>
           </div>
           <div className="flex items-center gap-1">
@@ -198,26 +204,17 @@ export function AppLayout() {
               size="sm"
               onClick={() => setCommandOpen(true)}
               className="hidden text-xs font-medium md:inline-flex"
-              title={t("command.open")}
+              title="打开命令面板"
             >
-              {t("command.search")}
+              搜索
               <span className="ml-2 text-fg-tertiary">⌘K</span>
-            </Button>
-            <Button
-              variant="ghost"
-              size="sm"
-              onClick={() => setLocale(locale === "zh" ? "en" : "zh")}
-              className="text-xs font-medium"
-              title={locale === "zh" ? "Switch to English" : "切换为中文"}
-            >
-              {locale === "zh" ? "EN" : "中文"}
             </Button>
             <Button
               variant="ghost"
               size="sm"
               onClick={cycleTheme}
               className="text-xs font-medium"
-              title={t(`theme.${theme}`)}
+              title={themeLabels[theme]}
             >
               {themeIcons[theme]}
             </Button>
@@ -231,8 +228,8 @@ export function AppLayout() {
         open={commandOpen}
         onOpenChange={setCommandOpen}
         commands={commands}
-        placeholder={t("command.placeholder")}
-        emptyLabel={t("command.empty")}
+        placeholder="搜索页面或命令..."
+        emptyLabel="没有匹配项"
       />
     </div>
   );

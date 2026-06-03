@@ -1,7 +1,6 @@
 import { Badge } from "../../components/ui/badge";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "../../components/ui/tabs";
 import { useSearchParams } from "react-router-dom";
-import { useI18n } from "../../lib/i18n";
 import { OperationResultPanel } from "./components/operation-result-panel";
 import { useMaintenanceOps } from "./hooks/useMaintenanceOps";
 import { useSystemHealth } from "./hooks/useSystemHealth";
@@ -12,7 +11,6 @@ import { MaintenanceTab } from "./components/maintenance-tab";
 import { SystemStatusTab } from "./components/system-status-tab";
 
 export function OperationsPage() {
-  const { t } = useI18n();
   const [searchParams, setSearchParams] = useSearchParams();
   const healthQuery = useSystemHealth();
   const ops = useMaintenanceOps();
@@ -30,23 +28,19 @@ export function OperationsPage() {
     <div className="space-y-6">
       <section className="flex flex-col justify-between gap-4 md:flex-row md:items-end">
         <div>
-          <h1 className="text-2xl font-bold tracking-tight text-fg-primary">{t("nav.operations")}</h1>
-          <p className="mt-1 text-sm text-fg-secondary">
-            {t("operations.systemStatus")} · {t("operations.maintenance")} · DB pool
-          </p>
+          <h1 className="text-2xl font-bold tracking-tight text-fg-primary">操作</h1>
+          <p className="mt-1 text-sm text-fg-secondary">系统状态 · 全量维护 · DB pool</p>
         </div>
-        <Badge tone={ops.isPending ? "warning" : "secondary"}>
-          {ops.isPending ? t("operations.running") : t("health.idle")}
-        </Badge>
+        <Badge tone={ops.isPending ? "warning" : "secondary"}>{ops.isPending ? "运行中..." : "空闲"}</Badge>
       </section>
 
       <Tabs value={activeTab} onValueChange={setActiveTab}>
         <TabsList>
-          <TabsTrigger value="maintenance">{t("operations.maintenanceTab")}</TabsTrigger>
-          <TabsTrigger value="cookies">{t("operations.cookiesTab")}</TabsTrigger>
-          <TabsTrigger value="system">{t("operations.systemStatus")}</TabsTrigger>
-          <TabsTrigger value="database">{t("operations.databaseTab")}</TabsTrigger>
-          <TabsTrigger value="logs">{t("operations.logsTab")}</TabsTrigger>
+          <TabsTrigger value="maintenance">维护操作</TabsTrigger>
+          <TabsTrigger value="cookies">Cookies</TabsTrigger>
+          <TabsTrigger value="system">系统状态</TabsTrigger>
+          <TabsTrigger value="database">数据库工具</TabsTrigger>
+          <TabsTrigger value="logs">日志</TabsTrigger>
         </TabsList>
 
         <TabsContent value="maintenance">
@@ -71,7 +65,11 @@ export function OperationsPage() {
         </TabsContent>
 
         <TabsContent value="system">
-          <SystemStatusTab health={healthQuery.data} isError={healthQuery.isError} onRetry={() => healthQuery.refetch()} />
+          <SystemStatusTab
+            health={healthQuery.data}
+            isError={healthQuery.isError}
+            onRetry={() => healthQuery.refetch()}
+          />
         </TabsContent>
 
         <TabsContent value="database">

@@ -2,11 +2,9 @@ import { useState } from "react";
 import { useMutation, useQueryClient } from "@tanstack/react-query";
 import { toast } from "sonner";
 import { apiPost, type ActionResponse } from "../../../lib/api";
-import { useI18n } from "../../../lib/i18n";
 import { errorMessage } from "../utils";
 
 export function useMaintenanceOps() {
-  const { t } = useI18n();
   const queryClient = useQueryClient();
   const [verifyLimit, setVerifyLimit] = useState("");
   const [confirmFullScan, setConfirmFullScan] = useState(false);
@@ -21,11 +19,11 @@ export function useMaintenanceOps() {
     mutationFn: ({ path, body }: { path: string; body: unknown; actionLabel: string }) => apiPost<ActionResponse>(path, body),
     onSuccess: async (result, variables) => {
       setLastResult(result);
-      toast.success(t("operations.actionCompleted", { action: variables.actionLabel }));
+      toast.success(`${variables.actionLabel} 已完成`);
       await queryClient.invalidateQueries();
     },
     onError: (error, variables) => {
-      toast.error(t("operations.actionFailed", { action: variables.actionLabel, error: errorMessage(error) }));
+      toast.error(`${variables.actionLabel} 执行失败：${errorMessage(error)}`);
     },
   });
 

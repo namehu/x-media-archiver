@@ -17,7 +17,7 @@ import { Select } from "@/components/ui/select";
 import { Sheet, SheetContent, SheetHeader, SheetTitle } from "@/components/ui/sheet";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { Tooltip, TooltipContent, TooltipTrigger } from "@/components/ui/tooltip";
-import { useI18n } from "@/lib/i18n";
+import { scanStatusLabel, scanTriggerLabel } from "@/lib/formatters";
 import { formatDateTime } from "@/lib/utils";
 import { useSourceDiscovered, useSourceScanRuns } from "../hooks/useSourceDetail";
 import { SourceScanHistoryTab } from "./source-scan-history-tab";
@@ -29,9 +29,7 @@ import {
   formatRunRange,
   formatScanState,
   parseRecordUrls,
-  scanStatusLabel,
   scanStatusTone,
-  scanTriggerLabel,
   sourceStatusTone,
 } from "../utils";
 
@@ -83,7 +81,6 @@ export function SourceDetailPanel({
   actions: DetailActions;
   onManualSubmitted: () => void;
 }) {
-  const { t } = useI18n();
   const scanLimit = useNumberInput("20");
   const [activeTab, setActiveTab] = React.useState("tweets");
   const [tweetsOffset, setTweetsOffset] = React.useState(0);
@@ -114,7 +111,7 @@ export function SourceDetailPanel({
         <Tabs value={activeTab} onValueChange={setActiveTab} className="flex h-full min-h-0 flex-col">
           <SheetHeader className="mb-0 shrink-0 gap-4 px-6 pb-0 pt-6 pr-12">
             <SheetTitle className="sr-only">
-              {source?.label || source?.author_username || t("sources.detail")}
+              {source?.label || source?.author_username || "来源详情"}
             </SheetTitle>
             {source ? (
               <SourceHeader
@@ -126,12 +123,12 @@ export function SourceDetailPanel({
                 statusLabel={statusLabel}
               />
             ) : (
-              <p className="py-4 text-sm text-fg-secondary">{t("sources.select")}</p>
+              <p className="py-4 text-sm text-fg-secondary">选择一个来源。</p>
             )}
             <TabsList className="flex-wrap">
-              <TabsTrigger value="tweets">{t("sources.recentDiscovered")}</TabsTrigger>
-              <TabsTrigger value="history">{t("sources.scanHistory")}</TabsTrigger>
-              <TabsTrigger value="config">{t("sources.advancedActions")}</TabsTrigger>
+              <TabsTrigger value="tweets">最近发现的 Tweet</TabsTrigger>
+              <TabsTrigger value="history">扫描历史（最近 20 批）</TabsTrigger>
+              <TabsTrigger value="config">高级扫描操作</TabsTrigger>
             </TabsList>
           </SheetHeader>
           <TabsContent
@@ -204,7 +201,6 @@ function SourceHeader({
   scanLimit: number;
   statusLabel: (status?: string | null) => string;
 }) {
-  const { t } = useI18n();
   const activeScanRun = source.active_scan_run;
   const historyEnabled = Boolean(source.cursor_state?.automation_enabled);
   const [showAllDetails, setShowAllDetails] = React.useState(false);
@@ -216,7 +212,7 @@ function SourceHeader({
           <Badge tone={sourceStatusTone(source.status)}>{statusLabel(source.status)}</Badge>
           <div className="min-w-0">
             <h2 className="text-xl font-semibold text-fg-primary">
-              {source.label || source.author_username || t("sources.detail")}
+              {source.label || source.author_username || "来源详情"}
             </h2>
           {source.source_url ? (
             <a
@@ -229,7 +225,7 @@ function SourceHeader({
               <ExternalLink className="h-3.5 w-3.5 shrink-0" />
             </a>
           ) : (
-            <p className="mt-0.5 text-sm text-fg-secondary">{t("common.none")}</p>
+            <p className="mt-0.5 text-sm text-fg-secondary">无</p>
           )}
           </div>
         </div>
@@ -238,7 +234,7 @@ function SourceHeader({
           className="shrink-0 rounded-md px-2 py-1 text-xs font-semibold text-brand hover:bg-bg-muted hover:text-brand-hover"
           onClick={() => setShowAllDetails((v) => !v)}
         >
-          {showAllDetails ? t("sources.collapseMore") : t("sources.expandMore")}
+          {showAllDetails ? "收起来源信息" : "展开更多来源信息"}
         </button>
       </div>
 
@@ -247,30 +243,30 @@ function SourceHeader({
       {showAllDetails ? (
         <div className="grid gap-2 rounded-lg bg-bg-muted p-3 text-sm">
           <>
-            <DetailRow label={t("sources.updated")} value={formatDateTime(source.updated_at)} />
-            <DetailRow label={t("sources.nextRange")} value={formatNextRange(source.cursor_state, scanLimit)} />
-            <DetailRow label={t("sources.scanState")} value={formatScanState(source.cursor_state, t)} />
-            <DetailRow label={t("sources.historyState")} value={formatHistoryState(source, t)} />
+            <DetailRow label="更新时间" value={formatDateTime(source.updated_at)} />
+            <DetailRow label="下一批范围" value={formatNextRange(source.cursor_state, scanLimit)} />
+            <DetailRow label="扫描状态" value={formatScanState(source.cursor_state)} />
+            <DetailRow label="历史扫描任务" value={formatHistoryState(source)} />
             {historyEnabled && source.next_scan_at ? (
-              <DetailRow label={t("sources.nextScheduled")} value={formatDateTime(source.next_scan_at)} />
+              <DetailRow label="下次自动扫描" value={formatDateTime(source.next_scan_at)} />
             ) : null}
-            <DetailRow label={t("sources.lastSeen")} value={source.last_seen_tweet_id || "-"} />
+            <DetailRow label="最近发现" value={source.last_seen_tweet_id || "-"} />
             {source.cursor_state?.last_range_start ? (
               <DetailRow
-                label={t("sources.lastRange")}
+                label="上次扫描范围"
                 value={`${source.cursor_state.last_range_start}-${source.cursor_state.last_range_end}`}
               />
             ) : null}
             <DetailRow
-              label={t("sources.detailRefreshed")}
+              label="详情刷新"
               value={formatDateTime(new Date(detailUpdatedAt || now).toISOString())}
             />
-            <DetailRow label={t("sources.scanAdded")} value={source.scan_summary?.added_tweet_count ?? 0} />
+            <DetailRow label="累计新增 Tweet" value={source.scan_summary?.added_tweet_count ?? 0} />
             <DetailRow
-              label={t("sources.lastScanSuccess")}
+              label="最近成功扫描"
               value={formatDateTime(source.scan_summary?.last_success_at)}
             />
-            <DetailRow label={t("sources.lastScanError")} value={formatDateTime(source.scan_summary?.last_error_at)} />
+            <DetailRow label="最近扫描错误" value={formatDateTime(source.scan_summary?.last_error_at)} />
             {policy ? <PolicySummary policy={policy} /> : null}
             <ScanPipelineNote source={source} policy={policy} />
           </>
@@ -281,7 +277,6 @@ function SourceHeader({
 }
 
 function PolicySummary({ policy }: { policy: DownloadPolicy }) {
-  const { t } = useI18n();
   const [open, setOpen] = React.useState(false);
   return (
     <div className="rounded-lg border border-border-subtle text-sm">
@@ -290,19 +285,19 @@ function PolicySummary({ policy }: { policy: DownloadPolicy }) {
         className="flex w-full items-center justify-between px-3 py-2 text-left text-sm font-semibold text-fg-primary hover:bg-bg-muted"
         onClick={() => setOpen((v) => !v)}
       >
-        <span>{t("sources.policyBatch").replace(/:.+/, "").trim() || "下载策略"}</span>
+        <span>下载每轮数量</span>
         <span className="text-xs text-fg-tertiary">{open ? "▲" : "▼"}</span>
       </button>
       {open ? (
         <div className="grid gap-2 border-t border-border-subtle p-3 sm:grid-cols-2 lg:grid-cols-4">
-          <Metric label={t("sources.policyBatch")} value={policy.queue_batch_size} />
+          <Metric label="下载每轮数量" value={policy.queue_batch_size} />
           <Metric
-            label={t("sources.policyDelay")}
+            label="下载随机延迟"
             value={`${policy.downloader_sleep_min_seconds}-${policy.downloader_sleep_max_seconds}s`}
           />
-          <Metric label={t("sources.policyEngine")} value={policy.default_download_engine} />
+          <Metric label="默认下载器" value={policy.default_download_engine} />
           <Metric
-            label={t("sources.policyScan")}
+            label="扫描每批 Tweet / 间隔"
             value={`${policy.source_scan_batch_size} / ${policy.source_scan_sleep_min_seconds}-${policy.source_scan_sleep_max_seconds}s`}
           />
         </div>
@@ -320,7 +315,6 @@ function ActiveScan({
   source: ArchiveSourceDetail;
   now: number;
 }) {
-  const { t } = useI18n();
   const cursorBefore = run.cursor_before ?? source.cursor_state ?? {};
   const scanUrl = String(cursorBefore.last_scan_url || source.source_url || "-");
   const hasCursor = Boolean(cursorBefore.extractor_cursor);
@@ -329,50 +323,49 @@ function ActiveScan({
   return (
     <div className="rounded-lg border border-brand/30 bg-brand-soft p-3 text-sm">
       <div className="flex flex-wrap items-center justify-between gap-2">
-        <div className="font-semibold text-fg-primary">{t("sources.activeScanTitle")}</div>
-        <Badge tone={scanStatusTone(run.status)}>{scanStatusLabel(run.status, t)}</Badge>
+        <div className="font-semibold text-fg-primary">当前批次正在扫描</div>
+        <Badge tone={scanStatusTone(run.status)}>{scanStatusLabel(run.status)}</Badge>
       </div>
       <div className="mt-2 grid gap-2 text-xs text-fg-secondary sm:grid-cols-2">
-        <span>{t("sources.scanEngine")}: gallery-dl</span>
+        <span>扫描引擎: gallery-dl</span>
         <span>
-          {t("sources.scanPhase")}: {run.progress_message || t("sources.scanPhaseCollecting")}
+          当前阶段: {run.progress_message || "等待 gallery-dl 枚举并返回"}
         </span>
         <span>
-          {t("sources.scanRange")}: {formatRunRange(run.range_start, run.range_end)}
+          范围: {formatRunRange(run.range_start, run.range_end)}
         </span>
         <span>
-          {t("sources.scanRequested")}: {run.requested_limit ?? "-"}
+          请求 Tweet 数: {run.requested_limit ?? "-"}
         </span>
         <span>
-          {t("sources.activeScanElapsed")}: {formatElapsed(run.started_at, now)}
+          已运行: {formatElapsed(run.started_at, now)}
         </span>
         <span>
-          {t("sources.activeScanStarted")}: {formatDateTime(run.started_at)}
+          开始时间: {formatDateTime(run.started_at)}
         </span>
         <span>
-          {t("sources.activeScanMode")}: {scanTriggerLabel(run.trigger_type, t)}
+          触发方式: {scanTriggerLabel(run.trigger_type)}
         </span>
         <span>
-          {t("sources.scanCursor")}: {hasCursor ? t("sources.scanCursorResume") : t("sources.scanCursorFirstPage")}
+          Cursor: {hasCursor ? "续扫上一页" : "从第一页开始"}
         </span>
       </div>
       <div className="mt-2 break-all rounded-md bg-bg-elevated/70 px-2 py-1 text-xs text-fg-secondary">
-        {t("sources.scanTarget")}: {scanUrl}
+        实际扫描 URL: {scanUrl}
       </div>
       {run.last_log_at ? (
         <p className="mt-2 text-xs text-fg-secondary">
-          {t("sources.lastLogAt")}: {formatDateTime(run.last_log_at)}
+          最近日志: {formatDateTime(run.last_log_at)}
         </p>
       ) : null}
       <ScanLogBox run={run} />
-      <p className="mt-2 text-xs text-fg-secondary">{t("sources.activeScanHint")}</p>
-      {sourcePaused ? <p className="mt-1 text-xs text-warning">{t("sources.activeScanPauseHint")}</p> : null}
+      <p className="mt-2 text-xs text-fg-secondary">扫描批次会等 gallery-dl 完整返回后一次性解析和落库；运行期间发现数保持 0 是正常现象。</p>
+      {sourcePaused ? <p className="mt-1 text-xs text-warning">已收到暂停状态；当前 gallery-dl 批次会先结束，系统不会再调度下一批。</p> : null}
     </div>
   );
 }
 
 function ScanLogBox({ run }: { run: SourceScanRun }) {
-  const { t } = useI18n();
   const [level, setLevel] = React.useState("");
   const levelQuery = level ? `&level=${encodeURIComponent(level)}` : "";
   const streamId = run.log_stream_id;
@@ -386,22 +379,22 @@ function ScanLogBox({ run }: { run: SourceScanRun }) {
   const log = entries.map(formatLogEntry).join("\n");
   const available = query.data?.available ?? true;
   const status = query.isLoading
-    ? t("sources.scanLogLoading")
+    ? "加载日志"
     : !streamId
-      ? t("sources.scanLogWaiting")
+      ? "等待 gallery-dl 输出日志..."
       : !available
-        ? t("sources.scanLogMissing")
+        ? "日志文件不可用"
         : entries.length
-          ? t("sources.scanLogLive")
-          : t("sources.scanLogEmpty");
+          ? "实时刷新"
+          : "等待输出";
 
   return (
     <div className="mt-3 overflow-hidden rounded-md border border-border-subtle bg-bg-elevated">
       <div className="flex flex-wrap items-center justify-between gap-2 border-b border-border-subtle px-3 py-2 text-xs">
-        <span className="font-semibold text-fg-primary">{t("sources.scanLog")}</span>
+        <span className="font-semibold text-fg-primary">gallery-dl 实时日志</span>
         <div className="flex items-center gap-2">
           <Select className="h-7 w-28 text-xs" value={level} onChange={(event) => setLevel(event.target.value)}>
-            <option value="">{t("logs.levelAll")}</option>
+            <option value="">全部级别</option>
             <option value="debug">debug</option>
             <option value="info">info</option>
             <option value="warning">warning</option>
@@ -419,7 +412,7 @@ function ScanLogBox({ run }: { run: SourceScanRun }) {
               to={`/operations?tab=logs&streamId=${streamId}`}
               className="font-semibold text-brand hover:text-brand-hover"
             >
-              {t("sources.openLogStream")}
+              在日志管理中打开
             </Link>
           ) : null}
         </div>
@@ -430,12 +423,12 @@ function ScanLogBox({ run }: { run: SourceScanRun }) {
           : log ||
             (streamId
               ? available
-                ? t("sources.scanLogEmpty")
-                : t("sources.scanLogUnavailable")
-              : t("sources.scanLogWaiting"))}
+                ? "等待输出"
+                : "日志文件不存在或已被清理，不影响扫描批次记录。"
+              : "等待 gallery-dl 输出日志...")}
       </pre>
       {query.data?.is_truncated ? (
-        <div className="border-t border-warning/20 px-3 py-2 text-xs text-warning">{t("logs.truncated")}</div>
+        <div className="border-t border-warning/20 px-3 py-2 text-xs text-warning">日志已达到大小上限，后续详细输出已截断。</div>
       ) : null}
     </div>
   );
@@ -449,13 +442,12 @@ function formatLogEntry(entry: OperationLogEntriesResponse["entries"][number]) {
 }
 
 function ScanPipelineNote({ source, policy }: { source: ArchiveSourceDetail; policy?: DownloadPolicy }) {
-  const { t } = useI18n();
   const [open, setOpen] = React.useState(false);
   const historyEnabled = Boolean(source.cursor_state?.automation_enabled);
   if (!historyEnabled && !source.active_scan_run) return null;
   const scanDelay = policy
     ? `${policy.source_scan_sleep_min_seconds}-${policy.source_scan_sleep_max_seconds}s`
-    : t("common.none");
+    : "无";
 
   return (
     <div className="rounded-lg border border-border-subtle text-xs">
@@ -464,18 +456,18 @@ function ScanPipelineNote({ source, policy }: { source: ArchiveSourceDetail; pol
         className="flex w-full items-center justify-between px-3 py-2 text-left font-semibold text-fg-primary hover:bg-bg-muted"
         onClick={() => setOpen((v) => !v)}
       >
-        <span>{t("sources.scanPipelineTitle")}</span>
+        <span>批次底层流程</span>
         <span className="text-fg-tertiary">{open ? "▲" : "▼"}</span>
       </button>
       {open ? (
         <div className="border-t border-border-subtle p-3 text-fg-secondary">
           <div className="grid gap-2 sm:grid-cols-2">
-            <span>{t("sources.scanPipelineStep1")}</span>
-            <span>{t("sources.scanPipelineStep2")}</span>
-            <span>{t("sources.scanPipelineStep3")}</span>
-            <span>{t("sources.scanPipelineStep4", { delay: scanDelay })}</span>
+            <span>1. 读取来源 cursor 与下一批范围。</span>
+            <span>2. 下载队列忙时先记录等待，不发起扫描。</span>
+            <span>3. 下载队列空闲时调用 gallery-dl 枚举当前批次。</span>
+            <span>{`4. 子进程完整返回后解析、去重、落库，再等待 ${scanDelay} 后调度下一批。`}</span>
           </div>
-          <p className="mt-2">{t("sources.pauseSemantics")}</p>
+          <p className="mt-2">暂停扫描只暂停后续自动调度，不强制终止已经启动的 gallery-dl 子进程；该批结束后会保留 cursor 与发现记录。</p>
         </div>
       ) : null}
     </div>
@@ -491,19 +483,18 @@ function PrimaryActions({
   actions: DetailActions;
   scanLimit: NumberInputState;
 }) {
-  const { t } = useI18n();
   const historyEnabled = Boolean(source.cursor_state?.automation_enabled);
   const canStart = !actions.pending.history && !(historyEnabled && source.status === "active");
 
   return (
-    <ActionBlock title={t("sources.primaryActions")} hint={t("sources.historyHint")}>
+    <ActionBlock title="来源扫描" hint="后台使用下载器原生 cursor 续扫，只发现并记录 Tweet，不会自动提交下载；每批可能需要数分钟，下载队列有任务时扫描会等待。">
       <Input className="w-28" type="number" min={1} max={200} value={scanLimit.value} onChange={scanLimit.onChange} />
       <Button
         type="button"
         disabled={!canStart}
         onClick={() => actions.startHistory({ sourceId: source.id, limit: scanLimit.clamped(200) })}
       >
-        {historyEnabled ? t("sources.historyContinue") : t("sources.historyStart")}
+        {historyEnabled ? "继续历史扫描" : "开始历史扫描"}
       </Button>
       <Button
         type="button"
@@ -511,7 +502,7 @@ function PrimaryActions({
         disabled={actions.pending.status || source.status === "paused" || !historyEnabled}
         onClick={() => actions.setStatus({ sourceId: source.id, status: "paused" })}
       >
-        {t("sources.pauseHistory")}
+        暂停扫描
       </Button>
       {source.status === "paused" ? (
         <Button
@@ -520,7 +511,7 @@ function PrimaryActions({
           disabled={actions.pending.status}
           onClick={() => actions.setStatus({ sourceId: source.id, status: "active" })}
         >
-          {t("sources.resume")}
+          恢复
         </Button>
       ) : null}
       {actions.errors.history || actions.errors.status ? (
@@ -539,12 +530,11 @@ function DownloadActions({
   actions: DetailActions;
   feedback: ArchiveSubmission | null;
 }) {
-  const { t } = useI18n();
   const submitLimit = useNumberInput("20");
   const canSubmit = (source.unsubmitted_tweet_count || 0) > 0 && !actions.pending.submitDiscovered;
 
   return (
-    <ActionBlock title={t("sources.downloadActions")} hint={t("sources.downloadHint")}>
+    <ActionBlock title="提交下载" hint="仅将已经发现的 Tweet 提交给下载队列，不会继续扫描来源。">
       <Input
         className="w-28"
         type="number"
@@ -559,7 +549,7 @@ function DownloadActions({
         disabled={!canSubmit}
         onClick={() => actions.submitDiscovered({ sourceId: source.id, limit: submitLimit.clamped(500) })}
       >
-        {t("sources.submitUnqueued")}
+        提交未入队发现项
       </Button>
       {actions.errors.submitDiscovered ? <ErrorLine error={actions.errors.submitDiscovered} /> : null}
       {feedback ? <FeedbackLine feedback={feedback} /> : null}
@@ -578,12 +568,11 @@ function AdvancedActions({
   scanFeedback: Record<string, unknown> | null;
   scanLimit: NumberInputState;
 }) {
-  const { t } = useI18n();
   const historyEnabled = Boolean(source.cursor_state?.automation_enabled);
   const canScan = source.status !== "paused" && !actions.pending.scan;
 
   return (
-    <ActionBlock title={t("sources.advancedActions")} hint={t("sources.advancedHint")}>
+    <ActionBlock title="高级扫描操作" hint="单批扫描用于测试或排障；从最新补扫用于后续检查新发布内容；停止会关闭自动任务但保留游标和已发现记录。">
       <Input className="w-28" type="number" min={1} max={200} value={scanLimit.value} onChange={scanLimit.onChange} />
       <Button
         type="button"
@@ -591,7 +580,7 @@ function AdvancedActions({
         disabled={!canScan}
         onClick={() => actions.scan({ sourceId: source.id, limit: scanLimit.clamped(200) })}
       >
-        {t("sources.scanNext")}
+        扫描下一批
       </Button>
       <Button
         type="button"
@@ -599,7 +588,7 @@ function AdvancedActions({
         disabled={!canScan}
         onClick={() => actions.scan({ sourceId: source.id, limit: scanLimit.clamped(200), restart: true })}
       >
-        {t("sources.scanLatest")}
+        从最新补扫
       </Button>
       <Button
         type="button"
@@ -607,17 +596,12 @@ function AdvancedActions({
         disabled={!historyEnabled || actions.pending.history}
         onClick={() => actions.stopHistory(source.id)}
       >
-        {t("sources.historyStop")}
+        停止历史扫描
       </Button>
       {actions.errors.scan ? <ErrorLine error={actions.errors.scan} /> : null}
       {scanFeedback ? (
         <p className="basis-full rounded-lg bg-bg-muted p-3 text-sm text-fg-primary">
-          {t("sources.scanFeedback", {
-            discovered: Number(scanFeedback.discovered_count || 0),
-            fresh: Number(scanFeedback.new_discovered_count || 0),
-            duplicate: Number(scanFeedback.duplicate_count || 0),
-            state: scanFeedback.completed ? t("sources.scanCompleted") : "",
-          })}
+          本次扫描记录 {Number(scanFeedback.discovered_count || 0)} 条 Tweet，其中 {Number(scanFeedback.new_discovered_count || 0)} 条为新发现、{Number(scanFeedback.duplicate_count || 0)} 条已存在，尚未提交下载。{scanFeedback.completed ? "可能已到结尾" : ""}
         </p>
       ) : null}
     </ActionBlock>
@@ -635,7 +619,6 @@ function ManualImport({
   feedback: ArchiveSubmission | null;
   onSubmitted: () => void;
 }) {
-  const { t } = useI18n();
   const recordUrls = useTextInput("");
   const records = parseRecordUrls(recordUrls.value);
   const canSubmit = records.length > 0 && !actions.pending.submit;
@@ -645,7 +628,7 @@ function ManualImport({
   }, [feedback?.run_id]);
 
   return (
-    <ActionBlock title={t("sources.manualImport")}>
+    <ActionBlock title="手动粘贴 Tweet URL">
       <textarea
         className="min-h-24 w-full resize-y rounded-md border border-border-strong bg-bg-elevated px-3 py-2 text-sm text-fg-primary outline-none transition duration-fast placeholder:text-fg-tertiary focus-visible:ring-2 focus-visible:ring-brand/50"
         placeholder="https://x.com/user/status/123"
@@ -660,7 +643,7 @@ function ManualImport({
           onSubmitted();
         }}
       >
-        {t("sources.submitDiscovered")}
+        提交发现结果
       </Button>
       {actions.errors.submit ? <ErrorLine error={actions.errors.submit} /> : null}
       {feedback ? <FeedbackLine feedback={feedback} /> : null}
@@ -698,11 +681,11 @@ function Metric({ label, value }: { label: string; value: React.ReactNode }) {
   );
 }
 
-function DetailRow({ label, value, breakAll }: { label: string; value: React.ReactNode; breakAll?: boolean }) {
+function DetailRow({ label, value }: { label: string; value: React.ReactNode }) {
   return (
     <div className="flex justify-between gap-3">
       <span className="text-fg-secondary">{label}</span>
-      <span className={breakAll ? "break-all text-right" : "text-right"}>{value}</span>
+      <span className="text-right">{value}</span>
     </div>
   );
 }
@@ -712,15 +695,9 @@ function ErrorLine({ error }: { error: unknown }) {
 }
 
 function FeedbackLine({ feedback }: { feedback: ArchiveSubmission }) {
-  const { t } = useI18n();
   return (
     <p className="basis-full rounded-lg bg-bg-muted p-3 text-sm text-fg-primary">
-      {t("sources.submitFeedback", {
-        runId: feedback.run_id,
-        queued: feedback.tasks.queued_count,
-        skipped: feedback.tasks.skipped_verified_count,
-        linked: feedback.tasks.linked_pending_count,
-      })}
+      Run #{feedback.run_id} · {feedback.tasks.queued_count} 个已入队 · {feedback.tasks.skipped_verified_count} 个已归档 · {feedback.tasks.linked_pending_count} 个已有任务
     </p>
   );
 }

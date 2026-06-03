@@ -4,7 +4,7 @@ import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { Link } from "react-router-dom";
 import type { ColumnDef } from "@tanstack/react-table";
 import { apiGet, apiPost, type ActionResponse, type FailureRow, type PageResponse } from "../../lib/api";
-import { useFormatters, useI18n } from "../../lib/i18n";
+import { errorLabel, statusLabel } from "../../lib/formatters";
 import { formatDateTime } from "../../lib/utils";
 import { Badge, type BadgeProps } from "../../components/ui/badge";
 import { Button } from "../../components/ui/button";
@@ -27,8 +27,6 @@ const PAGE_SIZE = 100;
 const REQUEUE_STATUSES = ["failed_retryable", "missing", "corrupt", "failed_permanent"];
 
 export function FailuresPage() {
-  const { t } = useI18n();
-  const { statusLabel, errorLabel } = useFormatters();
   const queryClient = useQueryClient();
   const [offset, setOffset] = useState(0);
   const [selectedIds, setSelectedIds] = useState<Set<string>>(() => new Set());
@@ -65,7 +63,7 @@ export function FailuresPage() {
         header: () => (
           <Checkbox
             checked={allPageSelected}
-            aria-label={t("common.status.all")}
+            aria-label="全部状态"
             onCheckedChange={(checked) => {
               setSelectedIds((current) => {
                 const next = new Set(current);
@@ -97,7 +95,7 @@ export function FailuresPage() {
         cell: ({ row }) => <FailureTweetCell row={row.original} />,
       },
       {
-        header: t("operations.status"),
+        header: "状态",
         cell: ({ row }) => (
           <Badge tone={failureTone(row.original.latest_error_category || row.original.tweet_status)}>
             {errorLabel(row.original.latest_error_category) !== "-"
@@ -107,15 +105,15 @@ export function FailuresPage() {
         ),
       },
       {
-        header: t("failures.engine"),
+        header: "引擎",
         cell: ({ row }) => <span className="text-fg-secondary">{row.original.latest_engine || "-"}</span>,
       },
       {
-        header: t("failures.retries"),
+        header: "重试次数",
         cell: ({ row }) => <span className="tabular-nums">{row.original.retry_count ?? 0}</span>,
       },
       {
-        header: t("failures.finished"),
+        header: "完成时间",
         cell: ({ row }) => <span className="whitespace-nowrap text-fg-secondary">{formatDateTime(row.original.latest_finished_at)}</span>,
       },
       {
@@ -124,18 +122,18 @@ export function FailuresPage() {
         cell: ({ row }) => <FailureActions row={row.original} />,
       },
     ],
-    [allPageSelected, errorLabel, pageIds, selectedIds, statusLabel, t],
+    [allPageSelected, errorLabel, pageIds, selectedIds],
   );
 
   if (isLoading) return <FailuresSkeleton />;
-  if (error) return <ErrorState title={t("common.apiUnavailable")} detail={String(error)} onRetry={() => void refetch()} />;
+  if (error) return <ErrorState title="API 不可用" detail={String(error)} onRetry={() => void refetch()} />;
 
   return (
     <div className="space-y-5">
       <section className="flex flex-col justify-between gap-4 md:flex-row md:items-end">
         <div>
-          <h1 className="text-2xl font-bold tracking-tight text-fg-primary">{t("failures.title")}</h1>
-          <p className="mt-1 text-sm text-fg-secondary">{t("dashboard.failureDetail")}</p>
+          <h1 className="text-2xl font-bold tracking-tight text-fg-primary">失败队列</h1>
+          <p className="mt-1 text-sm text-fg-secondary">需要排查或重试</p>
         </div>
         <Button
           type="button"
@@ -144,42 +142,38 @@ export function FailuresPage() {
           onClick={() => requeueMutation.mutate(selectedCount || PAGE_SIZE)}
         >
           <RefreshCw className="h-4 w-4" />
-          {t("operations.requeue")}
+          重新入队
           {selectedCount ? <span className="tabular-nums">{selectedCount}</span> : null}
         </Button>
       </section>
 
       <section className="grid gap-4 md:grid-cols-2 xl:grid-cols-4">
         <StatCard
-          label={t("dashboard.failureQueue")}
+          label="失败队列"
           value={model.total.toLocaleString()}
-          detail={t("common.pagination.range", {
-            start: data?.total_count ? offset + 1 : 0,
-            end: Math.min(offset + (data?.count ?? 0), data?.total_count ?? 0),
-            total: data?.total_count ?? 0,
-          })}
+          detail={`第 ${data?.total_count ? offset + 1 : 0}-${Math.min(offset + (data?.count ?? 0), data?.total_count ?? 0)} 项，共 ${data?.total_count ?? 0} 项`}
           icon={<AlertTriangle className="h-4 w-4" />}
           tone={model.total ? "danger" : "success"}
           sparklineData={model.sparkline}
         />
         <StatCard
-          label={t("common.status.failed_retryable")}
+          label="可重试失败"
           value={model.retryable.toLocaleString()}
-          detail={t("queue.retryFailed")}
+          detail="重试永久失败项"
           icon={<RefreshCw className="h-4 w-4" />}
           tone={model.retryable ? "warning" : "success"}
         />
         <StatCard
           label={model.topCategory.label}
           value={model.topCategory.count.toLocaleString()}
-          detail={t("operations.recentErrors")}
+          detail="最近错误"
           icon={<Bug className="h-4 w-4" />}
           tone={model.topCategory.count ? "danger" : "brand"}
         />
         <StatCard
-          label={t("failures.retries")}
+          label="重试次数"
           value={model.retryTotal.toLocaleString()}
-          detail={t("queue.lastAttempt")}
+          detail="最近尝试"
           icon={<ChevronDown className="h-4 w-4" />}
           tone={model.retryTotal ? "warning" : "brand"}
         />
@@ -190,8 +184,8 @@ export function FailuresPage() {
           <CardHeader>
             <div className="flex flex-col justify-between gap-3 lg:flex-row lg:items-center">
               <div>
-                <CardTitle>{t("operations.recentErrors")}</CardTitle>
-                <CardDescription>{t("dashboard.feedFailuresDetail")}</CardDescription>
+                <CardTitle>最近错误</CardTitle>
+                <CardDescription>打开 Failures 页面查看可重试项。</CardDescription>
               </div>
               {data ? (
                 <Pagination
@@ -203,7 +197,7 @@ export function FailuresPage() {
                     setSelectedIds(new Set());
                     setOffset(next);
                   }}
-                  label={t("common.pagination.range")}
+                  label="第 {start}-{end} 项，共 {total} 项"
                 />
               ) : null}
             </div>
@@ -215,15 +209,15 @@ export function FailuresPage() {
             {rows.length ? (
               <DataTable columns={columns} data={rows} />
             ) : (
-              <EmptyState icon={<AlertTriangle className="h-5 w-5" />} title={t("failures.empty")} description={t("dashboard.failureEmpty")} />
+              <EmptyState icon={<AlertTriangle className="h-5 w-5" />} title="没有失败项。" description="暂无失败项" />
             )}
           </CardContent>
         </Card>
 
         <Card>
           <CardHeader>
-            <CardTitle>{t("operations.debugDetails")}</CardTitle>
-            <CardDescription>{t("operations.recentErrors")}</CardDescription>
+            <CardTitle>调试详情</CardTitle>
+            <CardDescription>最近错误</CardDescription>
           </CardHeader>
           <CardContent className="space-y-3">
             {model.clusters.length ? (
@@ -239,7 +233,7 @@ export function FailuresPage() {
                 </div>
               ))
             ) : (
-              <p className="rounded-lg border border-border-subtle bg-bg-surface p-4 text-sm text-fg-secondary">{t("operations.noRecentErrors")}</p>
+              <p className="rounded-lg border border-border-subtle bg-bg-surface p-4 text-sm text-fg-secondary">最近没有错误。</p>
             )}
           </CardContent>
         </Card>
@@ -265,12 +259,11 @@ function FailureTweetCell({ row }: { row: FailureRow }) {
 }
 
 function FailureActions({ row }: { row: FailureRow }) {
-  const { t } = useI18n();
   return (
     <DropdownMenu>
       <DropdownMenuTrigger asChild>
         <Button type="button" variant="ghost" size="sm" onClick={(event) => event.stopPropagation()}>
-          {t("operations.result")}
+          结果
           <ChevronDown className="h-4 w-4" />
         </Button>
       </DropdownMenuTrigger>
@@ -278,7 +271,7 @@ function FailureActions({ row }: { row: FailureRow }) {
         <DropdownMenuItem asChild>
           <Link to={`/tweets/${row.tweet_id}`}>
             <ExternalLink className="mr-2 h-4 w-4" />
-            {t("duplicates.tweetDetail")}
+            Tweet 详情
           </Link>
         </DropdownMenuItem>
       </DropdownMenuContent>
@@ -287,12 +280,11 @@ function FailureActions({ row }: { row: FailureRow }) {
 }
 
 function FailuresSkeleton() {
-  const { t } = useI18n();
   return (
     <div className="space-y-5">
       <section>
-        <h1 className="text-2xl font-bold tracking-tight text-fg-primary">{t("failures.title")}</h1>
-        <p className="mt-1 text-sm text-fg-secondary">{t("failures.loading")}</p>
+        <h1 className="text-2xl font-bold tracking-tight text-fg-primary">失败队列</h1>
+        <p className="mt-1 text-sm text-fg-secondary">正在加载失败项</p>
       </section>
       <div className="grid gap-4 md:grid-cols-2 xl:grid-cols-4">
         {Array.from({ length: 4 }).map((_, index) => (

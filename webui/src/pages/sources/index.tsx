@@ -2,7 +2,7 @@ import { useEffect, useState } from "react";
 import { useQueryClient } from "@tanstack/react-query";
 import { useSearchParams } from "react-router-dom";
 import type { ArchiveSubmission } from "@/lib/api";
-import { useFormatters } from "@/lib/i18n";
+import { statusLabel } from "@/lib/formatters";
 import { CreateSource } from "./components/create-source";
 import { SourceDetailPanel } from "./components/source-detail-panel";
 import { SourcesList } from "./components/sources-list";
@@ -11,7 +11,6 @@ import { useSourceActions } from "./hooks/useSourceScan";
 import { useCreateSource, useSourcesQuery } from "./hooks/useSourcesQuery";
 
 export function SourcesPage() {
-  const { statusLabel } = useFormatters();
   const queryClient = useQueryClient();
   const [searchParams, setSearchParams] = useSearchParams();
   const [selectedSourceId, setSelectedSourceId] = useState<number | null>(null);

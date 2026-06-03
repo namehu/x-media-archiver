@@ -6,7 +6,6 @@ import { Input } from "../../../components/ui/input";
 import { Select } from "../../../components/ui/select";
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "../../../components/ui/table";
 import { apiGet, type OperationLogEntriesResponse, type OperationLogStreamsPageResponse, type OperationLogStream } from "../../../lib/api";
-import { useI18n } from "../../../lib/i18n";
 import { formatDateTime } from "../../../lib/utils";
 
 type LogsTabProps = {
@@ -16,7 +15,6 @@ type LogsTabProps = {
 const PAGE_SIZE = 50;
 
 export function LogsTab({ initialStreamId }: LogsTabProps) {
-  const { t } = useI18n();
   const [level, setLevel] = React.useState("");
   const [sourceId, setSourceId] = React.useState("");
   const [scanRunId, setScanRunId] = React.useState(initialStreamId ? "" : "");
@@ -39,33 +37,33 @@ export function LogsTab({ initialStreamId }: LogsTabProps) {
       <Card>
         <CardHeader>
           <div className="flex flex-wrap items-center justify-between gap-3">
-            <CardTitle>{t("logs.title")}</CardTitle>
+            <CardTitle>日志查询</CardTitle>
             <Badge tone="secondary">{streamsQuery.data?.total_count ?? 0}</Badge>
           </div>
         </CardHeader>
         <CardContent className="space-y-4">
           <div className="grid gap-2 md:grid-cols-4">
             <Select value={level} onChange={(event) => setLevel(event.target.value)}>
-              <option value="">{t("logs.levelAll")}</option>
+              <option value="">全部级别</option>
               <option value="debug">debug</option>
               <option value="info">info</option>
               <option value="warning">warning</option>
               <option value="error">error</option>
               <option value="critical">critical</option>
             </Select>
-            <Input value={sourceId} onChange={(event) => setSourceId(event.target.value)} placeholder={t("logs.sourceId")} />
-            <Input value={scanRunId} onChange={(event) => setScanRunId(event.target.value)} placeholder={t("logs.scanRunId")} />
-            <Input value={keyword} onChange={(event) => setKeyword(event.target.value)} placeholder={t("logs.keyword")} />
+            <Input value={sourceId} onChange={(event) => setSourceId(event.target.value)} placeholder="来源 ID" />
+            <Input value={scanRunId} onChange={(event) => setScanRunId(event.target.value)} placeholder="扫描批次 ID" />
+            <Input value={keyword} onChange={(event) => setKeyword(event.target.value)} placeholder="关键字" />
           </div>
           <div className="overflow-hidden rounded-md border border-border-subtle">
             <Table>
               <TableHeader>
                 <TableRow>
-                  <TableHead>{t("logs.scope")}</TableHead>
-                  <TableHead>{t("logs.lastLevel")}</TableHead>
-                  <TableHead>{t("logs.lastMessage")}</TableHead>
-                  <TableHead>{t("logs.lines")}</TableHead>
-                  <TableHead>{t("logs.updated")}</TableHead>
+                  <TableHead>关联对象</TableHead>
+                  <TableHead>最近级别</TableHead>
+                  <TableHead>最近消息</TableHead>
+                  <TableHead>行数</TableHead>
+                  <TableHead>更新时间</TableHead>
                 </TableRow>
               </TableHeader>
               <TableBody>
@@ -101,7 +99,6 @@ export function LogsTab({ initialStreamId }: LogsTabProps) {
 }
 
 function LogStreamDetail({ streamId, stream }: { streamId: number | null; stream: OperationLogStream | null }) {
-  const { t } = useI18n();
   const [level, setLevel] = React.useState("");
   const query = useQuery({
     queryKey: ["operation-log", streamId, level],
@@ -117,9 +114,9 @@ function LogStreamDetail({ streamId, stream }: { streamId: number | null; stream
     <Card>
       <CardHeader>
         <div className="flex flex-wrap items-center justify-between gap-3">
-          <CardTitle>{t("logs.detail")}</CardTitle>
+          <CardTitle>日志详情</CardTitle>
           <Select className="w-32" value={level} onChange={(event) => setLevel(event.target.value)}>
-            <option value="">{t("logs.levelAll")}</option>
+            <option value="">全部级别</option>
             <option value="debug">debug</option>
             <option value="info">info</option>
             <option value="warning">warning</option>
@@ -133,22 +130,22 @@ function LogStreamDetail({ streamId, stream }: { streamId: number | null; stream
           <div className="grid gap-2 rounded-md bg-bg-muted p-3 text-xs text-fg-secondary">
             <span>{stream.log_path}</span>
             <span>
-              {t("logs.size")}: {formatBytes(stream.byte_size)} · {t("logs.lines")}: {stream.line_count}
+              大小: {formatBytes(stream.byte_size)} · 行数: {stream.line_count}
             </span>
-            {stream.is_truncated ? <span className="text-warning">{t("logs.truncated")}</span> : null}
+            {stream.is_truncated ? <span className="text-warning">日志已达到大小上限，后续详细输出已截断。</span> : null}
           </div>
         ) : (
-          <p className="text-sm text-fg-secondary">{t("logs.selectStream")}</p>
+          <p className="text-sm text-fg-secondary">选择一个日志流查看详情。</p>
         )}
-        {query.data?.available === false ? <p className="text-sm text-warning">{t("logs.unavailable")}</p> : null}
+        {query.data?.available === false ? <p className="text-sm text-warning">日志文件不存在或已被清理，索引记录仍可用于审计。</p> : null}
         <pre className="max-h-[34rem] overflow-auto whitespace-pre-wrap break-words rounded-md border border-border-subtle bg-bg-elevated p-3 font-mono text-xs leading-relaxed text-fg-secondary">
           {query.error
             ? String(query.error)
             : entries.length
               ? entries.map(formatLogEntry).join("\n")
               : streamId
-                ? t("logs.empty")
-                : t("logs.selectStream")}
+                ? "没有匹配的日志行。"
+                : "选择一个日志流查看详情。"}
         </pre>
       </CardContent>
     </Card>

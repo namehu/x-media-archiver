@@ -3,7 +3,7 @@ import { Button } from "../../../components/ui/button";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "../../../components/ui/card";
 import { Checkbox } from "../../../components/ui/checkbox";
 import { Input } from "../../../components/ui/input";
-import { useI18n } from "../../../lib/i18n";
+import { statusLabel } from "../../../lib/formatters";
 import { REQUEUE_STATUSES, type BooleanSetter, type OperationRun, type RequeueStatusesSetter, type StringSetter } from "../types";
 import { numberOrNull } from "../utils";
 
@@ -36,14 +36,12 @@ export function MaintenanceTab({
   setRecoverTimeout,
   run,
 }: MaintenanceTabProps) {
-  const { t } = useI18n();
-
   return (
     <section className="grid gap-4 xl:grid-cols-[1fr_1fr]">
       <Card>
         <CardHeader>
-          <CardTitle>{t("operations.requeue")}</CardTitle>
-          <CardDescription>{t("operations.requeueStatuses")}</CardDescription>
+          <CardTitle>重新入队</CardTitle>
+          <CardDescription>重新入队状态</CardDescription>
         </CardHeader>
         <CardContent className="space-y-4">
           <div className="grid gap-2 sm:grid-cols-2">
@@ -55,68 +53,68 @@ export function MaintenanceTab({
                     setRequeueStatuses((current) => (checked ? [...current, status] : current.filter((item) => item !== status)));
                   }}
                 />
-                {t(`common.status.${status}`)}
+                {statusLabel(status)}
               </label>
             ))}
           </div>
-          <Input placeholder={t("operations.limit")} inputMode="numeric" value={requeueLimit} onChange={(event) => setRequeueLimit(event.target.value)} />
+          <Input placeholder="数量上限" inputMode="numeric" value={requeueLimit} onChange={(event) => setRequeueLimit(event.target.value)} />
           <Button
             type="button"
             disabled={mutationPending}
             onClick={() =>
-              run("/api/v1/actions/requeue", t("operations.requeue"), {
+              run("/api/v1/actions/requeue", "重新入队", {
                 statuses: requeueStatuses.length ? requeueStatuses : null,
                 limit: numberOrNull(requeueLimit),
               })
             }
           >
             <RotateCcw className="h-4 w-4" />
-            {t("operations.requeue")}
+            重新入队
           </Button>
         </CardContent>
       </Card>
 
       <Card>
         <CardHeader>
-          <CardTitle>{t("operations.recoverInterrupted")}</CardTitle>
-          <CardDescription>{t("operations.timeoutMinutes")}</CardDescription>
+          <CardTitle>恢复中断任务</CardTitle>
+          <CardDescription>超时分钟数</CardDescription>
         </CardHeader>
         <CardContent className="space-y-4">
-          <Input placeholder={t("operations.timeoutMinutes")} inputMode="numeric" value={recoverTimeout} onChange={(event) => setRecoverTimeout(event.target.value)} />
-          <Button type="button" variant="secondary" disabled={mutationPending} onClick={() => run("/api/v1/actions/recover-interrupted", t("operations.recoverInterrupted"), { timeout_minutes: numberOrNull(recoverTimeout) })}>
-            {t("operations.recover")}
+          <Input placeholder="超时分钟数" inputMode="numeric" value={recoverTimeout} onChange={(event) => setRecoverTimeout(event.target.value)} />
+          <Button type="button" variant="secondary" disabled={mutationPending} onClick={() => run("/api/v1/actions/recover-interrupted", "恢复中断任务", { timeout_minutes: numberOrNull(recoverTimeout) })}>
+            恢复
           </Button>
         </CardContent>
       </Card>
 
       <Card className="xl:col-span-2">
         <CardHeader>
-          <CardTitle>{t("operations.maintenance")}</CardTitle>
-          <CardDescription>{t("operations.exportNote")}</CardDescription>
+          <CardTitle>全量维护</CardTitle>
+          <CardDescription>上方 CSV 导出读取数据库快照，不扫描媒体文件内容。</CardDescription>
         </CardHeader>
         <CardContent className="space-y-4">
-          <div className="rounded-lg border border-danger/20 bg-danger/10 p-3 text-sm text-danger">{t("operations.fullScanWarning")}</div>
+          <div className="rounded-lg border border-danger/20 bg-danger/10 p-3 text-sm text-danger">这些操作会扫描整个归档目录，资料库较大时可能产生较高磁盘 IO。</div>
           <label className="flex items-center gap-2 text-sm">
             <Checkbox checked={confirmFullScan} onCheckedChange={(checked) => setConfirmFullScan(Boolean(checked))} />
-            {t("operations.confirmFullScan")}
+            我确认这是一次全量归档磁盘扫描。
           </label>
           <div className="grid gap-3 md:grid-cols-[1fr_auto_auto]">
-            <Input placeholder={t("operations.verifyLimit")} inputMode="numeric" value={verifyLimit} onChange={(event) => setVerifyLimit(event.target.value)} />
+            <Input placeholder="校验数量上限（可选）" inputMode="numeric" value={verifyLimit} onChange={(event) => setVerifyLimit(event.target.value)} />
             <Button
               type="button"
               variant="secondary"
               disabled={mutationPending || !confirmFullScan}
-              onClick={() => run("/api/v1/maintenance/verify", t("operations.fullVerify"), { limit: numberOrNull(verifyLimit), confirm_full_scan: confirmFullScan })}
+              onClick={() => run("/api/v1/maintenance/verify", "全量文件校验", { limit: numberOrNull(verifyLimit), confirm_full_scan: confirmFullScan })}
             >
-              {t("operations.fullVerify")}
+              全量文件校验
             </Button>
             <Button
               type="button"
               variant="secondary"
               disabled={mutationPending || !confirmFullScan}
-              onClick={() => run("/api/v1/maintenance/backfill", t("operations.fullBackfill"), { confirm_full_scan: confirmFullScan, normalize_files: true })}
+              onClick={() => run("/api/v1/maintenance/backfill", "全量媒体回填", { confirm_full_scan: confirmFullScan, normalize_files: true })}
             >
-              {t("operations.fullBackfill")}
+              全量媒体回填
             </Button>
           </div>
         </CardContent>

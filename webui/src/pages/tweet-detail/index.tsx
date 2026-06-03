@@ -3,7 +3,7 @@ import { useQuery } from "@tanstack/react-query";
 import { ExternalLink, FileText, Image as ImageIcon, Loader2, RotateCcw } from "lucide-react";
 import { useParams } from "react-router-dom";
 import { apiGet, type MediaRow, type TweetDetail } from "../../lib/api";
-import { useFormatters, useI18n } from "../../lib/i18n";
+import { errorLabel, mediaTypeLabel, statusLabel } from "../../lib/formatters";
 import { formatBytes, formatDateTime } from "../../lib/utils";
 import { Badge } from "../../components/ui/badge";
 import { Button } from "../../components/ui/button";
@@ -21,8 +21,6 @@ type Tone = "default" | "secondary" | "success" | "warning" | "danger";
 type DotStatus = "running" | "success" | "warning" | "danger" | "idle";
 
 export function TweetDetailPage() {
-  const { t } = useI18n();
-  const { errorLabel, mediaTypeLabel, statusLabel } = useFormatters();
   const { tweetId } = useParams();
   const [previewIndex, setPreviewIndex] = useState<number | null>(null);
   const { data, isLoading, error } = useQuery({
@@ -46,7 +44,7 @@ export function TweetDetailPage() {
   }, [canPreviewNext, canPreviewPrevious, previewIndex]);
 
   if (isLoading) return <TweetDetailSkeleton />;
-  if (error || !data) return <ErrorState title={t("tweet.notFound")} detail={String(error || t("tweet.notFound"))} />;
+  if (error || !data) return <ErrorState title="未找到 Tweet" detail={String(error || "未找到 Tweet")} />;
 
   const authorName = data.tweet.author_display_name || data.tweet.author_username || data.tweet.tweet_id;
   const statusTone = toneForStatus(data.tweet.tweet_status);
@@ -69,13 +67,13 @@ export function TweetDetailPage() {
                   {data.tweet.author_username ? <p className="text-sm text-fg-secondary">@{data.tweet.author_username}</p> : null}
                 </div>
                 <p className="max-w-4xl whitespace-pre-wrap text-sm leading-6 text-fg-primary">
-                  {data.tweet.tweet_text || t("tweet.noText")}
+                  {data.tweet.tweet_text || "暂无 Tweet 文本"}
                 </p>
               </div>
               {data.tweet.tweet_url ? (
                 <Button variant="outline" size="sm" onClick={() => window.open(data.tweet.tweet_url || "", "_blank", "noopener,noreferrer")}>
                   <ExternalLink className="h-4 w-4" />
-                  {t("tweet.open")}
+                  打开 Tweet
                 </Button>
               ) : null}
             </div>
@@ -85,31 +83,26 @@ export function TweetDetailPage() {
         <div className="grid gap-4 lg:grid-cols-[minmax(0,3fr)_minmax(320px,2fr)]">
           <MediaGrid
             media={data.media}
-            mediaTypeLabel={mediaTypeLabel}
-            statusLabel={statusLabel}
-            title={t("common.media.media")}
+            title="媒体"
             onPreview={setPreviewIndex}
-            noPreviewText={t("common.noPreview")}
-            emptyText={t("common.noPreview")}
+            noPreviewText="暂无预览"
+            emptyText="暂无预览"
           />
           <aside className="space-y-4 lg:sticky lg:top-4 lg:self-start">
             <MetadataCard
               tweet={data.tweet}
               labels={{
                 title: "Tweet",
-                published: t("tweet.published"),
-                updated: t("tweet.updated"),
-                retries: t("tweet.retryCount"),
-                lastError: t("tweet.lastError"),
+                published: "发布时间",
+                updated: "更新时间",
+                retries: "重试次数",
+                lastError: "最近错误",
               }}
-              errorLabel={errorLabel}
             />
             <AttemptsTimeline
               attempts={data.attempts}
-              title={t("tweet.recentAttempts")}
-              emptyText={t("tweet.noAttempts")}
-              statusLabel={statusLabel}
-              errorLabel={errorLabel}
+              title="最近尝试"
+              emptyText="没有记录下载尝试。"
             />
           </aside>
         </div>
@@ -118,8 +111,6 @@ export function TweetDetailPage() {
           media={selectedMedia}
           index={previewIndex}
           count={data.media.length}
-          mediaTypeLabel={mediaTypeLabel}
-          statusLabel={statusLabel}
           canNext={canPreviewNext}
           canPrevious={canPreviewPrevious}
           onNext={() => setPreviewIndex((index) => (index === null ? index : Math.min(index + 1, data.media.length - 1)))}
@@ -134,16 +125,12 @@ export function TweetDetailPage() {
 
 function MediaGrid({
   media,
-  mediaTypeLabel,
-  statusLabel,
   title,
   onPreview,
   noPreviewText,
   emptyText,
 }: {
   media: MediaRow[];
-  mediaTypeLabel: (type?: string | null) => string;
-  statusLabel: (status?: string | null) => string;
   title: string;
   onPreview: (index: number) => void;
   noPreviewText: string;
@@ -201,11 +188,9 @@ function MediaGrid({
 function MetadataCard({
   tweet,
   labels,
-  errorLabel,
 }: {
   tweet: TweetDetail["tweet"];
   labels: { title: string; published: string; updated: string; retries: string; lastError: string };
-  errorLabel: (error?: string | null) => string;
 }) {
   const meta = useMemo(
     () => [
@@ -214,7 +199,7 @@ function MetadataCard({
       { label: labels.retries, value: String(tweet.retry_count ?? 0) },
       { label: labels.lastError, value: errorLabel(tweet.last_error) },
     ],
-    [errorLabel, labels.lastError, labels.published, labels.retries, labels.updated, tweet.last_error, tweet.published_at, tweet.retry_count, tweet.updated_at],
+    [labels.lastError, labels.published, labels.retries, labels.updated, tweet.last_error, tweet.published_at, tweet.retry_count, tweet.updated_at],
   );
 
   return (
@@ -238,14 +223,10 @@ function AttemptsTimeline({
   attempts,
   title,
   emptyText,
-  statusLabel,
-  errorLabel,
 }: {
   attempts: Attempt[];
   title: string;
   emptyText: string;
-  statusLabel: (status?: string | null) => string;
-  errorLabel: (error?: string | null) => string;
 }) {
   return (
     <Card>
@@ -294,8 +275,6 @@ function MediaPreviewDialog({
   media,
   index,
   count,
-  mediaTypeLabel,
-  statusLabel,
   canNext,
   canPrevious,
   onNext,
@@ -305,8 +284,6 @@ function MediaPreviewDialog({
   media: MediaRow | null;
   index: number | null;
   count: number;
-  mediaTypeLabel: (type?: string | null) => string;
-  statusLabel: (status?: string | null) => string;
   canNext: boolean;
   canPrevious: boolean;
   onNext: () => void;

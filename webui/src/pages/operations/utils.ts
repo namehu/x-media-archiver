@@ -1,6 +1,6 @@
 import { ApiError, type ActionResponse } from "../../lib/api";
+import { actionLabel, errorLabel, resultFieldLabel } from "../../lib/formatters";
 
-type Translate = (key: string, params?: Record<string, string | number>) => string;
 type SummaryItem = { label: string; value: string; wide?: boolean };
 
 export function textValue(value: unknown) {
@@ -12,21 +12,19 @@ export function stringOrNumber(value: unknown) {
   return typeof value === "string" || typeof value === "number" ? value : null;
 }
 
-export function formatError(category: string | null | undefined, message: string | null | undefined, t: Translate) {
+export function formatError(category: string | null | undefined, message: string | null | undefined) {
   if (category) {
-    const key = `common.error.${category}`;
-    const translated = t(key);
-    return translated === key ? category : translated;
+    return errorLabel(category);
   }
   return textValue(message);
 }
 
-export function resultSummaryItems(result: ActionResponse, t: Translate) {
+export function resultSummaryItems(result: ActionResponse) {
   const data = result.result ?? {};
   const items: SummaryItem[] = [];
   const add = (key: string, value: unknown, options: { wide?: boolean } = {}) => {
     if (value === null || value === undefined || value === "") return;
-    items.push({ label: t(`operations.resultField.${key}`), value: resultValue(value), wide: options.wide });
+    items.push({ label: resultFieldLabel(key), value: resultValue(value), wide: options.wide });
   };
 
   add("runId", data.run_id);
@@ -55,12 +53,6 @@ export function resultSummaryItems(result: ActionResponse, t: Translate) {
     }
   }
   return items;
-}
-
-export function actionLabel(action: string, t: Translate) {
-  const key = `operations.action.${action}`;
-  const translated = t(key);
-  return translated === key ? action : translated;
 }
 
 export function errorMessage(error: unknown) {

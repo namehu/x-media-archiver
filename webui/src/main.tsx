@@ -6,7 +6,6 @@ import { AppLayout } from "./components/layout/AppLayout";
 import { Skeleton } from "./components/ui/skeleton";
 import { Toaster } from "./components/ui/toaster";
 import { TooltipProvider } from "./components/ui/tooltip";
-import { I18nProvider } from "./lib/i18n";
 import { applyTheme, getStoredTheme, ThemeProvider } from "./lib/theme";
 import "./styles.css";
 
@@ -30,17 +29,13 @@ const ArchiveQueuePage = lazy(() =>
     default: module.ArchiveQueuePage,
   })),
 );
-const LibraryPage = lazy(() =>
-  import("./pages/library").then((module) => ({ default: module.LibraryPage })),
-);
+const LibraryPage = lazy(() => import("./pages/library").then((module) => ({ default: module.LibraryPage })));
 const OperationsPage = lazy(() =>
   import("./pages/operations").then((module) => ({
     default: module.OperationsPage,
   })),
 );
-const SourcesPage = lazy(() =>
-  import("./pages/sources").then((module) => ({ default: module.SourcesPage })),
-);
+const SourcesPage = lazy(() => import("./pages/sources").then((module) => ({ default: module.SourcesPage })));
 const TweetDetailPage = lazy(() =>
   import("./pages/tweet-detail").then((module) => ({
     default: module.TweetDetailPage,
@@ -69,22 +64,18 @@ const router = createBrowserRouter([
 ]);
 
 function route(element: React.ReactNode) {
-  return (
-    <Suspense fallback={<Skeleton className="h-64" />}>{element}</Suspense>
-  );
+  return <Suspense fallback={<Skeleton className="h-64" />}>{element}</Suspense>;
 }
 
 ReactDOM.createRoot(document.getElementById("root")!).render(
   <React.StrictMode>
     <ThemeProvider>
-      <I18nProvider locale="zh">
-        <QueryClientProvider client={queryClient}>
-          <TooltipProvider>
-            <RouterProvider router={router} />
-            <Toaster />
-          </TooltipProvider>
-        </QueryClientProvider>
-      </I18nProvider>
+      <QueryClientProvider client={queryClient}>
+        <TooltipProvider>
+          <RouterProvider router={router} />
+          <Toaster />
+        </TooltipProvider>
+      </QueryClientProvider>
     </ThemeProvider>
   </React.StrictMode>,
 );
