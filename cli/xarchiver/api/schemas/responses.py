@@ -405,7 +405,8 @@ class SourceScanRunResponse(FlexibleResponse):
     error_category: str | None = None
     error_message: str | None = None
     progress_message: str | None = None
-    log_tail: str | None = None
+    log_stream_id: int | None = None
+    log_path: str | None = None
     last_log_at: datetime | None = None
     started_at: datetime | None = None
     finished_at: datetime | None = None
@@ -416,3 +417,46 @@ class ArchiveSourceDetailResponse(ArchiveSourceListResponse):
     discovered: list[SourceDiscoveryResponse]
     scan_summary: SourceScanSummaryResponse
     scan_runs: list[SourceScanRunResponse]
+
+
+class OperationLogStreamResponse(FlexibleResponse):
+    id: int
+    scope_type: str
+    scope_id: int
+    log_path: str
+    metadata: dict[str, Any]
+    line_count: int
+    byte_size: int
+    level_counts: dict[str, int]
+    last_level: str | None = None
+    last_message: str | None = None
+    last_log_at: datetime | None = None
+    is_truncated: bool
+    created_at: datetime
+    closed_at: datetime | None = None
+
+
+class OperationLogStreamsPageResponse(FlexibleResponse):
+    rows: list[OperationLogStreamResponse]
+    count: int
+    total_count: int
+    limit: int
+    offset: int
+
+
+class OperationLogEntryResponse(FlexibleResponse):
+    timestamp: str
+    level: str
+    component: str
+    message: str
+    raw: str | None = None
+    context: dict[str, object] | None = None
+    exception: dict[str, object] | None = None
+
+
+class OperationLogEntriesResponse(FlexibleResponse):
+    stream: OperationLogStreamResponse
+    entries: list[OperationLogEntryResponse]
+    next_cursor: int
+    available: bool
+    is_truncated: bool

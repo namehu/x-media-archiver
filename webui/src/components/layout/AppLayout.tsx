@@ -42,7 +42,7 @@ export function AppLayout() {
   const { theme, setTheme } = useTheme();
   const navigate = useNavigate();
   const [commandOpen, setCommandOpen] = useState(false);
-  const events = useServerEvents(["archive_runs", "sources", "source_scans", "worker"]);
+  const events = useServerEvents(["archive_runs", "sources", "source_scans", "worker", "logs"]);
   const healthQuery = useQuery({
     queryKey: ["health-detail"],
     queryFn: () => apiGet<HealthDetail>("/api/v1/health/detail"),

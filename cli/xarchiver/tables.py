@@ -1,6 +1,6 @@
 from __future__ import annotations
 
-from sqlalchemy import BigInteger, Column, DateTime, Integer, MetaData, SmallInteger, Table, Text
+from sqlalchemy import BigInteger, Boolean, Column, DateTime, Integer, MetaData, SmallInteger, Table, Text
 from sqlalchemy.dialects.postgresql import JSONB
 
 metadata = MetaData()
@@ -99,6 +99,25 @@ archive_sources = Table(
     Column("next_scan_at", DateTime(timezone=True)),
     Column("created_at", DateTime(timezone=True)),
     Column("updated_at", DateTime(timezone=True)),
+)
+
+operation_log_streams = Table(
+    "operation_log_streams",
+    metadata,
+    Column("id", BigInteger),
+    Column("scope_type", Text),
+    Column("scope_id", BigInteger),
+    Column("log_path", Text),
+    Column("metadata", JSONB),
+    Column("line_count", Integer),
+    Column("byte_size", BigInteger),
+    Column("level_counts", JSONB),
+    Column("last_level", Text),
+    Column("last_message", Text),
+    Column("last_log_at", DateTime(timezone=True)),
+    Column("is_truncated", Boolean),
+    Column("created_at", DateTime(timezone=True)),
+    Column("closed_at", DateTime(timezone=True)),
 )
 
 source_discovered_tweets = Table(

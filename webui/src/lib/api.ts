@@ -180,11 +180,49 @@ export type SourceScanRun = {
   error_category?: string | null;
   error_message?: string | null;
   progress_message?: string | null;
-  log_tail?: string | null;
+  log_stream_id?: number | null;
+  log_path?: string | null;
   last_log_at?: string | null;
   started_at?: string | null;
   finished_at?: string | null;
   created_at: string;
+};
+
+export type OperationLogStream = {
+  id: number;
+  scope_type: string;
+  scope_id: number;
+  log_path: string;
+  metadata: Record<string, unknown>;
+  line_count: number;
+  byte_size: number;
+  level_counts: Record<string, number>;
+  last_level?: string | null;
+  last_message?: string | null;
+  last_log_at?: string | null;
+  is_truncated: boolean;
+  created_at: string;
+  closed_at?: string | null;
+};
+
+export type OperationLogEntry = {
+  timestamp: string;
+  level: "debug" | "info" | "warning" | "error" | "critical" | string;
+  component: string;
+  message: string;
+  raw?: string | null;
+  context?: Record<string, unknown> | null;
+  exception?: Record<string, unknown> | null;
+};
+
+export type OperationLogStreamsPageResponse = PageResponse<OperationLogStream>;
+
+export type OperationLogEntriesResponse = {
+  stream: OperationLogStream;
+  entries: OperationLogEntry[];
+  next_cursor: number;
+  available: boolean;
+  is_truncated: boolean;
 };
 
 export type ArchiveSource = {

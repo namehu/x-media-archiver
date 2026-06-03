@@ -42,11 +42,13 @@ const SERVER_EVENT_TYPES = [
   "source.scan.discovered",
   "source.scan.waiting_downloads",
   "source.discovered.submitted",
+  "operation.log.appended",
 ];
 
 const TOPIC_ALIASES: Record<string, string[]> = {
   run: ["archive_runs"],
   source: ["sources", "source_scans"],
+  logs: ["logs"],
 };
 
 export function useServerEvents(topics: string[]): ServerEventsState {
@@ -146,6 +148,12 @@ function invalidateForEvent(queryClient: QueryClient, event: ServerEvent) {
     void queryClient.invalidateQueries({ queryKey: ["sources"] });
     void queryClient.invalidateQueries({ queryKey: ["summary"] });
     void queryClient.invalidateQueries({ queryKey: ["health-detail"] });
+  }
+
+  if (topic === "logs" || eventType.startsWith("operation.log.")) {
+    const streamId = numberFromPayload(payload, "stream_id", "id");
+    void queryClient.invalidateQueries({ queryKey: ["operation-log-streams"] });
+    void queryClient.invalidateQueries(streamId ? { queryKey: ["operation-log", streamId] } : { queryKey: ["operation-log"] });
   }
 }
 

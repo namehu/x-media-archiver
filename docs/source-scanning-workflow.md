@@ -93,9 +93,12 @@ https://x.com/earthcurated/media
 
 每次实际扫描批次，以及因为下载队列仍在工作而跳过的批次尝试，都会写入
 `source_scan_runs`。记录中包含扫描范围、触发方式、执行结果、发现/新增/已存在 Tweet 数、
-媒体预估数、扫描前后 cursor、失败摘要，以及 `gallery-dl --verbose` 的最近日志尾部。
-运行中的批次会流式更新 `progress_message`、`log_tail` 和 `last_log_at`，WebUI 的
-log box 通过详情轮询展示这些信息。最终 Tweet 发现结果仍等 `gallery-dl` 完整返回后统一
+媒体预估数、扫描前后 cursor、失败摘要，以及关联的操作日志流。
+运行中的批次会把 `gallery-dl --verbose` 日志写入
+`archive/logs/source-scan-logs/` 下的 JSONL 文件。数据库只保存 `operation_log_streams`
+索引和摘要，以及 `source_scan_runs.progress_message`、`log_stream_id`、`last_log_at`。
+WebUI 的 log box 和 `Operations -> Logs` 通过 API 读取日志流；如果日志文件被清理，
+页面只显示日志不可用，不影响批次审计记录。最终 Tweet 发现结果仍等 `gallery-dl` 完整返回后统一
 解析和落库，不提前提交半批结果。随机等待下一轮的当前调度状态保存在
 `archive_sources.cursor_state` 与 `next_scan_at` 中。
 如果 API 在一批扫描执行途中停止，下次启动会把遗留的执行中记录标记为中断失败，
@@ -115,6 +118,7 @@ log box 通过详情轮询展示这些信息。最终 Tweet 发现结果仍等 `
 SOURCE_SCAN_BATCH_SIZE=20
 SOURCE_SCAN_SLEEP_MIN_SECONDS=2
 SOURCE_SCAN_SLEEP_MAX_SECONDS=6
+OPERATION_LOG_MAX_BYTES=10485760
 ```
 
 `SOURCE_SCAN_BATCH_SIZE` 在 native cursor 模式下表示每批目标 Tweet 窗口数量；一条

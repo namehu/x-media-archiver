@@ -24,6 +24,8 @@ from xarchiver.services.sources import (
     scan_run_status,
     scan_source,
     schedule_next_history_scan,
+    source_scan_log_relative_path,
+    start_source_scan_run,
 )
 
 
@@ -187,6 +189,12 @@ class SourceServiceTests(unittest.TestCase):
     def test_count_discovered_media_sums_batch_estimates(self) -> None:
         self.assertEqual(count_discovered_media([{"media_count": 2}, {"media_count": 1}, {}]), 3)
 
+    def test_source_scan_log_relative_path_uses_jsonl_stream_file(self) -> None:
+        self.assertEqual(
+            source_scan_log_relative_path(18, 42),
+            "logs/source-scan-logs/source-18/scan-run-42.jsonl",
+        )
+
     def test_latest_refresh_empty_batch_does_not_advance_or_complete_history_cursor(self) -> None:
         cursor = {"next_start_index": 81, "last_completed": False}
         settings = SimpleNamespace(source_scan_sleep_min_seconds=2, source_scan_sleep_max_seconds=6)
@@ -268,6 +276,37 @@ class SourceDiscoveryIntegrationTests(unittest.TestCase):
                 cur.execute("delete from archive_sources where source_url = any(%s)", (self.source_urls,))
                 cur.execute("delete from tweets where tweet_id = %s", (self.tweet_id,))
             conn.commit()
+
+    def test_start_source_scan_run_creates_operation_log_stream(self) -> None:
+        source = create_source("profile", self.source_urls[2])
+        scan_range = {"start": 1, "end": 5, "limit": 5}
+
+        scan_run_id = start_source_scan_run(
+            int(source["id"]),
+            "manual_next",
+            scan_range,
+            {},
+            worker_id="worker-test",
+        )
+
+        with connect() as conn:
+            with conn.cursor() as cur:
+                cur.execute(
+                    """
+                    select r.log_stream_id, l.scope_type, l.scope_id, l.log_path, l.metadata
+                    from source_scan_runs r
+                    join operation_log_streams l on l.id = r.log_stream_id
+                    where r.id = %s
+                    """,
+                    (scan_run_id,),
+                )
+                row = cur.fetchone()
+
+        self.assertIsNotNone(row["log_stream_id"])
+        self.assertEqual(row["scope_type"], "source_scan")
+        self.assertEqual(row["scope_id"], scan_run_id)
+        self.assertEqual(row["log_path"], source_scan_log_relative_path(int(source["id"]), scan_run_id))
+        self.assertEqual(row["metadata"]["source_id"], int(source["id"]))
 
     def test_repeated_discovery_preserves_first_discovered_at(self) -> None:
         source = create_source("user_media", "https://x.com/sourcefixture/media")

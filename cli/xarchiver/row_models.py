@@ -239,11 +239,29 @@ class SourceScanRunRow(RowModel):
     error_category: str | None = None
     error_message: str | None = None
     progress_message: str | None = None
-    log_tail: str | None = None
+    log_stream_id: int | None = None
+    log_path: str | None = None
     last_log_at: datetime | None = None
     started_at: datetime | None = None
     finished_at: datetime | None = None
     created_at: datetime
+
+
+class OperationLogStreamRow(RowModel):
+    id: int
+    scope_type: str
+    scope_id: int
+    log_path: str
+    metadata: dict[str, Any]
+    line_count: int
+    byte_size: int
+    level_counts: dict[str, int]
+    last_level: str | None = None
+    last_message: str | None = None
+    last_log_at: datetime | None = None
+    is_truncated: bool
+    created_at: datetime
+    closed_at: datetime | None = None
 
 
 class ExportMediaRow(SearchMediaRow):

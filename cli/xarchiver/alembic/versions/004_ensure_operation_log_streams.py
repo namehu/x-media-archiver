@@ -1,7 +1,7 @@
 from alembic import op
 
-revision = "003_add_source_scan_progress"
-down_revision = "002_add_cookie_config"
+revision = "004_ensure_operation_log_streams"
+down_revision = "003_add_source_scan_progress"
 branch_labels = None
 depends_on = None
 
@@ -23,10 +23,7 @@ def upgrade() -> None:
           last_log_at timestamptz,
           is_truncated boolean not null default false,
           created_at timestamptz not null default now(),
-          closed_at timestamptz,
-          constraint chk_operation_log_streams_scope_type check (
-            scope_type in ('source_scan')
-          )
+          closed_at timestamptz
         );
 
         create index if not exists idx_operation_log_streams_scope
@@ -41,7 +38,9 @@ def upgrade() -> None:
         alter table source_scan_runs
           add column if not exists progress_message text,
           add column if not exists log_stream_id bigint references operation_log_streams(id),
-          add column if not exists last_log_at timestamptz;
+          add column if not exists last_log_at timestamptz,
+          drop column if exists log_tail,
+          drop column if exists log_path;
 
         create index if not exists idx_source_scan_runs_log_stream
         on source_scan_runs(log_stream_id);

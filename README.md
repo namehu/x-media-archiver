@@ -262,7 +262,10 @@ automatically. Every attempted source scan, plus
 each deferral caused by active downloads, is persisted in `source_scan_runs` with its range,
 cursor snapshots, counts, outcome, and error summary. The Sources detail page exposes the latest
 20 scan events and cumulative statistics so a stalled history scan can be diagnosed after restart
-without relying on container logs.
+without relying on container logs. Running scans write full `gallery-dl` logs under
+`archive/logs/source-scan-logs/` as JSONL operation log streams; the database stores the
+log stream id, relative path, level counters, latest progress, and other summary fields only.
+The WebUI source log box and `Operations -> Logs` read those log streams through the API.
 
 See [`docs/source-scanning-workflow.md`](docs/source-scanning-workflow.md) for the button meanings and
 workflow, and [`docs/source-scanning-acceptance.md`](docs/source-scanning-acceptance.md) for the

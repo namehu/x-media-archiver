@@ -1,9 +1,12 @@
 import * as React from "react";
-import type { ArchiveSource, ArchiveSubmission, DownloadPolicy } from "../../../lib/api";
+import { Link } from "react-router-dom";
+import { useQuery } from "@tanstack/react-query";
+import { apiGet, type ArchiveSource, type ArchiveSubmission, type DownloadPolicy, type OperationLogEntriesResponse } from "../../../lib/api";
 import { Badge } from "../../../components/ui/badge";
 import { Button } from "../../../components/ui/button";
 import { Card, CardContent, CardHeader, CardTitle } from "../../../components/ui/card";
 import { Input } from "../../../components/ui/input";
+import { Select } from "../../../components/ui/select";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "../../../components/ui/tabs";
 import { formatDateTime } from "../../../lib/utils";
 import { SourceScanHistoryTab } from "./SourceScanHistoryTab";
@@ -269,18 +272,69 @@ function ActiveScan({
 }
 
 function ScanLogBox({ run, t }: { run: NonNullable<ArchiveSource["scan_runs"]>[number]; t: TFunction }) {
-  const log = run.log_tail?.trim();
+  const [level, setLevel] = React.useState("");
+  const levelQuery = level ? `&level=${encodeURIComponent(level)}` : "";
+  const streamId = run.log_stream_id;
+  const query = useQuery({
+    queryKey: ["operation-log", streamId, level],
+    queryFn: () => apiGet<OperationLogEntriesResponse>(`/api/v1/log-streams/${streamId}?limit=200${levelQuery}`),
+    enabled: Boolean(streamId),
+    refetchInterval: run.status === "running" ? 3000 : false,
+  });
+  const entries = query.data?.entries ?? [];
+  const log = entries.map(formatLogEntry).join("\n");
+  const available = query.data?.available ?? true;
+  const status = query.isLoading
+    ? t("sources.scanLogLoading")
+    : !streamId
+      ? t("sources.scanLogWaiting")
+      : !available
+        ? t("sources.scanLogMissing")
+        : entries.length
+          ? t("sources.scanLogLive")
+          : t("sources.scanLogEmpty");
+
   return (
     <div className="mt-3 overflow-hidden rounded-md border border-border-subtle bg-bg-elevated">
-      <div className="flex items-center justify-between border-b border-border-subtle px-3 py-2 text-xs">
+      <div className="flex flex-wrap items-center justify-between gap-2 border-b border-border-subtle px-3 py-2 text-xs">
         <span className="font-semibold text-fg-primary">{t("sources.scanLog")}</span>
-        <span className="text-fg-secondary">{log ? t("sources.scanLogLive") : t("sources.scanLogEmpty")}</span>
+        <div className="flex items-center gap-2">
+          <Select className="h-7 w-28 text-xs" value={level} onChange={(event) => setLevel(event.target.value)}>
+            <option value="">{t("logs.levelAll")}</option>
+            <option value="debug">debug</option>
+            <option value="info">info</option>
+            <option value="warning">warning</option>
+            <option value="error">error</option>
+            <option value="critical">critical</option>
+          </Select>
+          <span className="text-fg-secondary">{status}</span>
+        </div>
       </div>
+      {run.log_path ? (
+        <div className="flex flex-wrap items-center justify-between gap-2 border-b border-border-subtle px-3 py-1 text-xs text-fg-secondary">
+          <span className="break-all">{run.log_path}</span>
+          {streamId ? (
+            <Link to={`/operations?tab=logs&streamId=${streamId}`} className="font-semibold text-brand hover:text-brand-hover">
+              {t("sources.openLogStream")}
+            </Link>
+          ) : null}
+        </div>
+      ) : null}
       <pre className="max-h-56 overflow-auto whitespace-pre-wrap break-words px-3 py-2 font-mono text-xs leading-relaxed text-fg-secondary">
-        {log || t("sources.scanLogWaiting")}
+        {query.error
+          ? String(query.error)
+          : log || (streamId ? (available ? t("sources.scanLogEmpty") : t("sources.scanLogUnavailable")) : t("sources.scanLogWaiting"))}
       </pre>
+      {query.data?.is_truncated ? <div className="border-t border-warning/20 px-3 py-2 text-xs text-warning">{t("logs.truncated")}</div> : null}
     </div>
   );
+}
+
+function formatLogEntry(entry: OperationLogEntriesResponse["entries"][number]) {
+  const time = entry.timestamp ? new Date(entry.timestamp).toLocaleTimeString() : "--:--:--";
+  const message = entry.raw || entry.message;
+  const stack = typeof entry.exception?.stack === "string" ? `\n${entry.exception.stack}` : "";
+  return `${time} [${entry.level}] ${entry.component}: ${message}${stack}`;
 }
 
 function ScanPipelineNote({ source, policy, t }: { source: ArchiveSource; policy?: DownloadPolicy; t: TFunction }) {
