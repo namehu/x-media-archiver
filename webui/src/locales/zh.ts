@@ -282,6 +282,8 @@ export const zh = {
   "sources.scanPipelineStep4": "4. 子进程完整返回后解析、去重、落库，再等待 {delay} 后调度下一批。",
   "sources.pauseSemantics":
     "暂停扫描只暂停后续自动调度，不强制终止已经启动的 gallery-dl 子进程；该批结束后会保留 cursor 与发现记录。",
+  "sources.expandMore": "展开更多来源信息",
+  "sources.collapseMore": "收起来源信息",
   "sources.scanHistory": "扫描历史（最近 20 批）",
   "sources.noScanHistory": "还没有扫描批次记录。",
   "sources.scanRange": "范围",

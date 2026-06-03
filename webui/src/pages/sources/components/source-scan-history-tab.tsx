@@ -1,24 +1,60 @@
 import { Virtuoso } from "react-virtuoso";
-import type { ArchiveSource } from "@/lib/api";
+import type { SourceScanRunsPageResponse } from "@/lib/api";
 import { Badge } from "@/components/ui/badge";
+import { Pagination } from "@/components/ui/pagination";
 import { formatDateTime } from "@/lib/utils";
 import { useI18n } from "@/lib/i18n";
 import { formatElapsed, formatRunRange, scanStatusLabel, scanStatusTone, scanTriggerLabel } from "../utils";
 
-export function SourceScanHistoryTab({ source, now }: { source: ArchiveSource; now: number }) {
+const PAGE_SIZE = 20;
+
+export function SourceScanHistoryTab({
+  data,
+  isLoading,
+  error,
+  offset,
+  onOffsetChange,
+  now,
+}: {
+  data?: SourceScanRunsPageResponse;
+  isLoading: boolean;
+  error: unknown;
+  offset: number;
+  onOffsetChange: (offset: number) => void;
+  now: number;
+}) {
   const { t } = useI18n();
-  const runs = source.scan_runs ?? [];
+  const runs = data?.rows ?? [];
+
+  if (isLoading) {
+    return <p className="py-4 pl-5 text-sm text-fg-secondary">{t("common.loading")}</p>;
+  }
+
+  if (error) {
+    return <p className="py-4 pl-5 text-sm text-danger">{String(error)}</p>;
+  }
 
   if (runs.length === 0) {
     return <p className="py-4 text-sm text-fg-secondary">{t("sources.noScanHistory")}</p>;
   }
 
   return (
-    <div className="h-[calc(100vh-320px)] min-h-[300px]">
+    <div className="flex h-[calc(100vh-390px)] min-h-[300px] flex-col gap-3 pl-5">
+      {data ? (
+        <Pagination
+          offset={offset}
+          count={data.count}
+          totalCount={data.total_count}
+          pageSize={PAGE_SIZE}
+          onOffsetChange={onOffsetChange}
+          label={t("common.pagination.range")}
+        />
+      ) : null}
       <Virtuoso
+        className="min-h-0 flex-1"
         data={runs}
         itemContent={(_, run) => (
-          <div className="relative pb-4 pl-5">
+          <div className="relative pb-4">
             {/* 时间轴竖线由父容器 before 伪元素提供，节点用绝对定位圆点 */}
             <div
               className={[

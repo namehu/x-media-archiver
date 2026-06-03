@@ -278,22 +278,6 @@ def get_source(source_id: int) -> dict[str, object] | None:
             source_row = ArchiveSourceListRow.model_validate(dict(source))
             cur.execute(
                 """
-                select d.id, d.tweet_id, d.archive_run_id, d.discovered_at, t.download_status,
-                       t.author_username, t.text, d.raw_payload
-                from source_discovered_tweets d
-                join tweets t on t.tweet_id = d.tweet_id
-                where d.source_id = %s
-                order by d.discovered_at desc, d.id desc
-                limit 100
-                """,
-                (source_id,),
-            )
-            discovered = [
-                dict(SourceDiscoveryRow.model_validate(dict(row)))
-                for row in cur.fetchall()
-            ]
-            cur.execute(
-                """
                 select (count(*) filter (where status <> 'waiting_downloads'))::int as batch_count,
                        coalesce(sum(new_tweet_count), 0)::int as added_tweet_count,
                        max(finished_at) filter (
@@ -318,17 +302,86 @@ def get_source(source_id: int) -> dict[str, object] | None:
                 from source_scan_runs r
                 left join operation_log_streams l on l.id = r.log_stream_id
                 where r.source_id = %s
+                  and r.status = 'running'
                 order by r.created_at desc, r.id desc
-                limit 20
+                limit 1
                 """,
                 (source_id,),
             )
-            scan_runs = [dict(SourceScanRunRow.model_validate(dict(row))) for row in cur.fetchall()]
+            active_scan = cur.fetchone()
     return {
         **dict(source_row),
-        "discovered": discovered,
         "scan_summary": scan_summary,
-        "scan_runs": scan_runs,
+        "active_scan_run": dict(SourceScanRunRow.model_validate(dict(active_scan))) if active_scan else None,
+    }
+
+
+def list_source_discovered_page(source_id: int, limit: int = 50, offset: int = 0) -> dict[str, object]:
+    with connect() as conn:
+        with conn.cursor() as cur:
+            cur.execute("select 1 from archive_sources where id = %s", (source_id,))
+            if cur.fetchone() is None:
+                raise ValueError("source_not_found")
+            cur.execute(
+                """
+                select d.id, d.tweet_id, d.archive_run_id, d.discovered_at, t.download_status,
+                       t.author_username, t.text, d.raw_payload
+                from source_discovered_tweets d
+                join tweets t on t.tweet_id = d.tweet_id
+                where d.source_id = %s
+                order by d.discovered_at desc, d.id desc
+                limit %s offset %s
+                """,
+                (source_id, limit, offset),
+            )
+            rows = [dict(SourceDiscoveryRow.model_validate(dict(row))) for row in cur.fetchall()]
+            cur.execute(
+                "select count(*)::int as count from source_discovered_tweets where source_id = %s",
+                (source_id,),
+            )
+            total_count = int(cur.fetchone()["count"])
+    return {
+        "rows": rows,
+        "count": len(rows),
+        "total_count": total_count,
+        "limit": limit,
+        "offset": offset,
+    }
+
+
+def list_source_scan_runs_page(source_id: int, limit: int = 20, offset: int = 0) -> dict[str, object]:
+    with connect() as conn:
+        with conn.cursor() as cur:
+            cur.execute("select 1 from archive_sources where id = %s", (source_id,))
+            if cur.fetchone() is None:
+                raise ValueError("source_not_found")
+            cur.execute(
+                """
+                select r.id, r.trigger_type, r.status, r.range_start, r.range_end, r.requested_limit,
+                       cursor_before, cursor_after, discovered_tweet_count, new_tweet_count,
+                       duplicate_tweet_count, discovered_media_count, error_category,
+                       error_message, progress_message, log_stream_id, l.log_path, r.last_log_at,
+                       started_at, finished_at, r.created_at
+                from source_scan_runs r
+                left join operation_log_streams l on l.id = r.log_stream_id
+                where r.source_id = %s
+                order by r.created_at desc, r.id desc
+                limit %s offset %s
+                """,
+                (source_id, limit, offset),
+            )
+            rows = [dict(SourceScanRunRow.model_validate(dict(row))) for row in cur.fetchall()]
+            cur.execute(
+                "select count(*)::int as count from source_scan_runs where source_id = %s",
+                (source_id,),
+            )
+            total_count = int(cur.fetchone()["count"])
+    return {
+        "rows": rows,
+        "count": len(rows),
+        "total_count": total_count,
+        "limit": limit,
+        "offset": offset,
     }
 
 
@@ -338,11 +391,14 @@ def update_source_status(source_id: int, status: str) -> dict[str, object]:
     if source is None:
         raise ValueError("source_not_found")
     cursor_state = source.get("cursor_state") if isinstance(source.get("cursor_state"), dict) else {}
-    running_scan_runs = [
-        run
-        for run in source.get("scan_runs", [])
-        if isinstance(run, dict) and run.get("status") == "running" and run.get("log_stream_id")
-    ]
+    active_scan_run = source.get("active_scan_run")
+    running_scan_run = (
+        active_scan_run
+        if isinstance(active_scan_run, dict)
+        and active_scan_run.get("status") == "running"
+        and active_scan_run.get("log_stream_id")
+        else None
+    )
     automation_enabled = bool(cursor_state.get("automation_enabled"))
     if automation_enabled and status == "paused":
         cursor_state = {**cursor_state, "automation_state": "paused"}
@@ -365,14 +421,13 @@ def update_source_status(source_id: int, status: str) -> dict[str, object]:
             row = ArchiveSourceRow.model_validate(dict(cur.fetchone()))
         conn.commit()
     publish_event("sources", "source.status_changed", {"source_id": source_id, "status": status})
-    if status == "paused":
-        for run in running_scan_runs:
-            append_source_scan_log(
-                int(run["id"]),
-                "warning",
-                "source-scan",
-                "Source was paused. The current gallery-dl batch will finish naturally; no next batch will be scheduled.",
-            )
+    if status == "paused" and running_scan_run:
+        append_source_scan_log(
+            int(running_scan_run["id"]),
+            "warning",
+            "source-scan",
+            "Source was paused. The current gallery-dl batch will finish naturally; no next batch will be scheduled.",
+        )
     return dict(row)
 
 

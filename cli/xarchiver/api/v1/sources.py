@@ -7,10 +7,12 @@ from xarchiver.api.schemas import (
     ArchiveSourceDetailResponse,
     ArchiveSourceResponse,
     ArchiveSubmissionResponse,
+    SourceDiscoveryPageResponse,
     SourceCreateRequest,
     SourceHistoryScanRequest,
     SourceRecordsRequest,
     SourceScanRequest,
+    SourceScanRunsPageResponse,
     SourcesPageResponse,
     SourceStatusRequest,
     SourceSubmitDiscoveredRequest,
@@ -19,6 +21,8 @@ from xarchiver.api.schemas import (
 from xarchiver.services.sources import (
     create_source,
     get_source,
+    list_source_discovered_page,
+    list_source_scan_runs_page,
     list_sources_page,
     scan_source,
     start_source_history_scan,
@@ -64,6 +68,30 @@ def archive_source_detail(source_id: int) -> dict[str, object]:
     if result is None:
         raise HTTPException(status_code=404, detail="source_not_found")
     return result
+
+
+@router.get("/{source_id}/discovered", response_model=SourceDiscoveryPageResponse)
+def archive_source_discovered(
+    source_id: int,
+    limit: int = Query(50, ge=1, le=200),
+    offset: int = Query(0, ge=0),
+) -> dict[str, object]:
+    try:
+        return list_source_discovered_page(source_id, limit=limit, offset=offset)
+    except ValueError as exc:
+        raise_api_error(exc)
+
+
+@router.get("/{source_id}/scan-runs", response_model=SourceScanRunsPageResponse)
+def archive_source_scan_runs(
+    source_id: int,
+    limit: int = Query(20, ge=1, le=100),
+    offset: int = Query(0, ge=0),
+) -> dict[str, object]:
+    try:
+        return list_source_scan_runs_page(source_id, limit=limit, offset=offset)
+    except ValueError as exc:
+        raise_api_error(exc)
 
 
 @router.post("/{source_id}/records", status_code=status.HTTP_202_ACCEPTED, response_model=ArchiveSubmissionResponse)

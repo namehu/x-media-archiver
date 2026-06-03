@@ -225,7 +225,23 @@ export type OperationLogEntriesResponse = {
   is_truncated: boolean;
 };
 
-export type ArchiveSource = {
+export type SourceDiscovery = {
+  id: number;
+  tweet_id: string;
+  archive_run_id?: number | null;
+  discovered_at?: string | null;
+  download_status?: string | null;
+  author_username?: string | null;
+  text?: string | null;
+  raw_payload?: {
+    media_count?: number;
+    media_types?: string[];
+    has_photo?: boolean;
+    has_video?: boolean;
+  } | null;
+};
+
+type ArchiveSourceBase = {
   id: number;
   source_type: string;
   source_url?: string | null;
@@ -263,31 +279,25 @@ export type ArchiveSource = {
   } | null;
   created_at?: string | null;
   updated_at?: string | null;
-  scan_summary?: {
+};
+
+export type ArchiveSourceListItem = ArchiveSourceBase;
+
+export type ArchiveSourceDetail = ArchiveSourceBase & {
+  scan_summary: {
     batch_count: number;
     added_tweet_count: number;
     last_success_at?: string | null;
     last_error_at?: string | null;
   };
-  scan_runs?: SourceScanRun[];
-  discovered?: Array<{
-    id: number;
-    tweet_id: string;
-    archive_run_id?: number | null;
-    discovered_at?: string | null;
-    download_status?: string | null;
-    author_username?: string | null;
-    text?: string | null;
-    raw_payload?: {
-      media_count?: number;
-      media_types?: string[];
-      has_photo?: boolean;
-      has_video?: boolean;
-    } | null;
-  }>;
+  active_scan_run?: SourceScanRun | null;
 };
 
-export type SourcePageResponse = PageResponse<ArchiveSource>;
+export type ArchiveSource = ArchiveSourceDetail;
+
+export type SourcePageResponse = PageResponse<ArchiveSourceListItem>;
+export type SourceDiscoveryPageResponse = PageResponse<SourceDiscovery>;
+export type SourceScanRunsPageResponse = PageResponse<SourceScanRun>;
 
 export type DownloadPolicy = {
   queue_batch_size: number;

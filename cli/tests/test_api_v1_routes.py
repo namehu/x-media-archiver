@@ -7,8 +7,11 @@ from fastapi import HTTPException
 from xarchiver.api.app import create_app
 from xarchiver.api.schemas import (
     ArchiveRunsPageResponse,
+    ArchiveSourceDetailResponse,
     BackfillRequest,
+    SourceDiscoveryPageResponse,
     SourceCreateRequest,
+    SourceScanRunsPageResponse,
     SourcesPageResponse,
     SourceStatusRequest,
     UpdateCookiesRequest,
@@ -51,6 +54,8 @@ class V1RouterSmokeTests(unittest.TestCase):
             "/api/v1/archive-runs/{run_id}",
             "/api/v1/sources",
             "/api/v1/sources/{source_id}",
+            "/api/v1/sources/{source_id}/discovered",
+            "/api/v1/sources/{source_id}/scan-runs",
             "/api/v1/events",
             "/api/v1/settings/download-policy",
             "/api/v1/settings/cookies",
@@ -177,6 +182,56 @@ class V1RouterSmokeTests(unittest.TestCase):
         payload = SourcesPageResponse.model_validate(result).model_dump(mode="json")
         self.assertEqual(payload["rows"][0]["id"], 2)
         self.assertEqual(payload["rows"][0]["discovered_media_count"], 4)
+
+    def test_v1_source_detail_response_is_slim(self):
+        detail = {
+            "id": 2,
+            "source_type": "profile",
+            "source_url": "https://x.com/example",
+            "status": "active",
+            "cursor_state": {},
+            "discovered_count": 0,
+            "submitted_count": 0,
+            "created_at": datetime(2026, 1, 1, tzinfo=UTC),
+            "updated_at": datetime(2026, 1, 2, tzinfo=UTC),
+            "discovered_tweet_count": 3,
+            "unsubmitted_tweet_count": 2,
+            "discovered_media_count": 4,
+            "scan_summary": {
+                "batch_count": 5,
+                "added_tweet_count": 3,
+                "last_success_at": None,
+                "last_error_at": None,
+            },
+            "active_scan_run": None,
+        }
+
+        with patch("xarchiver.api.v1.sources.get_source", return_value=detail):
+            result = self.get_paths["/api/v1/sources/{source_id}"](2)
+
+        payload = ArchiveSourceDetailResponse.model_validate(result).model_dump(mode="json")
+        self.assertEqual(payload["scan_summary"]["batch_count"], 5)
+        self.assertIn("active_scan_run", payload)
+        self.assertNotIn("discovered", payload)
+        self.assertNotIn("scan_runs", payload)
+
+    def test_v1_source_discovered_delegates_pagination(self):
+        page = {"rows": [], "count": 0, "total_count": 7, "limit": 25, "offset": 50}
+        with patch("xarchiver.api.v1.sources.list_source_discovered_page", return_value=page) as mock:
+            result = self.get_paths["/api/v1/sources/{source_id}/discovered"](2, limit=25, offset=50)
+
+        payload = SourceDiscoveryPageResponse.model_validate(result).model_dump(mode="json")
+        self.assertEqual(payload["total_count"], 7)
+        mock.assert_called_once_with(2, limit=25, offset=50)
+
+    def test_v1_source_scan_runs_delegates_pagination(self):
+        page = {"rows": [], "count": 0, "total_count": 3, "limit": 20, "offset": 20}
+        with patch("xarchiver.api.v1.sources.list_source_scan_runs_page", return_value=page) as mock:
+            result = self.get_paths["/api/v1/sources/{source_id}/scan-runs"](2, limit=20, offset=20)
+
+        payload = SourceScanRunsPageResponse.model_validate(result).model_dump(mode="json")
+        self.assertEqual(payload["total_count"], 3)
+        mock.assert_called_once_with(2, limit=20, offset=20)
 
     # ── OpenAPI schema: v1 routes appear in the spec ──────────────────────────
 

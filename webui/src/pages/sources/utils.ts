@@ -1,4 +1,4 @@
-import type { ArchiveSource } from "@/lib/api";
+import type { ArchiveSourceDetail, SourceDiscovery } from "@/lib/api";
 
 export type TFunction = (key: string, params?: Record<string, string | number>) => string;
 
@@ -35,20 +35,20 @@ export function unwrapActionResult(response: Record<string, unknown>) {
   return result && typeof result === "object" ? (result as Record<string, unknown>) : response;
 }
 
-export function formatNextRange(cursorState: ArchiveSource["cursor_state"], fallbackLimit: number) {
+export function formatNextRange(cursorState: ArchiveSourceDetail["cursor_state"], fallbackLimit: number) {
   if (cursorState?.last_completed) return "-";
   const start = Math.max(1, Number(cursorState?.next_start_index) || 1);
   const limit = Math.max(1, Math.min(200, fallbackLimit));
   return `${start}-${start + limit - 1}`;
 }
 
-export function formatScanState(cursorState: ArchiveSource["cursor_state"], t: TFunction) {
+export function formatScanState(cursorState: ArchiveSourceDetail["cursor_state"], t: TFunction) {
   if (cursorState?.last_completed) return t("sources.scanCompleted");
   if (cursorState?.last_reached_known_region) return t("sources.scanKnownRegion");
   return t("sources.scanContinuing");
 }
 
-export function formatHistoryState(source: ArchiveSource, t: TFunction) {
+export function formatHistoryState(source: ArchiveSourceDetail, t: TFunction) {
   const state = source.cursor_state?.automation_state;
   if (source.status === "completed" || state === "completed") return t("sources.historyCompleted");
   if (!source.cursor_state?.automation_enabled) return t("sources.historyIdle");
@@ -100,10 +100,7 @@ export function sourceStatusTone(status: string) {
   return "secondary" as const;
 }
 
-export function formatDiscoveredMedia(
-  payload: NonNullable<ArchiveSource["discovered"]>[number]["raw_payload"],
-  t: TFunction,
-) {
+export function formatDiscoveredMedia(payload: SourceDiscovery["raw_payload"], t: TFunction) {
   const count = Number(payload?.media_count || 0);
   if (!count) return t("sources.mediaUnknown");
   const types = new Set(payload?.media_types || []);

@@ -31,13 +31,15 @@ export function SourcesPage() {
   const detailQuery = useSourceDetail(selectedSourceId);
   const policyQuery = useDownloadPolicy();
   const selected = detailQuery.data;
-  const activeScanRun = selected?.scan_runs?.find((run) => run.status === "running");
+  const activeScanRun = selected?.active_scan_run;
 
   const refresh = async (sourceId?: number) => {
     if (sourceId) setSelectedSourceId(sourceId);
     await Promise.all([
       queryClient.invalidateQueries({ queryKey: ["sources"] }),
-      queryClient.invalidateQueries({ queryKey: ["source"] }),
+      queryClient.invalidateQueries({ queryKey: sourceId ? ["source", sourceId] : ["source"] }),
+      queryClient.invalidateQueries({ queryKey: sourceId ? ["source-discovered", sourceId] : ["source-discovered"] }),
+      queryClient.invalidateQueries({ queryKey: sourceId ? ["source-scan-runs", sourceId] : ["source-scan-runs"] }),
       queryClient.invalidateQueries({ queryKey: ["archive-runs"] }),
     ]);
   };

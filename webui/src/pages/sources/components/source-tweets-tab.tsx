@@ -1,27 +1,59 @@
 import { Virtuoso } from "react-virtuoso";
-import type { ArchiveSource } from "@/lib/api";
+import type { ArchiveSourceDetail, SourceDiscoveryPageResponse } from "@/lib/api";
 import { Badge } from "@/components/ui/badge";
+import { Pagination } from "@/components/ui/pagination";
 import { formatDateTime } from "@/lib/utils";
 import { useI18n } from "@/lib/i18n";
 import { formatDiscoveredMedia } from "../utils";
 
+const PAGE_SIZE = 50;
+
 export function SourceTweetsTab({
   source,
+  data,
+  isLoading,
+  error,
+  offset,
+  onOffsetChange,
   statusLabel,
 }: {
-  source: ArchiveSource;
+  source: ArchiveSourceDetail;
+  data?: SourceDiscoveryPageResponse;
+  isLoading: boolean;
+  error: unknown;
+  offset: number;
+  onOffsetChange: (offset: number) => void;
   statusLabel: (status?: string | null) => string;
 }) {
   const { t } = useI18n();
-  const tweets = source.discovered ?? [];
+  const tweets = data?.rows ?? [];
+
+  if (isLoading) {
+    return <p className="py-4 text-sm text-fg-secondary">{t("common.loading")}</p>;
+  }
+
+  if (error) {
+    return <p className="py-4 text-sm text-danger">{String(error)}</p>;
+  }
 
   if (tweets.length === 0) {
     return <p className="py-4 text-sm text-fg-secondary">{t("sources.noDiscovered")}</p>;
   }
 
   return (
-    <div className="h-[calc(100vh-320px)] min-h-[300px]">
+    <div className="flex h-[calc(100vh-390px)] min-h-[300px] flex-col gap-3">
+      {data ? (
+        <Pagination
+          offset={offset}
+          count={data.count}
+          totalCount={data.total_count}
+          pageSize={PAGE_SIZE}
+          onOffsetChange={onOffsetChange}
+          label={t("common.pagination.range")}
+        />
+      ) : null}
       <Virtuoso
+        className="min-h-0 flex-1"
         data={tweets}
         itemContent={(_, tweet) => (
           <div className="pb-2">

@@ -1,13 +1,14 @@
 import * as React from "react";
 import { Link } from "react-router-dom";
-import { HelpCircle } from "lucide-react";
+import { ExternalLink, HelpCircle } from "lucide-react";
 import { useQuery } from "@tanstack/react-query";
 import {
   apiGet,
-  type ArchiveSource,
+  type ArchiveSourceDetail,
   type ArchiveSubmission,
   type DownloadPolicy,
   type OperationLogEntriesResponse,
+  type SourceScanRun,
 } from "@/lib/api";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
@@ -17,6 +18,7 @@ import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { Tooltip, TooltipContent, TooltipTrigger } from "@/components/ui/tooltip";
 import { useI18n } from "@/lib/i18n";
 import { formatDateTime } from "@/lib/utils";
+import { useSourceDiscovered, useSourceScanRuns } from "../hooks/useSourceDetail";
 import { SourceScanHistoryTab } from "./source-scan-history-tab";
 import { SourceTweetsTab } from "./source-tweets-tab";
 import {
@@ -66,7 +68,7 @@ export function SourceDetailPanel({
   actions,
   onManualSubmitted,
 }: {
-  source?: ArchiveSource;
+  source?: ArchiveSourceDetail;
   policy?: DownloadPolicy;
   now: number;
   detailUpdatedAt: number;
@@ -78,12 +80,28 @@ export function SourceDetailPanel({
 }) {
   const { t } = useI18n();
   const scanLimit = useNumberInput("20");
+  const [activeTab, setActiveTab] = React.useState("tweets");
+  const [tweetsOffset, setTweetsOffset] = React.useState(0);
+  const [historyOffset, setHistoryOffset] = React.useState(0);
   const persistedScanLimit = source ? preferredScanLimit(source, policy) : 20;
+  const discoveredQuery = useSourceDiscovered(source?.id ?? null, tweetsOffset, activeTab === "tweets");
+  const scanRunsQuery = useSourceScanRuns(
+    source?.id ?? null,
+    historyOffset,
+    activeTab === "history",
+    source?.active_scan_run?.status === "running",
+  );
 
   React.useEffect(() => {
     if (!source) return;
     scanLimit.set(String(persistedScanLimit));
   }, [source?.id, persistedScanLimit]);
+
+  React.useEffect(() => {
+    setActiveTab("tweets");
+    setTweetsOffset(0);
+    setHistoryOffset(0);
+  }, [source?.id]);
 
   if (!source) {
     return (
@@ -95,45 +113,48 @@ export function SourceDetailPanel({
 
   return (
     <div className="flex h-full flex-col">
-      {/* Sheet header content */}
-      <div className="mb-4 flex flex-wrap items-start justify-between gap-3 pr-8">
-        <div className="min-w-0">
-          <h2 className="text-xl font-semibold text-fg-primary">
-            {source.label || source.author_username || t("sources.detail")}
-          </h2>
-          <p className="mt-0.5 break-all text-sm text-fg-secondary">{source.source_url}</p>
-        </div>
-        <Badge tone={sourceStatusTone(source.status)}>{statusLabel(source.status)}</Badge>
-      </div>
+      <SourceHeader
+        source={source}
+        policy={policy}
+        now={now}
+        detailUpdatedAt={detailUpdatedAt}
+        scanLimit={scanLimit.clamped(200)}
+        statusLabel={statusLabel}
+      />
 
-      <Tabs defaultValue="overview" className="flex flex-1 flex-col">
+      <Tabs value={activeTab} onValueChange={setActiveTab} className="flex min-h-0 flex-1 flex-col">
         <TabsList className="flex-wrap">
-          <TabsTrigger value="overview">{t("sources.detail")}</TabsTrigger>
           <TabsTrigger value="tweets">{t("sources.recentDiscovered")}</TabsTrigger>
           <TabsTrigger value="history">{t("sources.scanHistory")}</TabsTrigger>
           <TabsTrigger value="config">{t("sources.advancedActions")}</TabsTrigger>
         </TabsList>
-        <TabsContent value="overview" className="flex-1 space-y-4 overflow-y-auto">
-          <OverviewTab
+        <TabsContent value="tweets" className="min-h-0 flex-1 overflow-hidden">
+          <SourceTweetsTab
             source={source}
-            policy={policy}
-            now={now}
-            detailUpdatedAt={detailUpdatedAt}
-            scanLimit={scanLimit.clamped(200)}
+            data={discoveredQuery.data}
+            isLoading={discoveredQuery.isLoading}
+            error={discoveredQuery.error}
+            offset={tweetsOffset}
+            onOffsetChange={setTweetsOffset}
+            statusLabel={statusLabel}
           />
-          <PrimaryActions source={source} actions={actions} scanLimit={scanLimit} />
-          <DownloadActions source={source} actions={actions} feedback={feedback} />
         </TabsContent>
-        <TabsContent value="tweets" className="flex-1 overflow-hidden">
-          <SourceTweetsTab source={source} statusLabel={statusLabel} />
-        </TabsContent>
-        <TabsContent value="history" className="flex-1 overflow-hidden">
+        <TabsContent value="history" className="min-h-0 flex-1 overflow-hidden">
           <div className="relative border-l-2 border-border-subtle pl-0">
-            <SourceScanHistoryTab source={source} now={now} />
+            <SourceScanHistoryTab
+              data={scanRunsQuery.data}
+              isLoading={scanRunsQuery.isLoading}
+              error={scanRunsQuery.error}
+              offset={historyOffset}
+              onOffsetChange={setHistoryOffset}
+              now={now}
+            />
           </div>
         </TabsContent>
         <TabsContent value="config" className="flex-1 space-y-4 overflow-y-auto">
+          <PrimaryActions source={source} actions={actions} scanLimit={scanLimit} />
           <AdvancedActions source={source} actions={actions} scanFeedback={scanFeedback} scanLimit={scanLimit} />
+          <DownloadActions source={source} actions={actions} feedback={feedback} />
           <ManualImport source={source} actions={actions} feedback={feedback} onSubmitted={onManualSubmitted} />
         </TabsContent>
       </Tabs>
@@ -141,29 +162,52 @@ export function SourceDetailPanel({
   );
 }
 
-function OverviewTab({
+function SourceHeader({
   source,
   policy,
   now,
   detailUpdatedAt,
   scanLimit,
+  statusLabel,
 }: {
-  source: ArchiveSource;
+  source: ArchiveSourceDetail;
   policy?: DownloadPolicy;
   now: number;
   detailUpdatedAt: number;
   scanLimit: number;
+  statusLabel: (status?: string | null) => string;
 }) {
   const { t } = useI18n();
-  const activeScanRun = source.scan_runs?.find((run) => run.status === "running");
+  const activeScanRun = source.active_scan_run;
   const historyEnabled = Boolean(source.cursor_state?.automation_enabled);
   const [showAllDetails, setShowAllDetails] = React.useState(false);
 
   return (
-    <>
+    <div className="mb-4 space-y-3 pr-8">
+      <div className="flex flex-wrap items-start justify-between gap-3">
+        <div className="min-w-0">
+          <h2 className="text-xl font-semibold text-fg-primary">
+            {source.label || source.author_username || t("sources.detail")}
+          </h2>
+          {source.source_url ? (
+            <a
+              className="mt-0.5 inline-flex min-w-0 items-center gap-1 break-all text-sm text-brand hover:text-brand-hover"
+              href={source.source_url}
+              target="_blank"
+              rel="noreferrer"
+            >
+              <span className="break-all">{source.source_url}</span>
+              <ExternalLink className="h-3.5 w-3.5 shrink-0" />
+            </a>
+          ) : (
+            <p className="mt-0.5 text-sm text-fg-secondary">{t("common.none")}</p>
+          )}
+        </div>
+        <Badge tone={sourceStatusTone(source.status)}>{statusLabel(source.status)}</Badge>
+      </div>
+
       {activeScanRun ? <ActiveScan run={activeScanRun} source={source} now={now} /> : null}
 
-      {/* 核心指标 */}
       <div className="grid gap-2 rounded-lg border border-border-subtle p-3 text-sm sm:grid-cols-2 lg:grid-cols-4">
         <Metric
           label={t("sources.discoveredTweets")}
@@ -174,19 +218,16 @@ function OverviewTab({
         <Metric label={t("sources.scanBatches")} value={source.scan_summary?.batch_count ?? 0} />
       </div>
 
-      {/* 详情行 */}
       <div className="grid gap-2 rounded-lg bg-bg-muted p-3 text-sm">
-        <DetailRow label={t("sources.url")} value={source.source_url || "-"} breakAll />
-        <DetailRow label={t("sources.updated")} value={formatDateTime(source.updated_at)} />
-        <DetailRow label={t("sources.nextRange")} value={formatNextRange(source.cursor_state, scanLimit)} />
-        <DetailRow label={t("sources.scanState")} value={formatScanState(source.cursor_state, t)} />
-        <DetailRow label={t("sources.historyState")} value={formatHistoryState(source, t)} />
-        {historyEnabled && source.next_scan_at ? (
-          <DetailRow label={t("sources.nextScheduled")} value={formatDateTime(source.next_scan_at)} />
-        ) : null}
-
         {showAllDetails ? (
           <>
+            <DetailRow label={t("sources.updated")} value={formatDateTime(source.updated_at)} />
+            <DetailRow label={t("sources.nextRange")} value={formatNextRange(source.cursor_state, scanLimit)} />
+            <DetailRow label={t("sources.scanState")} value={formatScanState(source.cursor_state, t)} />
+            <DetailRow label={t("sources.historyState")} value={formatHistoryState(source, t)} />
+            {historyEnabled && source.next_scan_at ? (
+              <DetailRow label={t("sources.nextScheduled")} value={formatDateTime(source.next_scan_at)} />
+            ) : null}
             <DetailRow label={t("sources.lastSeen")} value={source.last_seen_tweet_id || "-"} />
             {source.cursor_state?.last_range_start ? (
               <DetailRow
@@ -204,6 +245,8 @@ function OverviewTab({
               value={formatDateTime(source.scan_summary?.last_success_at)}
             />
             <DetailRow label={t("sources.lastScanError")} value={formatDateTime(source.scan_summary?.last_error_at)} />
+            {policy ? <PolicySummary policy={policy} /> : null}
+            <ScanPipelineNote source={source} policy={policy} />
           </>
         ) : null}
 
@@ -212,16 +255,10 @@ function OverviewTab({
           className="mt-1 text-left text-xs text-brand hover:text-brand-hover"
           onClick={() => setShowAllDetails((v) => !v)}
         >
-          {showAllDetails ? "▲ 收起" : "▼ 展开更多"}
+          {showAllDetails ? t("sources.collapseMore") : t("sources.expandMore")}
         </button>
       </div>
-
-      {/* 策略摘要 */}
-      {policy ? <PolicySummary policy={policy} /> : null}
-
-      {/* 扫描流水线说明（折叠） */}
-      <ScanPipelineNote source={source} policy={policy} />
-    </>
+    </div>
   );
 }
 
@@ -261,8 +298,8 @@ function ActiveScan({
   source,
   now,
 }: {
-  run: NonNullable<ArchiveSource["scan_runs"]>[number];
-  source: ArchiveSource;
+  run: SourceScanRun;
+  source: ArchiveSourceDetail;
   now: number;
 }) {
   const { t } = useI18n();
@@ -316,7 +353,7 @@ function ActiveScan({
   );
 }
 
-function ScanLogBox({ run }: { run: NonNullable<ArchiveSource["scan_runs"]>[number] }) {
+function ScanLogBox({ run }: { run: SourceScanRun }) {
   const { t } = useI18n();
   const [level, setLevel] = React.useState("");
   const levelQuery = level ? `&level=${encodeURIComponent(level)}` : "";
@@ -393,11 +430,11 @@ function formatLogEntry(entry: OperationLogEntriesResponse["entries"][number]) {
   return `${time} [${entry.level}] ${entry.component}: ${message}${stack}`;
 }
 
-function ScanPipelineNote({ source, policy }: { source: ArchiveSource; policy?: DownloadPolicy }) {
+function ScanPipelineNote({ source, policy }: { source: ArchiveSourceDetail; policy?: DownloadPolicy }) {
   const { t } = useI18n();
   const [open, setOpen] = React.useState(false);
   const historyEnabled = Boolean(source.cursor_state?.automation_enabled);
-  if (!historyEnabled && !source.scan_runs?.length) return null;
+  if (!historyEnabled && !source.active_scan_run) return null;
   const scanDelay = policy
     ? `${policy.source_scan_sleep_min_seconds}-${policy.source_scan_sleep_max_seconds}s`
     : t("common.none");
@@ -432,7 +469,7 @@ function PrimaryActions({
   actions,
   scanLimit,
 }: {
-  source: ArchiveSource;
+  source: ArchiveSourceDetail;
   actions: DetailActions;
   scanLimit: NumberInputState;
 }) {
@@ -480,7 +517,7 @@ function DownloadActions({
   actions,
   feedback,
 }: {
-  source: ArchiveSource;
+  source: ArchiveSourceDetail;
   actions: DetailActions;
   feedback: ArchiveSubmission | null;
 }) {
@@ -518,7 +555,7 @@ function AdvancedActions({
   scanFeedback,
   scanLimit,
 }: {
-  source: ArchiveSource;
+  source: ArchiveSourceDetail;
   actions: DetailActions;
   scanFeedback: Record<string, unknown> | null;
   scanLimit: NumberInputState;
@@ -575,7 +612,7 @@ function ManualImport({
   feedback,
   onSubmitted,
 }: {
-  source: ArchiveSource;
+  source: ArchiveSourceDetail;
   actions: DetailActions;
   feedback: ArchiveSubmission | null;
   onSubmitted: () => void;
@@ -691,11 +728,11 @@ function useTextInput(initial: string) {
   };
 }
 
-function preferredScanLimit(source: ArchiveSource, policy?: DownloadPolicy) {
+function preferredScanLimit(source: ArchiveSourceDetail, policy?: DownloadPolicy) {
   const candidates = [
     source.cursor_state?.automation_limit,
     source.cursor_state?.last_limit,
-    source.scan_runs?.[0]?.requested_limit,
+    source.active_scan_run?.requested_limit,
     policy?.source_scan_batch_size,
     20,
   ];

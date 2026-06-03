@@ -413,10 +413,17 @@ class SourceScanRunResponse(FlexibleResponse):
     created_at: datetime
 
 
+class SourceDiscoveryPageResponse(PageMetaResponse):
+    rows: list[SourceDiscoveryResponse]
+
+
+class SourceScanRunsPageResponse(PageMetaResponse):
+    rows: list[SourceScanRunResponse]
+
+
 class ArchiveSourceDetailResponse(ArchiveSourceListResponse):
-    discovered: list[SourceDiscoveryResponse]
     scan_summary: SourceScanSummaryResponse
-    scan_runs: list[SourceScanRunResponse]
+    active_scan_run: SourceScanRunResponse | None = None
 
 
 class OperationLogStreamResponse(FlexibleResponse):

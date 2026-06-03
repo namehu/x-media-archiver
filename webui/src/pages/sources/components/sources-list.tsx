@@ -1,5 +1,5 @@
 import { Plus } from "lucide-react";
-import type { ArchiveSource, SourcePageResponse } from "@/lib/api";
+import type { ArchiveSourceListItem, SourcePageResponse } from "@/lib/api";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
@@ -139,7 +139,7 @@ function SourceListItem({
   statusLabel,
   onSelectSource,
 }: {
-  source: ArchiveSource;
+  source: ArchiveSourceListItem;
   selected: boolean;
   statusLabel: (status?: string | null) => string;
   onSelectSource: (sourceId: number) => void;

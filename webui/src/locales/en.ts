@@ -1,4 +1,6 @@
 export const en: Record<string, string> = {
+  "common.loading": "Loading...",
+  "common.none": "None",
   "common.pagination.previous": "Previous",
   "common.pagination.next": "Next",
   "common.pagination.range": "{start}-{end} of {total}",
@@ -140,6 +142,8 @@ export const en: Record<string, string> = {
   "sources.scanPipelineStep3": "3. If the queue is idle, run gallery-dl for the current batch.",
   "sources.scanPipelineStep4": "4. After the subprocess returns, parse, deduplicate, save results, then wait {delay} before scheduling the next batch.",
   "sources.pauseSemantics": "Pause only stops later automatic scheduling. It does not forcibly terminate a gallery-dl subprocess that has already started; when that batch finishes, cursor and discoveries are retained.",
+  "sources.expandMore": "Show more source details",
+  "sources.collapseMore": "Hide source details",
   "nav.group.operations": "Operations",
   "nav.group.data": "Data",
   "nav.group.maintenance": "Maintenance",

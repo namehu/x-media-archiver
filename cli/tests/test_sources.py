@@ -14,6 +14,9 @@ from xarchiver.services.sources import (
     infer_author_username,
     is_media_scan_url,
     is_source_scan_complete,
+    get_source,
+    list_source_discovered_page,
+    list_source_scan_runs_page,
     list_sources_page,
     merge_discovery_payload,
     normalize_source_type,
@@ -258,6 +261,7 @@ class SourceServiceTests(unittest.TestCase):
 
 class SourceDiscoveryIntegrationTests(unittest.TestCase):
     tweet_id = "919900000000000001"
+    tweet_ids = ["919900000000000001", "919900000000000002"]
     source_urls = [
         "https://x.com/sourcefixture/media",
         "https://x.com/sourcefixture2/media",
@@ -274,7 +278,7 @@ class SourceDiscoveryIntegrationTests(unittest.TestCase):
         with connect() as conn:
             with conn.cursor() as cur:
                 cur.execute("delete from archive_sources where source_url = any(%s)", (self.source_urls,))
-                cur.execute("delete from tweets where tweet_id = %s", (self.tweet_id,))
+                cur.execute("delete from tweets where tweet_id = any(%s)", (self.tweet_ids,))
             conn.commit()
 
     def test_start_source_scan_run_creates_operation_log_stream(self) -> None:
@@ -388,6 +392,79 @@ class SourceDiscoveryIntegrationTests(unittest.TestCase):
         self.assertEqual(page["limit"], 1)
         self.assertEqual(page["offset"], 1)
         self.assertEqual([row["id"] for row in page["rows"]], [first["id"]])
+
+    def test_source_detail_is_slim_and_exposes_active_scan_run(self) -> None:
+        source = create_source("profile", self.source_urls[2])
+        running_id = start_source_scan_run(
+            int(source["id"]),
+            "history_worker",
+            {"start": 1, "end": 20, "limit": 20},
+            {},
+            worker_id="worker-test",
+        )
+
+        detail = get_source(int(source["id"]))
+
+        self.assertIsNotNone(detail)
+        assert detail is not None
+        self.assertIn("scan_summary", detail)
+        self.assertIn("active_scan_run", detail)
+        self.assertEqual(detail["active_scan_run"]["id"], running_id)
+        self.assertNotIn("discovered", detail)
+        self.assertNotIn("scan_runs", detail)
+
+    def test_list_source_discovered_page_supports_pagination(self) -> None:
+        source = create_source("user_media", self.source_urls[0])
+        records = [
+            {
+                "tweet_id": tweet_id,
+                "url": f"https://x.com/sourcefixture/status/{tweet_id}",
+                "author_username": "sourcefixture",
+                "author_display_name": None,
+                "text": f"tweet {index}",
+                "published_at": None,
+                "collected_at": None,
+                "raw_import": {"media_count": index},
+            }
+            for index, tweet_id in enumerate(self.tweet_ids, start=1)
+        ]
+        record_source_discoveries(int(source["id"]), records)
+
+        page = list_source_discovered_page(int(source["id"]), limit=1, offset=1)
+
+        self.assertEqual(page["count"], 1)
+        self.assertEqual(page["total_count"], 2)
+        self.assertEqual(page["limit"], 1)
+        self.assertEqual(page["offset"], 1)
+        self.assertEqual(page["rows"][0]["tweet_id"], self.tweet_ids[0])
+
+    def test_list_source_scan_runs_page_supports_pagination(self) -> None:
+        source = create_source("profile", self.source_urls[2])
+        first_id = start_source_scan_run(
+            int(source["id"]),
+            "manual_next",
+            {"start": 1, "end": 20, "limit": 20},
+            {},
+            worker_id="worker-test",
+        )
+        with connect() as conn:
+            with conn.cursor() as cur:
+                cur.execute("update source_scan_runs set status = 'succeeded', finished_at = now() where id = %s", (first_id,))
+            conn.commit()
+        second_id = start_source_scan_run(
+            int(source["id"]),
+            "latest_refresh",
+            {"start": 1, "end": 20, "limit": 20},
+            {},
+            worker_id="worker-test",
+        )
+
+        page = list_source_scan_runs_page(int(source["id"]), limit=1, offset=1)
+
+        self.assertEqual(page["count"], 1)
+        self.assertEqual(page["total_count"], 2)
+        self.assertEqual(page["rows"][0]["id"], first_id)
+        self.assertNotEqual(page["rows"][0]["id"], second_id)
 
     def test_recover_expired_source_scan_lease_marks_run_failed(self) -> None:
         source = create_source("profile", self.source_urls[2])
