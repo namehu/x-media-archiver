@@ -138,14 +138,24 @@ export function SourceDetailPanel({
             value="tweets"
             className="min-h-0 flex-1 overflow-hidden px-6 pb-6 pt-4 data-[state=active]:flex data-[state=active]:flex-col"
           >
-            <SourceTweetsTab
-              data={discoveredQuery.data}
-              isLoading={discoveredQuery.isLoading}
-              error={discoveredQuery.error}
-              offset={tweetsOffset}
-              onOffsetChange={setTweetsOffset}
-              statusLabel={statusLabel}
-            />
+            <div className="flex min-h-0 flex-1 flex-col gap-4">
+              {source ? (
+                <div className="shrink-0 space-y-4">
+                  <PrimaryActions source={source} actions={actions} scanLimit={scanLimit} />
+                  <AdvancedActions source={source} actions={actions} scanFeedback={scanFeedback} scanLimit={scanLimit} />
+                </div>
+              ) : null}
+              <div className="min-h-0 flex-1">
+                <SourceTweetsTab
+                  data={discoveredQuery.data}
+                  isLoading={discoveredQuery.isLoading}
+                  error={discoveredQuery.error}
+                  offset={tweetsOffset}
+                  onOffsetChange={setTweetsOffset}
+                  statusLabel={statusLabel}
+                />
+              </div>
+            </div>
           </TabsContent>
           <TabsContent
             value="history"
@@ -167,12 +177,10 @@ export function SourceDetailPanel({
             className="min-h-0 flex-1 overflow-y-auto px-6 pb-6 pt-4 data-[state=active]:block"
           >
             {source ? (
-              <>
-                <PrimaryActions source={source} actions={actions} scanLimit={scanLimit} />
-                <AdvancedActions source={source} actions={actions} scanFeedback={scanFeedback} scanLimit={scanLimit} />
+              <div className="space-y-4">
                 <DownloadActions source={source} actions={actions} feedback={feedback} />
                 <ManualImport source={source} actions={actions} feedback={feedback} onSubmitted={onManualSubmitted} />
-              </>
+              </div>
             ) : null}
           </TabsContent>
         </Tabs>
