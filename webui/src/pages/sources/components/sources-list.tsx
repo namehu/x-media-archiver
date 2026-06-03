@@ -1,11 +1,11 @@
 import { Plus } from "lucide-react";
-import type { ArchiveSource, SourcePageResponse } from "../../../lib/api";
-import { Badge } from "../../../components/ui/badge";
-import { Button } from "../../../components/ui/button";
-import { Card, CardContent, CardHeader, CardTitle } from "../../../components/ui/card";
-import { Pagination } from "../../../components/ui/pagination";
-import { Select } from "../../../components/ui/select";
-import { useI18n } from "../../../lib/i18n";
+import type { ArchiveSource, SourcePageResponse } from "@/lib/api";
+import { Badge } from "@/components/ui/badge";
+import { Button } from "@/components/ui/button";
+import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
+import { Pagination } from "@/components/ui/pagination";
+import { Select } from "@/components/ui/select";
+import { useI18n } from "@/lib/i18n";
 import { SOURCE_TYPES, sourceStatusTone, sourceTypeLabel } from "../utils";
 import { SOURCES_PAGE_SIZE } from "../hooks/useSourcesQuery";
 
@@ -163,4 +163,3 @@ function SourceListItem({
     </button>
   );
 }
-

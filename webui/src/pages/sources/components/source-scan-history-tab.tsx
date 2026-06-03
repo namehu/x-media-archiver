@@ -1,8 +1,8 @@
 import { Virtuoso } from "react-virtuoso";
-import type { ArchiveSource } from "../../../lib/api";
-import { Badge } from "../../../components/ui/badge";
-import { formatDateTime } from "../../../lib/utils";
-import { useI18n } from "../../../lib/i18n";
+import type { ArchiveSource } from "@/lib/api";
+import { Badge } from "@/components/ui/badge";
+import { formatDateTime } from "@/lib/utils";
+import { useI18n } from "@/lib/i18n";
 import { formatElapsed, formatRunRange, scanStatusLabel, scanStatusTone, scanTriggerLabel } from "../utils";
 
 export function SourceScanHistoryTab({ source, now }: { source: ArchiveSource; now: number }) {
@@ -36,11 +36,21 @@ export function SourceScanHistoryTab({ source, now }: { source: ArchiveSource; n
               <Badge tone={scanStatusTone(run.status)}>{scanStatusLabel(run.status, t)}</Badge>
             </div>
             <div className="mt-1.5 flex flex-wrap gap-x-4 gap-y-0.5 text-xs text-fg-secondary">
-              <span>{t("sources.scanRange")}: {formatRunRange(run.range_start, run.range_end)}</span>
-              <span>{t("sources.scanFound")}: {run.discovered_tweet_count}</span>
-              <span>{t("sources.scanNew")}: {run.new_tweet_count}</span>
-              <span>{t("sources.scanDuplicate")}: {run.duplicate_tweet_count}</span>
-              <span>{t("sources.scanMedia")}: {run.discovered_media_count}</span>
+              <span>
+                {t("sources.scanRange")}: {formatRunRange(run.range_start, run.range_end)}
+              </span>
+              <span>
+                {t("sources.scanFound")}: {run.discovered_tweet_count}
+              </span>
+              <span>
+                {t("sources.scanNew")}: {run.new_tweet_count}
+              </span>
+              <span>
+                {t("sources.scanDuplicate")}: {run.duplicate_tweet_count}
+              </span>
+              <span>
+                {t("sources.scanMedia")}: {run.discovered_media_count}
+              </span>
             </div>
             {run.error_message ? (
               <p className="mt-1.5 break-words text-xs text-danger">
@@ -58,4 +68,3 @@ export function SourceScanHistoryTab({ source, now }: { source: ArchiveSource; n
     </div>
   );
 }
-

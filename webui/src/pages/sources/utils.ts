@@ -1,4 +1,4 @@
-import type { ArchiveSource } from "../../lib/api";
+import type { ArchiveSource } from "@/lib/api";
 
 export type TFunction = (key: string, params?: Record<string, string | number>) => string;
 
@@ -102,7 +102,8 @@ export function scanStatusLabel(status: string, t: TFunction) {
 
 export function scanStatusTone(status: string) {
   if (["rate_limited", "auth_required", "network_error", "failed"].includes(status)) return "danger" as const;
-  if (status === "succeeded" || status === "completed_empty_batch" || status === "completed_end_of_source") return "default" as const;
+  if (status === "succeeded" || status === "completed_empty_batch" || status === "completed_end_of_source")
+    return "default" as const;
   if (status === "waiting_downloads") return "warning" as const;
   return "secondary" as const;
 }

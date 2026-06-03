@@ -8,15 +8,15 @@ import {
   type ArchiveSubmission,
   type DownloadPolicy,
   type OperationLogEntriesResponse,
-} from "../../../lib/api";
-import { Badge } from "../../../components/ui/badge";
-import { Button } from "../../../components/ui/button";
-import { Input } from "../../../components/ui/input";
-import { Select } from "../../../components/ui/select";
-import { Tabs, TabsContent, TabsList, TabsTrigger } from "../../../components/ui/tabs";
-import { Tooltip, TooltipContent, TooltipTrigger } from "../../../components/ui/tooltip";
-import { useI18n } from "../../../lib/i18n";
-import { formatDateTime } from "../../../lib/utils";
+} from "@/lib/api";
+import { Badge } from "@/components/ui/badge";
+import { Button } from "@/components/ui/button";
+import { Input } from "@/components/ui/input";
+import { Select } from "@/components/ui/select";
+import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
+import { Tooltip, TooltipContent, TooltipTrigger } from "@/components/ui/tooltip";
+import { useI18n } from "@/lib/i18n";
+import { formatDateTime } from "@/lib/utils";
 import { SourceScanHistoryTab } from "./source-scan-history-tab";
 import { SourceTweetsTab } from "./source-tweets-tab";
 import {

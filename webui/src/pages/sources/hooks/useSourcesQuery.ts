@@ -1,5 +1,5 @@
 import { useMutation, useQuery } from "@tanstack/react-query";
-import { apiGet, apiPost, type ArchiveSource, type SourcePageResponse } from "../../../lib/api";
+import { apiGet, apiPost, type ArchiveSource, type SourcePageResponse } from "@/lib/api";
 import { sourceQueryString } from "../utils";
 
 export const SOURCES_PAGE_SIZE = 50;

@@ -1,9 +1,9 @@
 import { useEffect, useState } from "react";
 import { useQueryClient } from "@tanstack/react-query";
 import { useSearchParams } from "react-router-dom";
-import type { ArchiveSubmission } from "../../lib/api";
-import { useFormatters, useI18n } from "../../lib/i18n";
-import { Sheet, SheetContent, SheetTitle } from "../../components/ui/sheet";
+import type { ArchiveSubmission } from "@/lib/api";
+import { useFormatters, useI18n } from "@/lib/i18n";
+import { Sheet, SheetContent, SheetTitle } from "@/components/ui/sheet";
 import { CreateSource } from "./components/create-source";
 import { SourceDetailPanel } from "./components/source-detail-panel";
 import { SourcesList } from "./components/sources-list";

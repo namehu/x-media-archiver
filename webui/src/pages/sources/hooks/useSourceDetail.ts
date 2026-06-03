@@ -1,5 +1,5 @@
 import { useQuery } from "@tanstack/react-query";
-import { apiGet, type ArchiveSource, type DownloadPolicy } from "../../../lib/api";
+import { apiGet, type ArchiveSource, type DownloadPolicy } from "@/lib/api";
 
 export function useSourceDetail(sourceId: number | null) {
   return useQuery({

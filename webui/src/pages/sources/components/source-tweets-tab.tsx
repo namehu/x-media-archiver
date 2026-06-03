@@ -1,8 +1,8 @@
 import { Virtuoso } from "react-virtuoso";
-import type { ArchiveSource } from "../../../lib/api";
-import { Badge } from "../../../components/ui/badge";
-import { formatDateTime } from "../../../lib/utils";
-import { useI18n } from "../../../lib/i18n";
+import type { ArchiveSource } from "@/lib/api";
+import { Badge } from "@/components/ui/badge";
+import { formatDateTime } from "@/lib/utils";
+import { useI18n } from "@/lib/i18n";
 import { formatDiscoveredMedia } from "../utils";
 
 export function SourceTweetsTab({
@@ -34,12 +34,15 @@ export function SourceTweetsTab({
                   <div className="whitespace-pre-wrap break-words text-sm leading-6 text-fg-primary">
                     {tweet.text || t("tweet.noText")}
                   </div>
-                  <div className="flex flex-wrap gap-2 text-xs text-fg-secondary">{formatDiscoveredMedia(tweet.raw_payload, t)}</div>
+                  <div className="flex flex-wrap gap-2 text-xs text-fg-secondary">
+                    {formatDiscoveredMedia(tweet.raw_payload, t)}
+                  </div>
                 </div>
                 <Badge>{statusLabel(tweet.download_status)}</Badge>
               </div>
               <div className="mt-1 text-xs text-fg-secondary">
-                {formatDateTime(tweet.discovered_at)} · {tweet.archive_run_id ? `Run #${tweet.archive_run_id}` : t("sources.notQueued")}
+                {formatDateTime(tweet.discovered_at)} ·{" "}
+                {tweet.archive_run_id ? `Run #${tweet.archive_run_id}` : t("sources.notQueued")}
               </div>
             </div>
           </div>
@@ -48,4 +51,3 @@ export function SourceTweetsTab({
     </div>
   );
 }
-

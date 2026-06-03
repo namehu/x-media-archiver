@@ -1,9 +1,9 @@
 import { useEffect, useState } from "react";
-import { Button } from "../../../components/ui/button";
-import { Input } from "../../../components/ui/input";
-import { Select } from "../../../components/ui/select";
-import { Dialog, DialogContent, DialogHeader, DialogTitle } from "../../../components/ui/dialog";
-import { useI18n } from "../../../lib/i18n";
+import { Button } from "@/components/ui/button";
+import { Input } from "@/components/ui/input";
+import { Select } from "@/components/ui/select";
+import { Dialog, DialogContent, DialogHeader, DialogTitle } from "@/components/ui/dialog";
+import { useI18n } from "@/lib/i18n";
 import { inferSourceType, SOURCE_TYPES } from "../utils";
 
 export function CreateSource({
@@ -76,5 +76,3 @@ export function CreateSource({
     </Dialog>
   );
 }
-
-

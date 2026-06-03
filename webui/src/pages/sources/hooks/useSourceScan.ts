@@ -1,5 +1,5 @@
 import { useMutation } from "@tanstack/react-query";
-import { apiPost, type ArchiveSource, type ArchiveSubmission } from "../../../lib/api";
+import { apiPost, type ArchiveSource, type ArchiveSubmission } from "@/lib/api";
 import { unwrapActionResult } from "../utils";
 
 export function useSourceActions({
