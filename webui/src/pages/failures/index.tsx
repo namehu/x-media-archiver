@@ -3,25 +3,25 @@ import { AlertTriangle, Bug, ChevronDown, ExternalLink, RefreshCw } from "lucide
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { Link } from "react-router-dom";
 import type { ColumnDef } from "@tanstack/react-table";
-import { apiGet, apiPost, type ActionResponse, type FailureRow, type PageResponse } from "../lib/api";
-import { useFormatters, useI18n } from "../lib/i18n";
-import { formatDateTime } from "../lib/utils";
-import { Badge, type BadgeProps } from "../components/ui/badge";
-import { Button } from "../components/ui/button";
-import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "../components/ui/card";
-import { Checkbox } from "../components/ui/checkbox";
-import { DataTable } from "../components/ui/data-table";
+import { apiGet, apiPost, type ActionResponse, type FailureRow, type PageResponse } from "../../lib/api";
+import { useFormatters, useI18n } from "../../lib/i18n";
+import { formatDateTime } from "../../lib/utils";
+import { Badge, type BadgeProps } from "../../components/ui/badge";
+import { Button } from "../../components/ui/button";
+import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "../../components/ui/card";
+import { Checkbox } from "../../components/ui/checkbox";
+import { DataTable } from "../../components/ui/data-table";
 import {
   DropdownMenu,
   DropdownMenuContent,
   DropdownMenuItem,
   DropdownMenuTrigger,
-} from "../components/ui/dropdown-menu";
-import { EmptyState } from "../components/ui/empty-state";
-import { ErrorState } from "../components/ui/error-state";
-import { Pagination } from "../components/ui/pagination";
-import { Skeleton } from "../components/ui/skeleton";
-import { StatCard } from "../components/ui/stat-card";
+} from "../../components/ui/dropdown-menu";
+import { EmptyState } from "../../components/ui/empty-state";
+import { ErrorState } from "../../components/ui/error-state";
+import { Pagination } from "../../components/ui/pagination";
+import { Skeleton } from "../../components/ui/skeleton";
+import { StatCard } from "../../components/ui/stat-card";
 
 const PAGE_SIZE = 100;
 const REQUEUE_STATUSES = ["failed_retryable", "missing", "corrupt", "failed_permanent"];

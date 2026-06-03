@@ -10,8 +10,8 @@ import { Select } from "../../../components/ui/select";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "../../../components/ui/tabs";
 import { Tooltip, TooltipContent, TooltipTrigger } from "../../../components/ui/tooltip";
 import { formatDateTime } from "../../../lib/utils";
-import { SourceScanHistoryTab } from "./SourceScanHistoryTab";
-import { SourceTweetsTab } from "./SourceTweetsTab";
+import { SourceScanHistoryTab } from "./source-scan-history-tab";
+import { SourceTweetsTab } from "./source-tweets-tab";
 import {
   formatElapsed,
   formatHistoryState,

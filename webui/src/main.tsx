@@ -9,15 +9,15 @@ import { I18nProvider } from "./lib/i18n";
 import { applyTheme, getStoredTheme, ThemeProvider } from "./lib/theme";
 import "./styles.css";
 
-const DashboardPage = lazy(() => import("./pages/DashboardPage").then((module) => ({ default: module.DashboardPage })));
-const DuplicatesPage = lazy(() => import("./pages/DuplicatesPage").then((module) => ({ default: module.DuplicatesPage })));
-const FailuresPage = lazy(() => import("./pages/FailuresPage").then((module) => ({ default: module.FailuresPage })));
-const ArchiveQueuePage = lazy(() => import("./pages/ArchiveQueuePage").then((module) => ({ default: module.ArchiveQueuePage })));
-const LibraryPage = lazy(() => import("./pages/LibraryPage").then((module) => ({ default: module.LibraryPage })));
-const OperationsPage = lazy(() => import("./pages/OperationsPage").then((module) => ({ default: module.OperationsPage })));
-const SourcesPage = lazy(() => import("./pages/SourcesPage").then((module) => ({ default: module.SourcesPage })));
-const TweetDetailPage = lazy(() => import("./pages/TweetDetailPage").then((module) => ({ default: module.TweetDetailPage })));
-const UiDemoPage = lazy(() => import("./pages/UiDemoPage").then((module) => ({ default: module.UiDemoPage })));
+const DashboardPage = lazy(() => import("./pages/dashboard").then((module) => ({ default: module.DashboardPage })));
+const DuplicatesPage = lazy(() => import("./pages/duplicates").then((module) => ({ default: module.DuplicatesPage })));
+const FailuresPage = lazy(() => import("./pages/failures").then((module) => ({ default: module.FailuresPage })));
+const ArchiveQueuePage = lazy(() => import("./pages/archive-queue").then((module) => ({ default: module.ArchiveQueuePage })));
+const LibraryPage = lazy(() => import("./pages/library").then((module) => ({ default: module.LibraryPage })));
+const OperationsPage = lazy(() => import("./pages/operations").then((module) => ({ default: module.OperationsPage })));
+const SourcesPage = lazy(() => import("./pages/sources").then((module) => ({ default: module.SourcesPage })));
+const TweetDetailPage = lazy(() => import("./pages/tweet-detail").then((module) => ({ default: module.TweetDetailPage })));
+const UiDemoPage = lazy(() => import("./pages/ui-demo").then((module) => ({ default: module.UiDemoPage })));
 
 applyTheme(getStoredTheme());
 

@@ -1,21 +1,21 @@
 import { Suspense, lazy, useMemo } from "react";
 import { AlertTriangle, Archive, FileWarning, Images, ListChecks } from "lucide-react";
 import { useQuery } from "@tanstack/react-query";
-import { apiGet, type Summary } from "../lib/api";
-import { useI18n, useFormatters } from "../lib/i18n";
-import { formatBytes, formatDateTime } from "../lib/utils";
-import { useServerEvents } from "../hooks/useServerEvents";
-import { Badge } from "../components/ui/badge";
-import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "../components/ui/card";
-import { LiveIndicator } from "../components/ui/live-indicator";
-import { Skeleton } from "../components/ui/skeleton";
-import { StatCard } from "../components/ui/stat-card";
-import { StatusDot } from "../components/ui/status-dot";
+import { apiGet, type Summary } from "../../lib/api";
+import { useI18n, useFormatters } from "../../lib/i18n";
+import { formatBytes, formatDateTime } from "../../lib/utils";
+import { useServerEvents } from "../../hooks/useServerEvents";
+import { Badge } from "../../components/ui/badge";
+import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "../../components/ui/card";
+import { LiveIndicator } from "../../components/ui/live-indicator";
+import { Skeleton } from "../../components/ui/skeleton";
+import { StatCard } from "../../components/ui/stat-card";
+import { StatusDot } from "../../components/ui/status-dot";
 
 const StatusDistributionCard = lazy(() =>
-  import("./dashboard/DashboardCharts").then((module) => ({ default: module.StatusDistributionCard })),
+  import("./components/dashboard-charts").then((module) => ({ default: module.StatusDistributionCard })),
 );
-const ActivityCard = lazy(() => import("./dashboard/DashboardCharts").then((module) => ({ default: module.ActivityCard })));
+const ActivityCard = lazy(() => import("./components/dashboard-charts").then((module) => ({ default: module.ActivityCard })));
 
 export function DashboardPage() {
   const { t } = useI18n();

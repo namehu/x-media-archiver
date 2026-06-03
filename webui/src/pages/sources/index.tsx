@@ -1,17 +1,17 @@
 import { useEffect, useState } from "react";
 import { useQueryClient } from "@tanstack/react-query";
 import { useSearchParams } from "react-router-dom";
-import type { ArchiveSubmission } from "../lib/api";
-import { useFormatters, useI18n } from "../lib/i18n";
-import { Dialog, DialogContent } from "../components/ui/dialog";
-import { Sheet, SheetContent, SheetTitle } from "../components/ui/sheet";
-import { TooltipProvider } from "../components/ui/tooltip";
-import { CreateSource } from "./sources/components/CreateSource";
-import { SourceDetailPanel } from "./sources/components/SourceDetailPanel";
-import { SourcesList } from "./sources/components/SourcesList";
-import { useDownloadPolicy, useSourceDetail } from "./sources/hooks/useSourceDetail";
-import { useSourceActions } from "./sources/hooks/useSourceScan";
-import { useCreateSource, useSourcesQuery } from "./sources/hooks/useSourcesQuery";
+import type { ArchiveSubmission } from "../../lib/api";
+import { useFormatters, useI18n } from "../../lib/i18n";
+import { Dialog, DialogContent } from "../../components/ui/dialog";
+import { Sheet, SheetContent, SheetTitle } from "../../components/ui/sheet";
+import { TooltipProvider } from "../../components/ui/tooltip";
+import { CreateSource } from "./components/create-source";
+import { SourceDetailPanel } from "./components/source-detail-panel";
+import { SourcesList } from "./components/sources-list";
+import { useDownloadPolicy, useSourceDetail } from "./hooks/useSourceDetail";
+import { useSourceActions } from "./hooks/useSourceScan";
+import { useCreateSource, useSourcesQuery } from "./hooks/useSourcesQuery";
 
 export function SourcesPage() {
   const { t } = useI18n();

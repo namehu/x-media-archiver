@@ -2,17 +2,17 @@ import { useMemo, useState } from "react";
 import { Files, Gauge, GitCompare, HardDrive, Image as ImageIcon } from "lucide-react";
 import { Link } from "react-router-dom";
 import { useQuery } from "@tanstack/react-query";
-import { apiGet, type DuplicatesResponse, type MediaRow } from "../lib/api";
-import { useFormatters, useI18n } from "../lib/i18n";
-import { formatBytes } from "../lib/utils";
-import { Badge } from "../components/ui/badge";
-import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "../components/ui/card";
-import { EmptyState } from "../components/ui/empty-state";
-import { ErrorState } from "../components/ui/error-state";
-import { MediaThumbnail } from "../components/ui/media-thumbnail";
-import { Pagination } from "../components/ui/pagination";
-import { Skeleton } from "../components/ui/skeleton";
-import { StatCard } from "../components/ui/stat-card";
+import { apiGet, type DuplicatesResponse, type MediaRow } from "../../lib/api";
+import { useFormatters, useI18n } from "../../lib/i18n";
+import { formatBytes } from "../../lib/utils";
+import { Badge } from "../../components/ui/badge";
+import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "../../components/ui/card";
+import { EmptyState } from "../../components/ui/empty-state";
+import { ErrorState } from "../../components/ui/error-state";
+import { MediaThumbnail } from "../../components/ui/media-thumbnail";
+import { Pagination } from "../../components/ui/pagination";
+import { Skeleton } from "../../components/ui/skeleton";
+import { StatCard } from "../../components/ui/stat-card";
 
 const PAGE_SIZE = 100;
 

@@ -1,15 +1,15 @@
-import { Badge } from "../components/ui/badge";
-import { Tabs, TabsContent, TabsList, TabsTrigger } from "../components/ui/tabs";
+import { Badge } from "../../components/ui/badge";
+import { Tabs, TabsContent, TabsList, TabsTrigger } from "../../components/ui/tabs";
 import { useSearchParams } from "react-router-dom";
-import { useI18n } from "../lib/i18n";
-import { OperationResultPanel } from "./operations/components/OperationResultPanel";
-import { useMaintenanceOps } from "./operations/hooks/useMaintenanceOps";
-import { useSystemHealth } from "./operations/hooks/useSystemHealth";
-import { CookiesTab } from "./operations/tabs/CookiesTab";
-import { DatabaseTab } from "./operations/tabs/DatabaseTab";
-import { LogsTab } from "./operations/tabs/LogsTab";
-import { MaintenanceTab } from "./operations/tabs/MaintenanceTab";
-import { SystemStatusTab } from "./operations/tabs/SystemStatusTab";
+import { useI18n } from "../../lib/i18n";
+import { OperationResultPanel } from "./components/operation-result-panel";
+import { useMaintenanceOps } from "./hooks/useMaintenanceOps";
+import { useSystemHealth } from "./hooks/useSystemHealth";
+import { CookiesTab } from "./components/cookies-tab";
+import { DatabaseTab } from "./components/database-tab";
+import { LogsTab } from "./components/logs-tab";
+import { MaintenanceTab } from "./components/maintenance-tab";
+import { SystemStatusTab } from "./components/system-status-tab";
 
 export function OperationsPage() {
   const { t } = useI18n();

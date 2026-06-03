@@ -1,19 +1,19 @@
 import { Box, Database, Search } from "lucide-react";
-import { Badge } from "../components/ui/badge";
-import { Button } from "../components/ui/button";
-import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "../components/ui/card";
-import { EmptyState } from "../components/ui/empty-state";
-import { ErrorState } from "../components/ui/error-state";
-import { Input } from "../components/ui/input";
-import { LiveIndicator } from "../components/ui/live-indicator";
-import { ProgressRing } from "../components/ui/progress-ring";
-import { Skeleton } from "../components/ui/skeleton";
-import { Sparkline } from "../components/ui/sparkline";
-import { StatCard } from "../components/ui/stat-card";
-import { StatusDot } from "../components/ui/status-dot";
-import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "../components/ui/table";
-import { Tabs, TabsContent, TabsList, TabsTrigger } from "../components/ui/tabs";
-import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from "../components/ui/tooltip";
+import { Badge } from "../../components/ui/badge";
+import { Button } from "../../components/ui/button";
+import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "../../components/ui/card";
+import { EmptyState } from "../../components/ui/empty-state";
+import { ErrorState } from "../../components/ui/error-state";
+import { Input } from "../../components/ui/input";
+import { LiveIndicator } from "../../components/ui/live-indicator";
+import { ProgressRing } from "../../components/ui/progress-ring";
+import { Skeleton } from "../../components/ui/skeleton";
+import { Sparkline } from "../../components/ui/sparkline";
+import { StatCard } from "../../components/ui/stat-card";
+import { StatusDot } from "../../components/ui/status-dot";
+import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "../../components/ui/table";
+import { Tabs, TabsContent, TabsList, TabsTrigger } from "../../components/ui/tabs";
+import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from "../../components/ui/tooltip";
 
 export function UiDemoPage() {
   return (
