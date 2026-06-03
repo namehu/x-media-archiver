@@ -39,7 +39,7 @@ export function SourceTweetsTab({
   }
 
   return (
-    <div className="flex h-[calc(100vh-390px)] min-h-[300px] flex-col gap-3">
+    <div className="flex h-full min-h-0 flex-col gap-3">
       {data ? (
         <Pagination
           offset={offset}
@@ -52,6 +52,7 @@ export function SourceTweetsTab({
       ) : null}
       <Virtuoso
         className="min-h-0 flex-1"
+        style={{ height: "100%" }}
         data={tweets}
         itemContent={(_, tweet) => (
           <div className="pb-2">

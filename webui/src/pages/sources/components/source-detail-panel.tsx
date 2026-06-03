@@ -14,6 +14,7 @@ import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Select } from "@/components/ui/select";
+import { Sheet, SheetContent, SheetHeader, SheetTitle } from "@/components/ui/sheet";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { Tooltip, TooltipContent, TooltipTrigger } from "@/components/ui/tooltip";
 import { useI18n } from "@/lib/i18n";
@@ -58,6 +59,8 @@ type DetailActions = {
 };
 
 export function SourceDetailPanel({
+  open,
+  onOpenChange,
   source,
   policy,
   now,
@@ -68,6 +71,8 @@ export function SourceDetailPanel({
   actions,
   onManualSubmitted,
 }: {
+  open: boolean;
+  onOpenChange: (open: boolean) => void;
   source?: ArchiveSourceDetail;
   policy?: DownloadPolicy;
   now: number;
@@ -103,61 +108,76 @@ export function SourceDetailPanel({
     setHistoryOffset(0);
   }, [source?.id]);
 
-  if (!source) {
-    return (
-      <div className="flex h-full items-center justify-center py-16">
-        <p className="text-sm text-fg-secondary">{t("sources.select")}</p>
-      </div>
-    );
-  }
-
   return (
-    <div className="flex h-full flex-col">
-      <SourceHeader
-        source={source}
-        policy={policy}
-        now={now}
-        detailUpdatedAt={detailUpdatedAt}
-        scanLimit={scanLimit.clamped(200)}
-        statusLabel={statusLabel}
-      />
-
-      <Tabs value={activeTab} onValueChange={setActiveTab} className="flex min-h-0 flex-1 flex-col">
-        <TabsList className="flex-wrap">
-          <TabsTrigger value="tweets">{t("sources.recentDiscovered")}</TabsTrigger>
-          <TabsTrigger value="history">{t("sources.scanHistory")}</TabsTrigger>
-          <TabsTrigger value="config">{t("sources.advancedActions")}</TabsTrigger>
-        </TabsList>
-        <TabsContent value="tweets" className="min-h-0 flex-1 overflow-hidden">
-          <SourceTweetsTab
-            data={discoveredQuery.data}
-            isLoading={discoveredQuery.isLoading}
-            error={discoveredQuery.error}
-            offset={tweetsOffset}
-            onOffsetChange={setTweetsOffset}
-            statusLabel={statusLabel}
-          />
-        </TabsContent>
-        <TabsContent value="history" className="min-h-0 flex-1 overflow-hidden">
-          <div className="relative border-l-2 border-border-subtle pl-0">
-            <SourceScanHistoryTab
-              data={scanRunsQuery.data}
-              isLoading={scanRunsQuery.isLoading}
-              error={scanRunsQuery.error}
-              offset={historyOffset}
-              onOffsetChange={setHistoryOffset}
-              now={now}
+    <Sheet open={open} onOpenChange={onOpenChange}>
+      <SheetContent className="h-dvh w-[min(100vw,780px)] overflow-hidden p-0">
+        <Tabs value={activeTab} onValueChange={setActiveTab} className="flex h-full min-h-0 flex-col">
+          <SheetHeader className="mb-0 shrink-0 gap-4 px-6 pb-0 pt-6 pr-12">
+            <SheetTitle className="sr-only">
+              {source?.label || source?.author_username || t("sources.detail")}
+            </SheetTitle>
+            {source ? (
+              <SourceHeader
+                source={source}
+                policy={policy}
+                now={now}
+                detailUpdatedAt={detailUpdatedAt}
+                scanLimit={scanLimit.clamped(200)}
+                statusLabel={statusLabel}
+              />
+            ) : (
+              <p className="py-4 text-sm text-fg-secondary">{t("sources.select")}</p>
+            )}
+            <TabsList className="flex-wrap">
+              <TabsTrigger value="tweets">{t("sources.recentDiscovered")}</TabsTrigger>
+              <TabsTrigger value="history">{t("sources.scanHistory")}</TabsTrigger>
+              <TabsTrigger value="config">{t("sources.advancedActions")}</TabsTrigger>
+            </TabsList>
+          </SheetHeader>
+          <TabsContent
+            value="tweets"
+            className="min-h-0 flex-1 overflow-hidden px-6 pb-6 pt-4 data-[state=active]:flex data-[state=active]:flex-col"
+          >
+            <SourceTweetsTab
+              data={discoveredQuery.data}
+              isLoading={discoveredQuery.isLoading}
+              error={discoveredQuery.error}
+              offset={tweetsOffset}
+              onOffsetChange={setTweetsOffset}
+              statusLabel={statusLabel}
             />
-          </div>
-        </TabsContent>
-        <TabsContent value="config" className="flex-1 space-y-4 overflow-y-auto">
-          <PrimaryActions source={source} actions={actions} scanLimit={scanLimit} />
-          <AdvancedActions source={source} actions={actions} scanFeedback={scanFeedback} scanLimit={scanLimit} />
-          <DownloadActions source={source} actions={actions} feedback={feedback} />
-          <ManualImport source={source} actions={actions} feedback={feedback} onSubmitted={onManualSubmitted} />
-        </TabsContent>
-      </Tabs>
-    </div>
+          </TabsContent>
+          <TabsContent
+            value="history"
+            className="min-h-0 flex-1 overflow-hidden px-6 pb-6 pt-4 data-[state=active]:flex data-[state=active]:flex-col"
+          >
+            <div className="relative flex min-h-0 flex-1 flex-col border-l-2 border-border-subtle pl-0">
+              <SourceScanHistoryTab
+                data={scanRunsQuery.data}
+                isLoading={scanRunsQuery.isLoading}
+                error={scanRunsQuery.error}
+                offset={historyOffset}
+                onOffsetChange={setHistoryOffset}
+                now={now}
+              />
+            </div>
+          </TabsContent>
+          <TabsContent
+            value="config"
+            className="min-h-0 flex-1 overflow-y-auto px-6 pb-6 pt-4 data-[state=active]:block"
+          >
+            {source ? (
+              <>
+                <PrimaryActions source={source} actions={actions} scanLimit={scanLimit} />
+                <AdvancedActions source={source} actions={actions} scanFeedback={scanFeedback} scanLimit={scanLimit} />
+                <DownloadActions source={source} actions={actions} feedback={feedback} />
+                <ManualImport source={source} actions={actions} feedback={feedback} onSubmitted={onManualSubmitted} />
+              </>
+            ) : null}
+          </TabsContent>
+        </Tabs>
+      </SheetContent>
+    </Sheet>
   );
 }
 
@@ -182,7 +202,7 @@ function SourceHeader({
   const [showAllDetails, setShowAllDetails] = React.useState(false);
 
   return (
-    <div className="mb-4 space-y-3 pr-8">
+    <div className="space-y-3">
       <div className="flex items-start justify-between gap-3">
         <div className="flex min-w-0 items-start gap-2">
           <Badge tone={sourceStatusTone(source.status)}>{statusLabel(source.status)}</Badge>

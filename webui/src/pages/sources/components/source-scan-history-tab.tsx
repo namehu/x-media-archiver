@@ -39,7 +39,7 @@ export function SourceScanHistoryTab({
   }
 
   return (
-    <div className="flex h-[calc(100vh-390px)] min-h-[300px] flex-col gap-3 pl-5">
+    <div className="flex h-full min-h-0 flex-col gap-3 pl-5">
       {data ? (
         <Pagination
           offset={offset}
@@ -52,6 +52,7 @@ export function SourceScanHistoryTab({
       ) : null}
       <Virtuoso
         className="min-h-0 flex-1"
+        style={{ height: "100%" }}
         data={runs}
         itemContent={(_, run) => (
           <div className="relative pb-4">

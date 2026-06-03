@@ -2,8 +2,7 @@ import { useEffect, useState } from "react";
 import { useQueryClient } from "@tanstack/react-query";
 import { useSearchParams } from "react-router-dom";
 import type { ArchiveSubmission } from "@/lib/api";
-import { useFormatters, useI18n } from "@/lib/i18n";
-import { Sheet, SheetContent, SheetTitle } from "@/components/ui/sheet";
+import { useFormatters } from "@/lib/i18n";
 import { CreateSource } from "./components/create-source";
 import { SourceDetailPanel } from "./components/source-detail-panel";
 import { SourcesList } from "./components/sources-list";
@@ -12,7 +11,6 @@ import { useSourceActions } from "./hooks/useSourceScan";
 import { useCreateSource, useSourcesQuery } from "./hooks/useSourcesQuery";
 
 export function SourcesPage() {
-  const { t } = useI18n();
   const { statusLabel } = useFormatters();
   const queryClient = useQueryClient();
   const [searchParams, setSearchParams] = useSearchParams();
@@ -111,51 +109,42 @@ export function SourcesPage() {
         onOpenChange={setCreateDialogOpen}
       />
 
-      {/* 来源详情抽屉 */}
-      <Sheet
+      <SourceDetailPanel
         open={detailSheetOpen}
         onOpenChange={(open) => {
           if (!open) closeDetail();
         }}
-      >
-        <SheetContent className="w-[min(100vw,780px)] overflow-y-auto p-6">
-          <SheetTitle className="sr-only">
-            {selected?.label || selected?.author_username || t("sources.detail")}
-          </SheetTitle>
-          <SourceDetailPanel
-            source={selected}
-            policy={policyQuery.data}
-            now={now}
-            detailUpdatedAt={detailQuery.dataUpdatedAt}
-            feedback={feedback}
-            scanFeedback={scanFeedback}
-            statusLabel={statusLabel}
-            actions={{
-              submitRecords: actions.submitMutation.mutate,
-              setStatus: actions.statusMutation.mutate,
-              scan: actions.scanMutation.mutate,
-              submitDiscovered: actions.submitDiscoveredMutation.mutate,
-              startHistory: actions.historyScanMutation.mutate,
-              stopHistory: actions.stopHistoryScanMutation.mutate,
-              pending: {
-                submit: actions.submitMutation.isPending,
-                status: actions.statusMutation.isPending,
-                scan: actions.scanMutation.isPending,
-                submitDiscovered: actions.submitDiscoveredMutation.isPending,
-                history: actions.historyScanMutation.isPending || actions.stopHistoryScanMutation.isPending,
-              },
-              errors: {
-                submit: actions.submitMutation.error,
-                status: actions.statusMutation.error,
-                scan: actions.scanMutation.error,
-                submitDiscovered: actions.submitDiscoveredMutation.error,
-                history: actions.historyScanMutation.error || actions.stopHistoryScanMutation.error,
-              },
-            }}
-            onManualSubmitted={() => setFeedback(null)}
-          />
-        </SheetContent>
-      </Sheet>
+        source={selected}
+        policy={policyQuery.data}
+        now={now}
+        detailUpdatedAt={detailQuery.dataUpdatedAt}
+        feedback={feedback}
+        scanFeedback={scanFeedback}
+        statusLabel={statusLabel}
+        actions={{
+          submitRecords: actions.submitMutation.mutate,
+          setStatus: actions.statusMutation.mutate,
+          scan: actions.scanMutation.mutate,
+          submitDiscovered: actions.submitDiscoveredMutation.mutate,
+          startHistory: actions.historyScanMutation.mutate,
+          stopHistory: actions.stopHistoryScanMutation.mutate,
+          pending: {
+            submit: actions.submitMutation.isPending,
+            status: actions.statusMutation.isPending,
+            scan: actions.scanMutation.isPending,
+            submitDiscovered: actions.submitDiscoveredMutation.isPending,
+            history: actions.historyScanMutation.isPending || actions.stopHistoryScanMutation.isPending,
+          },
+          errors: {
+            submit: actions.submitMutation.error,
+            status: actions.statusMutation.error,
+            scan: actions.scanMutation.error,
+            submitDiscovered: actions.submitDiscoveredMutation.error,
+            history: actions.historyScanMutation.error || actions.stopHistoryScanMutation.error,
+          },
+        }}
+        onManualSubmitted={() => setFeedback(null)}
+      />
     </div>
   );
 }
