@@ -2,13 +2,20 @@ import * as React from "react";
 import { Link } from "react-router-dom";
 import { HelpCircle } from "lucide-react";
 import { useQuery } from "@tanstack/react-query";
-import { apiGet, type ArchiveSource, type ArchiveSubmission, type DownloadPolicy, type OperationLogEntriesResponse } from "../../../lib/api";
+import {
+  apiGet,
+  type ArchiveSource,
+  type ArchiveSubmission,
+  type DownloadPolicy,
+  type OperationLogEntriesResponse,
+} from "../../../lib/api";
 import { Badge } from "../../../components/ui/badge";
 import { Button } from "../../../components/ui/button";
 import { Input } from "../../../components/ui/input";
 import { Select } from "../../../components/ui/select";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "../../../components/ui/tabs";
 import { Tooltip, TooltipContent, TooltipTrigger } from "../../../components/ui/tooltip";
+import { useI18n } from "../../../lib/i18n";
 import { formatDateTime } from "../../../lib/utils";
 import { SourceScanHistoryTab } from "./source-scan-history-tab";
 import { SourceTweetsTab } from "./source-tweets-tab";
@@ -23,7 +30,6 @@ import {
   scanStatusTone,
   scanTriggerLabel,
   sourceStatusTone,
-  type TFunction,
 } from "../utils";
 
 type DetailActions = {
@@ -56,7 +62,6 @@ export function SourceDetailPanel({
   detailUpdatedAt,
   feedback,
   scanFeedback,
-  t,
   statusLabel,
   actions,
   onManualSubmitted,
@@ -67,11 +72,11 @@ export function SourceDetailPanel({
   detailUpdatedAt: number;
   feedback: ArchiveSubmission | null;
   scanFeedback: Record<string, unknown> | null;
-  t: TFunction;
   statusLabel: (status?: string | null) => string;
   actions: DetailActions;
   onManualSubmitted: () => void;
 }) {
+  const { t } = useI18n();
   const scanLimit = useNumberInput("20");
   const persistedScanLimit = source ? preferredScanLimit(source, policy) : 20;
 
@@ -93,7 +98,9 @@ export function SourceDetailPanel({
       {/* Sheet header content */}
       <div className="mb-4 flex flex-wrap items-start justify-between gap-3 pr-8">
         <div className="min-w-0">
-          <h2 className="text-xl font-semibold text-fg-primary">{source.label || source.author_username || t("sources.detail")}</h2>
+          <h2 className="text-xl font-semibold text-fg-primary">
+            {source.label || source.author_username || t("sources.detail")}
+          </h2>
           <p className="mt-0.5 break-all text-sm text-fg-secondary">{source.source_url}</p>
         </div>
         <Badge tone={sourceStatusTone(source.status)}>{statusLabel(source.status)}</Badge>
@@ -113,28 +120,21 @@ export function SourceDetailPanel({
             now={now}
             detailUpdatedAt={detailUpdatedAt}
             scanLimit={scanLimit.clamped(200)}
-            t={t}
           />
-          <PrimaryActions source={source} t={t} actions={actions} scanLimit={scanLimit} />
-          <DownloadActions source={source} t={t} actions={actions} feedback={feedback} />
+          <PrimaryActions source={source} actions={actions} scanLimit={scanLimit} />
+          <DownloadActions source={source} actions={actions} feedback={feedback} />
         </TabsContent>
         <TabsContent value="tweets" className="flex-1 overflow-hidden">
-          <SourceTweetsTab source={source} t={t} statusLabel={statusLabel} />
+          <SourceTweetsTab source={source} statusLabel={statusLabel} />
         </TabsContent>
         <TabsContent value="history" className="flex-1 overflow-hidden">
           <div className="relative border-l-2 border-border-subtle pl-0">
-            <SourceScanHistoryTab source={source} now={now} t={t} />
+            <SourceScanHistoryTab source={source} now={now} />
           </div>
         </TabsContent>
         <TabsContent value="config" className="flex-1 space-y-4 overflow-y-auto">
-          <AdvancedActions source={source} t={t} actions={actions} scanFeedback={scanFeedback} scanLimit={scanLimit} />
-          <ManualImport
-            source={source}
-            t={t}
-            actions={actions}
-            feedback={feedback}
-            onSubmitted={onManualSubmitted}
-          />
+          <AdvancedActions source={source} actions={actions} scanFeedback={scanFeedback} scanLimit={scanLimit} />
+          <ManualImport source={source} actions={actions} feedback={feedback} onSubmitted={onManualSubmitted} />
         </TabsContent>
       </Tabs>
     </div>
@@ -147,26 +147,28 @@ function OverviewTab({
   now,
   detailUpdatedAt,
   scanLimit,
-  t,
 }: {
   source: ArchiveSource;
   policy?: DownloadPolicy;
   now: number;
   detailUpdatedAt: number;
   scanLimit: number;
-  t: TFunction;
 }) {
+  const { t } = useI18n();
   const activeScanRun = source.scan_runs?.find((run) => run.status === "running");
   const historyEnabled = Boolean(source.cursor_state?.automation_enabled);
   const [showAllDetails, setShowAllDetails] = React.useState(false);
 
   return (
     <>
-      {activeScanRun ? <ActiveScan run={activeScanRun} source={source} now={now} t={t} /> : null}
+      {activeScanRun ? <ActiveScan run={activeScanRun} source={source} now={now} /> : null}
 
       {/* 核心指标 */}
       <div className="grid gap-2 rounded-lg border border-border-subtle p-3 text-sm sm:grid-cols-2 lg:grid-cols-4">
-        <Metric label={t("sources.discoveredTweets")} value={source.discovered_tweet_count ?? source.discovered_count ?? 0} />
+        <Metric
+          label={t("sources.discoveredTweets")}
+          value={source.discovered_tweet_count ?? source.discovered_count ?? 0}
+        />
         <Metric label={t("sources.discoveredMedia")} value={source.discovered_media_count ?? 0} />
         <Metric label={t("sources.unsubmitted")} value={source.unsubmitted_tweet_count ?? 0} />
         <Metric label={t("sources.scanBatches")} value={source.scan_summary?.batch_count ?? 0} />
@@ -179,17 +181,28 @@ function OverviewTab({
         <DetailRow label={t("sources.nextRange")} value={formatNextRange(source.cursor_state, scanLimit)} />
         <DetailRow label={t("sources.scanState")} value={formatScanState(source.cursor_state, t)} />
         <DetailRow label={t("sources.historyState")} value={formatHistoryState(source, t)} />
-        {historyEnabled && source.next_scan_at ? <DetailRow label={t("sources.nextScheduled")} value={formatDateTime(source.next_scan_at)} /> : null}
+        {historyEnabled && source.next_scan_at ? (
+          <DetailRow label={t("sources.nextScheduled")} value={formatDateTime(source.next_scan_at)} />
+        ) : null}
 
         {showAllDetails ? (
           <>
             <DetailRow label={t("sources.lastSeen")} value={source.last_seen_tweet_id || "-"} />
             {source.cursor_state?.last_range_start ? (
-              <DetailRow label={t("sources.lastRange")} value={`${source.cursor_state.last_range_start}-${source.cursor_state.last_range_end}`} />
+              <DetailRow
+                label={t("sources.lastRange")}
+                value={`${source.cursor_state.last_range_start}-${source.cursor_state.last_range_end}`}
+              />
             ) : null}
-            <DetailRow label={t("sources.detailRefreshed")} value={formatDateTime(new Date(detailUpdatedAt || now).toISOString())} />
+            <DetailRow
+              label={t("sources.detailRefreshed")}
+              value={formatDateTime(new Date(detailUpdatedAt || now).toISOString())}
+            />
             <DetailRow label={t("sources.scanAdded")} value={source.scan_summary?.added_tweet_count ?? 0} />
-            <DetailRow label={t("sources.lastScanSuccess")} value={formatDateTime(source.scan_summary?.last_success_at)} />
+            <DetailRow
+              label={t("sources.lastScanSuccess")}
+              value={formatDateTime(source.scan_summary?.last_success_at)}
+            />
             <DetailRow label={t("sources.lastScanError")} value={formatDateTime(source.scan_summary?.last_error_at)} />
           </>
         ) : null}
@@ -204,15 +217,16 @@ function OverviewTab({
       </div>
 
       {/* 策略摘要 */}
-      {policy ? <PolicySummary policy={policy} t={t} /> : null}
+      {policy ? <PolicySummary policy={policy} /> : null}
 
       {/* 扫描流水线说明（折叠） */}
-      <ScanPipelineNote source={source} policy={policy} t={t} />
+      <ScanPipelineNote source={source} policy={policy} />
     </>
   );
 }
 
-function PolicySummary({ policy, t }: { policy: DownloadPolicy; t: TFunction }) {
+function PolicySummary({ policy }: { policy: DownloadPolicy }) {
+  const { t } = useI18n();
   const [open, setOpen] = React.useState(false);
   return (
     <div className="rounded-lg border border-border-subtle text-sm">
@@ -227,7 +241,10 @@ function PolicySummary({ policy, t }: { policy: DownloadPolicy; t: TFunction }) 
       {open ? (
         <div className="grid gap-2 border-t border-border-subtle p-3 sm:grid-cols-2 lg:grid-cols-4">
           <Metric label={t("sources.policyBatch")} value={policy.queue_batch_size} />
-          <Metric label={t("sources.policyDelay")} value={`${policy.downloader_sleep_min_seconds}-${policy.downloader_sleep_max_seconds}s`} />
+          <Metric
+            label={t("sources.policyDelay")}
+            value={`${policy.downloader_sleep_min_seconds}-${policy.downloader_sleep_max_seconds}s`}
+          />
           <Metric label={t("sources.policyEngine")} value={policy.default_download_engine} />
           <Metric
             label={t("sources.policyScan")}
@@ -243,13 +260,12 @@ function ActiveScan({
   run,
   source,
   now,
-  t,
 }: {
   run: NonNullable<ArchiveSource["scan_runs"]>[number];
   source: ArchiveSource;
   now: number;
-  t: TFunction;
 }) {
+  const { t } = useI18n();
   const cursorBefore = run.cursor_before ?? source.cursor_state ?? {};
   const scanUrl = String(cursorBefore.last_scan_url || source.source_url || "-");
   const hasCursor = Boolean(cursorBefore.extractor_cursor);
@@ -263,13 +279,27 @@ function ActiveScan({
       </div>
       <div className="mt-2 grid gap-2 text-xs text-fg-secondary sm:grid-cols-2">
         <span>{t("sources.scanEngine")}: gallery-dl</span>
-        <span>{t("sources.scanPhase")}: {run.progress_message || t("sources.scanPhaseCollecting")}</span>
-        <span>{t("sources.scanRange")}: {formatRunRange(run.range_start, run.range_end)}</span>
-        <span>{t("sources.scanRequested")}: {run.requested_limit ?? "-"}</span>
-        <span>{t("sources.activeScanElapsed")}: {formatElapsed(run.started_at, now)}</span>
-        <span>{t("sources.activeScanStarted")}: {formatDateTime(run.started_at)}</span>
-        <span>{t("sources.activeScanMode")}: {scanTriggerLabel(run.trigger_type, t)}</span>
-        <span>{t("sources.scanCursor")}: {hasCursor ? t("sources.scanCursorResume") : t("sources.scanCursorFirstPage")}</span>
+        <span>
+          {t("sources.scanPhase")}: {run.progress_message || t("sources.scanPhaseCollecting")}
+        </span>
+        <span>
+          {t("sources.scanRange")}: {formatRunRange(run.range_start, run.range_end)}
+        </span>
+        <span>
+          {t("sources.scanRequested")}: {run.requested_limit ?? "-"}
+        </span>
+        <span>
+          {t("sources.activeScanElapsed")}: {formatElapsed(run.started_at, now)}
+        </span>
+        <span>
+          {t("sources.activeScanStarted")}: {formatDateTime(run.started_at)}
+        </span>
+        <span>
+          {t("sources.activeScanMode")}: {scanTriggerLabel(run.trigger_type, t)}
+        </span>
+        <span>
+          {t("sources.scanCursor")}: {hasCursor ? t("sources.scanCursorResume") : t("sources.scanCursorFirstPage")}
+        </span>
       </div>
       <div className="mt-2 break-all rounded-md bg-bg-elevated/70 px-2 py-1 text-xs text-fg-secondary">
         {t("sources.scanTarget")}: {scanUrl}
@@ -279,14 +309,15 @@ function ActiveScan({
           {t("sources.lastLogAt")}: {formatDateTime(run.last_log_at)}
         </p>
       ) : null}
-      <ScanLogBox run={run} t={t} />
+      <ScanLogBox run={run} />
       <p className="mt-2 text-xs text-fg-secondary">{t("sources.activeScanHint")}</p>
       {sourcePaused ? <p className="mt-1 text-xs text-warning">{t("sources.activeScanPauseHint")}</p> : null}
     </div>
   );
 }
 
-function ScanLogBox({ run, t }: { run: NonNullable<ArchiveSource["scan_runs"]>[number]; t: TFunction }) {
+function ScanLogBox({ run }: { run: NonNullable<ArchiveSource["scan_runs"]>[number] }) {
+  const { t } = useI18n();
   const [level, setLevel] = React.useState("");
   const levelQuery = level ? `&level=${encodeURIComponent(level)}` : "";
   const streamId = run.log_stream_id;
@@ -329,7 +360,10 @@ function ScanLogBox({ run, t }: { run: NonNullable<ArchiveSource["scan_runs"]>[n
         <div className="flex flex-wrap items-center justify-between gap-2 border-b border-border-subtle px-3 py-1 text-xs text-fg-secondary">
           <span className="break-all">{run.log_path}</span>
           {streamId ? (
-            <Link to={`/operations?tab=logs&streamId=${streamId}`} className="font-semibold text-brand hover:text-brand-hover">
+            <Link
+              to={`/operations?tab=logs&streamId=${streamId}`}
+              className="font-semibold text-brand hover:text-brand-hover"
+            >
               {t("sources.openLogStream")}
             </Link>
           ) : null}
@@ -338,9 +372,16 @@ function ScanLogBox({ run, t }: { run: NonNullable<ArchiveSource["scan_runs"]>[n
       <pre className="max-h-56 overflow-auto whitespace-pre-wrap break-words px-3 py-2 font-mono text-xs leading-relaxed text-fg-secondary">
         {query.error
           ? String(query.error)
-          : log || (streamId ? (available ? t("sources.scanLogEmpty") : t("sources.scanLogUnavailable")) : t("sources.scanLogWaiting"))}
+          : log ||
+            (streamId
+              ? available
+                ? t("sources.scanLogEmpty")
+                : t("sources.scanLogUnavailable")
+              : t("sources.scanLogWaiting"))}
       </pre>
-      {query.data?.is_truncated ? <div className="border-t border-warning/20 px-3 py-2 text-xs text-warning">{t("logs.truncated")}</div> : null}
+      {query.data?.is_truncated ? (
+        <div className="border-t border-warning/20 px-3 py-2 text-xs text-warning">{t("logs.truncated")}</div>
+      ) : null}
     </div>
   );
 }
@@ -352,7 +393,8 @@ function formatLogEntry(entry: OperationLogEntriesResponse["entries"][number]) {
   return `${time} [${entry.level}] ${entry.component}: ${message}${stack}`;
 }
 
-function ScanPipelineNote({ source, policy, t }: { source: ArchiveSource; policy?: DownloadPolicy; t: TFunction }) {
+function ScanPipelineNote({ source, policy }: { source: ArchiveSource; policy?: DownloadPolicy }) {
+  const { t } = useI18n();
   const [open, setOpen] = React.useState(false);
   const historyEnabled = Boolean(source.cursor_state?.automation_enabled);
   if (!historyEnabled && !source.scan_runs?.length) return null;
@@ -387,15 +429,14 @@ function ScanPipelineNote({ source, policy, t }: { source: ArchiveSource; policy
 
 function PrimaryActions({
   source,
-  t,
   actions,
   scanLimit,
 }: {
   source: ArchiveSource;
-  t: TFunction;
   actions: DetailActions;
   scanLimit: NumberInputState;
 }) {
+  const { t } = useI18n();
   const historyEnabled = Boolean(source.cursor_state?.automation_enabled);
   const canStart = !actions.pending.history && !(historyEnabled && source.status === "active");
 
@@ -427,28 +468,36 @@ function PrimaryActions({
           {t("sources.resume")}
         </Button>
       ) : null}
-      {actions.errors.history || actions.errors.status ? <ErrorLine error={actions.errors.history || actions.errors.status} /> : null}
+      {actions.errors.history || actions.errors.status ? (
+        <ErrorLine error={actions.errors.history || actions.errors.status} />
+      ) : null}
     </ActionBlock>
   );
 }
 
 function DownloadActions({
   source,
-  t,
   actions,
   feedback,
 }: {
   source: ArchiveSource;
-  t: TFunction;
   actions: DetailActions;
   feedback: ArchiveSubmission | null;
 }) {
+  const { t } = useI18n();
   const submitLimit = useNumberInput("20");
   const canSubmit = (source.unsubmitted_tweet_count || 0) > 0 && !actions.pending.submitDiscovered;
 
   return (
     <ActionBlock title={t("sources.downloadActions")} hint={t("sources.downloadHint")}>
-      <Input className="w-28" type="number" min={1} max={500} value={submitLimit.value} onChange={submitLimit.onChange} />
+      <Input
+        className="w-28"
+        type="number"
+        min={1}
+        max={500}
+        value={submitLimit.value}
+        onChange={submitLimit.onChange}
+      />
       <Button
         type="button"
         variant="secondary"
@@ -458,31 +507,35 @@ function DownloadActions({
         {t("sources.submitUnqueued")}
       </Button>
       {actions.errors.submitDiscovered ? <ErrorLine error={actions.errors.submitDiscovered} /> : null}
-      {feedback ? <FeedbackLine feedback={feedback} t={t} /> : null}
+      {feedback ? <FeedbackLine feedback={feedback} /> : null}
     </ActionBlock>
   );
 }
 
 function AdvancedActions({
   source,
-  t,
   actions,
   scanFeedback,
   scanLimit,
 }: {
   source: ArchiveSource;
-  t: TFunction;
   actions: DetailActions;
   scanFeedback: Record<string, unknown> | null;
   scanLimit: NumberInputState;
 }) {
+  const { t } = useI18n();
   const historyEnabled = Boolean(source.cursor_state?.automation_enabled);
   const canScan = source.status !== "paused" && !actions.pending.scan;
 
   return (
     <ActionBlock title={t("sources.advancedActions")} hint={t("sources.advancedHint")}>
       <Input className="w-28" type="number" min={1} max={200} value={scanLimit.value} onChange={scanLimit.onChange} />
-      <Button type="button" variant="secondary" disabled={!canScan} onClick={() => actions.scan({ sourceId: source.id, limit: scanLimit.clamped(200) })}>
+      <Button
+        type="button"
+        variant="secondary"
+        disabled={!canScan}
+        onClick={() => actions.scan({ sourceId: source.id, limit: scanLimit.clamped(200) })}
+      >
         {t("sources.scanNext")}
       </Button>
       <Button
@@ -518,17 +571,16 @@ function AdvancedActions({
 
 function ManualImport({
   source,
-  t,
   actions,
   feedback,
   onSubmitted,
 }: {
   source: ArchiveSource;
-  t: TFunction;
   actions: DetailActions;
   feedback: ArchiveSubmission | null;
   onSubmitted: () => void;
 }) {
+  const { t } = useI18n();
   const recordUrls = useTextInput("");
   const records = parseRecordUrls(recordUrls.value);
   const canSubmit = records.length > 0 && !actions.pending.submit;
@@ -556,7 +608,7 @@ function ManualImport({
         {t("sources.submitDiscovered")}
       </Button>
       {actions.errors.submit ? <ErrorLine error={actions.errors.submit} /> : null}
-      {feedback ? <FeedbackLine feedback={feedback} t={t} /> : null}
+      {feedback ? <FeedbackLine feedback={feedback} /> : null}
     </ActionBlock>
   );
 }
@@ -604,7 +656,8 @@ function ErrorLine({ error }: { error: unknown }) {
   return <p className="basis-full text-sm text-danger">{String(error)}</p>;
 }
 
-function FeedbackLine({ feedback, t }: { feedback: ArchiveSubmission; t: TFunction }) {
+function FeedbackLine({ feedback }: { feedback: ArchiveSubmission }) {
+  const { t } = useI18n();
   return (
     <p className="basis-full rounded-lg bg-bg-muted p-3 text-sm text-fg-primary">
       {t("sources.submitFeedback", {

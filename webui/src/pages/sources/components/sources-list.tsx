@@ -5,11 +5,11 @@ import { Button } from "../../../components/ui/button";
 import { Card, CardContent, CardHeader, CardTitle } from "../../../components/ui/card";
 import { Pagination } from "../../../components/ui/pagination";
 import { Select } from "../../../components/ui/select";
-import { SOURCE_TYPES, sourceStatusTone, sourceTypeLabel, type TFunction } from "../utils";
+import { useI18n } from "../../../lib/i18n";
+import { SOURCE_TYPES, sourceStatusTone, sourceTypeLabel } from "../utils";
 import { SOURCES_PAGE_SIZE } from "../hooks/useSourcesQuery";
 
 export function SourcesList({
-  t,
   statusLabel,
   data,
   selectedSourceId,
@@ -22,7 +22,6 @@ export function SourcesList({
   onSelectSource,
   onAddClick,
 }: {
-  t: TFunction;
   statusLabel: (status?: string | null) => string;
   data?: SourcePageResponse;
   selectedSourceId: number | null;
@@ -35,6 +34,7 @@ export function SourcesList({
   onSelectSource: (sourceId: number) => void;
   onAddClick: () => void;
 }) {
+  const { t } = useI18n();
   return (
     <Card>
       <CardHeader>
@@ -95,7 +95,6 @@ export function SourcesList({
               key={source.id}
               source={source}
               selected={source.id === selectedSourceId}
-              t={t}
               statusLabel={statusLabel}
               onSelectSource={onSelectSource}
             />
@@ -120,16 +119,15 @@ export function SourcesList({
 function SourceListItem({
   source,
   selected,
-  t,
   statusLabel,
   onSelectSource,
 }: {
   source: ArchiveSource;
   selected: boolean;
-  t: TFunction;
   statusLabel: (status?: string | null) => string;
   onSelectSource: (sourceId: number) => void;
 }) {
+  const { t } = useI18n();
   return (
     <button
       type="button"
@@ -151,8 +149,8 @@ function SourceListItem({
       <div className="flex shrink-0 items-center gap-4 text-xs text-fg-secondary">
         <div className="hidden sm:flex sm:flex-col sm:items-end sm:gap-0.5">
           <span>
-            {t("sources.discovered")}: {source.discovered_tweet_count ?? source.discovered_count ?? 0} / {source.discovered_media_count ?? 0}{" "}
-            {t("sources.mediaUnit")}
+            {t("sources.discovered")}: {source.discovered_tweet_count ?? source.discovered_count ?? 0} /{" "}
+            {source.discovered_media_count ?? 0} {t("sources.mediaUnit")}
           </span>
           {(source.unsubmitted_tweet_count ?? 0) > 0 ? (
             <span className="text-warning">
@@ -165,3 +163,4 @@ function SourceListItem({
     </button>
   );
 }
+

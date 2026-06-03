@@ -3,7 +3,6 @@ import { useQueryClient } from "@tanstack/react-query";
 import { useSearchParams } from "react-router-dom";
 import type { ArchiveSubmission } from "../../lib/api";
 import { useFormatters, useI18n } from "../../lib/i18n";
-import { Dialog, DialogContent } from "../../components/ui/dialog";
 import { Sheet, SheetContent, SheetTitle } from "../../components/ui/sheet";
 import { CreateSource } from "./components/create-source";
 import { SourceDetailPanel } from "./components/source-detail-panel";
@@ -87,7 +86,6 @@ export function SourcesPage() {
   return (
     <div className="space-y-5">
       <SourcesList
-        t={t}
         statusLabel={statusLabel}
         data={sourcesQuery.data}
         selectedSourceId={selectedSourceId}
@@ -102,23 +100,26 @@ export function SourcesPage() {
       />
 
       {/* 新增来源弹窗 */}
-      <Dialog open={createDialogOpen} onOpenChange={setCreateDialogOpen}>
-        <DialogContent>
-          <CreateSource
-            t={t}
-            isPending={createMutation.isPending}
-            error={createMutation.error}
-            resetKey={createResetKey}
-            onCreate={(input) => createMutation.mutate(input)}
-            onClose={() => setCreateDialogOpen(false)}
-          />
-        </DialogContent>
-      </Dialog>
+      <CreateSource
+        open={createDialogOpen}
+        isPending={createMutation.isPending}
+        error={createMutation.error}
+        resetKey={createResetKey}
+        onCreate={(input) => createMutation.mutate(input)}
+        onOpenChange={setCreateDialogOpen}
+      />
 
       {/* 来源详情抽屉 */}
-      <Sheet open={detailSheetOpen} onOpenChange={(open) => { if (!open) closeDetail(); }}>
+      <Sheet
+        open={detailSheetOpen}
+        onOpenChange={(open) => {
+          if (!open) closeDetail();
+        }}
+      >
         <SheetContent className="w-[min(100vw,780px)] overflow-y-auto p-6">
-          <SheetTitle className="sr-only">{selected?.label || selected?.author_username || t("sources.detail")}</SheetTitle>
+          <SheetTitle className="sr-only">
+            {selected?.label || selected?.author_username || t("sources.detail")}
+          </SheetTitle>
           <SourceDetailPanel
             source={selected}
             policy={policyQuery.data}
@@ -126,7 +127,6 @@ export function SourcesPage() {
             detailUpdatedAt={detailQuery.dataUpdatedAt}
             feedback={feedback}
             scanFeedback={scanFeedback}
-            t={t}
             statusLabel={statusLabel}
             actions={{
               submitRecords: actions.submitMutation.mutate,

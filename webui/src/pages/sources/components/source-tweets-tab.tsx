@@ -2,17 +2,17 @@ import { Virtuoso } from "react-virtuoso";
 import type { ArchiveSource } from "../../../lib/api";
 import { Badge } from "../../../components/ui/badge";
 import { formatDateTime } from "../../../lib/utils";
-import { formatDiscoveredMedia, type TFunction } from "../utils";
+import { useI18n } from "../../../lib/i18n";
+import { formatDiscoveredMedia } from "../utils";
 
 export function SourceTweetsTab({
   source,
-  t,
   statusLabel,
 }: {
   source: ArchiveSource;
-  t: TFunction;
   statusLabel: (status?: string | null) => string;
 }) {
+  const { t } = useI18n();
   const tweets = source.discovered ?? [];
 
   if (tweets.length === 0) {
@@ -48,3 +48,4 @@ export function SourceTweetsTab({
     </div>
   );
 }
+

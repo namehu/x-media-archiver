@@ -2,9 +2,11 @@ import { Virtuoso } from "react-virtuoso";
 import type { ArchiveSource } from "../../../lib/api";
 import { Badge } from "../../../components/ui/badge";
 import { formatDateTime } from "../../../lib/utils";
-import { formatElapsed, formatRunRange, scanStatusLabel, scanStatusTone, scanTriggerLabel, type TFunction } from "../utils";
+import { useI18n } from "../../../lib/i18n";
+import { formatElapsed, formatRunRange, scanStatusLabel, scanStatusTone, scanTriggerLabel } from "../utils";
 
-export function SourceScanHistoryTab({ source, now, t }: { source: ArchiveSource; now: number; t: TFunction }) {
+export function SourceScanHistoryTab({ source, now }: { source: ArchiveSource; now: number }) {
+  const { t } = useI18n();
   const runs = source.scan_runs ?? [];
 
   if (runs.length === 0) {
@@ -56,3 +58,4 @@ export function SourceScanHistoryTab({ source, now, t }: { source: ArchiveSource
     </div>
   );
 }
+
