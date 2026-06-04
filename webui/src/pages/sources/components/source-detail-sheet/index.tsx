@@ -5,13 +5,15 @@ import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { useSourceDiscovered, useSourceScanRuns } from "../../hooks/useSourceDetail";
 import { SourceScanHistoryTab } from "../source-scan-history-tab";
 import { SourceTweetsTab } from "../source-tweets-tab";
-import { preferredScanLimit } from "../../utils";
+import { preferredScanLimit, sourceStatusTone } from "../../utils";
 import { SourceHeader } from "./source-header";
 import { ScanActions } from "./scan-actions";
 import { DownloadActions } from "./download-actions";
 import { ManualImport } from "./manual-import";
 import { ScanLogDialog } from "./scan-log-dialog";
 import { useNumberInput, type NumberInputState } from "./use-number-input";
+import { Badge } from "@/components/ui/badge";
+import { ExternalLink } from "lucide-react";
 
 type ScanMode = "history" | "latest_refresh" | "from_start";
 
@@ -63,7 +65,7 @@ export function SourceDetailPanel({
   onManualSubmitted: () => void;
 }) {
   const scanLimit = useNumberInput("20");
-  const [activeTab, setActiveTab] = React.useState("tweets");
+  const [activeTab, setActiveTab] = React.useState("details");
   const [tweetsOffset, setTweetsOffset] = React.useState(0);
   const [historyOffset, setHistoryOffset] = React.useState(0);
   const [logRun, setLogRun] = React.useState<SourceScanRun | null>(null);
@@ -82,7 +84,7 @@ export function SourceDetailPanel({
   }, [source?.id, persistedScanLimit]);
 
   React.useEffect(() => {
-    setActiveTab("tweets");
+    setActiveTab("details");
     setTweetsOffset(0);
     setHistoryOffset(0);
   }, [source?.id]);
@@ -97,6 +99,42 @@ export function SourceDetailPanel({
             <Tabs value={activeTab} onValueChange={setActiveTab} className="flex h-full min-h-0 flex-col">
               <SheetHeader className="mb-0 shrink-0 gap-4 px-6 pb-0 pt-6 pr-12">
                 <SheetTitle className="sr-only">{source.label || source.author_username || "来源详情"}</SheetTitle>
+
+                <div className="flex items-start justify-between gap-3">
+                  <div>
+                    <div className="flex items-center gap-2">
+                      <Badge tone={sourceStatusTone(source.status)}>{statusLabel(source.status)}</Badge>
+                      <h2 className="text-xl font-semibold text-fg-primary">
+                        {source.label || source.author_username || "来源详情"}
+                      </h2>
+                    </div>
+                    {source.source_url ? (
+                      <a
+                        className="mt-0.5 inline-flex min-w-0 items-center gap-1 break-all text-sm text-brand hover:text-brand-hover"
+                        href={source.source_url}
+                        target="_blank"
+                        rel="noreferrer"
+                      >
+                        <span className="break-all">{source.source_url}</span>
+                        <ExternalLink className="h-3.5 w-3.5 shrink-0" />
+                      </a>
+                    ) : (
+                      <p className="mt-0.5 text-sm text-fg-secondary">无</p>
+                    )}
+                  </div>
+                </div>
+
+                <TabsList className="flex-wrap">
+                  <TabsTrigger value="details">详情</TabsTrigger>
+                  <TabsTrigger value="tweets">最近发现的 Tweet</TabsTrigger>
+                  <TabsTrigger value="history">扫描历史（最近 20 批）</TabsTrigger>
+                  <TabsTrigger value="config">提交与导入</TabsTrigger>
+                </TabsList>
+              </SheetHeader>
+              <TabsContent
+                value="details"
+                className="min-h-0 flex-1 overflow-y-auto px-6 pb-6 pt-4 data-[state=active]:block"
+              >
                 <SourceHeader
                   source={source}
                   policy={policy}
@@ -105,12 +143,7 @@ export function SourceDetailPanel({
                   scanLimit={scanLimit.clamped(200)}
                   statusLabel={statusLabel}
                 />
-                <TabsList className="flex-wrap">
-                  <TabsTrigger value="tweets">最近发现的 Tweet</TabsTrigger>
-                  <TabsTrigger value="history">扫描历史（最近 20 批）</TabsTrigger>
-                  <TabsTrigger value="config">提交与导入</TabsTrigger>
-                </TabsList>
-              </SheetHeader>
+              </TabsContent>
               <TabsContent
                 value="tweets"
                 className="min-h-0 flex-1 overflow-hidden px-6 pb-6 pt-4 data-[state=active]:flex data-[state=active]:flex-col"
