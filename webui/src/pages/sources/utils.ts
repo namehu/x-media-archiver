@@ -100,6 +100,38 @@ export function sourceStatusTone(status: string) {
   return "secondary" as const;
 }
 
+type ScanMode = "history" | "latest_refresh" | "from_start";
+
+export function scanModeLabel(mode: ScanMode) {
+  if (mode === "latest_refresh") return "补充最新推文";
+  if (mode === "from_start") return "从头扫描/补断层";
+  return "历史扫描";
+}
+
+export function getActiveScanMode(source: ArchiveSourceDetail): ScanMode {
+  const mode = source.cursor_state?.active_scan_mode;
+  if (mode === "latest_refresh" || mode === "from_start" || mode === "history") return mode;
+  return "history";
+}
+
+export function preferredScanLimit(source: ArchiveSourceDetail, policy?: { source_scan_batch_size?: number | null }) {
+  const candidates = [
+    source.cursor_state?.scan_sessions?.[getActiveScanMode(source)]?.limit,
+    source.cursor_state?.automation_limit,
+    source.cursor_state?.last_limit,
+    source.active_scan_run?.requested_limit,
+    policy?.source_scan_batch_size,
+    20,
+  ];
+  const MIN = 5;
+  const MAX = 200;
+  for (const candidate of candidates) {
+    const value = Number(candidate);
+    if (Number.isFinite(value) && value >= 1) return Math.max(MIN, Math.min(MAX, Math.floor(value)));
+  }
+  return 20;
+}
+
 export function formatDiscoveredMedia(payload: SourceDiscovery["raw_payload"]) {
   const count = Number(payload?.media_count || 0);
   if (!count) return "媒体数量未知";
