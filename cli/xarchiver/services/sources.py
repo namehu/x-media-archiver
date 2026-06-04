@@ -506,7 +506,7 @@ def start_source_scan_session(
     source = get_source(source_id)
     if source is None:
         raise ValueError("source_not_found")
-    if str(source.get("source_type")) not in {"profile", "user_media"}:
+    if str(source.get("source_type")) not in {"profile", "user_media", "likes"}:
         raise ValueError("source_scan_not_supported")
     cursor_state = source.get("cursor_state") if isinstance(source.get("cursor_state"), dict) else {}
     if cursor_state.get("automation_enabled") and cursor_state.get("active_scan_mode") not in {None, mode}:
@@ -974,7 +974,7 @@ def scan_source(
         raise ValueError("source_paused")
     source_url = str(source.get("source_url") or "")
     source_type = str(source.get("source_type") or "")
-    if source_type not in {"profile", "user_media"}:
+    if source_type not in {"profile", "user_media", "likes"}:
         raise ValueError("source_scan_not_supported")
     scan_url = build_gallery_dl_scan_url(source_type, source_url)
     cursor_state = source.get("cursor_state") if isinstance(source.get("cursor_state"), dict) else {}
@@ -2306,7 +2306,7 @@ def normalize_source_url(source_url: str) -> str:
 
 
 def infer_author_username(source_type: str, source_url: str) -> str | None:
-    if source_type not in {"profile", "user_media"}:
+    if source_type not in {"profile", "user_media", "likes"}:
         return None
     path_parts = [part for part in urlparse(source_url).path.split("/") if part]
     if not path_parts:

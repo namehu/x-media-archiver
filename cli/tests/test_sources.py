@@ -32,6 +32,7 @@ from xarchiver.services.sources import (
     scan_source,
     schedule_next_history_scan,
     source_scan_log_relative_path,
+    start_source_scan_session,
     start_source_scan_run,
     stop_source_scan_session,
     submit_source_downloads,
@@ -51,6 +52,12 @@ class SourceServiceTests(unittest.TestCase):
     def test_infer_author_username_for_media_url(self) -> None:
         self.assertEqual(
             infer_author_username("user_media", "https://x.com/example/media"),
+            "example",
+        )
+
+    def test_infer_author_username_for_likes_url(self) -> None:
+        self.assertEqual(
+            infer_author_username("likes", "https://x.com/example/likes"),
             "example",
         )
 
@@ -111,6 +118,12 @@ class SourceServiceTests(unittest.TestCase):
         self.assertEqual(
             build_gallery_dl_scan_url("profile", "https://x.com/earthcurated"),
             "https://x.com/earthcurated/timeline",
+        )
+
+    def test_build_gallery_dl_scan_url_keeps_likes_url(self) -> None:
+        self.assertEqual(
+            build_gallery_dl_scan_url("likes", "https://x.com/XiangHupt/likes"),
+            "https://x.com/XiangHupt/likes",
         )
 
     def test_build_scan_range_advances_from_cursor(self) -> None:
@@ -309,6 +322,42 @@ class SourceServiceTests(unittest.TestCase):
             worker_id=None,
         )
 
+    def test_likes_source_scan_is_supported(self) -> None:
+        settings = SimpleNamespace(source_scan_sleep_min_seconds=2, source_scan_sleep_max_seconds=6)
+        with (
+            patch(
+                "xarchiver.services.sources.get_source",
+                return_value={
+                    "status": "active",
+                    "source_type": "likes",
+                    "source_url": "https://x.com/XiangHupt/likes",
+                    "cursor_state": {},
+                },
+            ),
+            patch("xarchiver.services.sources.start_source_scan_run", return_value=8),
+            patch(
+                "xarchiver.services.sources.discover_records_with_gallery_dl",
+                return_value=(
+                    [],
+                    {
+                        "exit_code": 0,
+                        "scan_url": "https://x.com/XiangHupt/likes",
+                        "cursor_mode": "native",
+                        "continuation_cursor": None,
+                    },
+                ),
+            ) as discover,
+            patch("xarchiver.services.sources.prepare_cookies", return_value=None),
+            patch("xarchiver.services.sources.update_source_cursor") as update_cursor,
+            patch("xarchiver.services.sources.mark_source_scan_result"),
+            patch("xarchiver.services.sources.finish_source_scan_run"),
+        ):
+            result = scan_source(32, 20, restart=True, settings=settings)
+
+        self.assertFalse(result["completed"])
+        self.assertEqual(discover.call_args.args[0], "https://x.com/XiangHupt/likes")
+        update_cursor.assert_not_called()
+
     def test_schedule_next_history_scan_does_not_reschedule_paused_source(self) -> None:
         settings = SimpleNamespace(source_scan_sleep_min_seconds=2, source_scan_sleep_max_seconds=6)
         with (
@@ -333,6 +382,7 @@ class SourceDiscoveryIntegrationTests(unittest.TestCase):
         "https://x.com/sourcefixture/media",
         "https://x.com/sourcefixture2/media",
         "https://x.com/sourcefixture3",
+        "https://x.com/sourcefixture/likes",
     ]
 
     def setUp(self) -> None:
@@ -529,6 +579,15 @@ class SourceDiscoveryIntegrationTests(unittest.TestCase):
         self.assertFalse(stopped["cursor_state"]["automation_enabled"])
         self.assertEqual(stopped["cursor_state"]["automation_state"], "stopped")
         self.assertEqual(stopped["cursor_state"]["scan_sessions"]["from_start"]["state"], "stopped")
+
+    def test_start_scan_session_accepts_likes_source(self) -> None:
+        source = create_source("likes", "https://x.com/sourcefixture/likes")
+
+        started = start_source_scan_session(int(source["id"]), "latest_refresh", limit=20, restart=True)
+
+        self.assertEqual(started["source_type"], "likes")
+        self.assertEqual(started["cursor_state"]["active_scan_mode"], "latest_refresh")
+        self.assertTrue(started["cursor_state"]["automation_enabled"])
 
     def test_list_source_discovered_page_supports_pagination(self) -> None:
         source = create_source("user_media", self.source_urls[0])

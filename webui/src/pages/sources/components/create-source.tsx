@@ -1,13 +1,6 @@
 import { useEffect, useState } from "react";
 import { Button } from "@/components/ui/button";
-import {
-  Dialog,
-  DialogClose,
-  DialogContent,
-  DialogFooter,
-  DialogHeader,
-  DialogTitle,
-} from "@/components/ui/dialog";
+import { Dialog, DialogClose, DialogContent, DialogFooter, DialogHeader, DialogTitle } from "@/components/ui/dialog";
 import { Field, FieldDescription, FieldError, FieldGroup, FieldLabel } from "@/components/ui/field";
 import { Input } from "@/components/ui/input";
 import { Select, SelectContent, SelectGroup, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
@@ -32,9 +25,11 @@ export function CreateSource({
   const [sourceType, setSourceType] = useState("profile");
   const [sourceUrl, setSourceUrl] = useState("");
   const [label, setLabel] = useState("");
+  const hasSourceUrl = sourceUrl.trim().length > 0;
   const canCreate = sourceUrl.trim().length > 0 && !isPending;
 
   useEffect(() => {
+    setSourceType("profile");
     setSourceUrl("");
     setLabel("");
   }, [resetKey]);
@@ -54,6 +49,12 @@ export function CreateSource({
     return null;
   }
 
+  function handleSourceUrlChange(nextUrl: string) {
+    setSourceUrl(nextUrl);
+    const inferred = inferSourceType(nextUrl);
+    if (inferred) setSourceType(inferred);
+  }
+
   return (
     <Dialog open={open} onOpenChange={onOpenChange}>
       <DialogContent className="sm:max-w-sm">
@@ -67,16 +68,6 @@ export function CreateSource({
           }}
         >
           <FieldGroup>
-            <Field>
-              <FieldLabel htmlFor="source-label">名称（可选）</FieldLabel>
-              <Input
-                id="source-label"
-                placeholder="名称（可选）"
-                value={label}
-                onChange={(e) => setLabel(e.target.value)}
-              />
-            </Field>
-
             <Field data-invalid={error ? true : undefined}>
               <FieldLabel htmlFor="source-url">来源 URL</FieldLabel>
               <Input
@@ -84,41 +75,51 @@ export function CreateSource({
                 placeholder="https://x.com/username/media"
                 value={sourceUrl}
                 aria-invalid={error ? true : undefined}
-                onChange={(e) => {
-                  const nextUrl = e.target.value;
-                  setSourceUrl(nextUrl);
-                  const inferred = inferSourceType(nextUrl);
-                  if (inferred) setSourceType(inferred);
-                }}
+                onChange={(e) => handleSourceUrlChange(e.target.value)}
               />
             </Field>
 
-            <Field>
-              <FieldLabel htmlFor="source-type">来源类型</FieldLabel>
-              <Select value={sourceType} onValueChange={setSourceType}>
-                <SelectTrigger id="source-type">
-                  <SelectValue />
-                </SelectTrigger>
-                <SelectContent>
-                  <SelectGroup>
-                    {SOURCE_TYPES.map((type) => (
-                      <SelectItem key={type} value={type}>
-                        {sourceTypeLabel(type)}
-                      </SelectItem>
-                    ))}
-                  </SelectGroup>
-                </SelectContent>
-              </Select>
-              <FieldDescription>例如 /media 会识别为博主媒体页，/bookmarks 识别为书签，普通用户名主页识别为博主主页。</FieldDescription>
-            </Field>
+            <div
+              aria-hidden={!hasSourceUrl}
+              className={[
+                "grid overflow-hidden transition-all duration-300 ease-out",
+                hasSourceUrl ? "max-h-72 translate-y-0 opacity-100" : "max-h-0 -translate-y-2 opacity-0",
+              ].join(" ")}
+            >
+              <div className="space-y-4 pt-1">
+                <Field>
+                  <FieldLabel htmlFor="source-type">来源类型</FieldLabel>
+                  <Select value={sourceType} onValueChange={setSourceType} disabled={!hasSourceUrl}>
+                    <SelectTrigger id="source-type">
+                      <SelectValue />
+                    </SelectTrigger>
+                    <SelectContent>
+                      <SelectGroup>
+                        {SOURCE_TYPES.map((type) => (
+                          <SelectItem key={type} value={type}>
+                            {sourceTypeLabel(type)}
+                          </SelectItem>
+                        ))}
+                      </SelectGroup>
+                    </SelectContent>
+                  </Select>
+                </Field>
+
+                <Field>
+                  <FieldLabel htmlFor="source-label">名称（可选）</FieldLabel>
+                  <Input
+                    id="source-label"
+                    placeholder="名称（可选）"
+                    value={label}
+                    disabled={!hasSourceUrl}
+                    onChange={(e) => setLabel(e.target.value)}
+                  />
+                </Field>
+              </div>
+            </div>
           </FieldGroup>
           {error ? <FieldError errors={[{ message: String(error) }]} /> : null}
           <DialogFooter>
-            <DialogClose asChild>
-              <Button type="button" variant="outline">
-                取消
-              </Button>
-            </DialogClose>
             <Button type="submit" disabled={!canCreate}>
               新增来源
             </Button>
