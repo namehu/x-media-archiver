@@ -5,13 +5,16 @@ from unittest.mock import patch
 
 from xarchiver.db import connect
 from xarchiver.services.queue import (
+    cancel_run_items,
     claim_next_items,
     get_run_detail,
     heartbeat_archive_items,
     list_runs,
     list_runs_page,
+    pause_run,
     process_next_queued_run,
     retry_run,
+    stop_run,
     submit_archive_batch,
 )
 
@@ -42,11 +45,26 @@ class QueueIntegrationTests(unittest.TestCase):
                     (self.tweet_ids,),
                 )
                 cur.execute("delete from archive_runs where trigger_type like 'test_queue%'")
+                cur.execute("delete from archive_sources where source_url like 'https://x.com/queue-source%'")
                 cur.execute("delete from tweets where tweet_id = any(%s)", (self.tweet_ids,))
             conn.commit()
 
     def record(self, tweet_id: str) -> dict[str, str]:
         return {"url": f"https://x.com/queue/status/{tweet_id}"}
+
+    def create_source_id(self) -> int:
+        with connect() as conn:
+            with conn.cursor() as cur:
+                cur.execute(
+                    """
+                    insert into archive_sources (source_type, source_url, author_username)
+                    values ('user_media', 'https://x.com/queue-source/media', 'queue-source')
+                    returning id
+                    """
+                )
+                source_id = int(cur.fetchone()["id"])
+            conn.commit()
+        return source_id
 
     def test_submission_deduplicates_input_and_skips_verified_tweet(self) -> None:
         with connect() as conn:
@@ -234,3 +252,46 @@ class QueueIntegrationTests(unittest.TestCase):
         self.assertEqual(page["offset"], 1)
         self.assertEqual([row["id"] for row in page["rows"]], [first["run_id"]])
         self.assertNotEqual(first["run_id"], second["run_id"])
+
+    def test_paused_source_run_blocks_new_source_download_run(self) -> None:
+        source_id = self.create_source_id()
+        first = submit_archive_batch([self.record(self.tweet_ids[0])], "test_queue_source_first", source_id=source_id)
+        pause = pause_run(int(first["run_id"]))
+        second = submit_archive_batch([self.record(self.tweet_ids[1])], "test_queue_source_second", source_id=source_id)
+        detail = get_run_detail(int(second["run_id"]))
+
+        self.assertEqual(pause["status"], "paused")
+        self.assertEqual(second["status"], "blocked")
+        self.assertEqual(second["blocked_by_run_id"], first["run_id"])
+        self.assertEqual(second["tasks"]["blocked_count"], 1)
+        self.assertEqual(detail["items"][0]["status"], "blocked")
+
+    def test_stopping_source_run_releases_next_blocked_run(self) -> None:
+        source_id = self.create_source_id()
+        first = submit_archive_batch([self.record(self.tweet_ids[0])], "test_queue_source_stop_first", source_id=source_id)
+        pause_run(int(first["run_id"]))
+        second = submit_archive_batch([self.record(self.tweet_ids[1])], "test_queue_source_stop_second", source_id=source_id)
+
+        stop_run(int(first["run_id"]))
+        released = get_run_detail(int(second["run_id"]))
+
+        self.assertEqual(released["status"], "queued")
+        self.assertEqual(released["blocked_by_run_id"], None)
+        self.assertEqual(released["items"][0]["status"], "pending")
+
+    def test_cancel_pending_and_processing_items(self) -> None:
+        submitted = submit_archive_batch(
+            [self.record(self.tweet_ids[0]), self.record(self.tweet_ids[1])],
+            "test_queue_cancel_items",
+        )
+        claimed = claim_next_items(3, batch_size=1, worker_id="worker-cancel")
+        processing_id = str(claimed[0]["tweet_id"])
+        pending_id = next(tweet_id for tweet_id in self.tweet_ids[:2] if tweet_id != processing_id)
+
+        result = cancel_run_items(int(submitted["run_id"]), tweet_ids=[processing_id, pending_id])
+        detail = get_run_detail(int(submitted["run_id"]))
+        rows = {row["tweet_id"]: row for row in detail["items"]}
+
+        self.assertEqual(result["affected_count"], 2)
+        self.assertTrue(rows[processing_id]["cancel_requested"])
+        self.assertEqual(rows[pending_id]["status"], "cancelled")

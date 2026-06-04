@@ -19,17 +19,24 @@ export type DetailActions = {
   pauseSession: (sourceId: number) => void;
   resumeSession: (sourceId: number) => void;
   submitDiscovered: (input: { sourceId: number; limit?: number }) => void;
+  submitDownload: (input: { sourceId: number; scope: "selected" | "all_unsubmitted" | "failed"; tweetIds?: string[]; limit?: number }) => void;
+  pauseDownload: (runId: number) => void;
+  resumeDownload: (runId: number) => void;
+  stopDownload: (runId: number) => void;
+  cancelDownloadItems: (input: { runId: number; tweetIds: string[] }) => void;
   stopHistory: (sourceId: number) => void;
   pending: {
     submit: boolean;
     status: boolean;
     submitDiscovered: boolean;
+    download: boolean;
     history: boolean;
   };
   errors: {
     submit: unknown;
     status: unknown;
     submitDiscovered: unknown;
+    download: unknown;
     history: unknown;
   };
 };

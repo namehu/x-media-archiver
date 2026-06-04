@@ -83,8 +83,11 @@ class DownloadAttemptRow(RowModel):
 class ArchiveRunRow(RowModel):
     id: int
     trigger_type: str
+    source_id: int | None = None
     input_path: str | None = None
     status: str
+    blocked_by_run_id: int | None = None
+    control_state: dict[str, Any] | None = None
     started_at: datetime
     finished_at: datetime | None = None
     result: dict[str, Any] | None = None
@@ -99,6 +102,12 @@ class ArchiveRunItemRow(RowModel):
     error_category: str | None = None
     error_message: str | None = None
     linked_item_id: int | None = None
+    cancel_requested: bool = False
+    downloaded_bytes: int = 0
+    total_bytes: int | None = None
+    speed_bps: int | None = None
+    progress_message: str | None = None
+    last_progress_at: datetime | None = None
     last_attempt_at: datetime | None = None
     next_attempt_at: datetime | None = None
     created_at: datetime
@@ -116,6 +125,7 @@ class ArchiveClaimedItemRow(RowModel):
     tweet_id: str
     retry_count: int
     worker_id: str | None = None
+    cancel_requested: bool = False
 
 
 class LatestItemErrorRow(RowModel):
@@ -215,6 +225,18 @@ class SourceDiscoveryRow(RowModel):
     author_username: str | None = None
     text: str | None = None
     raw_payload: dict[str, Any] | None = None
+    active_run_id: int | None = None
+    active_item_id: int | None = None
+    active_item_status: str | None = None
+    active_run_status: str | None = None
+    cancel_requested: bool | None = None
+    downloaded_bytes: int | None = None
+    total_bytes: int | None = None
+    speed_bps: int | None = None
+    progress_message: str | None = None
+    last_progress_at: datetime | None = None
+    downloaded_media_count: int = 0
+    downloaded_media_bytes: int = 0
 
 
 class SourceScanSummaryRow(RowModel):

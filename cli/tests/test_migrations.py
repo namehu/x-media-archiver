@@ -26,6 +26,9 @@ class MigrationTests(unittest.TestCase):
                 "002_add_cookie_config.py",
                 "003_add_source_scan_progress.py",
                 "004_ensure_operation_log_streams.py",
+                "005_add_from_start_scan_trigger.py",
+                "006_source_download_controls.py",
+                "007_add_download_job_progress_message.py",
             ],
         )
         upgrade.assert_called_once()
@@ -37,7 +40,7 @@ class MigrationTests(unittest.TestCase):
 
         with (
             patch("xarchiver.migrations.get_settings", return_value=settings),
-            patch("xarchiver.migrations.current_alembic_revision", return_value="004_ensure_operation_log_streams"),
+            patch("xarchiver.migrations.current_alembic_revision", return_value="007_download_job_progress"),
             patch("xarchiver.migrations.command.upgrade") as upgrade,
         ):
             self.assertEqual(migrate(), [])
@@ -61,7 +64,14 @@ class MigrationTests(unittest.TestCase):
 
         self.assertEqual(
             [file.name for file in files],
-            ["002_add_cookie_config.py", "003_add_source_scan_progress.py", "004_ensure_operation_log_streams.py"],
+            [
+                "002_add_cookie_config.py",
+                "003_add_source_scan_progress.py",
+                "004_ensure_operation_log_streams.py",
+                "005_add_from_start_scan_trigger.py",
+                "006_source_download_controls.py",
+                "007_add_download_job_progress_message.py",
+            ],
         )
 
     def test_sqlalchemy_url_uses_psycopg_driver(self) -> None:
@@ -122,6 +132,30 @@ class MigrationTests(unittest.TestCase):
         self.assertIn("create table if not exists operation_log_streams", sql)
         self.assertIn("drop column if exists log_tail", sql)
         self.assertIn("drop column if exists log_path", sql)
+
+    def test_source_download_controls_revision_contains_queue_control_columns(self) -> None:
+        module = importlib.import_module("xarchiver.alembic.versions.006_source_download_controls")
+        captured_sql: list[str] = []
+
+        with patch.object(module.op, "execute", side_effect=captured_sql.append):
+            module.upgrade()
+
+        sql = captured_sql[0]
+        self.assertIn("add column if not exists source_id", sql)
+        self.assertIn("'blocked'", sql)
+        self.assertIn("add column if not exists cancel_requested", sql)
+        self.assertIn("add column if not exists downloaded_bytes", sql)
+
+    def test_download_job_progress_message_revision_contains_missing_column(self) -> None:
+        module = importlib.import_module("xarchiver.alembic.versions.007_add_download_job_progress_message")
+        captured_sql: list[str] = []
+
+        with patch.object(module.op, "execute", side_effect=captured_sql.append):
+            module.upgrade()
+
+        sql = captured_sql[0]
+        self.assertIn("alter table download_jobs", sql)
+        self.assertIn("add column if not exists progress_message text", sql)
 
 
 if __name__ == "__main__":

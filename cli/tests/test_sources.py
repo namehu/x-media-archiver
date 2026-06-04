@@ -34,6 +34,7 @@ from xarchiver.services.sources import (
     source_scan_log_relative_path,
     start_source_scan_run,
     stop_source_scan_session,
+    submit_source_downloads,
     update_session_progress_state,
 )
 
@@ -343,6 +344,18 @@ class SourceDiscoveryIntegrationTests(unittest.TestCase):
     def cleanup_db(self) -> None:
         with connect() as conn:
             with conn.cursor() as cur:
+                cur.execute(
+                    """
+                    delete from archive_runs
+                    where exists (
+                        select 1
+                        from archive_run_items
+                        where archive_run_id = archive_runs.id
+                          and tweet_id = any(%s)
+                    )
+                    """,
+                    (self.tweet_ids,),
+                )
                 cur.execute("delete from archive_sources where source_url = any(%s)", (self.source_urls,))
                 cur.execute("delete from tweets where tweet_id = any(%s)", (self.tweet_ids,))
             conn.commit()
@@ -569,6 +582,84 @@ class SourceDiscoveryIntegrationTests(unittest.TestCase):
         self.assertEqual(page["total_count"], 2)
         self.assertEqual(page["rows"][0]["id"], first_id)
         self.assertNotEqual(page["rows"][0]["id"], second_id)
+
+    def test_retry_failed_source_download_requeues_existing_failed_item(self) -> None:
+        source = create_source("user_media", self.source_urls[0])
+        record_source_discoveries(
+            int(source["id"]),
+            [
+                {
+                    "tweet_id": self.tweet_ids[0],
+                    "url": f"https://x.com/sourcefixture/status/{self.tweet_ids[0]}",
+                    "author_username": "sourcefixture",
+                    "author_display_name": None,
+                    "text": "failed tweet",
+                    "published_at": None,
+                    "collected_at": None,
+                    "raw_import": {"media_count": 1},
+                }
+            ],
+        )
+        submitted = submit_source_downloads(int(source["id"]), "all_unsubmitted")
+        with connect() as conn:
+            with conn.cursor() as cur:
+                cur.execute(
+                    """
+                    update archive_run_items
+                    set status = 'failed_retryable',
+                        error_category = 'network_error',
+                        error_message = 'temporary'
+                    where archive_run_id = %s
+                    """,
+                    (submitted["run_id"],),
+                )
+                cur.execute(
+                    """
+                    update archive_runs
+                    set status = 'completed_with_failures',
+                        finished_at = now()
+                    where id = %s
+                    """,
+                    (submitted["run_id"],),
+                )
+                cur.execute(
+                    """
+                    update tweets
+                    set download_status = 'failed_retryable',
+                        last_error = 'temporary'
+                    where tweet_id = %s
+                    """,
+                    (self.tweet_ids[0],),
+                )
+            conn.commit()
+
+        retried = submit_source_downloads(int(source["id"]), "failed")
+
+        with connect() as conn:
+            with conn.cursor() as cur:
+                cur.execute(
+                    "select status, error_category, error_message from archive_run_items where archive_run_id = %s",
+                    (submitted["run_id"],),
+                )
+                item = cur.fetchone()
+                cur.execute("select status from archive_runs where id = %s", (submitted["run_id"],))
+                run = cur.fetchone()
+
+        self.assertEqual(retried["run_id"], submitted["run_id"])
+        self.assertEqual(retried["submitted_count"], 1)
+        self.assertEqual(item["status"], "pending")
+        self.assertIsNone(item["error_category"])
+        self.assertIsNone(item["error_message"])
+        self.assertEqual(run["status"], "queued")
+
+    def test_retry_failed_source_download_is_noop_without_failed_items(self) -> None:
+        source = create_source("user_media", self.source_urls[0])
+
+        result = submit_source_downloads(int(source["id"]), "failed")
+
+        self.assertIsNone(result["run_id"])
+        self.assertEqual(result["submitted_count"], 0)
+        self.assertEqual(result["tasks"]["queued_count"], 0)
 
     def test_recover_expired_source_scan_lease_marks_run_failed(self) -> None:
         source = create_source("profile", self.source_urls[2])

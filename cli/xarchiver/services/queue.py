@@ -40,6 +40,9 @@ from xarchiver.workflow import process_tweet_scope
 logger = logging.getLogger(__name__)
 LEASE_SECONDS = 60
 HEARTBEAT_SECONDS = 20
+ACTIVE_ITEM_STATUSES = ("pending", "blocked", "processing", "failed_retryable")
+RUNNABLE_RUN_STATUSES = ("queued", "running")
+SOURCE_BLOCKING_RUN_STATUSES = ("queued", "running", "paused")
 
 
 class WorkerLeaseLost(RuntimeError):
@@ -80,6 +83,7 @@ def submit_archive_batch(
     records: list[dict[str, Any]],
     trigger_type: str,
     input_path: str | None = None,
+    source_id: int | None = None,
 ) -> dict[str, object]:
     rows = normalize_records(records, trigger_type)
     unique_rows = list({str(row["tweet_id"]): row for row in rows}.values())
@@ -88,19 +92,34 @@ def submit_archive_batch(
         "unique_tweet_count": len(unique_rows),
         "duplicate_input_count": len(rows) - len(unique_rows),
     }
-    counts = {"queued_count": 0, "skipped_verified_count": 0, "linked_pending_count": 0}
+    counts = {
+        "queued_count": 0,
+        "blocked_count": 0,
+        "skipped_verified_count": 0,
+        "linked_pending_count": 0,
+        "linked_active_count": 0,
+        "skipped_completed_count": 0,
+    }
     with connect() as conn:
         upsert_tweets(unique_rows, conn)
         with conn.cursor() as cur:
+            blocked_by_run_id = find_source_blocker(cur, source_id)
+            run_status = "blocked" if blocked_by_run_id else "queued"
+            item_active_status = "blocked" if blocked_by_run_id else "pending"
             cur.execute(
                 """
-                insert into archive_runs (trigger_type, input_path, status, result)
-                values (%s, %s, 'queued', %s)
+                insert into archive_runs (
+                    trigger_type, source_id, input_path, status, blocked_by_run_id, result
+                )
+                values (%s, %s, %s, %s, %s, %s)
                 returning id
                 """,
                 (
                     trigger_type,
+                    source_id,
                     input_path,
+                    run_status,
+                    blocked_by_run_id,
                     Jsonb(
                         build_run_result(
                             input_summary,
@@ -124,7 +143,7 @@ def submit_archive_batch(
                 cur.execute(
                     """
                     select id from archive_run_items
-                    where tweet_id = %s and status in ('pending', 'processing', 'failed_retryable')
+                    where tweet_id = %s and status in ('pending', 'blocked', 'processing', 'failed_retryable')
                     order by id desc limit 1
                     """,
                     (tweet_id,),
@@ -132,16 +151,21 @@ def submit_archive_batch(
                 active_item_row = cur.fetchone()
                 active_item = IdRow.model_validate(dict(active_item_row)) if active_item_row else None
                 linked_id = None
-                if tweet_status == "verified":
+                if tweet_status in {"verified", "downloaded", "skipped"}:
                     item_status = "skipped_verified"
                     counts["skipped_verified_count"] += 1
+                    counts["skipped_completed_count"] += 1
                 elif active_item is not None:
                     item_status = "linked_pending"
                     linked_id = active_item.id
                     counts["linked_pending_count"] += 1
+                    counts["linked_active_count"] += 1
                 else:
-                    item_status = "pending"
-                    counts["queued_count"] += 1
+                    item_status = item_active_status
+                    if item_status == "blocked":
+                        counts["blocked_count"] += 1
+                    else:
+                        counts["queued_count"] += 1
                 cur.execute(
                     """
                     insert into archive_run_items (
@@ -151,22 +175,25 @@ def submit_archive_batch(
                     """,
                     (run_id, tweet_id, Jsonb(json_safe_value(row)), item_status, linked_id),
                 )
-            status = "queued" if counts["queued_count"] else "completed"
+            status = run_status if counts["queued_count"] or counts["blocked_count"] else "completed"
             result = build_run_result(input_summary, {**counts, "verified_count": 0, "failed_count": 0})
             cur.execute(
                 """
                 update archive_runs
                 set status = %s, result = %s,
+                    blocked_by_run_id = case when %s = 'completed' then null else blocked_by_run_id end,
                     finished_at = case when %s = 'completed' then now() else null end
                 where id = %s
                 """,
-                (status, Jsonb(result), status, run_id),
+                (status, Jsonb(result), status, status, run_id),
             )
         conn.commit()
 
     result = {
         "run_id": run_id,
         "status": status,
+        "source_id": source_id,
+        "blocked_by_run_id": blocked_by_run_id,
         "input": input_summary,
         "tasks": counts,
     }
@@ -178,11 +205,38 @@ def submit_archive_batch(
             "status": status,
             "trigger_type": trigger_type,
             "input_path": input_path,
+            "source_id": source_id,
+            "blocked_by_run_id": blocked_by_run_id,
             "input": input_summary,
             "tasks": counts,
         },
     )
     return result
+
+
+def find_source_blocker(cur, source_id: int | None, exclude_run_id: int | None = None) -> int | None:
+    if source_id is None:
+        return None
+    params: list[object] = [source_id]
+    exclude_sql = ""
+    if exclude_run_id is not None:
+        exclude_sql = "and id <> %s"
+        params.append(exclude_run_id)
+    cur.execute(
+        f"""
+        select id
+        from archive_runs
+        where source_id = %s
+          {exclude_sql}
+          and status in ('queued', 'running', 'paused')
+        order by started_at asc, id asc
+        limit 1
+        for update skip locked
+        """,
+        tuple(params),
+    )
+    row = cur.fetchone()
+    return int(row["id"]) if row else None
 
 
 def submit_urls_file(path: Path) -> dict[str, object]:
@@ -248,7 +302,7 @@ def has_pending_download_work() -> bool:
                 """
                 select exists (
                   select 1 from archive_run_items
-                  where status in ('pending', 'processing', 'failed_retryable')
+                  where status in ('pending', 'blocked', 'processing', 'failed_retryable')
                 ) as pending
                 """
             )
@@ -300,15 +354,17 @@ def claim_next_items(
             cur.execute(
                 """
                 with candidate_run as (
-                  select archive_run_id
-                  from archive_run_items
+                  select i.archive_run_id
+                  from archive_run_items i
+                  join archive_runs r on r.id = i.archive_run_id
                   where (
-                      status in ('pending', 'failed_retryable')
-                      or (status = 'processing' and (lease_expires_at is null or lease_expires_at < now()))
+                      i.status in ('pending', 'failed_retryable')
+                      or (i.status = 'processing' and (i.lease_expires_at is null or i.lease_expires_at < now()))
                     )
-                    and retry_count < %s
-                    and (next_attempt_at is null or next_attempt_at <= now())
-                  order by created_at asc, id asc
+                    and r.status in ('queued', 'running')
+                    and i.retry_count < %s
+                    and (i.next_attempt_at is null or i.next_attempt_at <= now())
+                  order by i.created_at asc, i.id asc
                   for update skip locked
                   limit 1
                 ),
@@ -316,14 +372,16 @@ def claim_next_items(
                   select i.id
                   from archive_run_items i
                   join candidate_run r on r.archive_run_id = i.archive_run_id
+                  join archive_runs ar on ar.id = i.archive_run_id
                   where (
                       i.status in ('pending', 'failed_retryable')
                       or (i.status = 'processing' and (i.lease_expires_at is null or i.lease_expires_at < now()))
                     )
+                    and ar.status in ('queued', 'running')
                     and i.retry_count < %s
                     and (i.next_attempt_at is null or i.next_attempt_at <= now())
                   order by i.id asc
-                  limit %s
+                  limit 1
                   for update skip locked
                 )
                 update archive_run_items
@@ -332,17 +390,19 @@ def claim_next_items(
                     claimed_at = now(),
                     lease_expires_at = now() + make_interval(secs => %s),
                     last_attempt_at = now(),
+                    progress_message = '等待下载器处理',
+                    last_progress_at = now(),
                     updated_at = now()
                 where id in (select id from candidate_items)
-                returning id, archive_run_id, tweet_id, retry_count, worker_id
+                returning id, archive_run_id, tweet_id, retry_count, worker_id, cancel_requested
                 """,
-                (retry_limit, retry_limit, batch_size, worker_id, LEASE_SECONDS),
+                (retry_limit, retry_limit, worker_id, LEASE_SECONDS),
             )
             rows = [ArchiveClaimedItemRow.model_validate(dict(row)) for row in cur.fetchall()]
             if rows:
                 run_id = int(rows[0]["archive_run_id"])
                 cur.execute(
-                    "update archive_runs set status = 'running', finished_at = null where id = %s",
+                    "update archive_runs set status = 'running', finished_at = null where id = %s and status = 'queued'",
                     (run_id,),
                 )
         conn.commit()
@@ -370,7 +430,10 @@ def update_processed_items(
                 tweet_id = str(row["tweet_id"])
                 retries = int(row["retry_count"]) + 1
                 tweet_status = tweet_statuses.get(tweet_id, "failed_retryable")
-                if tweet_status == "verified":
+                cancel_requested = bool(row.get("cancel_requested"))
+                if cancel_requested and tweet_status != "verified":
+                    item_status = "cancelled"
+                elif tweet_status == "verified":
                     item_status = "verified"
                 elif tweet_status == "failed_permanent" or retries >= settings.retry_limit:
                     item_status = "failed_permanent"
@@ -389,6 +452,12 @@ def update_processed_items(
                         error_category = case when %s = 'verified' then null else %s end,
                         error_message = case when %s = 'verified' then null else %s end,
                         worker_id = null, lease_expires_at = null,
+                        progress_message = case
+                          when %s = 'verified' then '下载完成'
+                          when %s = 'cancelled' then '已取消'
+                          else progress_message
+                        end,
+                        last_progress_at = now(),
                         updated_at = now()
                     where id = %s
                       and (%s::text is null or worker_id = %s)
@@ -402,6 +471,8 @@ def update_processed_items(
                         error_category,
                         item_status,
                         error_message,
+                        item_status,
+                        item_status,
                         int(row["id"]),
                         worker_id,
                         worker_id,
@@ -434,6 +505,8 @@ def fail_processing_items(
                           then now() + make_interval(mins => %s) else null end,
                         error_category = 'worker_error', error_message = %s,
                         worker_id = null, lease_expires_at = null,
+                        progress_message = %s,
+                        last_progress_at = now(),
                         updated_at = now()
                     where id = %s
                       and (%s::text is null or worker_id = %s)
@@ -443,6 +516,7 @@ def fail_processing_items(
                         retries,
                         status,
                         settings.retry_backoff_minutes * retries,
+                        error,
                         error,
                         int(row["id"]),
                         worker_id,
@@ -458,13 +532,20 @@ def fail_processing_items(
 
 def update_run_after_processing(run_id: int, pipeline: dict[str, object] | None) -> None:
     task_counts = count_run_items(run_id)
-    if task_counts["pending_count"] or task_counts["processing_count"] or task_counts["failed_retryable_count"]:
+    current = get_run(run_id)
+    current_status = str(current.get("status")) if current else ""
+    if current_status == "stopped":
+        status = "stopped"
+    elif current_status == "paused" and not task_counts["processing_count"]:
+        status = "paused"
+    elif task_counts["pending_count"] or task_counts["processing_count"] or task_counts["failed_retryable_count"]:
         status = "queued"
+    elif task_counts["cancelled_count"] and not task_counts["verified_count"] and not task_counts["failed_count"]:
+        status = "stopped"
     elif task_counts["failed_count"]:
         status = "completed_with_failures"
     else:
         status = "completed"
-    current = get_run(run_id)
     input_summary = current.get("result", {}).get("input", {}) if current else {}
     media = pipeline.get("media") if pipeline else None
     result = build_run_result(input_summary, task_counts, media)
@@ -473,12 +554,14 @@ def update_run_after_processing(run_id: int, pipeline: dict[str, object] | None)
             cur.execute(
                 """
                 update archive_runs set status = %s, result = %s,
-                    finished_at = case when %s in ('completed', 'completed_with_failures') then now() else null end
+                    finished_at = case when %s in ('completed', 'completed_with_failures', 'stopped') then now() else null end
                 where id = %s
                 """,
                 (status, Jsonb(result), status, run_id),
             )
         conn.commit()
+    if status in {"completed", "completed_with_failures", "failed", "stopped"}:
+        release_next_blocked_source_run(current.get("source_id") if current else None)
     event_type = "archive.run.completed" if status in {"completed", "completed_with_failures"} else "archive.run.updated"
     publish_event("archive_runs", event_type, {"run_id": run_id, "status": status, "tasks": task_counts})
 
@@ -486,11 +569,16 @@ def update_run_after_processing(run_id: int, pipeline: dict[str, object] | None)
 def count_run_items(run_id: int) -> dict[str, int]:
     counts = {
         "queued_count": 0,
+        "blocked_count": 0,
         "skipped_verified_count": 0,
         "linked_pending_count": 0,
+        "linked_active_count": 0,
+        "skipped_completed_count": 0,
         "verified_count": 0,
         "failed_count": 0,
+        "cancelled_count": 0,
         "pending_count": 0,
+        "blocked_item_count": 0,
         "processing_count": 0,
         "failed_retryable_count": 0,
     }
@@ -507,6 +595,9 @@ def count_run_items(run_id: int) -> dict[str, int]:
         if status == "pending":
             counts["queued_count"] += value
             counts["pending_count"] += value
+        elif status == "blocked":
+            counts["blocked_count"] = counts.get("blocked_count", 0) + value
+            counts["blocked_item_count"] += value
         elif status == "processing":
             counts["processing_count"] += value
         elif status == "failed_retryable":
@@ -519,7 +610,60 @@ def count_run_items(run_id: int) -> dict[str, int]:
             counts["linked_pending_count"] += value
         elif status == "verified":
             counts["verified_count"] += value
+        elif status == "cancelled":
+            counts["cancelled_count"] += value
     return counts
+
+
+def release_next_blocked_source_run(source_id: int | None) -> int | None:
+    if source_id is None:
+        return None
+    with connect() as conn:
+        with conn.cursor() as cur:
+            blocker = find_source_blocker(cur, source_id)
+            if blocker is not None:
+                conn.commit()
+                return None
+            cur.execute(
+                """
+                select id
+                from archive_runs
+                where source_id = %s and status = 'blocked'
+                order by started_at asc, id asc
+                limit 1
+                for update skip locked
+                """,
+                (source_id,),
+            )
+            row = cur.fetchone()
+            if not row:
+                conn.commit()
+                return None
+            run_id = int(row["id"])
+            cur.execute(
+                """
+                update archive_run_items
+                set status = 'pending',
+                    progress_message = null,
+                    last_progress_at = now(),
+                    updated_at = now()
+                where archive_run_id = %s and status = 'blocked'
+                """,
+                (run_id,),
+            )
+            cur.execute(
+                """
+                update archive_runs
+                set status = 'queued',
+                    blocked_by_run_id = null,
+                    finished_at = null
+                where id = %s
+                """,
+                (run_id,),
+            )
+        conn.commit()
+    publish_event("archive_runs", "archive.run.unblocked", {"run_id": run_id, "source_id": source_id})
+    return run_id
 
 
 def fetch_latest_item_errors(item_ids: list[int]) -> dict[int, dict[str, object]]:
@@ -559,10 +703,14 @@ def build_run_result(
             key: int(tasks.get(key, 0))
             for key in (
                 "queued_count",
+                "blocked_count",
                 "skipped_verified_count",
                 "linked_pending_count",
+                "linked_active_count",
+                "skipped_completed_count",
                 "verified_count",
                 "failed_count",
+                "cancelled_count",
             )
         },
         "media": media
@@ -582,11 +730,13 @@ def list_runs(
     status: str | None = None,
     tweet_id: str | None = None,
     failed_only: bool = False,
+    source_id: int | None = None,
 ) -> list[ArchiveRunRow]:
     sql, params = build_runs_query(
         status=status,
         tweet_id=tweet_id,
         failed_only=failed_only,
+        source_id=source_id,
         limit=limit,
         offset=offset,
     )
@@ -602,9 +752,10 @@ def list_runs_page(
     status: str | None = None,
     tweet_id: str | None = None,
     failed_only: bool = False,
+    source_id: int | None = None,
 ) -> dict[str, object]:
-    rows = list_runs(limit=limit, offset=offset, status=status, tweet_id=tweet_id, failed_only=failed_only)
-    total_count = count_runs(status=status, tweet_id=tweet_id, failed_only=failed_only)
+    rows = list_runs(limit=limit, offset=offset, status=status, tweet_id=tweet_id, failed_only=failed_only, source_id=source_id)
+    total_count = count_runs(status=status, tweet_id=tweet_id, failed_only=failed_only, source_id=source_id)
     return {
         "rows": [dict(row) for row in rows],
         "count": len(rows),
@@ -618,8 +769,9 @@ def count_runs(
     status: str | None = None,
     tweet_id: str | None = None,
     failed_only: bool = False,
+    source_id: int | None = None,
 ) -> int:
-    sql, params = build_count_runs_query(status=status, tweet_id=tweet_id, failed_only=failed_only)
+    sql, params = build_count_runs_query(status=status, tweet_id=tweet_id, failed_only=failed_only, source_id=source_id)
     with connect() as conn:
         with conn.cursor() as cur:
             cur.execute(sql, params)
@@ -630,6 +782,7 @@ def build_runs_query(
     status: str | None = None,
     tweet_id: str | None = None,
     failed_only: bool = False,
+    source_id: int | None = None,
     limit: int = 50,
     offset: int = 0,
 ) -> tuple[str, dict[str, object]]:
@@ -637,8 +790,11 @@ def build_runs_query(
         select(
             archive_runs.c.id,
             archive_runs.c.trigger_type,
+            archive_runs.c.source_id,
             archive_runs.c.input_path,
             archive_runs.c.status,
+            archive_runs.c.blocked_by_run_id,
+            archive_runs.c.control_state,
             archive_runs.c.started_at,
             archive_runs.c.finished_at,
             archive_runs.c.result,
@@ -654,6 +810,7 @@ def build_runs_query(
         status=status,
         tweet_id=tweet_id,
         failed_only=failed_only,
+        source_id=source_id,
     )
     return compile_query(statement)
 
@@ -662,6 +819,7 @@ def build_count_runs_query(
     status: str | None = None,
     tweet_id: str | None = None,
     failed_only: bool = False,
+    source_id: int | None = None,
 ) -> tuple[str, dict[str, object]]:
     statement = select(func.count().cast(Integer).label("count")).select_from(archive_runs)
     statement = apply_runs_filters(
@@ -669,6 +827,7 @@ def build_count_runs_query(
         status=status,
         tweet_id=tweet_id,
         failed_only=failed_only,
+        source_id=source_id,
     )
     return compile_query(statement)
 
@@ -678,8 +837,9 @@ def apply_runs_filters(
     status: str | None = None,
     tweet_id: str | None = None,
     failed_only: bool = False,
+    source_id: int | None = None,
 ) -> Select:
-    filters = build_runs_filters(status=status, tweet_id=tweet_id, failed_only=failed_only)
+    filters = build_runs_filters(status=status, tweet_id=tweet_id, failed_only=failed_only, source_id=source_id)
     if not filters:
         return statement
     return statement.where(and_(*filters))
@@ -689,8 +849,11 @@ def build_runs_filters(
     status: str | None = None,
     tweet_id: str | None = None,
     failed_only: bool = False,
+    source_id: int | None = None,
 ) -> list[ColumnElement[bool]]:
     filters: list[ColumnElement[bool]] = []
+    if source_id is not None:
+        filters.append(archive_runs.c.source_id == bindparam("source_id", source_id))
     if status:
         filters.append(archive_runs.c.status == bindparam("run_status", status))
     if tweet_id:
@@ -725,7 +888,8 @@ def get_run(run_id: int) -> ArchiveRunRow | None:
         with conn.cursor() as cur:
             cur.execute(
                 """
-                select id, trigger_type, input_path, status, started_at, finished_at, result, error_message
+                select id, trigger_type, source_id, input_path, status, blocked_by_run_id, control_state,
+                       started_at, finished_at, result, error_message
                 from archive_runs where id = %s
                 """,
                 (run_id,),
@@ -745,7 +909,9 @@ def get_run_detail(run_id: int) -> dict[str, object] | None:
             cur.execute(
                 """
                 select id, tweet_id, status, retry_count, error_category, error_message,
-                       linked_item_id, last_attempt_at, next_attempt_at, created_at, updated_at
+                       linked_item_id, cancel_requested, downloaded_bytes, total_bytes, speed_bps,
+                       progress_message, last_progress_at, last_attempt_at, next_attempt_at,
+                       created_at, updated_at
                 from archive_run_items
                 where archive_run_id = %s order by id
                 """,
@@ -795,6 +961,175 @@ def retry_run(run_id: int) -> dict[str, object]:
         {"run_id": result["run_id"], "original_run_id": run_id, "queued_count": result["tasks"]["queued_count"]},
     )
     return result
+
+
+def pause_run(run_id: int) -> dict[str, object]:
+    run = get_run(run_id)
+    if run is None:
+        raise ValueError("archive_run_not_found")
+    if run.status not in {"queued", "running"}:
+        return {"run_id": run_id, "status": run.status, "affected_count": 0}
+    with connect() as conn:
+        with conn.cursor() as cur:
+            cur.execute(
+                """
+                update archive_runs
+                set status = 'paused',
+                    control_state = control_state || %s,
+                    finished_at = null
+                where id = %s and status in ('queued', 'running')
+                """,
+                (Jsonb({"pause_requested": True}), run_id),
+            )
+            affected = cur.rowcount
+        conn.commit()
+    publish_event("archive_runs", "archive.run.paused", {"run_id": run_id})
+    return {"run_id": run_id, "status": "paused" if affected else run.status, "affected_count": affected}
+
+
+def resume_run(run_id: int) -> dict[str, object]:
+    run = get_run(run_id)
+    if run is None:
+        raise ValueError("archive_run_not_found")
+    if run.status != "paused":
+        return {"run_id": run_id, "status": run.status, "affected_count": 0}
+    with connect() as conn:
+        with conn.cursor() as cur:
+            blocked_by_run_id = find_source_blocker(cur, run.source_id, exclude_run_id=run_id)
+            status = "blocked" if blocked_by_run_id else "queued"
+            item_status = "blocked" if blocked_by_run_id else "pending"
+            cur.execute(
+                """
+                update archive_run_items
+                set status = %s,
+                    progress_message = null,
+                    last_progress_at = now(),
+                    updated_at = now()
+                where archive_run_id = %s
+                  and status = 'pending'
+                """,
+                (item_status, run_id),
+            )
+            cur.execute(
+                """
+                update archive_runs
+                set status = %s,
+                    blocked_by_run_id = %s,
+                    control_state = control_state || %s,
+                    finished_at = null
+                where id = %s and status = 'paused'
+                """,
+                (status, blocked_by_run_id, Jsonb({"pause_requested": False}), run_id),
+            )
+            affected = cur.rowcount
+        conn.commit()
+    publish_event("archive_runs", "archive.run.resumed", {"run_id": run_id, "status": status})
+    return {"run_id": run_id, "status": status if affected else run.status, "affected_count": affected}
+
+
+def stop_run(run_id: int) -> dict[str, object]:
+    run = get_run(run_id)
+    if run is None:
+        raise ValueError("archive_run_not_found")
+    with connect() as conn:
+        with conn.cursor() as cur:
+            cur.execute(
+                """
+                update archive_run_items
+                set status = 'cancelled',
+                    progress_message = '已取消',
+                    last_progress_at = now(),
+                    updated_at = now()
+                where archive_run_id = %s
+                  and status in ('pending', 'blocked', 'failed_retryable')
+                """,
+                (run_id,),
+            )
+            cancelled = cur.rowcount
+            cur.execute(
+                """
+                update archive_run_items
+                set cancel_requested = true,
+                    progress_message = '已请求停止，当前下载会自然结束',
+                    last_progress_at = now(),
+                    updated_at = now()
+                where archive_run_id = %s
+                  and status = 'processing'
+                """,
+                (run_id,),
+            )
+            requested = cur.rowcount
+            cur.execute(
+                """
+                update archive_runs
+                set status = 'stopped',
+                    control_state = control_state || %s,
+                    finished_at = case when %s = 0 then now() else finished_at end
+                where id = %s
+                """,
+                (Jsonb({"stop_requested": True}), requested, run_id),
+            )
+        conn.commit()
+    release_next_blocked_source_run(run.source_id)
+    publish_event("archive_runs", "archive.run.stopped", {"run_id": run_id, "cancelled_count": cancelled})
+    return {"run_id": run_id, "status": "stopped", "affected_count": cancelled + requested}
+
+
+def cancel_run_items(
+    run_id: int,
+    item_ids: list[int] | None = None,
+    tweet_ids: list[str] | None = None,
+) -> dict[str, object]:
+    run = get_run(run_id)
+    if run is None:
+        raise ValueError("archive_run_not_found")
+    if not item_ids and not tweet_ids:
+        raise ValueError("archive_run_items_required")
+    with connect() as conn:
+        with conn.cursor() as cur:
+            filters = ["archive_run_id = %s"]
+            params: list[object] = [run_id]
+            if item_ids:
+                filters.append("id = any(%s)")
+                params.append(item_ids)
+            if tweet_ids:
+                filters.append("tweet_id = any(%s)")
+                params.append(tweet_ids)
+            where = " and ".join(filters)
+            cur.execute(
+                f"""
+                update archive_run_items
+                set status = 'cancelled',
+                    progress_message = '已取消',
+                    last_progress_at = now(),
+                    updated_at = now()
+                where {where}
+                  and status in ('pending', 'blocked', 'failed_retryable')
+                """,
+                tuple(params),
+            )
+            cancelled = cur.rowcount
+            cur.execute(
+                f"""
+                update archive_run_items
+                set cancel_requested = true,
+                    progress_message = '已请求取消，当前下载会自然结束',
+                    last_progress_at = now(),
+                    updated_at = now()
+                where {where}
+                  and status = 'processing'
+                """,
+                tuple(params),
+            )
+            requested = cur.rowcount
+        conn.commit()
+    update_run_after_processing(run_id, None)
+    publish_event(
+        "archive_runs",
+        "archive.run.items_cancelled",
+        {"run_id": run_id, "cancelled_count": cancelled, "cancel_requested_count": requested},
+    )
+    return {"run_id": run_id, "status": (get_run(run_id) or run).status, "affected_count": cancelled + requested}
 
 
 def submit_requeue_batch(statuses: list[str], limit: int | None = None) -> dict[str, object]:

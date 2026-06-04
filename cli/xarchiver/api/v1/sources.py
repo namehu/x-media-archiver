@@ -8,6 +8,8 @@ from xarchiver.api.schemas import (
     ArchiveSourceResponse,
     ArchiveSubmissionResponse,
     SourceDiscoveryPageResponse,
+    SourceDownloadRequest,
+    SourceDownloadSummaryResponse,
     SourceCreateRequest,
     SourceHistoryScanRequest,
     SourceRecordsRequest,
@@ -33,8 +35,10 @@ from xarchiver.services.sources import (
     stop_source_scan_session,
     stop_source_history_scan,
     submit_discovered_tweets,
+    submit_source_downloads,
     submit_source_records,
     update_source_status,
+    get_source_downloads,
 )
 
 router = APIRouter(prefix="/sources", tags=["sources"])
@@ -85,6 +89,27 @@ def archive_source_discovered(
         return list_source_discovered_page(source_id, limit=limit, offset=offset)
     except ValueError as exc:
         raise_api_error(exc)
+
+
+@router.get("/{source_id}/downloads", response_model=SourceDownloadSummaryResponse)
+def archive_source_downloads(source_id: int) -> dict[str, object]:
+    try:
+        return get_source_downloads(source_id)
+    except ValueError as exc:
+        raise_api_error(exc, default_status=404)
+
+
+@router.post("/{source_id}/downloads", status_code=status.HTTP_202_ACCEPTED, response_model=ArchiveSubmissionResponse)
+def submit_archive_source_downloads(source_id: int, request: SourceDownloadRequest) -> dict[str, object]:
+    try:
+        return submit_source_downloads(
+            source_id,
+            request.scope,
+            tweet_ids=request.tweet_ids,
+            limit=request.limit,
+        )
+    except ValueError as exc:
+        raise_api_error(exc, default_status=409)
 
 
 @router.get("/{source_id}/scan-runs", response_model=SourceScanRunsPageResponse)

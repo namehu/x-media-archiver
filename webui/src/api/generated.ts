@@ -158,6 +158,74 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/api/v1/archive-runs/{run_id}/pause": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /** Pause Archive Run */
+        post: operations["pause_archive_run_api_v1_archive_runs__run_id__pause_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/archive-runs/{run_id}/resume": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /** Resume Archive Run */
+        post: operations["resume_archive_run_api_v1_archive_runs__run_id__resume_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/archive-runs/{run_id}/stop": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /** Stop Archive Run */
+        post: operations["stop_archive_run_api_v1_archive_runs__run_id__stop_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/archive-runs/{run_id}/items/cancel": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /** Cancel Archive Run Items */
+        post: operations["cancel_archive_run_items_api_v1_archive_runs__run_id__items_cancel_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/api/v1/sources": {
         parameters: {
             query?: never;
@@ -204,6 +272,24 @@ export interface paths {
         get: operations["archive_source_discovered_api_v1_sources__source_id__discovered_get"];
         put?: never;
         post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/sources/{source_id}/downloads": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** Archive Source Downloads */
+        get: operations["archive_source_downloads_api_v1_sources__source_id__downloads_get"];
+        put?: never;
+        /** Submit Archive Source Downloads */
+        post: operations["submit_archive_source_downloads_api_v1_sources__source_id__downloads_post"];
         delete?: never;
         options?: never;
         head?: never;
@@ -688,16 +774,45 @@ export interface components {
             /** Source Url */
             source_url?: string | null;
         };
+        /** ArchiveRunCancelItemsRequest */
+        ArchiveRunCancelItemsRequest: {
+            /** Item Ids */
+            item_ids?: number[] | null;
+            /** Tweet Ids */
+            tweet_ids?: string[] | null;
+        };
+        /** ArchiveRunControlResponse */
+        ArchiveRunControlResponse: {
+            /** Run Id */
+            run_id: number;
+            /** Status */
+            status: string;
+            /**
+             * Affected Count
+             * @default 0
+             */
+            affected_count: number;
+        } & {
+            [key: string]: unknown;
+        };
         /** ArchiveRunDetailResponse */
         ArchiveRunDetailResponse: {
             /** Id */
             id: number;
             /** Trigger Type */
             trigger_type: string;
+            /** Source Id */
+            source_id?: number | null;
             /** Input Path */
             input_path?: string | null;
             /** Status */
             status: string;
+            /** Blocked By Run Id */
+            blocked_by_run_id?: number | null;
+            /** Control State */
+            control_state?: {
+                [key: string]: unknown;
+            } | null;
             /**
              * Started At
              * Format: date-time
@@ -729,6 +844,24 @@ export interface components {
             error_message?: string | null;
             /** Linked Item Id */
             linked_item_id?: number | null;
+            /**
+             * Cancel Requested
+             * @default false
+             */
+            cancel_requested: boolean;
+            /**
+             * Downloaded Bytes
+             * @default 0
+             */
+            downloaded_bytes: number;
+            /** Total Bytes */
+            total_bytes?: number | null;
+            /** Speed Bps */
+            speed_bps?: number | null;
+            /** Progress Message */
+            progress_message?: string | null;
+            /** Last Progress At */
+            last_progress_at?: string | null;
             /** Last Attempt At */
             last_attempt_at?: string | null;
             /** Next Attempt At */
@@ -767,10 +900,18 @@ export interface components {
             id: number;
             /** Trigger Type */
             trigger_type: string;
+            /** Source Id */
+            source_id?: number | null;
             /** Input Path */
             input_path?: string | null;
             /** Status */
             status: string;
+            /** Blocked By Run Id */
+            blocked_by_run_id?: number | null;
+            /** Control State */
+            control_state?: {
+                [key: string]: unknown;
+            } | null;
             /**
              * Started At
              * Format: date-time
@@ -957,9 +1098,13 @@ export interface components {
         /** ArchiveSubmissionResponse */
         ArchiveSubmissionResponse: {
             /** Run Id */
-            run_id: number;
+            run_id?: number | null;
             /** Status */
             status: string;
+            /** Source Id */
+            source_id?: number | null;
+            /** Blocked By Run Id */
+            blocked_by_run_id?: number | null;
             input: components["schemas"]["ArchiveInputSummaryResponse"];
             tasks: components["schemas"]["ArchiveTaskCountsResponse"];
         } & {
@@ -983,6 +1128,11 @@ export interface components {
              */
             queued_count: number;
             /**
+             * Blocked Count
+             * @default 0
+             */
+            blocked_count: number;
+            /**
              * Skipped Verified Count
              * @default 0
              */
@@ -992,6 +1142,16 @@ export interface components {
              * @default 0
              */
             linked_pending_count: number;
+            /**
+             * Linked Active Count
+             * @default 0
+             */
+            linked_active_count: number;
+            /**
+             * Skipped Completed Count
+             * @default 0
+             */
+            skipped_completed_count: number;
             /**
              * Verified Count
              * @default 0
@@ -1003,10 +1163,20 @@ export interface components {
              */
             failed_count: number;
             /**
+             * Cancelled Count
+             * @default 0
+             */
+            cancelled_count: number;
+            /**
              * Pending Count
              * @default 0
              */
             pending_count: number;
+            /**
+             * Blocked Item Count
+             * @default 0
+             */
+            blocked_item_count: number;
             /**
              * Processing Count
              * @default 0
@@ -1604,6 +1774,108 @@ export interface components {
             raw_payload?: {
                 [key: string]: unknown;
             } | null;
+            /** Active Run Id */
+            active_run_id?: number | null;
+            /** Active Item Id */
+            active_item_id?: number | null;
+            /** Active Item Status */
+            active_item_status?: string | null;
+            /** Active Run Status */
+            active_run_status?: string | null;
+            /** Cancel Requested */
+            cancel_requested?: boolean | null;
+            /** Downloaded Bytes */
+            downloaded_bytes?: number | null;
+            /** Total Bytes */
+            total_bytes?: number | null;
+            /** Speed Bps */
+            speed_bps?: number | null;
+            /** Progress Message */
+            progress_message?: string | null;
+            /** Last Progress At */
+            last_progress_at?: string | null;
+            /**
+             * Downloaded Media Count
+             * @default 0
+             */
+            downloaded_media_count: number;
+            /**
+             * Downloaded Media Bytes
+             * @default 0
+             */
+            downloaded_media_bytes: number;
+        } & {
+            [key: string]: unknown;
+        };
+        /** SourceDownloadRequest */
+        SourceDownloadRequest: {
+            /** Scope */
+            scope: string;
+            /** Tweet Ids */
+            tweet_ids?: string[] | null;
+            /**
+             * Confirm All
+             * @default false
+             */
+            confirm_all: boolean;
+            /** Limit */
+            limit?: number | null;
+        };
+        /** SourceDownloadSummaryResponse */
+        SourceDownloadSummaryResponse: {
+            /** Source Id */
+            source_id: number;
+            active_run?: components["schemas"]["ArchiveRunDetailResponse"] | null;
+            /** Paused Runs */
+            paused_runs?: components["schemas"]["ArchiveRunRowResponse"][];
+            /** Blocked Runs */
+            blocked_runs?: components["schemas"]["ArchiveRunRowResponse"][];
+            /** Recent Runs */
+            recent_runs?: components["schemas"]["ArchiveRunRowResponse"][];
+            /**
+             * Pending Count
+             * @default 0
+             */
+            pending_count: number;
+            /**
+             * Blocked Count
+             * @default 0
+             */
+            blocked_count: number;
+            /**
+             * Processing Count
+             * @default 0
+             */
+            processing_count: number;
+            /**
+             * Paused Count
+             * @default 0
+             */
+            paused_count: number;
+            /**
+             * Failed Count
+             * @default 0
+             */
+            failed_count: number;
+            /**
+             * Completed Count
+             * @default 0
+             */
+            completed_count: number;
+            /**
+             * Cancelled Count
+             * @default 0
+             */
+            cancelled_count: number;
+            /**
+             * Downloaded Bytes
+             * @default 0
+             */
+            downloaded_bytes: number;
+            /** Total Bytes */
+            total_bytes?: number | null;
+            /** Speed Bps */
+            speed_bps?: number | null;
         } & {
             [key: string]: unknown;
         };
@@ -2079,6 +2351,7 @@ export interface operations {
                 run_status?: string | null;
                 tweet_id?: string | null;
                 failed_only?: boolean;
+                source_id?: number | null;
             };
             header?: never;
             path?: never;
@@ -2188,6 +2461,134 @@ export interface operations {
                 };
                 content: {
                     "application/json": components["schemas"]["ArchiveSubmissionResponse"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    pause_archive_run_api_v1_archive_runs__run_id__pause_post: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                run_id: number;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ArchiveRunControlResponse"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    resume_archive_run_api_v1_archive_runs__run_id__resume_post: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                run_id: number;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ArchiveRunControlResponse"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    stop_archive_run_api_v1_archive_runs__run_id__stop_post: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                run_id: number;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ArchiveRunControlResponse"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    cancel_archive_run_items_api_v1_archive_runs__run_id__items_cancel_post: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                run_id: number;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["ArchiveRunCancelItemsRequest"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ArchiveRunControlResponse"];
                 };
             };
             /** @description Validation Error */
@@ -2320,6 +2721,72 @@ export interface operations {
                 };
                 content: {
                     "application/json": components["schemas"]["SourceDiscoveryPageResponse"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    archive_source_downloads_api_v1_sources__source_id__downloads_get: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                source_id: number;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["SourceDownloadSummaryResponse"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    submit_archive_source_downloads_api_v1_sources__source_id__downloads_post: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                source_id: number;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["SourceDownloadRequest"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            202: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ArchiveSubmissionResponse"];
                 };
             };
             /** @description Validation Error */

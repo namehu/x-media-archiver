@@ -4,12 +4,14 @@ from fastapi import APIRouter, HTTPException, Query, status
 
 from xarchiver.api.deps import raise_api_error
 from xarchiver.api.schemas import (
+    ArchiveRunCancelItemsRequest,
+    ArchiveRunControlResponse,
     ArchiveRunDetailResponse,
     ArchiveRunsPageResponse,
     ArchiveSubmissionResponse,
     ArchiveSubmitRequest,
 )
-from xarchiver.services.queue import get_run_detail, list_runs_page, retry_run, submit_archive_batch
+from xarchiver.services.queue import cancel_run_items, get_run_detail, list_runs_page, pause_run, resume_run, retry_run, stop_run, submit_archive_batch
 
 router = APIRouter(prefix="/archive-runs", tags=["archive-runs"])
 
@@ -32,8 +34,12 @@ def archive_runs(
     run_status: str | None = None,
     tweet_id: str | None = None,
     failed_only: bool = False,
+    source_id: int | None = None,
 ) -> dict[str, object]:
-    page = list_runs_page(limit=limit, offset=offset, status=run_status, tweet_id=tweet_id, failed_only=failed_only)
+    kwargs = {"limit": limit, "offset": offset, "status": run_status, "tweet_id": tweet_id, "failed_only": failed_only}
+    if source_id is not None:
+        kwargs["source_id"] = source_id
+    page = list_runs_page(**kwargs)
     return {**page, "rows": [dict(row) for row in page.get("rows", [])]}
 
 
@@ -49,5 +55,37 @@ def archive_run_detail(run_id: int) -> dict[str, object]:
 def retry_archive_run(run_id: int) -> dict[str, object]:
     try:
         return retry_run(run_id)
+    except ValueError as exc:
+        raise_api_error(exc, default_status=409)
+
+
+@router.post("/{run_id}/pause", response_model=ArchiveRunControlResponse)
+def pause_archive_run(run_id: int) -> dict[str, object]:
+    try:
+        return pause_run(run_id)
+    except ValueError as exc:
+        raise_api_error(exc, default_status=404)
+
+
+@router.post("/{run_id}/resume", response_model=ArchiveRunControlResponse)
+def resume_archive_run(run_id: int) -> dict[str, object]:
+    try:
+        return resume_run(run_id)
+    except ValueError as exc:
+        raise_api_error(exc, default_status=404)
+
+
+@router.post("/{run_id}/stop", response_model=ArchiveRunControlResponse)
+def stop_archive_run(run_id: int) -> dict[str, object]:
+    try:
+        return stop_run(run_id)
+    except ValueError as exc:
+        raise_api_error(exc, default_status=404)
+
+
+@router.post("/{run_id}/items/cancel", response_model=ArchiveRunControlResponse)
+def cancel_archive_run_items(run_id: int, request: ArchiveRunCancelItemsRequest) -> dict[str, object]:
+    try:
+        return cancel_run_items(run_id, item_ids=request.item_ids, tweet_ids=request.tweet_ids)
     except ValueError as exc:
         raise_api_error(exc, default_status=409)

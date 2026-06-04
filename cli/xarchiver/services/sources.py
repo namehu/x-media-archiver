@@ -47,9 +47,10 @@ from xarchiver.services.operation_logs import (
     parse_gallery_dl_log_level,
     redact_sensitive_text,
 )
-from xarchiver.services.queue import has_pending_download_work, submit_archive_batch
+from xarchiver.services.queue import get_run_detail, list_runs, submit_archive_batch
+from xarchiver.services.queue import has_pending_download_work
 from xarchiver.sql_builder import compile_query
-from xarchiver.tables import archive_sources, source_discovered_tweets, source_scan_runs, tweets
+from xarchiver.tables import archive_run_items, archive_runs, archive_sources, media_assets, source_discovered_tweets, source_scan_runs, tweets
 
 VALID_SOURCE_TYPES = {"profile", "user_media", "likes", "bookmarks", "search", "manual"}
 VALID_SOURCE_STATUSES = {"active", "paused", "completed", "failed"}
@@ -349,10 +350,42 @@ def list_source_discovered_page(source_id: int, limit: int = 50, offset: int = 0
                 raise ValueError("source_not_found")
             cur.execute(
                 """
+                with active_items as (
+                  select distinct on (i.tweet_id)
+                         i.tweet_id,
+                         i.id as active_item_id,
+                         i.archive_run_id as active_run_id,
+                         i.status as active_item_status,
+                         r.status as active_run_status,
+                         i.cancel_requested,
+                         i.downloaded_bytes,
+                         i.total_bytes,
+                         i.speed_bps,
+                         i.progress_message,
+                         i.last_progress_at
+                  from archive_run_items i
+                  join archive_runs r on r.id = i.archive_run_id
+                  where i.status in ('pending', 'blocked', 'processing', 'failed_retryable')
+                  order by i.tweet_id, i.id desc
+                ),
+                media_summary as (
+                  select tweet_id,
+                         count(*) filter (where download_status in ('downloaded', 'verified'))::int as downloaded_media_count,
+                         coalesce(sum(file_size) filter (where download_status in ('downloaded', 'verified')), 0)::bigint as downloaded_media_bytes
+                  from media_assets
+                  group by tweet_id
+                )
                 select d.id, d.tweet_id, d.archive_run_id, d.discovered_at, t.download_status,
-                       t.author_username, t.text, d.raw_payload
+                       t.author_username, t.text, d.raw_payload,
+                       a.active_run_id, a.active_item_id, a.active_item_status, a.active_run_status,
+                       a.cancel_requested, a.downloaded_bytes, a.total_bytes, a.speed_bps,
+                       a.progress_message, a.last_progress_at,
+                       coalesce(m.downloaded_media_count, 0)::int as downloaded_media_count,
+                       coalesce(m.downloaded_media_bytes, 0)::bigint as downloaded_media_bytes
                 from source_discovered_tweets d
                 join tweets t on t.tweet_id = d.tweet_id
+                left join active_items a on a.tweet_id = d.tweet_id
+                left join media_summary m on m.tweet_id = d.tweet_id
                 where d.source_id = %s
                 order by d.discovered_at desc, d.id desc
                 limit %s offset %s
@@ -1853,17 +1886,33 @@ def submit_source_records(source_id: int, records: list[dict[str, Any]]) -> dict
     return submit_discovered_tweets(source_id, tweet_ids=list(dict.fromkeys(tweet_ids)))
 
 
-def submit_discovered_tweets(
+def submit_source_downloads(
     source_id: int,
-    limit: int | None = None,
+    scope: str,
     tweet_ids: list[str] | None = None,
+    limit: int | None = None,
 ) -> dict[str, object]:
     source = get_source(source_id)
     if source is None:
         raise ValueError("source_not_found")
-    rows = fetch_unsubmitted_discoveries(source_id, limit=limit, tweet_ids=tweet_ids)
+    normalized_scope = scope.strip().lower()
+    if normalized_scope not in {"selected", "all_unsubmitted", "failed"}:
+        raise ValueError("invalid_source_download_scope")
+    normalized_tweet_ids = list(dict.fromkeys(str(item).strip() for item in (tweet_ids or []) if str(item).strip()))
+    if normalized_scope == "selected" and not normalized_tweet_ids:
+        raise ValueError("tweet_ids_required")
+    if normalized_scope == "failed":
+        retry_result = retry_source_failed_items(source_id, source, tweet_ids=normalized_tweet_ids or None, limit=limit)
+        if retry_result["submitted_count"]:
+            return retry_result
+    rows = fetch_source_download_candidates(
+        source_id,
+        normalized_scope,
+        tweet_ids=normalized_tweet_ids or None,
+        limit=limit,
+    )
     if not rows:
-        raise ValueError("source_has_no_unsubmitted_tweets")
+        return build_empty_source_download_submission(source_id, normalized_scope, source)
     records = [
         {
             "url": row["url"],
@@ -1878,7 +1927,7 @@ def submit_discovered_tweets(
         for row in rows
     ]
     source_url = str(source.get("source_url") or "")
-    submission = submit_archive_batch(records, "source_collector", input_path=source_url)
+    submission = submit_archive_batch(records, "source_download", input_path=source_url, source_id=source_id)
     run_id = int(submission["run_id"])
     submitted_tweet_ids = [str(row["tweet_id"]) for row in rows]
     with connect() as conn:
@@ -1886,7 +1935,7 @@ def submit_discovered_tweets(
             cur.execute(
                 """
                 update source_discovered_tweets
-                set archive_run_id = %s
+                set archive_run_id = coalesce(archive_run_id, %s)
                 where source_id = %s and tweet_id = any(%s)
                 """,
                 (run_id, source_id, submitted_tweet_ids),
@@ -1894,20 +1943,251 @@ def submit_discovered_tweets(
             cur.execute(
                 """
                 update archive_sources
-                set submitted_count = submitted_count + %s,
+                set submitted_count = (
+                      select count(*)::int
+                      from source_discovered_tweets
+                      where source_id = %s and archive_run_id is not null
+                    ),
                     updated_at = now()
                 where id = %s
                 """,
-                (len(submitted_tweet_ids), source_id),
+                (source_id, source_id),
             )
         conn.commit()
     result = {**submission, "source_id": source_id, "submitted_count": len(submitted_tweet_ids)}
     publish_event(
         "source_scans",
-        "source.discovered.submitted",
+        "source.download.submitted",
         {"source_id": source_id, "run_id": run_id, "submitted_count": len(submitted_tweet_ids)},
     )
     return result
+
+
+def retry_source_failed_items(
+    source_id: int,
+    source: dict[str, object],
+    tweet_ids: list[str] | None = None,
+    limit: int | None = None,
+) -> dict[str, object]:
+    source_url = str(source.get("source_url") or "")
+    with connect() as conn:
+        with conn.cursor() as cur:
+            filters = ["r.source_id = %s", "i.status = 'failed_retryable'"]
+            params: list[object] = [source_id]
+            if tweet_ids:
+                filters.append("i.tweet_id = any(%s)")
+                params.append(tweet_ids)
+            limit_sql = ""
+            if limit:
+                limit_sql = "limit %s"
+                params.append(limit)
+            cur.execute(
+                f"""
+                select i.id, i.archive_run_id, i.tweet_id
+                from archive_run_items i
+                join archive_runs r on r.id = i.archive_run_id
+                where {" and ".join(filters)}
+                order by i.updated_at asc, i.id asc
+                {limit_sql}
+                for update
+                """,
+                tuple(params),
+            )
+            rows = [dict(row) for row in cur.fetchall()]
+            if not rows:
+                return build_empty_source_download_submission(source_id, "failed", source)
+            run_ids = sorted({int(row["archive_run_id"]) for row in rows})
+            affected_tweet_ids = [str(row["tweet_id"]) for row in rows]
+            for run_id in run_ids:
+                blocked_by_run_id = find_source_retry_blocker(cur, source_id, run_id)
+                run_status = "blocked" if blocked_by_run_id else "queued"
+                item_status = "blocked" if blocked_by_run_id else "pending"
+                cur.execute(
+                    """
+                    update archive_run_items
+                    set status = %s,
+                        cancel_requested = false,
+                        worker_id = null,
+                        lease_expires_at = null,
+                        next_attempt_at = null,
+                        error_category = null,
+                        error_message = null,
+                        progress_message = '等待重试',
+                        last_progress_at = now(),
+                        updated_at = now()
+                    where archive_run_id = %s
+                      and tweet_id = any(%s)
+                      and status = 'failed_retryable'
+                    """,
+                    (item_status, run_id, affected_tweet_ids),
+                )
+                cur.execute(
+                    """
+                    update archive_runs
+                    set status = %s,
+                        blocked_by_run_id = %s,
+                        finished_at = null
+                    where id = %s
+                    """,
+                    (run_status, blocked_by_run_id, run_id),
+                )
+            cur.execute(
+                """
+                update tweets
+                set download_status = 'pending',
+                    last_error = null,
+                    updated_at = now()
+                where tweet_id = any(%s)
+                """,
+                (affected_tweet_ids,),
+            )
+        conn.commit()
+    tasks = {
+        "queued_count": len(affected_tweet_ids),
+        "blocked_count": 0,
+        "skipped_verified_count": 0,
+        "linked_pending_count": 0,
+        "linked_active_count": 0,
+        "skipped_completed_count": 0,
+        "verified_count": 0,
+        "failed_count": 0,
+        "cancelled_count": 0,
+    }
+    result = {
+        "run_id": run_ids[0],
+        "status": "queued",
+        "source_id": source_id,
+        "blocked_by_run_id": None,
+        "input": {
+            "scope": "failed",
+            "source_id": source_id,
+            "source_url": source_url,
+            "input_record_count": len(affected_tweet_ids),
+            "unique_tweet_count": len(affected_tweet_ids),
+            "duplicate_input_count": 0,
+        },
+        "tasks": tasks,
+        "submitted_count": len(affected_tweet_ids),
+    }
+    publish_event(
+        "source_scans",
+        "source.download.submitted",
+        {"source_id": source_id, "run_id": run_ids[0], "submitted_count": len(affected_tweet_ids), "scope": "failed"},
+    )
+    return result
+
+
+def find_source_retry_blocker(cur, source_id: int, run_id: int) -> int | None:
+    cur.execute(
+        """
+        select id
+        from archive_runs
+        where source_id = %s
+          and id <> %s
+          and status in ('queued', 'running', 'paused')
+        order by started_at asc, id asc
+        limit 1
+        for update skip locked
+        """,
+        (source_id, run_id),
+    )
+    row = cur.fetchone()
+    return int(row["id"]) if row else None
+
+
+def build_empty_source_download_submission(
+    source_id: int,
+    scope: str,
+    source: dict[str, object],
+) -> dict[str, object]:
+    input_summary = {
+        "scope": scope,
+        "source_id": source_id,
+        "source_url": str(source.get("source_url") or ""),
+        "input_record_count": 0,
+        "unique_tweet_count": 0,
+        "duplicate_input_count": 0,
+    }
+    tasks = {
+        "queued_count": 0,
+        "blocked_count": 0,
+        "skipped_verified_count": 0,
+        "linked_pending_count": 0,
+        "linked_active_count": 0,
+        "skipped_completed_count": 0,
+        "verified_count": 0,
+        "failed_count": 0,
+        "cancelled_count": 0,
+    }
+    return {
+        "run_id": None,
+        "status": "completed",
+        "source_id": source_id,
+        "blocked_by_run_id": None,
+        "input": input_summary,
+        "tasks": tasks,
+        "submitted_count": 0,
+    }
+
+
+def submit_discovered_tweets(
+    source_id: int,
+    limit: int | None = None,
+    tweet_ids: list[str] | None = None,
+) -> dict[str, object]:
+    return submit_source_downloads(source_id, "selected" if tweet_ids else "all_unsubmitted", tweet_ids=tweet_ids, limit=limit)
+
+
+def get_source_downloads(source_id: int) -> dict[str, object]:
+    if get_source(source_id) is None:
+        raise ValueError("source_not_found")
+    runs = list_runs(limit=20, source_id=source_id)
+    active = next((run for run in runs if run.status in {"queued", "running"}), None)
+    active_detail = get_run_detail(int(active.id)) if active else None
+    paused_runs = [dict(run) for run in runs if run.status == "paused"]
+    blocked_runs = [dict(run) for run in runs if run.status == "blocked"]
+    with connect() as conn:
+        with conn.cursor() as cur:
+            cur.execute(
+                """
+                select i.status, count(*)::int as count
+                from archive_run_items i
+                join archive_runs r on r.id = i.archive_run_id
+                where r.source_id = %s
+                group by i.status
+                """,
+                (source_id,),
+            )
+            status_counts = {str(row["status"]): int(row["count"]) for row in cur.fetchall()}
+            cur.execute(
+                """
+                select coalesce(sum(i.downloaded_bytes), 0)::bigint as downloaded_bytes,
+                       nullif(sum(i.total_bytes), 0)::bigint as total_bytes,
+                       nullif(sum(i.speed_bps) filter (where i.status = 'processing'), 0)::bigint as speed_bps
+                from archive_run_items i
+                join archive_runs r on r.id = i.archive_run_id
+                where r.source_id = %s
+                """,
+                (source_id,),
+            )
+            progress = dict(cur.fetchone())
+    return {
+        "source_id": source_id,
+        "active_run": active_detail,
+        "paused_runs": paused_runs,
+        "blocked_runs": blocked_runs,
+        "recent_runs": [dict(run) for run in runs],
+        "pending_count": status_counts.get("pending", 0),
+        "blocked_count": status_counts.get("blocked", 0),
+        "processing_count": status_counts.get("processing", 0),
+        "paused_count": sum(int((run.get("result") or {}).get("tasks", {}).get("queued_count", 0)) for run in paused_runs),
+        "failed_count": status_counts.get("failed_retryable", 0) + status_counts.get("failed_permanent", 0),
+        "completed_count": status_counts.get("verified", 0) + status_counts.get("skipped_verified", 0),
+        "cancelled_count": status_counts.get("cancelled", 0),
+        "downloaded_bytes": int(progress.get("downloaded_bytes") or 0),
+        "total_bytes": progress.get("total_bytes"),
+        "speed_bps": progress.get("speed_bps"),
+    }
 
 
 def fetch_unsubmitted_discoveries(
@@ -1920,6 +2200,49 @@ def fetch_unsubmitted_discoveries(
         with conn.cursor() as cur:
             cur.execute(sql, params)
             return [TweetRow.model_validate(dict(row)) for row in cur.fetchall()]
+
+
+def fetch_source_download_candidates(
+    source_id: int,
+    scope: str,
+    tweet_ids: list[str] | None = None,
+    limit: int | None = None,
+) -> list[TweetRow]:
+    sql, params = build_source_download_candidates_query(source_id, scope, tweet_ids=tweet_ids, limit=limit)
+    with connect() as conn:
+        with conn.cursor() as cur:
+            cur.execute(sql, params)
+            return [TweetRow.model_validate(dict(row)) for row in cur.fetchall()]
+
+
+def build_source_download_candidates_query(
+    source_id: int,
+    scope: str,
+    tweet_ids: list[str] | None = None,
+    limit: int | None = None,
+) -> tuple[str, dict[str, object]]:
+    statement = (
+        select(tweets)
+        .select_from(
+            source_discovered_tweets.join(
+                tweets,
+                tweets.c.tweet_id == source_discovered_tweets.c.tweet_id,
+            )
+        )
+        .where(source_discovered_tweets.c.source_id == bindparam("source_id", source_id))
+        .order_by(source_discovered_tweets.c.discovered_at.asc(), source_discovered_tweets.c.id.asc())
+    )
+    if scope == "all_unsubmitted":
+        statement = statement.where(source_discovered_tweets.c.archive_run_id.is_(None))
+    elif scope == "failed":
+        statement = statement.where(tweets.c.download_status.in_(("failed_retryable", "missing", "corrupt")))
+    elif scope == "selected":
+        statement = statement.where(source_discovered_tweets.c.tweet_id.in_(tweet_ids or []))
+    if tweet_ids is not None and scope != "selected":
+        statement = statement.where(source_discovered_tweets.c.tweet_id.in_(tweet_ids))
+    if limit:
+        statement = statement.limit(bindparam("limit", limit))
+    return compile_query(statement)
 
 
 def build_unsubmitted_discoveries_query(

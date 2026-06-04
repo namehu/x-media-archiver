@@ -1,5 +1,5 @@
 import { useMutation } from "@tanstack/react-query";
-import { apiPost, type ArchiveSourceDetail, type ArchiveSourceListItem, type ArchiveSubmission } from "@/lib/api";
+import { apiPost, type ArchiveRunControl, type ArchiveSourceDetail, type ArchiveSourceListItem, type ArchiveSubmission } from "@/lib/api";
 import { unwrapActionResult } from "../utils";
 
 export type SourceScanMode = "history" | "latest_refresh" | "from_start";
@@ -49,6 +49,36 @@ export function useSourceActions({
     },
   });
 
+  const sourceDownloadMutation = useMutation({
+    mutationFn: ({ sourceId, scope, tweetIds, limit }: { sourceId: number; scope: "selected" | "all_unsubmitted" | "failed"; tweetIds?: string[]; limit?: number }) =>
+      apiPost<ArchiveSubmission>(`/api/v1/sources/${sourceId}/downloads`, { scope, tweet_ids: tweetIds, limit }),
+    onSuccess: async (result) => {
+      onFeedback(result);
+      await onRefresh(result.source_id);
+    },
+  });
+
+  const pauseDownloadMutation = useMutation({
+    mutationFn: (runId: number) => apiPost<ArchiveRunControl>(`/api/v1/archive-runs/${runId}/pause`, {}),
+    onSuccess: async () => onRefresh(selectedSourceId || undefined),
+  });
+
+  const resumeDownloadMutation = useMutation({
+    mutationFn: (runId: number) => apiPost<ArchiveRunControl>(`/api/v1/archive-runs/${runId}/resume`, {}),
+    onSuccess: async () => onRefresh(selectedSourceId || undefined),
+  });
+
+  const stopDownloadMutation = useMutation({
+    mutationFn: (runId: number) => apiPost<ArchiveRunControl>(`/api/v1/archive-runs/${runId}/stop`, {}),
+    onSuccess: async () => onRefresh(selectedSourceId || undefined),
+  });
+
+  const cancelDownloadItemsMutation = useMutation({
+    mutationFn: ({ runId, tweetIds }: { runId: number; tweetIds: string[] }) =>
+      apiPost<ArchiveRunControl>(`/api/v1/archive-runs/${runId}/items/cancel`, { tweet_ids: tweetIds }),
+    onSuccess: async () => onRefresh(selectedSourceId || undefined),
+  });
+
   const historyScanMutation = useMutation({
     mutationFn: ({ sourceId, limit, restart = false }: { sourceId: number; limit: number; restart?: boolean }) =>
       apiPost<ArchiveSourceDetail>(`/api/v1/sources/${sourceId}/history-scan`, { limit, restart }),
@@ -81,6 +111,11 @@ export function useSourceActions({
     statusMutation,
     scanMutation,
     submitDiscoveredMutation,
+    sourceDownloadMutation,
+    pauseDownloadMutation,
+    resumeDownloadMutation,
+    stopDownloadMutation,
+    cancelDownloadItemsMutation,
     historyScanMutation,
     scanSessionMutation,
     pauseScanSessionMutation,

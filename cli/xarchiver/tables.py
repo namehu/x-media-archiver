@@ -61,8 +61,11 @@ archive_runs = Table(
     metadata,
     Column("id", BigInteger),
     Column("trigger_type", Text),
+    Column("source_id", BigInteger),
     Column("input_path", Text),
     Column("status", Text),
+    Column("blocked_by_run_id", BigInteger),
+    Column("control_state", JSONB),
     Column("started_at", DateTime(timezone=True)),
     Column("finished_at", DateTime(timezone=True)),
     Column("result", JSONB),
@@ -76,6 +79,12 @@ archive_run_items = Table(
     Column("archive_run_id", BigInteger),
     Column("tweet_id", Text),
     Column("status", Text),
+    Column("cancel_requested", Boolean),
+    Column("downloaded_bytes", BigInteger),
+    Column("total_bytes", BigInteger),
+    Column("speed_bps", BigInteger),
+    Column("progress_message", Text),
+    Column("last_progress_at", DateTime(timezone=True)),
 )
 
 archive_sources = Table(

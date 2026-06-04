@@ -1,7 +1,8 @@
 import * as React from "react";
 import { ChevronDown } from "lucide-react";
-import type { ArchiveSourceDetail, SourceDiscoveryPageResponse, SourceScanRun } from "@/lib/api";
+import type { ArchiveSourceDetail, SourceDiscoveryPageResponse, SourceDownloadSummary, SourceScanRun } from "@/lib/api";
 import { Badge } from "@/components/ui/badge";
+import { Button } from "@/components/ui/button";
 import { Collapsible, CollapsibleContent, CollapsibleTrigger } from "@/components/ui/collapsible";
 import { scanStatusLabel, scanTriggerLabel } from "@/lib/formatters";
 import { cn, formatDateTime } from "@/lib/utils";
@@ -17,6 +18,7 @@ export function SourceTweetsContent({
   scanLimit,
   onOpenLog,
   data,
+  downloads,
   isLoading,
   error,
   offset,
@@ -30,6 +32,7 @@ export function SourceTweetsContent({
   scanLimit: NumberInputState;
   onOpenLog: (run: SourceScanRun) => void;
   data?: SourceDiscoveryPageResponse;
+  downloads?: SourceDownloadSummary;
   isLoading: boolean;
   error: unknown;
   offset: number;
@@ -48,10 +51,13 @@ export function SourceTweetsContent({
           onOpenLog={onOpenLog}
         />
         {source.active_scan_run ? <ActiveScan run={source.active_scan_run} source={source} now={now} /> : null}
+        <SourceDownloadPanel source={source} downloads={downloads} actions={actions} statusLabel={statusLabel} />
       </div>
       <div className="min-h-0 flex-1">
         <SourceTweetsTab
           data={data}
+          sourceId={source.id}
+          actions={actions}
           isLoading={isLoading}
           error={error}
           offset={offset}
@@ -61,6 +67,108 @@ export function SourceTweetsContent({
       </div>
     </div>
   );
+}
+
+function SourceDownloadPanel({
+  source,
+  downloads,
+  actions,
+  statusLabel,
+}: {
+  source: ArchiveSourceDetail;
+  downloads?: SourceDownloadSummary;
+  actions: DetailActions;
+  statusLabel: (status?: string | null) => string;
+}) {
+  const active = downloads?.active_run;
+  const paused = downloads?.paused_runs ?? [];
+  const blocked = downloads?.blocked_runs ?? [];
+  const runningItem = active?.items.find((item) => item.status === "processing");
+  const totalItems = active?.items.length ?? 0;
+  const doneItems = active?.items.filter((item) => ["verified", "skipped_verified", "failed_permanent", "cancelled"].includes(item.status)).length ?? 0;
+  const progress = totalItems ? Math.round((doneItems / totalItems) * 100) : 0;
+  const hasUnsubmitted = (source.unsubmitted_tweet_count ?? 0) > 0;
+
+  return (
+    <div className="rounded-lg border border-border-subtle bg-bg-surface p-3 text-sm">
+      <div className="flex flex-col gap-3 lg:flex-row lg:items-start lg:justify-between">
+        <div className="min-w-0">
+          <div className="flex flex-wrap items-center gap-2">
+            <span className="font-semibold text-fg-primary">下载工作台</span>
+            {active ? <Badge>{statusLabel(active.status)}</Badge> : null}
+            {paused.length ? <Badge tone="warning">暂停 {paused.length}</Badge> : null}
+            {blocked.length ? <Badge tone="secondary">等待 {blocked.length}</Badge> : null}
+          </div>
+          <div className="mt-2 grid gap-x-4 gap-y-1 text-xs text-fg-secondary sm:grid-cols-2">
+            <span>当前 Run: {active ? `#${active.id}` : "空闲"}</span>
+            <span>任务进度: {totalItems ? `${doneItems}/${totalItems} (${progress}%)` : "-"}</span>
+            <span>实时速度: {formatBytes(downloads?.speed_bps)}/s</span>
+            <span>已下载: {formatBytes(downloads?.downloaded_bytes)}</span>
+            <span>等待: {(downloads?.pending_count ?? 0) + (downloads?.blocked_count ?? 0)}</span>
+            <span>失败: {downloads?.failed_count ?? 0}</span>
+          </div>
+          {runningItem ? (
+            <p className="mt-2 text-xs text-fg-secondary">
+              当前 Tweet {runningItem.tweet_id}: {runningItem.progress_message || "下载器处理中"}
+            </p>
+          ) : null}
+          {paused.length ? (
+            <p className="mt-2 text-xs text-warning">继续下载只会恢复暂停 Run，新扫描到的推文需要单独点击下载新发现。</p>
+          ) : null}
+        </div>
+        <div className="flex flex-wrap gap-2">
+          {active?.status === "running" || active?.status === "queued" ? (
+            <Button type="button" variant="secondary" disabled={actions.pending.download} onClick={() => actions.pauseDownload(active.id)}>
+              暂停下载
+            </Button>
+          ) : null}
+          {paused[0] ? (
+            <Button type="button" variant="secondary" disabled={actions.pending.download} onClick={() => actions.resumeDownload(paused[0].id)}>
+              继续下载
+            </Button>
+          ) : null}
+          {active || paused[0] ? (
+            <Button
+              type="button"
+              variant="outline"
+              disabled={actions.pending.download}
+              onClick={() => actions.stopDownload((active ?? paused[0]).id)}
+            >
+              停止下载
+            </Button>
+          ) : null}
+          <Button
+            type="button"
+            disabled={!hasUnsubmitted || actions.pending.download}
+            onClick={() => actions.submitDownload({ sourceId: source.id, scope: "all_unsubmitted" })}
+          >
+            下载新发现
+          </Button>
+          <Button
+            type="button"
+            variant="secondary"
+            disabled={actions.pending.download}
+            onClick={() => actions.submitDownload({ sourceId: source.id, scope: "failed" })}
+          >
+            重试失败
+          </Button>
+        </div>
+      </div>
+      {actions.errors.download ? <p className="mt-2 text-xs text-danger">{String(actions.errors.download)}</p> : null}
+    </div>
+  );
+}
+
+function formatBytes(value?: number | null) {
+  if (!value || value <= 0) return "-";
+  const units = ["B", "KB", "MB", "GB"];
+  let size = value;
+  let index = 0;
+  while (size >= 1024 && index < units.length - 1) {
+    size /= 1024;
+    index += 1;
+  }
+  return `${size.toFixed(index === 0 ? 0 : 1)} ${units[index]}`;
 }
 
 function ActiveScan({ run, source, now }: { run: SourceScanRun; source: ArchiveSourceDetail; now: number }) {

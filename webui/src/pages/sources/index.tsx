@@ -36,6 +36,7 @@ export function SourcesPage() {
       queryClient.invalidateQueries({ queryKey: ["sources"] }),
       queryClient.invalidateQueries({ queryKey: sourceId ? ["source", sourceId] : ["source"] }),
       queryClient.invalidateQueries({ queryKey: sourceId ? ["source-discovered", sourceId] : ["source-discovered"] }),
+      queryClient.invalidateQueries({ queryKey: sourceId ? ["source-downloads", sourceId] : ["source-downloads"] }),
       queryClient.invalidateQueries({ queryKey: sourceId ? ["source-scan-runs", sourceId] : ["source-scan-runs"] }),
       queryClient.invalidateQueries({ queryKey: ["archive-runs"] }),
     ]);
@@ -127,11 +128,22 @@ export function SourcesPage() {
           pauseSession: actions.pauseScanSessionMutation.mutate,
           resumeSession: actions.resumeScanSessionMutation.mutate,
           submitDiscovered: actions.submitDiscoveredMutation.mutate,
+          submitDownload: actions.sourceDownloadMutation.mutate,
+          pauseDownload: actions.pauseDownloadMutation.mutate,
+          resumeDownload: actions.resumeDownloadMutation.mutate,
+          stopDownload: actions.stopDownloadMutation.mutate,
+          cancelDownloadItems: actions.cancelDownloadItemsMutation.mutate,
           stopHistory: actions.stopHistoryScanMutation.mutate,
           pending: {
             submit: actions.submitMutation.isPending,
             status: actions.statusMutation.isPending,
             submitDiscovered: actions.submitDiscoveredMutation.isPending,
+            download:
+              actions.sourceDownloadMutation.isPending ||
+              actions.pauseDownloadMutation.isPending ||
+              actions.resumeDownloadMutation.isPending ||
+              actions.stopDownloadMutation.isPending ||
+              actions.cancelDownloadItemsMutation.isPending,
             history:
               actions.scanSessionMutation.isPending ||
               actions.pauseScanSessionMutation.isPending ||
@@ -142,6 +154,12 @@ export function SourcesPage() {
             submit: actions.submitMutation.error,
             status: actions.statusMutation.error,
             submitDiscovered: actions.submitDiscoveredMutation.error,
+            download:
+              actions.sourceDownloadMutation.error ||
+              actions.pauseDownloadMutation.error ||
+              actions.resumeDownloadMutation.error ||
+              actions.stopDownloadMutation.error ||
+              actions.cancelDownloadItemsMutation.error,
             history:
               actions.scanSessionMutation.error ||
               actions.pauseScanSessionMutation.error ||

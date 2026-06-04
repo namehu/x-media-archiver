@@ -4,15 +4,18 @@ const STATUS_MAP: Record<string, string> = {
   processing: "处理中",
   running: "运行中",
   queued: "已入队",
+  blocked: "等待前序任务",
   completed: "已完成",
   completed_with_failures: "完成但有失败",
   failed: "失败",
   active: "启用",
   paused: "已暂停",
+  stopped: "已停止",
   failed_retryable: "可重试失败",
   failed_permanent: "永久失败",
   skipped_verified: "已归档跳过",
   linked_pending: "已有关联任务",
+  cancelled: "已取消",
   downloaded: "已下载",
   downloading: "下载中",
   missing: "文件缺失",
@@ -46,6 +49,7 @@ const TRIGGER_MAP: Record<string, string> = {
   manual_retry: "手动重试",
   manual_requeue: "手动重新入队",
   source_collector: "来源采集",
+  source_download: "来源下载",
 };
 
 export function statusLabel(status?: string | null): string {

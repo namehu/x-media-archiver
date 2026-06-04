@@ -1,6 +1,6 @@
 # 来源扫描业务设计与架构需求
 
-本文定义 Sources 页面中“扫描来源”和“提交下载”的业务边界、数据模型、状态机、后台调度与交付验收要求。它是来源扫描重构后的实现依据，也用于后续审查 API、WebUI、worker 与数据库迁移是否保持一致。
+本文定义 Sources 页面中“扫描来源”和“来源下载工作台”的业务边界、数据模型、状态机、后台调度与交付验收要求。它是来源扫描与下载整合后的实现依据，也用于后续审查 API、WebUI、worker 与数据库迁移是否保持一致。
 
 ## 1. 背景与目标
 
@@ -16,25 +16,25 @@ https://x.com/earthcurated/media
 flowchart LR
     A["浏览器扩展 / 手工登记来源"] --> B["扫描来源"]
     B --> C["保存发现的 Tweet"]
-    C --> D["保存媒体数量与类型预估"]
-    D --> E["人工确认提交"]
-    E --> F["下载队列"]
+    C --> D["发现池与媒体预估"]
+    D --> E["来源下载工作台"]
+    E --> F["下载选中 / 下载新发现 / 重试失败"]
     F --> G["下载媒体文件"]
     G --> H["media_assets 与文件校验"]
 ```
 
 核心目标：
 
-- 扫描阶段只发现 Tweet 与媒体预估，不自动发起媒体下载。
+- 扫描阶段只发现 Tweet 与媒体预估，下载由来源下载工作台显式触发。
 - 同一来源同一时间只允许一个扫描会话。
 - 历史扫描、补充最新推文、从头扫描/补断层分别持有独立 cursor。
 - 扫描、暂停、停止、恢复必须可恢复、可审计。
-- 下载队列忙时扫描必须延后，避免扫描请求与下载请求叠加。
-- WebUI 必须把普通用户操作收敛到“扫描来源”和“提交下载”两个明确阶段。
+- 同一来源同一时间只允许一个可运行下载 run；后续来源下载 run 必须进入 blocked。
+- WebUI 必须把普通用户操作收敛到“扫描控制、下载工作台、发现列表”三个区域。
 
 非目标：
 
-- 不在扫描阶段下载真实媒体文件。
+- 不在扫描子进程内下载真实媒体文件；下载由 archive queue worker 执行。
 - 不在 WebUI 提供媒体文件删除能力。
 - 不把全库扫描、全量校验等维护动作隐式塞入普通扫描请求。
 - 不为旧的纯数字 checkpoint 兼容流程新增复杂迁移逻辑。
@@ -49,11 +49,14 @@ flowchart LR
 - 更新当前 scan session cursor 和批次审计。
 - 记录扫描日志、错误分类、等待下载队列等调度事件。
 
-下载业务负责：
+来源下载业务负责：
 
-- 用户显式提交未入队发现项后创建 `archive_runs` / `archive_run_items`。
+- 用户在来源工作台下载选中、新发现或失败项后创建带 `source_id` 的 `archive_runs` / `archive_run_items`。
+- 暂停中的来源下载 run 不会自动吞入新扫描结果；新增下载动作创建新的不可变 run。
+- 已有 paused/running/queued 来源 run 时，新 run 进入 `blocked`，等待前序 run 完成、停止或失败终止后释放。
+- 同一 Tweet 同一时间只能存在一个 active item，重复提交应返回 linked/skipped 统计。
 - 下载媒体文件到 `archive/media/<author_id>/<tweet_id>/`。
-- 写入 `media_assets`、下载尝试记录和校验状态。
+- 写入 `media_assets`、下载尝试记录、校验状态、item 进度和控制状态。
 
 扫描发现的媒体数量来自页面元数据，是下载前预估。最终媒体数量和状态以下载后的 `media_assets` 与文件校验结果为准。
 
@@ -206,6 +209,28 @@ stateDiagram-v2
 
 暂停和停止都不会强制终止已经启动的 `gallery-dl` 子进程。当前批次会自然结束并写入审计记录，worker 在下一轮调度前重新读取来源状态。如果来源已暂停或自动任务已停止，则不会继续发起下一批。
 
+### 5.3 来源下载状态
+
+```mermaid
+stateDiagram-v2
+    [*] --> unsubmitted: scanned
+    unsubmitted --> pending: download selected / new discoveries
+    unsubmitted --> blocked: previous source run active
+    blocked --> pending: previous run completed or stopped
+    pending --> processing: worker claim
+    processing --> verified: downloaded and verified
+    processing --> failed_retryable: transient failure
+    processing --> failed_permanent: terminal failure
+    pending --> cancelled: user cancel
+    blocked --> cancelled: user cancel
+    processing --> cancelled: cancel requested then current process ends
+    failed_retryable --> pending: retry
+    verified --> [*]
+    cancelled --> [*]
+```
+
+下载 run 的成员不可变。暂停后新扫描到的 Tweet 只进入发现池；恢复下载只恢复暂停 run，不会自动包含新发现。再次点击“下载新发现”或“下载选中”会创建新的 run。若前序来源 run 仍处于 `queued`、`running` 或 `paused`，新 run 必须进入 `blocked`。
+
 ## 6. 后台调度设计
 
 ```mermaid
@@ -281,12 +306,24 @@ sequenceDiagram
 | 累计新增 Tweet | 扫描批次首次发现并写入当前来源的 Tweet 数 |
 | 最近成功扫描 / 最近扫描错误 | 用于判断后台停止增长的原因 |
 
-### 7.3 交互约束
+### 7.3 下载工作台交互
+
+| 场景 | 系统行为 | 用户可见结果 |
+| --- | --- | --- |
+| 暂停下载后继续扫描 | 新 Tweet 只进入发现池 | 旧 run 仍显示暂停，新发现显示未入队 |
+| 继续下载 | 只恢复暂停 run | 不自动包含暂停后新发现 |
+| 下载新发现 | 创建新的来源 run | 若旧 run 暂停，新 run 显示等待前序任务 |
+| 下载选中 | 只提交选中且未 active/未完成 Tweet | 已有任务和已归档项被跳过 |
+| 取消选中 | pending/blocked 变 `cancelled`，processing 标记取消请求 | 当前子进程自然结束 |
+| 停止下载 | 取消未开始 item，processing 自然结束 | 后续 blocked run 可被释放 |
+
+### 7.4 交互约束
 
 - 运行中只允许暂停、停止、查看日志，不展示新的扫描入口。
 - 暂停后允许恢复当前会话或停止当前会话。
 - 停止后保留 cursor，允许继续当前会话，也允许按业务规则启动分叉会话。
-- “提交未入队发现项”只在“提交与导入”页签中出现。
+- 下载工作台必须独立于扫描控制，避免把“暂停扫描”和“暂停下载”混为一个动作。
+- 发现列表只允许页内选择；跨页批量下载必须使用“下载新发现”入口。
 - 用户触发下载提交时必须明确知道这是下载队列动作，不是继续扫描动作。
 
 ## 8. API 需求
@@ -300,7 +337,13 @@ sequenceDiagram
 | `GET /api/v1/sources/{source_id}` | 获取来源详情、汇总、active run | `ArchiveSourceDetailResponse` |
 | `GET /api/v1/sources/{source_id}/scan-runs` | 分页查看扫描批次审计 | `SourceScanRunsPageResponse` |
 | `GET /api/v1/log-streams/{stream_id}` | 查看扫描日志 | `OperationLogEntriesResponse` |
-| `POST /api/v1/sources/{source_id}/submit-discovered` | 显式提交未入队发现项到下载队列 | `ArchiveSubmissionResponse` |
+| `GET /api/v1/sources/{source_id}/downloads` | 查看来源下载工作台汇总、active/paused/blocked runs | `SourceDownloadSummaryResponse` |
+| `POST /api/v1/sources/{source_id}/downloads` | 下载选中、新发现或失败项 | `ArchiveSubmissionResponse` |
+| `POST /api/v1/sources/{source_id}/submit-discovered` | 兼容旧入口，等价于提交未入队发现项 | `ArchiveSubmissionResponse` |
+| `POST /api/v1/archive-runs/{run_id}/pause` | 暂停下载 run，不强杀当前子进程 | `ArchiveRunControlResponse` |
+| `POST /api/v1/archive-runs/{run_id}/resume` | 恢复暂停下载 run | `ArchiveRunControlResponse` |
+| `POST /api/v1/archive-runs/{run_id}/stop` | 停止下载 run，取消未开始 item | `ArchiveRunControlResponse` |
+| `POST /api/v1/archive-runs/{run_id}/items/cancel` | 取消 pending/blocked item，processing item 仅标记取消请求 | `ArchiveRunControlResponse` |
 
 接口约束：
 
@@ -308,6 +351,8 @@ sequenceDiagram
 - 新增或调整 API schema 后必须同步 `webui/src/api/generated.ts`。
 - 写操作必须保持 API 进程内锁语义或显式更新并发策略。
 - 所有错误响应不得暴露 cookie、生产连接串或其他凭据。
+- 下载提交必须按 Tweet 加锁并保持幂等，不能为同一 Tweet 创建多个 active item。
+- 同一来源只能有一个 runnable 下载 run；后续来源 run 使用 `blocked` 等待释放。
 
 ## 9. 错误处理与恢复
 
@@ -320,6 +365,10 @@ sequenceDiagram
 | API 中途停止 | 启动恢复逻辑标记遗留 running scan 为 interrupted | 后续可从已保存 cursor 继续 |
 | 用户暂停 | 当前批次自然结束，下一轮不再调度 | 页面显示已收到暂停状态 |
 | 用户停止 | 关闭 automation，保留 session cursor | 页面展示继续或分叉入口 |
+| 下载 run 暂停 | 不再 claim 后续 item，processing 自然结束 | 下载工作台显示暂停，可继续或停止 |
+| 下载 run 停止 | pending/blocked/failed_retryable 变 cancelled，processing 标记取消请求 | 下载工作台显示已停止，后续 blocked run 释放 |
+| 重复点击下载 | 事务锁和唯一 active item 约束阻止重复 item | 返回已有任务和已归档统计 |
+| 同一来源已有 active run | 新来源 run 进入 blocked | 页面显示等待前序任务 |
 
 ## 10. 验收要求
 
@@ -335,6 +384,10 @@ sequenceDiagram
 前端验收：
 
 - Sources 详情页只有一个“扫描来源”入口。
+- Sources 详情页必须包含独立下载工作台，显示 active/paused/blocked run、速度、大小和进度摘要。
+- 发现列表支持页内勾选、下载选中、下载新发现、重试失败、行级下载和取消。
+- 暂停下载后继续扫描，新发现不能自动加入旧 run。
+- 有 paused/running/queued 来源 run 时再次下载新发现，新 run 必须显示 blocked。
 - 运行中不展示其他扫描入口。
 - 暂停后恢复按钮显示当前会话语义。
 - 补最新完成时显示“补充最新推文已完成”，不能误显示“历史扫描已完成”。
@@ -352,6 +405,6 @@ cd webui && npm run build
 
 ```bash
 git diff --check
-docker-compose run --rm --entrypoint python xarchiver -m unittest tests.test_sources.SourceServiceTests tests.test_api_v1_routes.V1RouterSmokeTests
+docker-compose run --rm --entrypoint python xarchiver -m unittest tests.test_queue_integration tests.test_sources tests.test_api_v1_routes
 cd webui && npm run typecheck
 ```

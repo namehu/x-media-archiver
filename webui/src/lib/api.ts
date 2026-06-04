@@ -88,17 +88,28 @@ export type ActionResponse = {
 
 export type ArchiveRunTasks = {
   queued_count: number;
+  blocked_count?: number;
   skipped_verified_count: number;
   linked_pending_count: number;
+  linked_active_count?: number;
+  skipped_completed_count?: number;
   verified_count: number;
   failed_count: number;
+  cancelled_count?: number;
+  pending_count?: number;
+  blocked_item_count?: number;
+  processing_count?: number;
+  failed_retryable_count?: number;
 };
 
 export type ArchiveRun = {
   id: number;
   trigger_type: string;
+  source_id?: number | null;
   input_path?: string | null;
-  status: "queued" | "running" | "completed" | "completed_with_failures" | "failed";
+  status: "queued" | "blocked" | "running" | "paused" | "stopped" | "completed" | "completed_with_failures" | "failed";
+  blocked_by_run_id?: number | null;
+  control_state?: Record<string, unknown> | null;
   started_at: string;
   finished_at?: string | null;
   error_message?: string | null;
@@ -120,6 +131,12 @@ export type ArchiveRunItem = {
   error_category?: string | null;
   error_message?: string | null;
   linked_item_id?: number | null;
+  cancel_requested?: boolean | null;
+  downloaded_bytes?: number | null;
+  total_bytes?: number | null;
+  speed_bps?: number | null;
+  progress_message?: string | null;
+  last_progress_at?: string | null;
   attempts?: Array<{
     id: number;
     job_id: number;
@@ -140,8 +157,9 @@ export type ArchiveRunDetail = ArchiveRun & {
 export type ArchiveRunPageResponse = PageResponse<ArchiveRun>;
 
 export type ArchiveSubmission = {
-  run_id: number;
+  run_id?: number | null;
   source_id?: number;
+  blocked_by_run_id?: number | null;
   status: string;
   input: {
     input_record_count: number;
@@ -150,8 +168,11 @@ export type ArchiveSubmission = {
   };
   tasks: {
     queued_count: number;
+    blocked_count?: number;
     skipped_verified_count: number;
     linked_pending_count: number;
+    linked_active_count?: number;
+    skipped_completed_count?: number;
   };
 };
 
@@ -239,6 +260,18 @@ export type SourceDiscovery = {
     has_photo?: boolean;
     has_video?: boolean;
   } | null;
+  active_run_id?: number | null;
+  active_item_id?: number | null;
+  active_item_status?: string | null;
+  active_run_status?: string | null;
+  cancel_requested?: boolean | null;
+  downloaded_bytes?: number | null;
+  total_bytes?: number | null;
+  speed_bps?: number | null;
+  progress_message?: string | null;
+  last_progress_at?: string | null;
+  downloaded_media_count?: number | null;
+  downloaded_media_bytes?: number | null;
 };
 
 type ArchiveSourceBase = {
@@ -301,6 +334,30 @@ export type ArchiveSource = ArchiveSourceDetail;
 export type SourcePageResponse = PageResponse<ArchiveSourceListItem>;
 export type SourceDiscoveryPageResponse = PageResponse<SourceDiscovery>;
 export type SourceScanRunsPageResponse = PageResponse<SourceScanRun>;
+
+export type SourceDownloadSummary = {
+  source_id: number;
+  active_run?: ArchiveRunDetail | null;
+  paused_runs: ArchiveRun[];
+  blocked_runs: ArchiveRun[];
+  recent_runs: ArchiveRun[];
+  pending_count: number;
+  blocked_count: number;
+  processing_count: number;
+  paused_count: number;
+  failed_count: number;
+  completed_count: number;
+  cancelled_count: number;
+  downloaded_bytes: number;
+  total_bytes?: number | null;
+  speed_bps?: number | null;
+};
+
+export type ArchiveRunControl = {
+  run_id: number;
+  status: string;
+  affected_count: number;
+};
 
 export type DownloadPolicy = {
   queue_batch_size: number;

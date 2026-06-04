@@ -31,9 +31,15 @@ const SERVER_EVENT_TYPES = [
   "archive.run.processing",
   "archive.run.items_processed",
   "archive.run.items_failed",
+  "archive.run.progress",
   "archive.run.completed",
   "archive.run.updated",
   "archive.run.retried",
+  "archive.run.paused",
+  "archive.run.resumed",
+  "archive.run.stopped",
+  "archive.run.items_cancelled",
+  "archive.run.unblocked",
   "source.status_changed",
   "source.history_scan.started",
   "source.history_scan.stopped",
@@ -42,6 +48,7 @@ const SERVER_EVENT_TYPES = [
   "source.scan.discovered",
   "source.scan.waiting_downloads",
   "source.discovered.submitted",
+  "source.download.submitted",
   "operation.log.appended",
 ];
 
@@ -123,6 +130,8 @@ function invalidateForEvent(queryClient: QueryClient, event: ServerEvent) {
     const runId = numberFromPayload(payload, "run_id", "archive_run_id", "id");
     void queryClient.invalidateQueries({ queryKey: ["archive-runs"] });
     void queryClient.invalidateQueries(runId ? { queryKey: ["archive-run", runId], exact: true } : { queryKey: ["archive-run"] });
+    void queryClient.invalidateQueries({ queryKey: ["source-downloads"] });
+    void queryClient.invalidateQueries({ queryKey: ["source-discovered"] });
     void queryClient.invalidateQueries({ queryKey: ["summary"] });
     void queryClient.invalidateQueries({ queryKey: ["health-detail"] });
     void queryClient.invalidateQueries({ queryKey: ["media"] });
@@ -138,6 +147,8 @@ function invalidateForEvent(queryClient: QueryClient, event: ServerEvent) {
       sourceId ? { queryKey: ["source", sourceId], exact: true } : { queryKey: ["source"] },
     );
     void queryClient.invalidateQueries({ queryKey: ["archive-runs"] });
+    void queryClient.invalidateQueries({ queryKey: sourceId ? ["source-downloads", sourceId] : ["source-downloads"] });
+    void queryClient.invalidateQueries({ queryKey: sourceId ? ["source-discovered", sourceId] : ["source-discovered"] });
     void queryClient.invalidateQueries({ queryKey: ["summary"] });
     void queryClient.invalidateQueries({ queryKey: ["health-detail"] });
     return;

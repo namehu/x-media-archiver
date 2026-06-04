@@ -1,7 +1,7 @@
 import { useMemo, useState } from "react";
 import { Activity, AlertTriangle, Clock3, FileInput, ListFilter, RefreshCw, Search, UploadCloud } from "lucide-react";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
-import { apiGet, apiPost, type ArchiveRun, type ArchiveRunDetail, type ArchiveRunPageResponse, type ArchiveSubmission } from "../../lib/api";
+import { apiGet, apiPost, type ArchiveRun, type ArchiveRunControl, type ArchiveRunDetail, type ArchiveRunPageResponse, type ArchiveSubmission } from "../../lib/api";
 import { errorLabel, statusLabel, triggerLabel } from "../../lib/formatters";
 import { formatDateTime } from "../../lib/utils";
 import { useServerEvents } from "../../hooks/useServerEvents";
@@ -100,7 +100,7 @@ export function ArchiveQueuePage() {
       setUrls("");
       setActiveTab("running");
       setOffset(0);
-      await refresh(result.run_id);
+      await refresh(result.run_id ?? undefined);
     },
   });
   const retryMutation = useMutation({
@@ -109,11 +109,16 @@ export function ArchiveQueuePage() {
       setFeedback(result);
       setActiveTab("running");
       setOffset(0);
-      await refresh(result.run_id);
+      await refresh(result.run_id ?? undefined);
     },
   });
+  const runControlMutation = useMutation({
+    mutationFn: ({ runId, action }: { runId: number; action: "pause" | "resume" | "stop" }) =>
+      apiPost<ArchiveRunControl>(`/api/v1/archive-runs/${runId}/${action}`, {}),
+    onSuccess: async (result) => refresh(result.run_id),
+  });
 
-  const pending = submitMutation.isPending || retryMutation.isPending;
+  const pending = submitMutation.isPending || retryMutation.isPending || runControlMutation.isPending;
   const canSubmit = validRecords.length > 0 && preview.invalidCount === 0 && !pending;
   const submitUrls = () => {
     if (canSubmit) submitMutation.mutate(validRecords);
@@ -287,6 +292,7 @@ export function ArchiveQueuePage() {
           error={detailQuery.error}
           pending={pending}
           onRetry={(runId) => retryMutation.mutate(runId)}
+          onControl={(runId, action) => runControlMutation.mutate({ runId, action })}
         />
       </section>
     </div>
@@ -479,12 +485,14 @@ function RunDetailPanel({
   error,
   pending,
   onRetry,
+  onControl,
 }: {
   run?: ArchiveRunDetail;
   isLoading: boolean;
   error: Error | null;
   pending: boolean;
   onRetry: (runId: number) => void;
+  onControl: (runId: number, action: "pause" | "resume" | "stop") => void;
 }) {
   return (
     <Card className="min-h-[520px]">
@@ -509,6 +517,23 @@ function RunDetailPanel({
         ) : run ? (
           <>
             <RunSummary run={run} />
+            <div className="flex flex-wrap gap-2">
+              {run.status === "queued" || run.status === "running" ? (
+                <Button type="button" variant="secondary" disabled={pending} onClick={() => onControl(run.id, "pause")}>
+                  暂停
+                </Button>
+              ) : null}
+              {run.status === "paused" ? (
+                <Button type="button" variant="secondary" disabled={pending} onClick={() => onControl(run.id, "resume")}>
+                  恢复
+                </Button>
+              ) : null}
+              {["queued", "running", "paused", "blocked"].includes(run.status) ? (
+                <Button type="button" variant="outline" disabled={pending} onClick={() => onControl(run.id, "stop")}>
+                  停止
+                </Button>
+              ) : null}
+            </div>
             <div className="max-h-[560px] space-y-2 overflow-auto pr-1">
               {run.items.map((item) => (
                 <div key={item.id} className="rounded-lg border border-border-subtle bg-bg-surface p-3 transition duration-fast hover:border-border-strong">
@@ -521,6 +546,7 @@ function RunDetailPanel({
                         </span>
                         {item.last_attempt_at ? <span>最近尝试: {formatDateTime(item.last_attempt_at)}</span> : null}
                         {item.next_attempt_at ? <span>下次重试: {formatDateTime(item.next_attempt_at)}</span> : null}
+                        {item.progress_message ? <span>{item.progress_message}</span> : null}
                       </div>
                     </div>
                     <Badge tone={statusTone(item.status)}>{statusLabel(item.status)}</Badge>
@@ -627,7 +653,7 @@ function buildQueueModel(runs: ArchiveRun[]) {
 
 function progressForRun(run: ArchiveRun) {
   if (run.status === "completed") return 100;
-  if (run.status === "completed_with_failures" || run.status === "failed") return 100;
+  if (run.status === "completed_with_failures" || run.status === "failed" || run.status === "stopped") return 100;
   const tasks = run.result?.tasks;
   if (!tasks) return run.status === "running" ? 32 : 8;
   const total = tasks.queued_count + tasks.skipped_verified_count + tasks.linked_pending_count + tasks.verified_count + tasks.failed_count;
@@ -639,8 +665,8 @@ function progressForRun(run: ArchiveRun) {
 function statusDot(status?: string | null): "running" | "success" | "warning" | "danger" | "idle" {
   if (status === "running" || status === "queued" || status === "processing" || status === "downloading") return "running";
   if (status === "completed" || status === "verified" || status === "downloaded" || status === "skipped_verified" || status === "linked_pending") return "success";
-  if (status === "completed_with_failures" || status === "failed_retryable") return "warning";
-  if (status === "failed" || status === "failed_permanent") return "danger";
+  if (status === "completed_with_failures" || status === "failed_retryable" || status === "blocked" || status === "paused") return "warning";
+  if (status === "failed" || status === "failed_permanent" || status === "stopped" || status === "cancelled") return "danger";
   return "idle";
 }
 

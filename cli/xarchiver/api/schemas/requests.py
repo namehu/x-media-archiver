@@ -43,6 +43,11 @@ class ArchiveSubmitRequest(BaseModel):
     records: list[ArchiveRecord]
 
 
+class ArchiveRunCancelItemsRequest(BaseModel):
+    item_ids: list[int] | None = None
+    tweet_ids: list[str] | None = None
+
+
 class SourceCreateRequest(BaseModel):
     source_type: str = Field(pattern="^(profile|user_media|likes|bookmarks|search|manual)$")
     source_url: str
@@ -65,6 +70,13 @@ class SourceScanRequest(BaseModel):
 
 class SourceSubmitDiscoveredRequest(BaseModel):
     limit: int | None = Field(default=None, ge=1, le=500)
+
+
+class SourceDownloadRequest(BaseModel):
+    scope: str = Field(pattern="^(selected|all_unsubmitted|failed)$")
+    tweet_ids: list[str] | None = None
+    confirm_all: bool = False
+    limit: int | None = Field(default=None, ge=1, le=5000)
 
 
 class SourceHistoryScanRequest(BaseModel):

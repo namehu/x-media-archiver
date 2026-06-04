@@ -1,8 +1,8 @@
 import * as React from "react";
-import type { ArchiveSourceDetail, ArchiveSubmission, DownloadPolicy, SourceScanRun } from "@/lib/api";
+import type { ArchiveSourceDetail, ArchiveSubmission, DownloadPolicy, SourceDownloadSummary, SourceScanRun } from "@/lib/api";
 import { Sheet, SheetContent, SheetHeader, SheetTitle } from "@/components/ui/sheet";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
-import { useSourceDiscovered, useSourceScanRuns } from "../../hooks/useSourceDetail";
+import { useSourceDiscovered, useSourceDownloads, useSourceScanRuns } from "../../hooks/useSourceDetail";
 import { SourceScanHistoryTab } from "../source-scan-history-tab";
 import { preferredScanLimit, sourceStatusTone } from "../../utils";
 import { SourceDetailContent } from "./source-detail-content";
@@ -23,17 +23,24 @@ type DetailActions = {
   pauseSession: (sourceId: number) => void;
   resumeSession: (sourceId: number) => void;
   submitDiscovered: (input: { sourceId: number; limit?: number }) => void;
+  submitDownload: (input: { sourceId: number; scope: "selected" | "all_unsubmitted" | "failed"; tweetIds?: string[]; limit?: number }) => void;
+  pauseDownload: (runId: number) => void;
+  resumeDownload: (runId: number) => void;
+  stopDownload: (runId: number) => void;
+  cancelDownloadItems: (input: { runId: number; tweetIds: string[] }) => void;
   stopHistory: (sourceId: number) => void;
   pending: {
     submit: boolean;
     status: boolean;
     submitDiscovered: boolean;
+    download: boolean;
     history: boolean;
   };
   errors: {
     submit: unknown;
     status: unknown;
     submitDiscovered: unknown;
+    download: unknown;
     history: unknown;
   };
 };
@@ -70,6 +77,7 @@ export function SourceDetailPanel({
   const [logRun, setLogRun] = React.useState<SourceScanRun | null>(null);
   const persistedScanLimit = source ? preferredScanLimit(source, policy) : 20;
   const discoveredQuery = useSourceDiscovered(source?.id ?? null, tweetsOffset, activeTab === "tweets");
+  const downloadsQuery = useSourceDownloads(source?.id ?? null, activeTab === "tweets");
   const scanRunsQuery = useSourceScanRuns(
     source?.id ?? null,
     historyOffset,
@@ -152,8 +160,9 @@ export function SourceDetailPanel({
                   scanLimit={scanLimit}
                   onOpenLog={setLogRun}
                   data={discoveredQuery.data}
+                  downloads={downloadsQuery.data as SourceDownloadSummary | undefined}
                   isLoading={discoveredQuery.isLoading}
-                  error={discoveredQuery.error}
+                  error={discoveredQuery.error || downloadsQuery.error}
                   offset={tweetsOffset}
                   onOffsetChange={setTweetsOffset}
                   statusLabel={statusLabel}

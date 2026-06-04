@@ -11,6 +11,7 @@ from xarchiver.downloader import (
     classify_error,
     fetch_download_candidates,
     format_sleep_range,
+    parse_downloader_progress,
     prepare_cookies,
     validate_cookie_file,
 )
@@ -91,6 +92,38 @@ class DownloaderTests(unittest.TestCase):
         self.assertIn("--sleep-interval", command)
         self.assertIn("--max-sleep-interval", command)
         self.assertIn("/app/archive/state/runtime-cookies.txt", command)
+
+    def test_yt_dlp_command_includes_native_progress_template(self) -> None:
+        settings = SimpleNamespace(
+            archive_dir=Path("/app/archive"),
+            downloader_sleep_min_seconds=0,
+            downloader_sleep_max_seconds=3,
+        )
+
+        command = build_command(
+            "yt-dlp",
+            settings,
+            Path("/app/archive/raw/input.txt"),
+            Path("/app/archive/state/runtime-cookies.txt"),
+        )
+
+        self.assertIn("--newline", command)
+        self.assertIn("--no-color", command)
+        self.assertIn("--progress-template", command)
+        self.assertTrue(any("xarchiver-progress:" in value for value in command))
+
+    def test_parse_downloader_progress_reads_yt_dlp_template_output(self) -> None:
+        progress = parse_downloader_progress("xarchiver-progress:downloading|2048|4096|8192|512")
+
+        self.assertEqual(
+            progress,
+            {"downloaded_bytes": 2048, "total_bytes": 4096, "speed_bps": 512},
+        )
+
+    def test_parse_downloader_progress_uses_estimated_total(self) -> None:
+        progress = parse_downloader_progress("xarchiver-progress:downloading|2048|NA|8192|512")
+
+        self.assertEqual(progress["total_bytes"], 8192)
 
     def test_prepare_cookies_writes_file_fallback_to_runtime_path(self) -> None:
         with tempfile.TemporaryDirectory() as tmp:

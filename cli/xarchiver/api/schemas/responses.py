@@ -141,11 +141,16 @@ class ArchiveInputSummaryResponse(FlexibleResponse):
 
 class ArchiveTaskCountsResponse(FlexibleResponse):
     queued_count: int = 0
+    blocked_count: int = 0
     skipped_verified_count: int = 0
     linked_pending_count: int = 0
+    linked_active_count: int = 0
+    skipped_completed_count: int = 0
     verified_count: int = 0
     failed_count: int = 0
+    cancelled_count: int = 0
     pending_count: int = 0
+    blocked_item_count: int = 0
     processing_count: int = 0
     failed_retryable_count: int = 0
 
@@ -172,10 +177,18 @@ class ArchiveRunResultResponse(FlexibleResponse):
 
 
 class ArchiveSubmissionResponse(FlexibleResponse):
-    run_id: int
+    run_id: int | None = None
     status: str
+    source_id: int | None = None
+    blocked_by_run_id: int | None = None
     input: ArchiveInputSummaryResponse
     tasks: ArchiveTaskCountsResponse
+
+
+class ArchiveRunControlResponse(FlexibleResponse):
+    run_id: int
+    status: str
+    affected_count: int = 0
 
 
 class DownloadAttemptResponse(FlexibleResponse):
@@ -200,6 +213,12 @@ class ArchiveRunItemResponse(FlexibleResponse):
     error_category: str | None = None
     error_message: str | None = None
     linked_item_id: int | None = None
+    cancel_requested: bool = False
+    downloaded_bytes: int = 0
+    total_bytes: int | None = None
+    speed_bps: int | None = None
+    progress_message: str | None = None
+    last_progress_at: datetime | None = None
     last_attempt_at: datetime | None = None
     next_attempt_at: datetime | None = None
     created_at: datetime
@@ -210,8 +229,11 @@ class ArchiveRunItemResponse(FlexibleResponse):
 class ArchiveRunRowResponse(FlexibleResponse):
     id: int
     trigger_type: str
+    source_id: int | None = None
     input_path: str | None = None
     status: str
+    blocked_by_run_id: int | None = None
+    control_state: dict[str, Any] | None = None
     started_at: datetime
     finished_at: datetime | None = None
     result: ArchiveRunResultResponse | None = None
@@ -221,8 +243,11 @@ class ArchiveRunRowResponse(FlexibleResponse):
 class ArchiveRunDetailResponse(FlexibleResponse):
     id: int
     trigger_type: str
+    source_id: int | None = None
     input_path: str | None = None
     status: str
+    blocked_by_run_id: int | None = None
+    control_state: dict[str, Any] | None = None
     started_at: datetime
     finished_at: datetime | None = None
     result: ArchiveRunResultResponse | None = None
@@ -381,6 +406,18 @@ class SourceDiscoveryResponse(FlexibleResponse):
     author_username: str | None = None
     text: str | None = None
     raw_payload: dict[str, Any] | None = None
+    active_run_id: int | None = None
+    active_item_id: int | None = None
+    active_item_status: str | None = None
+    active_run_status: str | None = None
+    cancel_requested: bool | None = None
+    downloaded_bytes: int | None = None
+    total_bytes: int | None = None
+    speed_bps: int | None = None
+    progress_message: str | None = None
+    last_progress_at: datetime | None = None
+    downloaded_media_count: int = 0
+    downloaded_media_bytes: int = 0
 
 
 class SourceScanSummaryResponse(FlexibleResponse):
@@ -416,6 +453,24 @@ class SourceScanRunResponse(FlexibleResponse):
 
 class SourceDiscoveryPageResponse(PageMetaResponse):
     rows: list[SourceDiscoveryResponse]
+
+
+class SourceDownloadSummaryResponse(FlexibleResponse):
+    source_id: int
+    active_run: ArchiveRunDetailResponse | None = None
+    paused_runs: list[ArchiveRunRowResponse] = Field(default_factory=list)
+    blocked_runs: list[ArchiveRunRowResponse] = Field(default_factory=list)
+    recent_runs: list[ArchiveRunRowResponse] = Field(default_factory=list)
+    pending_count: int = 0
+    blocked_count: int = 0
+    processing_count: int = 0
+    paused_count: int = 0
+    failed_count: int = 0
+    completed_count: int = 0
+    cancelled_count: int = 0
+    downloaded_bytes: int = 0
+    total_bytes: int | None = None
+    speed_bps: int | None = None
 
 
 class SourceScanRunsPageResponse(PageMetaResponse):

@@ -3,6 +3,7 @@ import {
   apiGet,
   type ArchiveSourceDetail,
   type DownloadPolicy,
+  type SourceDownloadSummary,
   type SourceDiscoveryPageResponse,
   type SourceScanRunsPageResponse,
 } from "@/lib/api";
@@ -18,6 +19,15 @@ export function useSourceDetail(sourceId: number | null) {
       if (source?.cursor_state?.automation_enabled && source.status === "active") return 5000;
       return 15000;
     },
+  });
+}
+
+export function useSourceDownloads(sourceId: number | null, enabled: boolean) {
+  return useQuery({
+    queryKey: ["source-downloads", sourceId],
+    queryFn: () => apiGet<SourceDownloadSummary>(`/api/v1/sources/${sourceId}/downloads`),
+    enabled: enabled && sourceId !== null,
+    refetchInterval: enabled ? 3000 : false,
   });
 }
 
