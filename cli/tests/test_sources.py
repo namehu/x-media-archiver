@@ -2,8 +2,11 @@ import unittest
 from types import SimpleNamespace
 from unittest.mock import patch
 
+from psycopg.types.json import Jsonb
+
 from xarchiver.db import connect
 from xarchiver.services.sources import (
+    build_active_scan_range,
     build_gallery_dl_scan_url,
     build_scan_range,
     count_discovered_media,
@@ -13,6 +16,7 @@ from xarchiver.services.sources import (
     format_sleep_range,
     infer_author_username,
     is_media_scan_url,
+    is_scan_session_complete,
     is_source_scan_complete,
     get_source,
     list_source_discovered_page,
@@ -29,6 +33,8 @@ from xarchiver.services.sources import (
     schedule_next_history_scan,
     source_scan_log_relative_path,
     start_source_scan_run,
+    stop_source_scan_session,
+    update_session_progress_state,
 )
 
 
@@ -118,6 +124,20 @@ class SourceServiceTests(unittest.TestCase):
             {"start": 1, "end": 10, "limit": 10},
         )
 
+    def test_build_active_scan_range_uses_active_session_cursor(self) -> None:
+        cursor_state = {
+            "next_start_index": 81,
+            "active_scan_mode": "latest_refresh",
+            "scan_sessions": {
+                "latest_refresh": {"next_start_index": 21},
+            },
+        }
+
+        self.assertEqual(
+            build_active_scan_range(cursor_state, 20),
+            {"start": 21, "end": 40, "limit": 20},
+        )
+
     def test_native_cursor_completion_requires_no_continuation_cursor(self) -> None:
         self.assertFalse(
             is_source_scan_complete(
@@ -138,6 +158,10 @@ class SourceServiceTests(unittest.TestCase):
     def test_extract_gallery_dl_cursor_uses_last_page_cursor(self) -> None:
         stderr = "[twitter][debug] Cursor: first\n[twitter][debug] Cursor: second\n"
         self.assertEqual(extract_gallery_dl_cursor(stderr), "second")
+
+    def test_extract_gallery_dl_cursor_ignores_none_sentinel(self) -> None:
+        stderr = "[twitter][debug] Cursor: first\n[twitter][debug] Cursor: None\n"
+        self.assertIsNone(extract_gallery_dl_cursor(stderr))
 
     def test_format_sleep_range_normalizes_values(self) -> None:
         self.assertEqual(format_sleep_range(20, 45), "20-45")
@@ -191,6 +215,48 @@ class SourceServiceTests(unittest.TestCase):
 
     def test_count_discovered_media_sums_batch_estimates(self) -> None:
         self.assertEqual(count_discovered_media([{"media_count": 2}, {"media_count": 1}, {}]), 3)
+
+    def test_latest_refresh_completes_only_after_duplicate_threshold(self) -> None:
+        meta = {"exit_code": 0, "continuation_cursor": "next"}
+        scan_range = {"start": 1, "end": 20, "limit": 20}
+
+        self.assertFalse(is_scan_session_complete("latest_refresh", meta, scan_range, 20, 5))
+        self.assertTrue(is_scan_session_complete("latest_refresh", meta, scan_range, 20, 6))
+
+    def test_from_start_duplicate_batch_does_not_complete_session(self) -> None:
+        self.assertFalse(
+            is_scan_session_complete(
+                "from_start",
+                {"exit_code": 0, "continuation_cursor": "next"},
+                {"start": 1, "end": 20, "limit": 20},
+                20,
+                20,
+            )
+        )
+
+    def test_non_history_session_progress_does_not_overwrite_history_cursor(self) -> None:
+        state = {
+            "next_start_index": 81,
+            "extractor_cursor": "history-cursor",
+            "scan_sessions": {
+                "latest_refresh": {"next_start_index": 1},
+            },
+        }
+        progress = {
+            "next_start_index": 21,
+            "extractor_cursor": "latest-cursor",
+            "last_range_start": 1,
+            "last_range_end": 20,
+            "last_limit": 20,
+            "last_completed": False,
+        }
+
+        updated = update_session_progress_state(state, "latest_refresh", progress, False)
+
+        self.assertEqual(updated["scan_sessions"]["latest_refresh"]["next_start_index"], 21)
+        self.assertEqual(updated["scan_sessions"]["latest_refresh"]["extractor_cursor"], "latest-cursor")
+        self.assertNotIn("next_start_index", updated)
+        self.assertNotIn("extractor_cursor", updated)
 
     def test_source_scan_log_relative_path_uses_jsonl_stream_file(self) -> None:
         self.assertEqual(
@@ -412,6 +478,44 @@ class SourceDiscoveryIntegrationTests(unittest.TestCase):
         self.assertEqual(detail["active_scan_run"]["id"], running_id)
         self.assertNotIn("discovered", detail)
         self.assertNotIn("scan_runs", detail)
+
+    def test_stop_paused_scan_session_leaves_source_operable(self) -> None:
+        source = create_source("user_media", self.source_urls[0])
+        with connect() as conn:
+            with conn.cursor() as cur:
+                cur.execute(
+                    """
+                    update archive_sources
+                    set status = 'paused',
+                        cursor_state = %s
+                    where id = %s
+                    """,
+                    (
+                        Jsonb(
+                            {
+                                "active_scan_mode": "from_start",
+                                "automation_enabled": True,
+                                "automation_state": "paused",
+                                "scan_sessions": {
+                                    "from_start": {
+                                        "mode": "from_start",
+                                        "state": "paused",
+                                        "next_start_index": 41,
+                                    }
+                                },
+                            }
+                        ),
+                        source["id"],
+                    ),
+                )
+            conn.commit()
+
+        stopped = stop_source_scan_session(int(source["id"]))
+
+        self.assertEqual(stopped["status"], "active")
+        self.assertFalse(stopped["cursor_state"]["automation_enabled"])
+        self.assertEqual(stopped["cursor_state"]["automation_state"], "stopped")
+        self.assertEqual(stopped["cursor_state"]["scan_sessions"]["from_start"]["state"], "stopped")
 
     def test_list_source_discovered_page_supports_pagination(self) -> None:
         source = create_source("user_media", self.source_urls[0])

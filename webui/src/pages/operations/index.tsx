@@ -29,9 +29,13 @@ export function OperationsPage() {
       <section className="flex flex-col justify-between gap-4 md:flex-row md:items-end">
         <div>
           <h1 className="text-2xl font-bold tracking-tight text-fg-primary">操作</h1>
-          <p className="mt-1 text-sm text-fg-secondary">系统状态 · 全量维护 · DB pool</p>
+          <p className="mt-1 text-sm text-fg-secondary">
+            系统状态 · 全量维护 · DB pool
+          </p>
         </div>
-        <Badge tone={ops.isPending ? "warning" : "secondary"}>{ops.isPending ? "运行中..." : "空闲"}</Badge>
+        <Badge tone={ops.isPending ? "warning" : "secondary"}>
+          {ops.isPending ? "运行中..." : "空闲"}
+        </Badge>
       </section>
 
       <Tabs value={activeTab} onValueChange={setActiveTab}>
@@ -65,11 +69,7 @@ export function OperationsPage() {
         </TabsContent>
 
         <TabsContent value="system">
-          <SystemStatusTab
-            health={healthQuery.data}
-            isError={healthQuery.isError}
-            onRetry={() => healthQuery.refetch()}
-          />
+          <SystemStatusTab health={healthQuery.data} isError={healthQuery.isError} onRetry={() => healthQuery.refetch()} />
         </TabsContent>
 
         <TabsContent value="database">

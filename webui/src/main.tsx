@@ -29,13 +29,17 @@ const ArchiveQueuePage = lazy(() =>
     default: module.ArchiveQueuePage,
   })),
 );
-const LibraryPage = lazy(() => import("./pages/library").then((module) => ({ default: module.LibraryPage })));
+const LibraryPage = lazy(() =>
+  import("./pages/library").then((module) => ({ default: module.LibraryPage })),
+);
 const OperationsPage = lazy(() =>
   import("./pages/operations").then((module) => ({
     default: module.OperationsPage,
   })),
 );
-const SourcesPage = lazy(() => import("./pages/sources").then((module) => ({ default: module.SourcesPage })));
+const SourcesPage = lazy(() =>
+  import("./pages/sources").then((module) => ({ default: module.SourcesPage })),
+);
 const TweetDetailPage = lazy(() =>
   import("./pages/tweet-detail").then((module) => ({
     default: module.TweetDetailPage,
@@ -64,7 +68,9 @@ const router = createBrowserRouter([
 ]);
 
 function route(element: React.ReactNode) {
-  return <Suspense fallback={<Skeleton className="h-64" />}>{element}</Suspense>;
+  return (
+    <Suspense fallback={<Skeleton className="h-64" />}>{element}</Suspense>
+  );
 }
 
 ReactDOM.createRoot(document.getElementById("root")!).render(

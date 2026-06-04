@@ -193,6 +193,40 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/api/v1/sources/{source_id}/discovered": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** Archive Source Discovered */
+        get: operations["archive_source_discovered_api_v1_sources__source_id__discovered_get"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/sources/{source_id}/scan-runs": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** Archive Source Scan Runs */
+        get: operations["archive_source_scan_runs_api_v1_sources__source_id__scan_runs_get"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/api/v1/sources/{source_id}/records": {
         parameters: {
             query?: never;
@@ -278,6 +312,74 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/api/v1/sources/{source_id}/scan-sessions": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /** Start Archive Source Scan Session */
+        post: operations["start_archive_source_scan_session_api_v1_sources__source_id__scan_sessions_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/sources/{source_id}/scan-sessions/pause": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /** Pause Archive Source Scan Session */
+        post: operations["pause_archive_source_scan_session_api_v1_sources__source_id__scan_sessions_pause_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/sources/{source_id}/scan-sessions/resume": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /** Resume Archive Source Scan Session */
+        post: operations["resume_archive_source_scan_session_api_v1_sources__source_id__scan_sessions_resume_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/sources/{source_id}/scan-sessions/stop": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /** Stop Archive Source Scan Session */
+        post: operations["stop_archive_source_scan_session_api_v1_sources__source_id__scan_sessions_stop_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/api/v1/sources/{source_id}/history-scan/stop": {
         parameters: {
             query?: never;
@@ -289,6 +391,40 @@ export interface paths {
         put?: never;
         /** Stop Archive Source History Scan */
         post: operations["stop_archive_source_history_scan_api_v1_sources__source_id__history_scan_stop_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/log-streams": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** Operation Log Streams */
+        get: operations["operation_log_streams_api_v1_log_streams_get"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/log-streams/{stream_id}": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** Operation Log Entries */
+        get: operations["operation_log_entries_api_v1_log_streams__stream_id__get"];
+        put?: never;
+        post?: never;
         delete?: never;
         options?: never;
         head?: never;
@@ -721,13 +857,15 @@ export interface components {
              * @default 0
              */
             discovered_media_count: number;
+            /**
+             * Scan Batch Count
+             * @default 0
+             */
+            scan_batch_count: number;
             /** Latest Discovered At */
             latest_discovered_at?: string | null;
-            /** Discovered */
-            discovered: components["schemas"]["SourceDiscoveryResponse"][];
             scan_summary: components["schemas"]["SourceScanSummaryResponse"];
-            /** Scan Runs */
-            scan_runs: components["schemas"]["SourceScanRunResponse"][];
+            active_scan_run?: components["schemas"]["SourceScanRunResponse"] | null;
         } & {
             [key: string]: unknown;
         };
@@ -789,6 +927,11 @@ export interface components {
              * @default 0
              */
             discovered_media_count: number;
+            /**
+             * Scan Batch Count
+             * @default 0
+             */
+            scan_batch_count: number;
             /** Latest Discovered At */
             latest_discovered_at?: string | null;
         } & {
@@ -1261,6 +1404,98 @@ export interface components {
         } & {
             [key: string]: unknown;
         };
+        /** OperationLogEntriesResponse */
+        OperationLogEntriesResponse: {
+            stream: components["schemas"]["OperationLogStreamResponse"];
+            /** Entries */
+            entries: components["schemas"]["OperationLogEntryResponse"][];
+            /** Next Cursor */
+            next_cursor: number;
+            /** Available */
+            available: boolean;
+            /** Is Truncated */
+            is_truncated: boolean;
+        } & {
+            [key: string]: unknown;
+        };
+        /** OperationLogEntryResponse */
+        OperationLogEntryResponse: {
+            /** Timestamp */
+            timestamp: string;
+            /** Level */
+            level: string;
+            /** Component */
+            component: string;
+            /** Message */
+            message: string;
+            /** Raw */
+            raw?: string | null;
+            /** Context */
+            context?: {
+                [key: string]: unknown;
+            } | null;
+            /** Exception */
+            exception?: {
+                [key: string]: unknown;
+            } | null;
+        } & {
+            [key: string]: unknown;
+        };
+        /** OperationLogStreamResponse */
+        OperationLogStreamResponse: {
+            /** Id */
+            id: number;
+            /** Scope Type */
+            scope_type: string;
+            /** Scope Id */
+            scope_id: number;
+            /** Log Path */
+            log_path: string;
+            /** Metadata */
+            metadata: {
+                [key: string]: unknown;
+            };
+            /** Line Count */
+            line_count: number;
+            /** Byte Size */
+            byte_size: number;
+            /** Level Counts */
+            level_counts: {
+                [key: string]: number;
+            };
+            /** Last Level */
+            last_level?: string | null;
+            /** Last Message */
+            last_message?: string | null;
+            /** Last Log At */
+            last_log_at?: string | null;
+            /** Is Truncated */
+            is_truncated: boolean;
+            /**
+             * Created At
+             * Format: date-time
+             */
+            created_at: string;
+            /** Closed At */
+            closed_at?: string | null;
+        } & {
+            [key: string]: unknown;
+        };
+        /** OperationLogStreamsPageResponse */
+        OperationLogStreamsPageResponse: {
+            /** Rows */
+            rows: components["schemas"]["OperationLogStreamResponse"][];
+            /** Count */
+            count: number;
+            /** Total Count */
+            total_count: number;
+            /** Limit */
+            limit: number;
+            /** Offset */
+            offset: number;
+        } & {
+            [key: string]: unknown;
+        };
         /** QueueHealthResponse */
         QueueHealthResponse: {
             /** Pending Items */
@@ -1330,6 +1565,21 @@ export interface components {
             label?: string | null;
             /** Author Username */
             author_username?: string | null;
+        };
+        /** SourceDiscoveryPageResponse */
+        SourceDiscoveryPageResponse: {
+            /** Count */
+            count: number;
+            /** Total Count */
+            total_count: number;
+            /** Limit */
+            limit: number;
+            /** Offset */
+            offset: number;
+            /** Rows */
+            rows: components["schemas"]["SourceDiscoveryResponse"][];
+        } & {
+            [key: string]: unknown;
         };
         /** SourceDiscoveryResponse */
         SourceDiscoveryResponse: {
@@ -1438,6 +1688,14 @@ export interface components {
             error_category?: string | null;
             /** Error Message */
             error_message?: string | null;
+            /** Progress Message */
+            progress_message?: string | null;
+            /** Log Stream Id */
+            log_stream_id?: number | null;
+            /** Log Path */
+            log_path?: string | null;
+            /** Last Log At */
+            last_log_at?: string | null;
             /** Started At */
             started_at?: string | null;
             /** Finished At */
@@ -1449,6 +1707,36 @@ export interface components {
             created_at: string;
         } & {
             [key: string]: unknown;
+        };
+        /** SourceScanRunsPageResponse */
+        SourceScanRunsPageResponse: {
+            /** Count */
+            count: number;
+            /** Total Count */
+            total_count: number;
+            /** Limit */
+            limit: number;
+            /** Offset */
+            offset: number;
+            /** Rows */
+            rows: components["schemas"]["SourceScanRunResponse"][];
+        } & {
+            [key: string]: unknown;
+        };
+        /** SourceScanSessionRequest */
+        SourceScanSessionRequest: {
+            /** Mode */
+            mode: string;
+            /**
+             * Limit
+             * @default 20
+             */
+            limit: number;
+            /**
+             * Restart
+             * @default false
+             */
+            restart: boolean;
         };
         /** SourceScanSummaryResponse */
         SourceScanSummaryResponse: {
@@ -2011,6 +2299,74 @@ export interface operations {
             };
         };
     };
+    archive_source_discovered_api_v1_sources__source_id__discovered_get: {
+        parameters: {
+            query?: {
+                limit?: number;
+                offset?: number;
+            };
+            header?: never;
+            path: {
+                source_id: number;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["SourceDiscoveryPageResponse"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    archive_source_scan_runs_api_v1_sources__source_id__scan_runs_get: {
+        parameters: {
+            query?: {
+                limit?: number;
+                offset?: number;
+            };
+            header?: never;
+            path: {
+                source_id: number;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["SourceScanRunsPageResponse"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
     submit_archive_source_records_api_v1_sources__source_id__records_post: {
         parameters: {
             query?: never;
@@ -2186,6 +2542,134 @@ export interface operations {
             };
         };
     };
+    start_archive_source_scan_session_api_v1_sources__source_id__scan_sessions_post: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                source_id: number;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["SourceScanSessionRequest"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            202: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ArchiveSourceDetailResponse"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    pause_archive_source_scan_session_api_v1_sources__source_id__scan_sessions_pause_post: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                source_id: number;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ArchiveSourceDetailResponse"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    resume_archive_source_scan_session_api_v1_sources__source_id__scan_sessions_resume_post: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                source_id: number;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ArchiveSourceDetailResponse"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    stop_archive_source_scan_session_api_v1_sources__source_id__scan_sessions_stop_post: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                source_id: number;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ArchiveSourceDetailResponse"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
     stop_archive_source_history_scan_api_v1_sources__source_id__history_scan_stop_post: {
         parameters: {
             query?: never;
@@ -2204,6 +2688,79 @@ export interface operations {
                 };
                 content: {
                     "application/json": components["schemas"]["ArchiveSourceDetailResponse"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    operation_log_streams_api_v1_log_streams_get: {
+        parameters: {
+            query?: {
+                scope_type?: string | null;
+                scope_id?: number | null;
+                source_id?: number | null;
+                scan_run_id?: number | null;
+                level?: string | null;
+                keyword?: string | null;
+                limit?: number;
+                offset?: number;
+            };
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["OperationLogStreamsPageResponse"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    operation_log_entries_api_v1_log_streams__stream_id__get: {
+        parameters: {
+            query?: {
+                cursor?: number | null;
+                limit?: number;
+                level?: string[] | null;
+            };
+            header?: never;
+            path: {
+                stream_id: number;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["OperationLogEntriesResponse"];
                 };
             };
             /** @description Validation Error */

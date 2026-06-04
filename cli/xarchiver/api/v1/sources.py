@@ -12,6 +12,7 @@ from xarchiver.api.schemas import (
     SourceHistoryScanRequest,
     SourceRecordsRequest,
     SourceScanRequest,
+    SourceScanSessionRequest,
     SourceScanRunsPageResponse,
     SourcesPageResponse,
     SourceStatusRequest,
@@ -24,8 +25,12 @@ from xarchiver.services.sources import (
     list_source_discovered_page,
     list_source_scan_runs_page,
     list_sources_page,
+    pause_source_scan_session,
+    resume_source_scan_session,
     scan_source,
+    start_source_scan_session,
     start_source_history_scan,
+    stop_source_scan_session,
     stop_source_history_scan,
     submit_discovered_tweets,
     submit_source_records,
@@ -143,6 +148,38 @@ def start_archive_source_history_scan(source_id: int, request: SourceHistoryScan
         return start_source_history_scan(source_id, request.limit, request.restart)
     except ValueError as exc:
         raise_api_error(exc)
+
+
+@router.post("/{source_id}/scan-sessions", status_code=status.HTTP_202_ACCEPTED, response_model=ArchiveSourceDetailResponse)
+def start_archive_source_scan_session(source_id: int, request: SourceScanSessionRequest) -> dict[str, object]:
+    try:
+        return start_source_scan_session(source_id, request.mode, request.limit, request.restart)
+    except ValueError as exc:
+        raise_api_error(exc)
+
+
+@router.post("/{source_id}/scan-sessions/pause", response_model=ArchiveSourceDetailResponse)
+def pause_archive_source_scan_session(source_id: int) -> dict[str, object]:
+    try:
+        return pause_source_scan_session(source_id)
+    except ValueError as exc:
+        raise_api_error(exc)
+
+
+@router.post("/{source_id}/scan-sessions/resume", response_model=ArchiveSourceDetailResponse)
+def resume_archive_source_scan_session(source_id: int) -> dict[str, object]:
+    try:
+        return resume_source_scan_session(source_id)
+    except ValueError as exc:
+        raise_api_error(exc)
+
+
+@router.post("/{source_id}/scan-sessions/stop", response_model=ArchiveSourceDetailResponse)
+def stop_archive_source_scan_session(source_id: int) -> dict[str, object]:
+    try:
+        return stop_source_scan_session(source_id)
+    except ValueError as exc:
+        raise_api_error(exc, default_status=404)
 
 
 @router.post("/{source_id}/history-scan/stop", response_model=ArchiveSourceDetailResponse)

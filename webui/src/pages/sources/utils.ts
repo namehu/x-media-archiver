@@ -31,29 +31,42 @@ export function sourceQueryString(status: string, type: string, limit: number, o
 }
 
 export function formatNextRange(cursorState: ArchiveSourceDetail["cursor_state"], fallbackLimit: number) {
-  if (cursorState?.last_completed) return "-";
-  const start = Math.max(1, Number(cursorState?.next_start_index) || 1);
+  const session = activeScanSession(cursorState);
+  if (Boolean(session?.completed ?? cursorState?.last_completed)) return "-";
+  const start = Math.max(1, Number(session?.next_start_index ?? cursorState?.next_start_index) || 1);
   const limit = Math.max(1, Math.min(200, fallbackLimit));
   return `${start}-${start + limit - 1}`;
 }
 
 export function formatScanState(cursorState: ArchiveSourceDetail["cursor_state"]) {
-  if (cursorState?.last_completed) return "可能已到结尾";
-  if (cursorState?.last_reached_known_region) return "已进入重复区";
+  const session = activeScanSession(cursorState);
+  if (Boolean(session?.completed ?? cursorState?.last_completed)) return "可能已到结尾";
+  if (Boolean(session?.last_reached_known_region ?? cursorState?.last_reached_known_region)) return "已进入重复区";
   return "可继续扫描";
 }
 
 export function formatHistoryState(source: ArchiveSourceDetail) {
   const state = source.cursor_state?.automation_state;
-  if (source.status === "completed" || state === "completed") return "历史扫描已完成";
+  const mode = source.cursor_state?.active_scan_mode;
+  const modeLabel =
+    mode === "latest_refresh" ? "补充最新推文" : mode === "from_start" ? "从头扫描/补断层" : "历史扫描";
+  if (state === "completed") return `${modeLabel}已完成`;
+  if (source.status === "completed") return "历史扫描已完成";
+  if (state === "stopped") return `${modeLabel}已停止`;
   if (!source.cursor_state?.automation_enabled) return "未启动";
-  if (source.status === "paused" || state === "paused") return "已暂停";
-  if (state === "waiting_downloads") return "等待下载队列清空";
-  if (state === "retry_wait") return "错误后等待重试";
-  if (state === "rate_limited") return "限流后已暂停";
-  if (state === "auth_required") return "需认证，已暂停";
-  if (state === "running" && source.next_scan_at) return "等待随机间隔后扫描";
-  return "后台扫描中";
+  if (source.status === "paused" || state === "paused") return `${modeLabel}已暂停`;
+  if (state === "waiting_downloads") return `${modeLabel}等待下载队列清空`;
+  if (state === "retry_wait") return `${modeLabel}错误后等待重试`;
+  if (state === "rate_limited") return `${modeLabel}限流后已暂停`;
+  if (state === "auth_required") return `${modeLabel}需认证，已暂停`;
+  if (state === "running" && source.next_scan_at) return `${modeLabel}等待随机间隔后扫描`;
+  return `${modeLabel}后台扫描中`;
+}
+
+function activeScanSession(cursorState: ArchiveSourceDetail["cursor_state"]) {
+  const mode = cursorState?.active_scan_mode;
+  const session = mode ? cursorState?.scan_sessions?.[mode] : undefined;
+  return session && typeof session === "object" ? session : undefined;
 }
 
 export function formatRunRange(start?: number | null, end?: number | null) {

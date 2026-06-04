@@ -2,6 +2,8 @@ import { useMutation } from "@tanstack/react-query";
 import { apiPost, type ArchiveSourceDetail, type ArchiveSourceListItem, type ArchiveSubmission } from "@/lib/api";
 import { unwrapActionResult } from "../utils";
 
+export type SourceScanMode = "history" | "latest_refresh" | "from_start";
+
 export function useSourceActions({
   selectedSourceId,
   onFeedback,
@@ -53,8 +55,24 @@ export function useSourceActions({
     onSuccess: async (source) => onRefresh(source.id),
   });
 
+  const scanSessionMutation = useMutation({
+    mutationFn: ({ sourceId, mode, limit, restart = false }: { sourceId: number; mode: SourceScanMode; limit: number; restart?: boolean }) =>
+      apiPost<ArchiveSourceDetail>(`/api/v1/sources/${sourceId}/scan-sessions`, { mode, limit, restart }),
+    onSuccess: async (source) => onRefresh(source.id),
+  });
+
+  const pauseScanSessionMutation = useMutation({
+    mutationFn: (sourceId: number) => apiPost<ArchiveSourceDetail>(`/api/v1/sources/${sourceId}/scan-sessions/pause`, {}),
+    onSuccess: async (source) => onRefresh(source.id),
+  });
+
+  const resumeScanSessionMutation = useMutation({
+    mutationFn: (sourceId: number) => apiPost<ArchiveSourceDetail>(`/api/v1/sources/${sourceId}/scan-sessions/resume`, {}),
+    onSuccess: async (source) => onRefresh(source.id),
+  });
+
   const stopHistoryScanMutation = useMutation({
-    mutationFn: (sourceId: number) => apiPost<ArchiveSourceDetail>(`/api/v1/sources/${sourceId}/history-scan/stop`, {}),
+    mutationFn: (sourceId: number) => apiPost<ArchiveSourceDetail>(`/api/v1/sources/${sourceId}/scan-sessions/stop`, {}),
     onSuccess: async (source) => onRefresh(source.id),
   });
 
@@ -64,6 +82,9 @@ export function useSourceActions({
     scanMutation,
     submitDiscoveredMutation,
     historyScanMutation,
+    scanSessionMutation,
+    pauseScanSessionMutation,
+    resumeScanSessionMutation,
     stopHistoryScanMutation,
   };
 }

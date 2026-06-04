@@ -123,23 +123,30 @@ export function SourcesPage() {
         actions={{
           submitRecords: actions.submitMutation.mutate,
           setStatus: actions.statusMutation.mutate,
-          scan: actions.scanMutation.mutate,
+          startSession: actions.scanSessionMutation.mutate,
+          pauseSession: actions.pauseScanSessionMutation.mutate,
+          resumeSession: actions.resumeScanSessionMutation.mutate,
           submitDiscovered: actions.submitDiscoveredMutation.mutate,
-          startHistory: actions.historyScanMutation.mutate,
           stopHistory: actions.stopHistoryScanMutation.mutate,
           pending: {
             submit: actions.submitMutation.isPending,
             status: actions.statusMutation.isPending,
-            scan: actions.scanMutation.isPending,
             submitDiscovered: actions.submitDiscoveredMutation.isPending,
-            history: actions.historyScanMutation.isPending || actions.stopHistoryScanMutation.isPending,
+            history:
+              actions.scanSessionMutation.isPending ||
+              actions.pauseScanSessionMutation.isPending ||
+              actions.resumeScanSessionMutation.isPending ||
+              actions.stopHistoryScanMutation.isPending,
           },
           errors: {
             submit: actions.submitMutation.error,
             status: actions.statusMutation.error,
-            scan: actions.scanMutation.error,
             submitDiscovered: actions.submitDiscoveredMutation.error,
-            history: actions.historyScanMutation.error || actions.stopHistoryScanMutation.error,
+            history:
+              actions.scanSessionMutation.error ||
+              actions.pauseScanSessionMutation.error ||
+              actions.resumeScanSessionMutation.error ||
+              actions.stopHistoryScanMutation.error,
           },
         }}
         onManualSubmitted={() => setFeedback(null)}

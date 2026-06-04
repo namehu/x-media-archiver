@@ -157,7 +157,7 @@ export type ArchiveSubmission = {
 
 export type SourceScanRun = {
   id: number;
-  trigger_type: "history_worker" | "manual_next" | "latest_refresh";
+  trigger_type: "history_worker" | "manual_next" | "latest_refresh" | "from_start_repair";
   status:
     | "running"
     | "waiting_downloads"
@@ -276,6 +276,8 @@ type ArchiveSourceBase = {
     automation_enabled?: boolean;
     automation_state?: string;
     automation_limit?: number;
+    active_scan_mode?: "history" | "latest_refresh" | "from_start" | string | null;
+    scan_sessions?: Record<string, Record<string, unknown>>;
     extractor_cursor?: string | null;
   } | null;
   created_at?: string | null;

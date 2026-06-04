@@ -53,7 +53,15 @@ from xarchiver.tables import archive_sources, source_discovered_tweets, source_s
 
 VALID_SOURCE_TYPES = {"profile", "user_media", "likes", "bookmarks", "search", "manual"}
 VALID_SOURCE_STATUSES = {"active", "paused", "completed", "failed"}
-VALID_SCAN_TRIGGERS = {"history_worker", "manual_next", "latest_refresh"}
+VALID_SCAN_TRIGGERS = {"history_worker", "manual_next", "latest_refresh", "from_start_repair"}
+VALID_SCAN_SESSION_MODES = {"history", "latest_refresh", "from_start"}
+SCAN_MODE_TO_TRIGGER = {
+    "history": "history_worker",
+    "latest_refresh": "latest_refresh",
+    "from_start": "from_start_repair",
+}
+LATEST_REFRESH_DUPLICATE_THRESHOLD = 5
+MIN_SOURCE_SCAN_LIMIT = 5
 logger = logging.getLogger(__name__)
 LEASE_SECONDS = 60
 HEARTBEAT_SECONDS = 20
@@ -417,10 +425,12 @@ def update_source_status(source_id: int, status: str) -> dict[str, object]:
         else None
     )
     automation_enabled = bool(cursor_state.get("automation_enabled"))
+    if automation_enabled and not cursor_state.get("active_scan_mode"):
+        cursor_state = ensure_legacy_active_scan_session(cursor_state)
     if automation_enabled and status == "paused":
-        cursor_state = {**cursor_state, "automation_state": "paused"}
+        cursor_state = set_active_scan_session_state(cursor_state, "paused")
     elif automation_enabled and status == "active":
-        cursor_state = {**cursor_state, "automation_state": "running"}
+        cursor_state = set_active_scan_session_state(cursor_state, "running")
     with connect() as conn:
         with conn.cursor() as cur:
             cur.execute(
@@ -445,28 +455,30 @@ def update_source_status(source_id: int, status: str) -> dict[str, object]:
             "source-scan",
             "Source was paused. The current gallery-dl batch will finish naturally; no next batch will be scheduled.",
         )
-    return dict(row)
+    return get_source(source_id) or dict(row)
 
 
 def start_source_history_scan(source_id: int, limit: int = 20, restart: bool = False) -> dict[str, object]:
+    return start_source_scan_session(source_id, "history", limit=limit, restart=restart)
+
+
+def start_source_scan_session(
+    source_id: int,
+    mode: str,
+    limit: int = 20,
+    restart: bool = False,
+) -> dict[str, object]:
+    mode = normalize_scan_session_mode(mode)
+    limit = normalize_scan_limit(limit)
     source = get_source(source_id)
     if source is None:
         raise ValueError("source_not_found")
     if str(source.get("source_type")) not in {"profile", "user_media"}:
         raise ValueError("source_scan_not_supported")
-    if limit < 1:
-        raise ValueError("scan_limit_required")
     cursor_state = source.get("cursor_state") if isinstance(source.get("cursor_state"), dict) else {}
-    cursor_state = {
-        **cursor_state,
-        "automation_enabled": True,
-        "automation_state": "running",
-        "automation_limit": limit,
-        "last_completed": False,
-    }
-    if restart:
-        cursor_state["next_start_index"] = 1
-        cursor_state.pop("extractor_cursor", None)
+    if cursor_state.get("automation_enabled") and cursor_state.get("active_scan_mode") not in {None, mode}:
+        raise ValueError("source_scan_session_in_progress")
+    cursor_state = start_scan_session_state(cursor_state, mode, limit, restart=restart)
     with connect() as conn:
         with conn.cursor() as cur:
             cur.execute(
@@ -483,28 +495,53 @@ def start_source_history_scan(source_id: int, limit: int = 20, restart: bool = F
                 (Jsonb(cursor_state), source_id),
             )
         conn.commit()
-    publish_event("source_scans", "source.history_scan.started", {"source_id": source_id, "limit": limit, "restart": restart})
+    publish_event(
+        "source_scans",
+        "source.scan_session.started",
+        {"source_id": source_id, "mode": mode, "limit": limit, "restart": restart},
+    )
     return get_source(source_id) or {}
 
 
 def stop_source_history_scan(source_id: int) -> dict[str, object]:
+    return stop_source_scan_session(source_id)
+
+
+def pause_source_scan_session(source_id: int) -> dict[str, object]:
+    return update_source_status(source_id, "paused")
+
+
+def resume_source_scan_session(source_id: int) -> dict[str, object]:
     source = get_source(source_id)
     if source is None:
         raise ValueError("source_not_found")
     cursor_state = source.get("cursor_state") if isinstance(source.get("cursor_state"), dict) else {}
-    cursor_state = {**cursor_state, "automation_enabled": False, "automation_state": "stopped"}
+    if not cursor_state.get("active_scan_mode"):
+        raise ValueError("source_scan_session_not_found")
+    return update_source_status(source_id, "active")
+
+
+def stop_source_scan_session(source_id: int) -> dict[str, object]:
+    source = get_source(source_id)
+    if source is None:
+        raise ValueError("source_not_found")
+    cursor_state = source.get("cursor_state") if isinstance(source.get("cursor_state"), dict) else {}
+    cursor_state = set_active_scan_session_state(cursor_state, "stopped", enabled=False)
     with connect() as conn:
         with conn.cursor() as cur:
             cur.execute(
                 """
                 update archive_sources
-                set cursor_state = %s, next_scan_at = null, updated_at = now()
+                set status = case when status = 'paused' then 'active' else status end,
+                    cursor_state = %s,
+                    next_scan_at = null,
+                    updated_at = now()
                 where id = %s
                 """,
                 (Jsonb(cursor_state), source_id),
             )
         conn.commit()
-    publish_event("source_scans", "source.history_scan.stopped", {"source_id": source_id})
+    publish_event("source_scans", "source.scan_session.stopped", {"source_id": source_id})
     return get_source(source_id) or {}
 
 
@@ -514,19 +551,29 @@ def process_next_source_history_scan(settings: Settings, worker_id: str | None =
         return None
     source_id = int(source["id"])
     cursor_state = source.get("cursor_state") if isinstance(source.get("cursor_state"), dict) else {}
-    limit = parse_positive_int(cursor_state.get("automation_limit"), settings.source_scan_batch_size)
+    mode = normalize_scan_session_mode(str(cursor_state.get("active_scan_mode") or "history"))
+    trigger_type = SCAN_MODE_TO_TRIGGER[mode]
+    session = get_scan_session(cursor_state, mode)
+    limit = normalize_scan_limit(parse_positive_int(session.get("limit") or cursor_state.get("automation_limit"), settings.source_scan_batch_size))
     try:
         downloads_pending = has_pending_download_work()
     except Exception as exc:
-        record_source_scan_failure(source_id, cursor_state, limit, "history_worker", exc)
+        record_source_scan_failure(source_id, cursor_state, limit, trigger_type, exc)
         schedule_next_history_scan(source_id, settings, "retry_wait")
         raise
     if downloads_pending:
-        record_waiting_downloads_scan(source_id, cursor_state, limit)
+        record_waiting_downloads_scan(source_id, cursor_state, limit, trigger_type=trigger_type)
         schedule_next_history_scan(source_id, settings, "waiting_downloads")
         return {"source_id": source_id, "deferred": "download_queue_active"}
     try:
-        result = scan_source(source_id, limit, settings=settings, trigger_type="history_worker", worker_id=worker_id)
+        result = scan_source(
+            source_id,
+            limit,
+            settings=settings,
+            trigger_type=trigger_type,
+            session_mode=mode,
+            worker_id=worker_id,
+        )
     except WorkerLeaseLost:
         raise
     except ValueError as exc:
@@ -641,7 +688,11 @@ def pause_history_scan_for_error(source_id: int, error_category: str) -> None:
 
 
 def finish_history_scan(source_id: int) -> None:
-    update_history_scan_state(source_id, "completed", enabled=False, status="completed")
+    source = get_source(source_id)
+    cursor_state = source.get("cursor_state") if source and isinstance(source.get("cursor_state"), dict) else {}
+    mode = cursor_state.get("active_scan_mode") or "history"
+    status = "completed" if mode == "history" else "active"
+    update_history_scan_state(source_id, "completed", enabled=False, status=status)
 
 
 def update_history_scan_state(
@@ -656,9 +707,7 @@ def update_history_scan_state(
     if source is None:
         return
     cursor_state = source.get("cursor_state") if isinstance(source.get("cursor_state"), dict) else {}
-    cursor_state = {**cursor_state, "automation_state": state}
-    if enabled is not None:
-        cursor_state["automation_enabled"] = enabled
+    cursor_state = set_active_scan_session_state(cursor_state, state, enabled=enabled)
     with connect() as conn:
         with conn.cursor() as cur:
             cur.execute(
@@ -820,8 +869,13 @@ def finish_source_scan_run(
     )
 
 
-def record_waiting_downloads_scan(source_id: int, cursor_state: dict[str, Any], limit: int) -> None:
-    scan_range = build_scan_range(cursor_state, limit)
+def record_waiting_downloads_scan(
+    source_id: int,
+    cursor_state: dict[str, Any],
+    limit: int,
+    trigger_type: str = "history_worker",
+) -> None:
+    scan_range = build_active_scan_range(cursor_state, limit)
     with connect() as conn:
         with conn.cursor() as cur:
             cur.execute(
@@ -830,10 +884,11 @@ def record_waiting_downloads_scan(source_id: int, cursor_state: dict[str, Any], 
                     source_id, trigger_type, status, range_start, range_end,
                     requested_limit, cursor_before, cursor_after, started_at, finished_at
                 )
-                values (%s, 'history_worker', 'waiting_downloads', %s, %s, %s, %s, %s, now(), now())
+                values (%s, %s, 'waiting_downloads', %s, %s, %s, %s, %s, now(), now())
                 """,
                 (
                     source_id,
+                    trigger_type,
                     scan_range["start"],
                     scan_range["end"],
                     scan_range["limit"],
@@ -845,7 +900,7 @@ def record_waiting_downloads_scan(source_id: int, cursor_state: dict[str, Any], 
     publish_event(
         "source_scans",
         "source.scan.waiting_downloads",
-        {"source_id": source_id, "range": scan_range, "status": "waiting_downloads"},
+        {"source_id": source_id, "range": scan_range, "status": "waiting_downloads", "trigger_type": trigger_type},
     )
 
 
@@ -856,7 +911,7 @@ def record_source_scan_failure(
     trigger_type: str,
     error: Exception,
 ) -> None:
-    run_id = start_source_scan_run(source_id, trigger_type, build_scan_range(cursor_state, limit), cursor_state)
+    run_id = start_source_scan_run(source_id, trigger_type, build_active_scan_range(cursor_state, limit), cursor_state)
     message = str(error) or error.__class__.__name__
     mark_source_scan_result(source_id, error_category="failed", error_message=message)
     finish_source_scan_run(
@@ -874,9 +929,11 @@ def scan_source(
     restart: bool = False,
     settings: Settings | None = None,
     trigger_type: str | None = None,
+    session_mode: str | None = None,
     worker_id: str | None = None,
 ) -> dict[str, object]:
     settings = settings or get_settings()
+    limit = normalize_scan_limit(limit)
     source = get_source(source_id)
     if source is None:
         raise ValueError("source_not_found")
@@ -889,9 +946,12 @@ def scan_source(
     scan_url = build_gallery_dl_scan_url(source_type, source_url)
     cursor_state = source.get("cursor_state") if isinstance(source.get("cursor_state"), dict) else {}
     scan_trigger = trigger_type or ("latest_refresh" if restart else "manual_next")
-    advances_history = scan_trigger != "latest_refresh"
-    scan_cursor = None if not advances_history else cursor_state.get("extractor_cursor")
-    scan_range = build_scan_range(cursor_state, limit, restart=restart)
+    mode = normalize_session_mode_for_trigger(scan_trigger, session_mode)
+    advances_cursor = scan_trigger != "latest_refresh" or session_mode == "latest_refresh"
+    session = get_scan_session(cursor_state, mode) if mode else {}
+    scan_cursor = None if not advances_cursor else session.get("extractor_cursor") or cursor_state.get("extractor_cursor")
+    range_state = session if mode else cursor_state
+    scan_range = build_scan_range(range_state, limit, restart=restart)
     scan_run_id = start_source_scan_run(source_id, scan_trigger, scan_range, cursor_state, worker_id=worker_id)
     log_source_scan_event(
         "source.scan.started",
@@ -924,7 +984,8 @@ def scan_source(
                 scan_meta=scan_meta,
                 scan_range=scan_range,
                 cursor_state=cursor_state,
-                advances_history=advances_history,
+                advances_history=advances_cursor,
+                session_mode=mode,
                 worker_id=worker_id,
                 lease=lease,
             )
@@ -967,6 +1028,7 @@ def finish_scan_source_result(
     scan_range: dict[str, int],
     cursor_state: dict[str, Any],
     advances_history: bool,
+    session_mode: str | None,
     worker_id: str | None,
     lease: SourceScanLeaseHeartbeat,
 ) -> dict[str, object]:
@@ -983,6 +1045,7 @@ def finish_scan_source_result(
                 discovered_count=0,
                 new_discovered_count=0,
                 completed=completed,
+                session_mode=session_mode,
             )
             if advances_history
             else cursor_state
@@ -1027,7 +1090,13 @@ def finish_scan_source_result(
     lease.ensure_active()
     ensure_source_scan_lease(scan_run_id, worker_id)
     result = record_source_discoveries(source_id, records, mark_scanned=True)
-    completed = advances_history and is_source_scan_complete(scan_meta, scan_range, int(result["discovered_count"]))
+    completed = advances_history and is_scan_session_complete(
+        session_mode,
+        scan_meta,
+        scan_range,
+        int(result["discovered_count"]),
+        int(result["duplicate_count"]),
+    )
     ensure_source_scan_lease(scan_run_id, worker_id)
     cursor_after = (
         update_source_cursor(
@@ -1037,6 +1106,7 @@ def finish_scan_source_result(
             discovered_count=int(result["discovered_count"]),
             new_discovered_count=int(result["new_discovered_count"]),
             completed=completed,
+            session_mode=session_mode,
         )
         if advances_history
         else cursor_state
@@ -1257,11 +1327,17 @@ def format_sleep_range(min_seconds: float, max_seconds: float) -> str:
 
 
 def build_scan_range(cursor_state: dict[str, Any], limit: int, restart: bool = False) -> dict[str, int]:
-    if limit < 1:
+    if limit < MIN_SOURCE_SCAN_LIMIT:
         raise ValueError("scan_limit_required")
     start = 1 if restart else parse_positive_int(cursor_state.get("next_start_index"), default=1)
     end = start + limit - 1
     return {"start": start, "end": end, "limit": limit}
+
+
+def build_active_scan_range(cursor_state: dict[str, Any], limit: int, restart: bool = False) -> dict[str, int]:
+    mode = cursor_state.get("active_scan_mode")
+    range_state = get_scan_session(cursor_state, str(mode)) if mode in VALID_SCAN_SESSION_MODES else cursor_state
+    return build_scan_range(range_state, limit, restart=restart)
 
 
 def is_source_scan_complete(scan_meta: dict[str, object], scan_range: dict[str, int], discovered_count: int) -> bool:
@@ -1270,9 +1346,30 @@ def is_source_scan_complete(scan_meta: dict[str, object], scan_range: dict[str, 
     return not scan_meta.get("continuation_cursor")
 
 
+def is_scan_session_complete(
+    mode: str | None,
+    scan_meta: dict[str, object],
+    scan_range: dict[str, int],
+    discovered_count: int,
+    duplicate_count: int,
+) -> bool:
+    if mode is None:
+        return False
+    if scan_meta.get("exit_code") != 0:
+        return False
+    if mode == "latest_refresh" and duplicate_count > LATEST_REFRESH_DUPLICATE_THRESHOLD:
+        return True
+    return is_source_scan_complete(scan_meta, scan_range, discovered_count)
+
+
 def extract_gallery_dl_cursor(stderr: str | None) -> str | None:
     matches = re.findall(r"Cursor:\s+(\S+)", stderr or "")
-    return matches[-1] if matches else None
+    if not matches:
+        return None
+    cursor = matches[-1].strip()
+    if cursor.lower() in {"none", "null"}:
+        return None
+    return cursor
 
 
 def scan_run_status(scan_meta: dict[str, object], completed: bool) -> str:
@@ -1298,6 +1395,150 @@ def parse_positive_int(value: object, default: int) -> int:
     return parsed if parsed >= 1 else default
 
 
+def normalize_scan_limit(limit: int) -> int:
+    parsed = int(limit)
+    if parsed < MIN_SOURCE_SCAN_LIMIT:
+        raise ValueError("scan_limit_required")
+    return min(200, parsed)
+
+
+def normalize_scan_session_mode(mode: str) -> str:
+    value = str(mode or "").strip()
+    if value not in VALID_SCAN_SESSION_MODES:
+        raise ValueError("invalid_scan_session_mode")
+    return value
+
+
+def normalize_session_mode_for_trigger(trigger_type: str, session_mode: str | None) -> str | None:
+    if session_mode:
+        return normalize_scan_session_mode(session_mode)
+    if trigger_type == "history_worker":
+        return "history"
+    if trigger_type == "latest_refresh":
+        return "latest_refresh"
+    if trigger_type == "from_start_repair":
+        return "from_start"
+    return None
+
+
+def get_scan_sessions(cursor_state: dict[str, Any]) -> dict[str, Any]:
+    sessions = cursor_state.get("scan_sessions")
+    return sessions if isinstance(sessions, dict) else {}
+
+
+def get_scan_session(cursor_state: dict[str, Any], mode: str) -> dict[str, Any]:
+    sessions = get_scan_sessions(cursor_state)
+    session = sessions.get(mode)
+    if isinstance(session, dict):
+        return session
+    if mode == "history":
+        return {
+            "next_start_index": cursor_state.get("next_start_index"),
+            "extractor_cursor": cursor_state.get("extractor_cursor"),
+            "limit": cursor_state.get("automation_limit") or cursor_state.get("last_limit"),
+            "completed": cursor_state.get("last_completed"),
+        }
+    return {"next_start_index": 1}
+
+
+def start_scan_session_state(cursor_state: dict[str, Any], mode: str, limit: int, restart: bool = False) -> dict[str, Any]:
+    sessions = dict(get_scan_sessions(cursor_state))
+    previous = {} if restart else get_scan_session(cursor_state, mode)
+    session = {
+        **previous,
+        "mode": mode,
+        "state": "running",
+        "limit": limit,
+        "completed": False,
+    }
+    if restart or "next_start_index" not in session:
+        session["next_start_index"] = 1
+        session.pop("extractor_cursor", None)
+    sessions[mode] = session
+    next_state = {
+        **cursor_state,
+        "active_scan_mode": mode,
+        "automation_enabled": True,
+        "automation_state": "running",
+        "automation_limit": limit,
+        "scan_sessions": sessions,
+        "last_completed": False,
+    }
+    if mode == "history":
+        next_state["next_start_index"] = session.get("next_start_index") or 1
+        if session.get("extractor_cursor"):
+            next_state["extractor_cursor"] = session.get("extractor_cursor")
+        elif restart:
+            next_state.pop("extractor_cursor", None)
+    return next_state
+
+
+def ensure_legacy_active_scan_session(cursor_state: dict[str, Any]) -> dict[str, Any]:
+    sessions = dict(get_scan_sessions(cursor_state))
+    if "history" not in sessions:
+        sessions["history"] = {
+            "mode": "history",
+            "state": cursor_state.get("automation_state", "running"),
+            "next_start_index": cursor_state.get("next_start_index"),
+            "extractor_cursor": cursor_state.get("extractor_cursor"),
+            "limit": cursor_state.get("automation_limit") or cursor_state.get("last_limit"),
+            "completed": bool(cursor_state.get("last_completed")),
+        }
+    return {**cursor_state, "active_scan_mode": "history", "scan_sessions": sessions}
+
+
+def set_active_scan_session_state(
+    cursor_state: dict[str, Any],
+    state: str,
+    *,
+    enabled: bool | None = None,
+) -> dict[str, Any]:
+    mode = cursor_state.get("active_scan_mode")
+    sessions = dict(get_scan_sessions(cursor_state))
+    if mode in VALID_SCAN_SESSION_MODES:
+        session = {**get_scan_session(cursor_state, str(mode)), "state": state}
+        sessions[str(mode)] = session
+    next_state = {**cursor_state, "automation_state": state, "scan_sessions": sessions}
+    if enabled is not None:
+        next_state["automation_enabled"] = enabled
+    return next_state
+
+
+def update_session_progress_state(
+    cursor_state: dict[str, Any],
+    mode: str,
+    progress_state: dict[str, Any],
+    completed: bool,
+) -> dict[str, Any]:
+    sessions = dict(get_scan_sessions(cursor_state))
+    session = {
+        **get_scan_session(cursor_state, mode),
+        **progress_state,
+        "mode": mode,
+        "state": "completed" if completed else "running",
+        "completed": completed,
+    }
+    sessions[mode] = session
+    flat_progress = dict(progress_state)
+    if mode != "history":
+        flat_progress.pop("next_start_index", None)
+        flat_progress.pop("extractor_cursor", None)
+        flat_progress.pop("last_completed", None)
+    next_state = {
+        "scan_sessions": sessions,
+        "active_scan_mode": mode,
+        "automation_state": "completed" if completed else cursor_state.get("automation_state", "running"),
+        "automation_enabled": False if completed else cursor_state.get("automation_enabled", True),
+        "automation_limit": session.get("limit") or session.get("last_limit") or progress_state["last_limit"],
+        **flat_progress,
+    }
+    if mode == "history":
+        next_state["next_start_index"] = progress_state["next_start_index"]
+        next_state["extractor_cursor"] = progress_state.get("extractor_cursor")
+        next_state["last_completed"] = completed
+    return next_state
+
+
 def update_source_cursor(
     source_id: int,
     scan_meta: dict[str, object],
@@ -1305,6 +1546,7 @@ def update_source_cursor(
     discovered_count: int,
     new_discovered_count: int,
     completed: bool,
+    session_mode: str | None = None,
 ) -> dict[str, Any]:
     duplicate_count = max(discovered_count - new_discovered_count, 0)
     has_continuation = bool(scan_meta.get("continuation_cursor"))
@@ -1323,18 +1565,22 @@ def update_source_cursor(
         "last_completed": completed,
     }
     progress_state["extractor_cursor"] = scan_meta.get("continuation_cursor")
+    if session_mode:
+        source = get_source(source_id)
+        current_state = source.get("cursor_state") if source and isinstance(source.get("cursor_state"), dict) else {}
+        progress_state = update_session_progress_state(current_state, session_mode, progress_state, completed)
     with connect() as conn:
         with conn.cursor() as cur:
             cur.execute(
                 """
                 update archive_sources
                 set cursor_state = cursor_state || %s,
-                    status = case when %s then 'completed' else status end,
+                    status = case when %s and %s then 'completed' else status end,
                     updated_at = now()
                 where id = %s
                 returning cursor_state
                 """,
-                (Jsonb(progress_state), completed, source_id),
+                (Jsonb(progress_state), completed, session_mode in {None, "history"}, source_id),
             )
             cursor_state = CursorStateRow.model_validate(dict(cur.fetchone())).cursor_state
         conn.commit()

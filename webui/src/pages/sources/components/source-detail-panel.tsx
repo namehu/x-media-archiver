@@ -12,6 +12,7 @@ import {
 } from "@/lib/api";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
+import { Dialog, DialogContent, DialogHeader, DialogTitle } from "@/components/ui/dialog";
 import { Input } from "@/components/ui/input";
 import { Select } from "@/components/ui/select";
 import { Sheet, SheetContent, SheetHeader, SheetTitle } from "@/components/ui/sheet";
@@ -36,25 +37,27 @@ import {
 type DetailActions = {
   submitRecords: (input: { sourceId: number; records: Array<{ url: string }> }) => void;
   setStatus: (input: { sourceId: number; status: "active" | "paused" }) => void;
-  scan: (input: { sourceId: number; limit: number; restart?: boolean }) => void;
+  startSession: (input: { sourceId: number; mode: ScanMode; limit: number; restart?: boolean }) => void;
+  pauseSession: (sourceId: number) => void;
+  resumeSession: (sourceId: number) => void;
   submitDiscovered: (input: { sourceId: number; limit?: number }) => void;
-  startHistory: (input: { sourceId: number; limit: number; restart?: boolean }) => void;
   stopHistory: (sourceId: number) => void;
   pending: {
     submit: boolean;
     status: boolean;
-    scan: boolean;
     submitDiscovered: boolean;
     history: boolean;
   };
   errors: {
     submit: unknown;
     status: unknown;
-    scan: unknown;
     submitDiscovered: unknown;
     history: unknown;
   };
 };
+
+type ScanMode = "history" | "latest_refresh" | "from_start";
+const MIN_SCAN_LIMIT = 5;
 
 export function SourceDetailPanel({
   open,
@@ -85,6 +88,7 @@ export function SourceDetailPanel({
   const [activeTab, setActiveTab] = React.useState("tweets");
   const [tweetsOffset, setTweetsOffset] = React.useState(0);
   const [historyOffset, setHistoryOffset] = React.useState(0);
+  const [logRun, setLogRun] = React.useState<SourceScanRun | null>(null);
   const persistedScanLimit = source ? preferredScanLimit(source, policy) : 20;
   const discoveredQuery = useSourceDiscovered(source?.id ?? null, tweetsOffset, activeTab === "tweets");
   const scanRunsQuery = useSourceScanRuns(
@@ -121,6 +125,7 @@ export function SourceDetailPanel({
                 detailUpdatedAt={detailUpdatedAt}
                 scanLimit={scanLimit.clamped(200)}
                 statusLabel={statusLabel}
+                onOpenLog={setLogRun}
               />
             ) : (
               <p className="py-4 text-sm text-fg-secondary">选择一个来源。</p>
@@ -128,7 +133,7 @@ export function SourceDetailPanel({
             <TabsList className="flex-wrap">
               <TabsTrigger value="tweets">最近发现的 Tweet</TabsTrigger>
               <TabsTrigger value="history">扫描历史（最近 20 批）</TabsTrigger>
-              <TabsTrigger value="config">高级扫描操作</TabsTrigger>
+              <TabsTrigger value="config">提交与导入</TabsTrigger>
             </TabsList>
           </SheetHeader>
           <TabsContent
@@ -138,8 +143,13 @@ export function SourceDetailPanel({
             <div className="flex min-h-0 flex-1 flex-col gap-4">
               {source ? (
                 <div className="shrink-0 space-y-4">
-                  <PrimaryActions source={source} actions={actions} scanLimit={scanLimit} />
-                  <AdvancedActions source={source} actions={actions} scanFeedback={scanFeedback} scanLimit={scanLimit} />
+                  <ScanActions
+                    source={source}
+                    actions={actions}
+                    scanFeedback={scanFeedback}
+                    scanLimit={scanLimit}
+                    onOpenLog={setLogRun}
+                  />
                 </div>
               ) : null}
               <div className="min-h-0 flex-1">
@@ -181,6 +191,7 @@ export function SourceDetailPanel({
             ) : null}
           </TabsContent>
         </Tabs>
+        <ScanLogDialog run={logRun} onOpenChange={(open) => !open && setLogRun(null)} />
       </SheetContent>
     </Sheet>
   );
@@ -193,6 +204,7 @@ function SourceHeader({
   detailUpdatedAt,
   scanLimit,
   statusLabel,
+  onOpenLog,
 }: {
   source: ArchiveSourceDetail;
   policy?: DownloadPolicy;
@@ -200,6 +212,7 @@ function SourceHeader({
   detailUpdatedAt: number;
   scanLimit: number;
   statusLabel: (status?: string | null) => string;
+  onOpenLog: (run: SourceScanRun) => void;
 }) {
   const activeScanRun = source.active_scan_run;
   const historyEnabled = Boolean(source.cursor_state?.automation_enabled);
@@ -238,7 +251,7 @@ function SourceHeader({
         </button>
       </div>
 
-      {activeScanRun ? <ActiveScan run={activeScanRun} source={source} now={now} /> : null}
+      {activeScanRun ? <ActiveScan run={activeScanRun} source={source} now={now} onOpenLog={onOpenLog} /> : null}
 
       {showAllDetails ? (
         <div className="grid gap-2 rounded-lg bg-bg-muted p-3 text-sm">
@@ -310,10 +323,12 @@ function ActiveScan({
   run,
   source,
   now,
+  onOpenLog,
 }: {
   run: SourceScanRun;
   source: ArchiveSourceDetail;
   now: number;
+  onOpenLog: (run: SourceScanRun) => void;
 }) {
   const cursorBefore = run.cursor_before ?? source.cursor_state ?? {};
   const scanUrl = String(cursorBefore.last_scan_url || source.source_url || "-");
@@ -354,11 +369,21 @@ function ActiveScan({
         实际扫描 URL: {scanUrl}
       </div>
       {run.last_log_at ? (
-        <p className="mt-2 text-xs text-fg-secondary">
-          最近日志: {formatDateTime(run.last_log_at)}
-        </p>
-      ) : null}
-      <ScanLogBox run={run} />
+        <div className="mt-2 flex flex-wrap items-center justify-between gap-2 text-xs text-fg-secondary">
+          <span>最近日志: {formatDateTime(run.last_log_at)}</span>
+          <button type="button" className="font-semibold text-brand hover:text-brand-hover" onClick={() => onOpenLog(run)}>
+            查看扫描日志
+          </button>
+        </div>
+      ) : (
+        <button
+          type="button"
+          className="mt-2 text-xs font-semibold text-brand hover:text-brand-hover"
+          onClick={() => onOpenLog(run)}
+        >
+          查看扫描日志
+        </button>
+      )}
       <p className="mt-2 text-xs text-fg-secondary">扫描批次会等 gallery-dl 完整返回后一次性解析和落库；运行期间发现数保持 0 是正常现象。</p>
       {sourcePaused ? <p className="mt-1 text-xs text-warning">已收到暂停状态；当前 gallery-dl 批次会先结束，系统不会再调度下一批。</p> : null}
     </div>
@@ -434,6 +459,25 @@ function ScanLogBox({ run }: { run: SourceScanRun }) {
   );
 }
 
+function ScanLogDialog({ run, onOpenChange }: { run: SourceScanRun | null; onOpenChange: (open: boolean) => void }) {
+  return (
+    <Dialog open={Boolean(run)} onOpenChange={onOpenChange}>
+      <DialogContent className="max-h-[82vh] overflow-hidden sm:max-w-3xl">
+        <DialogHeader>
+          <DialogTitle>
+            {run ? `${scanTriggerLabel(run.trigger_type)} #${run.id} · ${scanStatusLabel(run.status)}` : "扫描日志"}
+          </DialogTitle>
+        </DialogHeader>
+        {run ? (
+          <div className="min-h-0 overflow-auto">
+            <ScanLogBox run={run} />
+          </div>
+        ) : null}
+      </DialogContent>
+    </Dialog>
+  );
+}
+
 function formatLogEntry(entry: OperationLogEntriesResponse["entries"][number]) {
   const time = entry.timestamp ? new Date(entry.timestamp).toLocaleTimeString() : "--:--:--";
   const message = entry.raw || entry.message;
@@ -474,48 +518,74 @@ function ScanPipelineNote({ source, policy }: { source: ArchiveSourceDetail; pol
   );
 }
 
-function PrimaryActions({
+function ScanActions({
   source,
   actions,
+  scanFeedback,
   scanLimit,
+  onOpenLog,
 }: {
   source: ArchiveSourceDetail;
   actions: DetailActions;
+  scanFeedback: Record<string, unknown> | null;
   scanLimit: NumberInputState;
+  onOpenLog: (run: SourceScanRun) => void;
 }) {
-  const historyEnabled = Boolean(source.cursor_state?.automation_enabled);
-  const canStart = !actions.pending.history && !(historyEnabled && source.status === "active");
+  const activeRun = source.active_scan_run;
+  const cursorState = source.cursor_state ?? {};
+  const activeMode = getActiveScanMode(source);
+  const automationEnabled = Boolean(cursorState.automation_enabled);
+  const isStopped = cursorState.automation_state === "stopped";
+  const isPaused = !isStopped && (source.status === "paused" || cursorState.automation_state === "paused");
+  const isRunning = Boolean(activeRun) || (automationEnabled && source.status === "active" && cursorState.automation_state !== "stopped");
+  const hasDiscovered = Number(source.discovered_tweet_count || source.discovered_count || 0) > 0;
+  const modeLabel = scanModeLabel(activeMode);
+  const canStart = !actions.pending.history && !isRunning && !isPaused;
+  const start = (mode: ScanMode, restart = false) =>
+    actions.startSession({ sourceId: source.id, mode, limit: scanLimit.clamped(200), restart });
 
   return (
-    <ActionBlock title="来源扫描" hint="后台使用下载器原生 cursor 续扫，只发现并记录 Tweet，不会自动提交下载；每批可能需要数分钟，下载队列有任务时扫描会等待。">
-      <Input className="w-28" type="number" min={1} max={200} value={scanLimit.value} onChange={scanLimit.onChange} />
-      <Button
-        type="button"
-        disabled={!canStart}
-        onClick={() => actions.startHistory({ sourceId: source.id, limit: scanLimit.clamped(200) })}
-      >
-        {historyEnabled ? "继续历史扫描" : "开始历史扫描"}
-      </Button>
-      <Button
-        type="button"
-        variant="secondary"
-        disabled={actions.pending.status || source.status === "paused" || !historyEnabled}
-        onClick={() => actions.setStatus({ sourceId: source.id, status: "paused" })}
-      >
-        暂停扫描
-      </Button>
-      {source.status === "paused" ? (
-        <Button
-          type="button"
-          variant="secondary"
-          disabled={actions.pending.status}
-          onClick={() => actions.setStatus({ sourceId: source.id, status: "active" })}
-        >
-          恢复
-        </Button>
+    <ActionBlock title="扫描来源" hint="扫描只发现并记录 Tweet 与媒体预估，不会自动提交下载；同一来源同一时间只运行一个扫描会话。">
+      <Input className="w-28" type="number" min={MIN_SCAN_LIMIT} max={200} value={scanLimit.value} onChange={scanLimit.onChange} />
+      {isRunning ? (
+        <>
+          <Badge tone="secondary">正在{modeLabel}</Badge>
+          <Button type="button" variant="secondary" disabled={actions.pending.history} onClick={() => actions.pauseSession(source.id)}>
+            暂停
+          </Button>
+          <Button type="button" variant="secondary" disabled={actions.pending.history} onClick={() => actions.stopHistory(source.id)}>
+            停止
+          </Button>
+        </>
+      ) : isPaused ? (
+        <>
+          <Badge tone="warning">已暂停：{modeLabel}</Badge>
+          <Button type="button" disabled={actions.pending.history} onClick={() => actions.resumeSession(source.id)}>
+            恢复{modeLabel}
+          </Button>
+          <Button type="button" variant="secondary" disabled={actions.pending.history} onClick={() => actions.stopHistory(source.id)}>
+            停止
+          </Button>
+        </>
+      ) : (
+        <ScanStartButtons
+          source={source}
+          activeMode={activeMode}
+          hasDiscovered={hasDiscovered}
+          canStart={canStart}
+          onStart={start}
+        />
+      )}
+      {activeRun ? (
+        <button type="button" className="text-sm font-semibold text-brand hover:text-brand-hover" onClick={() => onOpenLog(activeRun)}>
+          查看最新扫描日志
+        </button>
       ) : null}
-      {actions.errors.history || actions.errors.status ? (
-        <ErrorLine error={actions.errors.history || actions.errors.status} />
+      {actions.errors.history || actions.errors.status ? <ErrorLine error={actions.errors.history || actions.errors.status} /> : null}
+      {scanFeedback ? (
+        <p className="basis-full rounded-lg bg-bg-muted p-3 text-sm text-fg-primary">
+          本次扫描记录 {Number(scanFeedback.discovered_count || 0)} 条 Tweet，其中 {Number(scanFeedback.new_discovered_count || 0)} 条为新发现、{Number(scanFeedback.duplicate_count || 0)} 条已存在，尚未提交下载。{scanFeedback.completed ? "可能已到结尾" : ""}
+        </p>
       ) : null}
     </ActionBlock>
   );
@@ -557,54 +627,76 @@ function DownloadActions({
   );
 }
 
-function AdvancedActions({
+function ScanStartButtons({
   source,
-  actions,
-  scanFeedback,
-  scanLimit,
+  activeMode,
+  hasDiscovered,
+  canStart,
+  onStart,
 }: {
   source: ArchiveSourceDetail;
-  actions: DetailActions;
-  scanFeedback: Record<string, unknown> | null;
-  scanLimit: NumberInputState;
+  activeMode: ScanMode;
+  hasDiscovered: boolean;
+  canStart: boolean;
+  onStart: (mode: ScanMode, restart?: boolean) => void;
 }) {
-  const historyEnabled = Boolean(source.cursor_state?.automation_enabled);
-  const canScan = source.status !== "paused" && !actions.pending.scan;
+  const cursorState = source.cursor_state ?? {};
+  const historySession = cursorState.scan_sessions?.history;
+  const historyCompleted = source.status === "completed" || Boolean(historySession?.completed);
+  const stopped = cursorState.automation_state === "stopped";
+  const latestRefreshCompleted =
+    activeMode === "latest_refresh" &&
+    cursorState.automation_state === "completed" &&
+    !cursorState.automation_enabled;
+
+  if (!hasDiscovered && !stopped && !historyCompleted) {
+    return (
+      <Button type="button" disabled={!canStart} onClick={() => onStart("history")}>
+        开始扫描
+      </Button>
+    );
+  }
+
+  if (historyCompleted) {
+    return (
+      <>
+        <Button type="button" disabled={!canStart} onClick={() => onStart("latest_refresh", true)}>
+          补充最新推文
+        </Button>
+        <Button type="button" variant="secondary" disabled={!canStart} onClick={() => onStart("from_start", true)}>
+          从头扫描/补断层
+        </Button>
+      </>
+    );
+  }
+
+  if (latestRefreshCompleted) {
+    return (
+      <Button type="button" disabled={!canStart} onClick={() => onStart("latest_refresh", true)}>
+        再次补充最新推文
+      </Button>
+    );
+  }
 
   return (
-    <ActionBlock title="高级扫描操作" hint="单批扫描用于测试或排障；从最新补扫用于后续检查新发布内容；停止会关闭自动任务但保留游标和已发现记录。">
-      <Input className="w-28" type="number" min={1} max={200} value={scanLimit.value} onChange={scanLimit.onChange} />
-      <Button
-        type="button"
-        variant="secondary"
-        disabled={!canScan}
-        onClick={() => actions.scan({ sourceId: source.id, limit: scanLimit.clamped(200) })}
-      >
-        扫描下一批
-      </Button>
-      <Button
-        type="button"
-        variant="secondary"
-        disabled={!canScan}
-        onClick={() => actions.scan({ sourceId: source.id, limit: scanLimit.clamped(200), restart: true })}
-      >
-        从最新补扫
-      </Button>
-      <Button
-        type="button"
-        variant="secondary"
-        disabled={!historyEnabled || actions.pending.history}
-        onClick={() => actions.stopHistory(source.id)}
-      >
-        停止历史扫描
-      </Button>
-      {actions.errors.scan ? <ErrorLine error={actions.errors.scan} /> : null}
-      {scanFeedback ? (
-        <p className="basis-full rounded-lg bg-bg-muted p-3 text-sm text-fg-primary">
-          本次扫描记录 {Number(scanFeedback.discovered_count || 0)} 条 Tweet，其中 {Number(scanFeedback.new_discovered_count || 0)} 条为新发现、{Number(scanFeedback.duplicate_count || 0)} 条已存在，尚未提交下载。{scanFeedback.completed ? "可能已到结尾" : ""}
-        </p>
+    <>
+      {activeMode === "latest_refresh" ? (
+        <Button type="button" disabled={!canStart} onClick={() => onStart("latest_refresh")}>
+          继续补充最新推文
+        </Button>
       ) : null}
-    </ActionBlock>
+      {activeMode === "from_start" ? (
+        <Button type="button" disabled={!canStart} onClick={() => onStart("from_start")}>
+          继续从头扫描/补断层
+        </Button>
+      ) : null}
+      <Button type="button" disabled={!canStart} onClick={() => onStart("history")}>
+        {activeMode === "history" ? "继续历史扫描" : "继续扫描历史"}
+      </Button>
+      <Button type="button" variant="secondary" disabled={!canStart} onClick={() => onStart("latest_refresh", true)}>
+        补充最新推文
+      </Button>
+    </>
   );
 }
 
@@ -708,7 +800,7 @@ function useNumberInput(initial: string) {
     value: input.value,
     set: input.set,
     onChange: input.onChange,
-    clamped: (max: number) => Math.max(1, Math.min(max, Number(input.value) || 20)),
+    clamped: (max: number) => Math.max(MIN_SCAN_LIMIT, Math.min(max, Number(input.value) || 20)),
   };
 }
 
@@ -725,6 +817,7 @@ function useTextInput(initial: string) {
 
 function preferredScanLimit(source: ArchiveSourceDetail, policy?: DownloadPolicy) {
   const candidates = [
+    source.cursor_state?.scan_sessions?.[getActiveScanMode(source)]?.limit,
     source.cursor_state?.automation_limit,
     source.cursor_state?.last_limit,
     source.active_scan_run?.requested_limit,
@@ -733,7 +826,19 @@ function preferredScanLimit(source: ArchiveSourceDetail, policy?: DownloadPolicy
   ];
   for (const candidate of candidates) {
     const value = Number(candidate);
-    if (Number.isFinite(value) && value >= 1) return Math.min(200, Math.floor(value));
+    if (Number.isFinite(value) && value >= 1) return Math.max(MIN_SCAN_LIMIT, Math.min(200, Math.floor(value)));
   }
   return 20;
+}
+
+function getActiveScanMode(source: ArchiveSourceDetail): ScanMode {
+  const mode = source.cursor_state?.active_scan_mode;
+  if (mode === "latest_refresh" || mode === "from_start" || mode === "history") return mode;
+  return "history";
+}
+
+function scanModeLabel(mode: ScanMode) {
+  if (mode === "latest_refresh") return "补充最新推文";
+  if (mode === "from_start") return "从头扫描/补断层";
+  return "历史扫描";
 }

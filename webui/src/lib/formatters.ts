@@ -87,7 +87,8 @@ export function sourceTypeLabel(type: string): string {
 const SCAN_TRIGGER_LABELS: Record<string, string> = {
   history_worker: "后台历史扫描",
   manual_next: "手工下一批",
-  latest_refresh: "从最新补扫",
+  latest_refresh: "补充最新推文",
+  from_start_repair: "从头扫描/补断层",
 };
 
 export function scanTriggerLabel(trigger: string): string {

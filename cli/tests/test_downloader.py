@@ -51,14 +51,14 @@ class DownloaderTests(unittest.TestCase):
         self.assertEqual(classify_x_error("No media found"), ErrorCategory.UNSUPPORTED_MEDIA)
 
     def test_format_sleep_range_normalizes_values(self) -> None:
-        self.assertEqual(format_sleep_range(2, 6), "2-6")
+        self.assertEqual(format_sleep_range(0, 3), "0-3")
         self.assertEqual(format_sleep_range(6, 2), "6")
 
     def test_gallery_dl_command_includes_request_sleep(self) -> None:
         settings = SimpleNamespace(
             archive_dir=Path("/app/archive"),
-            downloader_sleep_min_seconds=2,
-            downloader_sleep_max_seconds=6,
+            downloader_sleep_min_seconds=0,
+            downloader_sleep_max_seconds=3,
         )
 
         command = build_command(
@@ -69,15 +69,15 @@ class DownloaderTests(unittest.TestCase):
         )
 
         self.assertIn("--sleep-request", command)
-        self.assertIn("2-6", command)
+        self.assertIn("0-3", command)
         self.assertIn("extractor.twitter.cookies=/app/archive/state/runtime-cookies.txt", command)
         self.assertIn("extractor.twitter.cookies-update=false", command)
 
     def test_yt_dlp_command_includes_sleep_options(self) -> None:
         settings = SimpleNamespace(
             archive_dir=Path("/app/archive"),
-            downloader_sleep_min_seconds=2,
-            downloader_sleep_max_seconds=6,
+            downloader_sleep_min_seconds=0,
+            downloader_sleep_max_seconds=3,
         )
 
         command = build_command(

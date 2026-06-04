@@ -186,7 +186,11 @@ export function AppLayout() {
               tone={healthQuery.isError ? "danger" : writeLockHeld ? "warning" : "secondary"}
               className="hidden md:inline-flex"
             >
-              {healthQuery.isError ? "健康详情不可用" : writeLockHeld ? "写操作中" : "空闲"}
+              {healthQuery.isError
+                ? "健康详情不可用"
+                : writeLockHeld
+                  ? "写操作中"
+                  : "空闲"}
             </Badge>
             <Badge tone={queueWork ? "warning" : "secondary"} className="hidden md:inline-flex">
               队列 {queueWork}

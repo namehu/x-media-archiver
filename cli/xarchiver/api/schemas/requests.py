@@ -59,7 +59,7 @@ class SourceStatusRequest(BaseModel):
 
 
 class SourceScanRequest(BaseModel):
-    limit: int = Field(default=20, ge=1, le=200)
+    limit: int = Field(default=20, ge=5, le=200)
     restart: bool = False
 
 
@@ -68,7 +68,13 @@ class SourceSubmitDiscoveredRequest(BaseModel):
 
 
 class SourceHistoryScanRequest(BaseModel):
-    limit: int = Field(default=20, ge=1, le=200)
+    limit: int = Field(default=20, ge=5, le=200)
+    restart: bool = False
+
+
+class SourceScanSessionRequest(BaseModel):
+    mode: str = Field(pattern="^(history|latest_refresh|from_start)$")
+    limit: int = Field(default=20, ge=5, le=200)
     restart: bool = False
 
 

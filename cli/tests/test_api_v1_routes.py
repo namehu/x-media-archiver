@@ -75,6 +75,10 @@ class V1RouterSmokeTests(unittest.TestCase):
             "/api/v1/sources/{source_id}/status",
             "/api/v1/sources/{source_id}/scan",
             "/api/v1/sources/{source_id}/history-scan",
+            "/api/v1/sources/{source_id}/scan-sessions",
+            "/api/v1/sources/{source_id}/scan-sessions/pause",
+            "/api/v1/sources/{source_id}/scan-sessions/resume",
+            "/api/v1/sources/{source_id}/scan-sessions/stop",
             "/api/v1/sources/{source_id}/history-scan/stop",
             "/api/v1/actions/verify",
             "/api/v1/actions/requeue",
@@ -239,6 +243,7 @@ class V1RouterSmokeTests(unittest.TestCase):
         paths = set(self.app.openapi()["paths"].keys())
         self.assertIn("/api/v1/archive-runs", paths)
         self.assertIn("/api/v1/sources", paths)
+        self.assertIn("/api/v1/sources/{source_id}/scan-sessions", paths)
         self.assertIn("/api/v1/library/media", paths)
         self.assertIn("/api/v1/actions/verify", paths)
         self.assertIn("/api/v1/health/detail", paths)
