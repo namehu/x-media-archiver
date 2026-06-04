@@ -114,9 +114,7 @@ export function SourceDetailPanel({
       <SheetContent className="h-dvh w-[min(100vw,780px)] overflow-hidden p-0">
         <Tabs value={activeTab} onValueChange={setActiveTab} className="flex h-full min-h-0 flex-col">
           <SheetHeader className="mb-0 shrink-0 gap-4 px-6 pb-0 pt-6 pr-12">
-            <SheetTitle className="sr-only">
-              {source?.label || source?.author_username || "来源详情"}
-            </SheetTitle>
+            <SheetTitle className="sr-only">{source?.label || source?.author_username || "来源详情"}</SheetTitle>
             {source ? (
               <SourceHeader
                 source={source}
@@ -125,7 +123,6 @@ export function SourceDetailPanel({
                 detailUpdatedAt={detailUpdatedAt}
                 scanLimit={scanLimit.clamped(200)}
                 statusLabel={statusLabel}
-                onOpenLog={setLogRun}
               />
             ) : (
               <p className="py-4 text-sm text-fg-secondary">选择一个来源。</p>
@@ -204,7 +201,6 @@ function SourceHeader({
   detailUpdatedAt,
   scanLimit,
   statusLabel,
-  onOpenLog,
 }: {
   source: ArchiveSourceDetail;
   policy?: DownloadPolicy;
@@ -212,7 +208,6 @@ function SourceHeader({
   detailUpdatedAt: number;
   scanLimit: number;
   statusLabel: (status?: string | null) => string;
-  onOpenLog: (run: SourceScanRun) => void;
 }) {
   const activeScanRun = source.active_scan_run;
   const historyEnabled = Boolean(source.cursor_state?.automation_enabled);
@@ -227,19 +222,19 @@ function SourceHeader({
             <h2 className="text-xl font-semibold text-fg-primary">
               {source.label || source.author_username || "来源详情"}
             </h2>
-          {source.source_url ? (
-            <a
-              className="mt-0.5 inline-flex min-w-0 items-center gap-1 break-all text-sm text-brand hover:text-brand-hover"
-              href={source.source_url}
-              target="_blank"
-              rel="noreferrer"
-            >
-              <span className="break-all">{source.source_url}</span>
-              <ExternalLink className="h-3.5 w-3.5 shrink-0" />
-            </a>
-          ) : (
-            <p className="mt-0.5 text-sm text-fg-secondary">无</p>
-          )}
+            {source.source_url ? (
+              <a
+                className="mt-0.5 inline-flex min-w-0 items-center gap-1 break-all text-sm text-brand hover:text-brand-hover"
+                href={source.source_url}
+                target="_blank"
+                rel="noreferrer"
+              >
+                <span className="break-all">{source.source_url}</span>
+                <ExternalLink className="h-3.5 w-3.5 shrink-0" />
+              </a>
+            ) : (
+              <p className="mt-0.5 text-sm text-fg-secondary">无</p>
+            )}
           </div>
         </div>
         <button
@@ -251,7 +246,7 @@ function SourceHeader({
         </button>
       </div>
 
-      {activeScanRun ? <ActiveScan run={activeScanRun} source={source} now={now} onOpenLog={onOpenLog} /> : null}
+      {activeScanRun ? <ActiveScan run={activeScanRun} source={source} now={now} /> : null}
 
       {showAllDetails ? (
         <div className="grid gap-2 rounded-lg bg-bg-muted p-3 text-sm">
@@ -270,15 +265,9 @@ function SourceHeader({
                 value={`${source.cursor_state.last_range_start}-${source.cursor_state.last_range_end}`}
               />
             ) : null}
-            <DetailRow
-              label="详情刷新"
-              value={formatDateTime(new Date(detailUpdatedAt || now).toISOString())}
-            />
+            <DetailRow label="详情刷新" value={formatDateTime(new Date(detailUpdatedAt || now).toISOString())} />
             <DetailRow label="累计新增 Tweet" value={source.scan_summary?.added_tweet_count ?? 0} />
-            <DetailRow
-              label="最近成功扫描"
-              value={formatDateTime(source.scan_summary?.last_success_at)}
-            />
+            <DetailRow label="最近成功扫描" value={formatDateTime(source.scan_summary?.last_success_at)} />
             <DetailRow label="最近扫描错误" value={formatDateTime(source.scan_summary?.last_error_at)} />
             {policy ? <PolicySummary policy={policy} /> : null}
             <ScanPipelineNote source={source} policy={policy} />
@@ -319,19 +308,8 @@ function PolicySummary({ policy }: { policy: DownloadPolicy }) {
   );
 }
 
-function ActiveScan({
-  run,
-  source,
-  now,
-  onOpenLog,
-}: {
-  run: SourceScanRun;
-  source: ArchiveSourceDetail;
-  now: number;
-  onOpenLog: (run: SourceScanRun) => void;
-}) {
+function ActiveScan({ run, source, now }: { run: SourceScanRun; source: ArchiveSourceDetail; now: number }) {
   const cursorBefore = run.cursor_before ?? source.cursor_state ?? {};
-  const scanUrl = String(cursorBefore.last_scan_url || source.source_url || "-");
   const hasCursor = Boolean(cursorBefore.extractor_cursor);
   const sourcePaused = source.status === "paused" || source.cursor_state?.automation_state === "paused";
 
@@ -343,49 +321,22 @@ function ActiveScan({
       </div>
       <div className="mt-2 grid gap-2 text-xs text-fg-secondary sm:grid-cols-2">
         <span>扫描引擎: gallery-dl</span>
-        <span>
-          当前阶段: {run.progress_message || "等待 gallery-dl 枚举并返回"}
-        </span>
-        <span>
-          范围: {formatRunRange(run.range_start, run.range_end)}
-        </span>
-        <span>
-          请求 Tweet 数: {run.requested_limit ?? "-"}
-        </span>
-        <span>
-          已运行: {formatElapsed(run.started_at, now)}
-        </span>
-        <span>
-          开始时间: {formatDateTime(run.started_at)}
-        </span>
-        <span>
-          触发方式: {scanTriggerLabel(run.trigger_type)}
-        </span>
-        <span>
-          Cursor: {hasCursor ? "续扫上一页" : "从第一页开始"}
-        </span>
+        <span>当前阶段: {run.progress_message || "等待 gallery-dl 枚举并返回"}</span>
+        <span>范围: {formatRunRange(run.range_start, run.range_end)}</span>
+        <span>请求 Tweet 数: {run.requested_limit ?? "-"}</span>
+        <span>已运行: {formatElapsed(run.started_at, now)}</span>
+        <span>开始时间: {formatDateTime(run.started_at)}</span>
+        <span>触发方式: {scanTriggerLabel(run.trigger_type)}</span>
+        <span>Cursor: {hasCursor ? "续扫上一页" : "从第一页开始"}</span>
       </div>
-      <div className="mt-2 break-all rounded-md bg-bg-elevated/70 px-2 py-1 text-xs text-fg-secondary">
-        实际扫描 URL: {scanUrl}
-      </div>
-      {run.last_log_at ? (
-        <div className="mt-2 flex flex-wrap items-center justify-between gap-2 text-xs text-fg-secondary">
-          <span>最近日志: {formatDateTime(run.last_log_at)}</span>
-          <button type="button" className="font-semibold text-brand hover:text-brand-hover" onClick={() => onOpenLog(run)}>
-            查看扫描日志
-          </button>
-        </div>
-      ) : (
-        <button
-          type="button"
-          className="mt-2 text-xs font-semibold text-brand hover:text-brand-hover"
-          onClick={() => onOpenLog(run)}
-        >
-          查看扫描日志
-        </button>
-      )}
-      <p className="mt-2 text-xs text-fg-secondary">扫描批次会等 gallery-dl 完整返回后一次性解析和落库；运行期间发现数保持 0 是正常现象。</p>
-      {sourcePaused ? <p className="mt-1 text-xs text-warning">已收到暂停状态；当前 gallery-dl 批次会先结束，系统不会再调度下一批。</p> : null}
+      <p className="mt-2 text-xs text-fg-secondary">
+        扫描批次会等 gallery-dl 完整返回后一次性解析和落库；运行期间发现数保持 0 是正常现象。
+      </p>
+      {sourcePaused ? (
+        <p className="mt-1 text-xs text-warning">
+          已收到暂停状态；当前 gallery-dl 批次会先结束，系统不会再调度下一批。
+        </p>
+      ) : null}
     </div>
   );
 }
@@ -453,7 +404,9 @@ function ScanLogBox({ run }: { run: SourceScanRun }) {
               : "等待 gallery-dl 输出日志...")}
       </pre>
       {query.data?.is_truncated ? (
-        <div className="border-t border-warning/20 px-3 py-2 text-xs text-warning">日志已达到大小上限，后续详细输出已截断。</div>
+        <div className="border-t border-warning/20 px-3 py-2 text-xs text-warning">
+          日志已达到大小上限，后续详细输出已截断。
+        </div>
       ) : null}
     </div>
   );
@@ -489,9 +442,7 @@ function ScanPipelineNote({ source, policy }: { source: ArchiveSourceDetail; pol
   const [open, setOpen] = React.useState(false);
   const historyEnabled = Boolean(source.cursor_state?.automation_enabled);
   if (!historyEnabled && !source.active_scan_run) return null;
-  const scanDelay = policy
-    ? `${policy.source_scan_sleep_min_seconds}-${policy.source_scan_sleep_max_seconds}s`
-    : "无";
+  const scanDelay = policy ? `${policy.source_scan_sleep_min_seconds}-${policy.source_scan_sleep_max_seconds}s` : "无";
 
   return (
     <div className="rounded-lg border border-border-subtle text-xs">
@@ -511,7 +462,9 @@ function ScanPipelineNote({ source, policy }: { source: ArchiveSourceDetail; pol
             <span>3. 下载队列空闲时调用 gallery-dl 枚举当前批次。</span>
             <span>{`4. 子进程完整返回后解析、去重、落库，再等待 ${scanDelay} 后调度下一批。`}</span>
           </div>
-          <p className="mt-2">暂停扫描只暂停后续自动调度，不强制终止已经启动的 gallery-dl 子进程；该批结束后会保留 cursor 与发现记录。</p>
+          <p className="mt-2">
+            暂停扫描只暂停后续自动调度，不强制终止已经启动的 gallery-dl 子进程；该批结束后会保留 cursor 与发现记录。
+          </p>
         </div>
       ) : null}
     </div>
@@ -537,7 +490,9 @@ function ScanActions({
   const automationEnabled = Boolean(cursorState.automation_enabled);
   const isStopped = cursorState.automation_state === "stopped";
   const isPaused = !isStopped && (source.status === "paused" || cursorState.automation_state === "paused");
-  const isRunning = Boolean(activeRun) || (automationEnabled && source.status === "active" && cursorState.automation_state !== "stopped");
+  const isRunning =
+    Boolean(activeRun) ||
+    (automationEnabled && source.status === "active" && cursorState.automation_state !== "stopped");
   const hasDiscovered = Number(source.discovered_tweet_count || source.discovered_count || 0) > 0;
   const modeLabel = scanModeLabel(activeMode);
   const canStart = !actions.pending.history && !isRunning && !isPaused;
@@ -545,15 +500,35 @@ function ScanActions({
     actions.startSession({ sourceId: source.id, mode, limit: scanLimit.clamped(200), restart });
 
   return (
-    <ActionBlock title="扫描来源" hint="扫描只发现并记录 Tweet 与媒体预估，不会自动提交下载；同一来源同一时间只运行一个扫描会话。">
-      <Input className="w-28" type="number" min={MIN_SCAN_LIMIT} max={200} value={scanLimit.value} onChange={scanLimit.onChange} />
+    <ActionBlock
+      title="扫描来源"
+      hint="扫描只发现并记录 Tweet 与媒体预估，不会自动提交下载；同一来源同一时间只运行一个扫描会话。"
+    >
+      <Input
+        className="w-28"
+        type="number"
+        min={MIN_SCAN_LIMIT}
+        max={200}
+        value={scanLimit.value}
+        onChange={scanLimit.onChange}
+      />
       {isRunning ? (
         <>
           <Badge tone="secondary">正在{modeLabel}</Badge>
-          <Button type="button" variant="secondary" disabled={actions.pending.history} onClick={() => actions.pauseSession(source.id)}>
+          <Button
+            type="button"
+            variant="secondary"
+            disabled={actions.pending.history}
+            onClick={() => actions.pauseSession(source.id)}
+          >
             暂停
           </Button>
-          <Button type="button" variant="secondary" disabled={actions.pending.history} onClick={() => actions.stopHistory(source.id)}>
+          <Button
+            type="button"
+            variant="secondary"
+            disabled={actions.pending.history}
+            onClick={() => actions.stopHistory(source.id)}
+          >
             停止
           </Button>
         </>
@@ -563,7 +538,12 @@ function ScanActions({
           <Button type="button" disabled={actions.pending.history} onClick={() => actions.resumeSession(source.id)}>
             恢复{modeLabel}
           </Button>
-          <Button type="button" variant="secondary" disabled={actions.pending.history} onClick={() => actions.stopHistory(source.id)}>
+          <Button
+            type="button"
+            variant="secondary"
+            disabled={actions.pending.history}
+            onClick={() => actions.stopHistory(source.id)}
+          >
             停止
           </Button>
         </>
@@ -577,14 +557,22 @@ function ScanActions({
         />
       )}
       {activeRun ? (
-        <button type="button" className="text-sm font-semibold text-brand hover:text-brand-hover" onClick={() => onOpenLog(activeRun)}>
+        <button
+          type="button"
+          className="text-sm font-semibold text-brand hover:text-brand-hover"
+          onClick={() => onOpenLog(activeRun)}
+        >
           查看最新扫描日志
         </button>
       ) : null}
-      {actions.errors.history || actions.errors.status ? <ErrorLine error={actions.errors.history || actions.errors.status} /> : null}
+      {actions.errors.history || actions.errors.status ? (
+        <ErrorLine error={actions.errors.history || actions.errors.status} />
+      ) : null}
       {scanFeedback ? (
         <p className="basis-full rounded-lg bg-bg-muted p-3 text-sm text-fg-primary">
-          本次扫描记录 {Number(scanFeedback.discovered_count || 0)} 条 Tweet，其中 {Number(scanFeedback.new_discovered_count || 0)} 条为新发现、{Number(scanFeedback.duplicate_count || 0)} 条已存在，尚未提交下载。{scanFeedback.completed ? "可能已到结尾" : ""}
+          本次扫描记录 {Number(scanFeedback.discovered_count || 0)} 条 Tweet，其中{" "}
+          {Number(scanFeedback.new_discovered_count || 0)} 条为新发现、{Number(scanFeedback.duplicate_count || 0)}{" "}
+          条已存在，尚未提交下载。{scanFeedback.completed ? "可能已到结尾" : ""}
         </p>
       ) : null}
     </ActionBlock>
@@ -645,9 +633,7 @@ function ScanStartButtons({
   const historyCompleted = source.status === "completed" || Boolean(historySession?.completed);
   const stopped = cursorState.automation_state === "stopped";
   const latestRefreshCompleted =
-    activeMode === "latest_refresh" &&
-    cursorState.automation_state === "completed" &&
-    !cursorState.automation_enabled;
+    activeMode === "latest_refresh" && cursorState.automation_state === "completed" && !cursorState.automation_enabled;
 
   if (!hasDiscovered && !stopped && !historyCompleted) {
     return (
@@ -789,7 +775,8 @@ function ErrorLine({ error }: { error: unknown }) {
 function FeedbackLine({ feedback }: { feedback: ArchiveSubmission }) {
   return (
     <p className="basis-full rounded-lg bg-bg-muted p-3 text-sm text-fg-primary">
-      Run #{feedback.run_id} · {feedback.tasks.queued_count} 个已入队 · {feedback.tasks.skipped_verified_count} 个已归档 · {feedback.tasks.linked_pending_count} 个已有任务
+      Run #{feedback.run_id} · {feedback.tasks.queued_count} 个已入队 · {feedback.tasks.skipped_verified_count} 个已归档
+      · {feedback.tasks.linked_pending_count} 个已有任务
     </p>
   );
 }
