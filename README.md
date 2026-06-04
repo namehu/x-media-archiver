@@ -166,7 +166,7 @@ docker-compose run --rm --service-ports xarchiver serve
 The compose file maps the API to the host loopback address:
 
 ```text
-http://127.0.0.1:8000
+http://127.0.0.1:18000
 ```
 
 VS Code can build the API image, start the API container, attach the Python debugger, and start the
@@ -174,7 +174,7 @@ WebUI dev server from one debug entry. Open Run and Debug, select `Dev: API + We
 The API starts through `debugpy` on `127.0.0.1:5678` and serves requests immediately; breakpoints are
 hit after VS Code attaches. This debug entry intentionally does not enable uvicorn reload, so restart
 the debug session after Python code changes. The WebUI still runs locally through Vite, proxies API
-requests to `http://127.0.0.1:8000`, and can be opened manually at `http://127.0.0.1:5173`.
+requests to `http://127.0.0.1:18000`, and can be opened manually at `http://127.0.0.1:5173`.
 
 Available read-only API endpoints:
 
@@ -212,6 +212,10 @@ POST /api/v1/sources/{source_id}/status
 POST /api/v1/sources/{source_id}/scan
 POST /api/v1/sources/{source_id}/history-scan
 POST /api/v1/sources/{source_id}/history-scan/stop
+POST /api/v1/sources/{source_id}/scan-sessions
+POST /api/v1/sources/{source_id}/scan-sessions/pause
+POST /api/v1/sources/{source_id}/scan-sessions/resume
+POST /api/v1/sources/{source_id}/scan-sessions/stop
 POST /api/v1/maintenance/backfill
 POST /api/v1/maintenance/verify
 ```
@@ -368,7 +372,7 @@ SOURCE_SCAN_SLEEP_MIN_SECONDS=2
 SOURCE_SCAN_SLEEP_MAX_SECONDS=6
 STUCK_TIMEOUT_MINUTES=120
 API_HOST=0.0.0.0
-API_PORT=8000
+API_PORT=18000
 ```
 
 `QUEUE_BATCH_SIZE` limits how many queued tweets the API worker claims in one pass. The downloader

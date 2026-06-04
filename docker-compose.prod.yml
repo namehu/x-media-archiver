@@ -37,7 +37,7 @@ services:
     env_file:
       - .env.production
     ports:
-      - "127.0.0.1:${API_PORT:-8000}:8000"
+      - "127.0.0.1:${API_PORT:-18000}:${API_PORT:-18000}"
     volumes:
       - ./archive:/app/archive
       - ./secrets:/app/secrets:ro

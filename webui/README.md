@@ -34,9 +34,9 @@ Open:
 http://127.0.0.1:5173
 ```
 
-The Vite dev server proxies `/api`, `/health`, and `/openapi.json` to `VITE_API_PROXY_TARGET`, defaulting to `http://127.0.0.1:8000`.
+The Vite dev server proxies `/api`, `/health`, and `/openapi.json` to `VITE_API_PROXY_TARGET`, defaulting to `http://127.0.0.1:18000`.
 
-The VSCode F5 task maps the API container to `http://127.0.0.1:18000` and sets `VITE_API_PROXY_TARGET` automatically for the WebUI task.
+The VSCode F5 task starts the API on `http://127.0.0.1:18000` and sets `VITE_API_PROXY_TARGET` automatically for the WebUI task.
 
 Generate OpenAPI schema and TypeScript types:
 

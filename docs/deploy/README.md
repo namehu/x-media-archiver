@@ -92,7 +92,7 @@ docker compose --env-file .env.production -f docker-compose.prod.yml logs -f app
 容器入口（[`cli/docker-entrypoint.sh`](../../cli/docker-entrypoint.sh)）在启动 API 前会**自动执行 Alembic 数据库迁移**（幂等、按 `alembic_version` 记录版本，重复启动安全）。首次启动日志会出现 `Applied migration: ...` 或 `No pending migrations`。随后访问：
 
 ```text
-http://127.0.0.1:8000
+http://127.0.0.1:18000
 ```
 
 > 安全说明：API **没有内建鉴权**，这是单用户本地工具的有意设计。compose 默认把端口绑到宿主机回环 `127.0.0.1`。不要把该端口直接暴露公网；如需远程访问，请在前面放置带鉴权的反向代理或经 SSH/VPN 隧道。
@@ -313,7 +313,7 @@ archive/state/     下载器状态与运行时 cookie 副本
 ```bash
 cd webui
 npm install
-npm run dev      # http://127.0.0.1:5173，dev proxy 转发 /api 到 127.0.0.1:8000
+npm run dev      # http://127.0.0.1:5173，dev proxy 转发 /api 到 127.0.0.1:18000
 ```
 
 ### 7.2 生产构建（镜像内自动执行）
@@ -347,7 +347,7 @@ cd webui && npm run generate:api-types   # 需 Docker 起后端；然后提交�
 DATABASE_URL=...            # Postgres 连接串
 ARCHIVE_DIR=/app/archive    # 容器内归档根目录
 COOKIE_FILE=/app/secrets/cookies.txt # WebUI 未配置 cookies 时的兼容回退
-API_PORT=8000               # 发布端口；容器内 API_HOST 固定为 0.0.0.0
+API_PORT=18000              # API 监听与发布端口；容器内 API_HOST 固定为 0.0.0.0
 ```
 
 ### 8.2 下载与重试
