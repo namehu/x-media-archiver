@@ -4,10 +4,9 @@ import { Sheet, SheetContent, SheetHeader, SheetTitle } from "@/components/ui/sh
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { useSourceDiscovered, useSourceScanRuns } from "../../hooks/useSourceDetail";
 import { SourceScanHistoryTab } from "../source-scan-history-tab";
-import { SourceTweetsTab } from "../source-tweets-tab";
 import { preferredScanLimit, sourceStatusTone } from "../../utils";
-import { SourceHeader } from "./source-header";
-import { ScanActions } from "./scan-actions";
+import { SourceDetailContent } from "./source-detail-content";
+import { SourceTweetsContent } from "./source-tweets-content";
 import { DownloadActions } from "./download-actions";
 import { ManualImport } from "./manual-import";
 import { ScanLogDialog } from "./scan-log-dialog";
@@ -135,40 +134,31 @@ export function SourceDetailPanel({
                 value="details"
                 className="min-h-0 flex-1 overflow-y-auto px-6 pb-6 pt-4 data-[state=active]:block"
               >
-                <SourceHeader
+                <SourceDetailContent
                   source={source}
-                  policy={policy}
                   now={now}
                   detailUpdatedAt={detailUpdatedAt}
                   scanLimit={scanLimit.clamped(200)}
-                  statusLabel={statusLabel}
                 />
               </TabsContent>
               <TabsContent
                 value="tweets"
                 className="min-h-0 flex-1 overflow-hidden px-6 pb-6 pt-4 data-[state=active]:flex data-[state=active]:flex-col"
               >
-                <div className="flex min-h-0 flex-1 flex-col gap-4">
-                  <div className="shrink-0 space-y-4">
-                    <ScanActions
-                      source={source}
-                      actions={actions}
-                      scanFeedback={scanFeedback}
-                      scanLimit={scanLimit}
-                      onOpenLog={setLogRun}
-                    />
-                  </div>
-                  <div className="min-h-0 flex-1">
-                    <SourceTweetsTab
-                      data={discoveredQuery.data}
-                      isLoading={discoveredQuery.isLoading}
-                      error={discoveredQuery.error}
-                      offset={tweetsOffset}
-                      onOffsetChange={setTweetsOffset}
-                      statusLabel={statusLabel}
-                    />
-                  </div>
-                </div>
+                <SourceTweetsContent
+                  source={source}
+                  actions={actions}
+                  scanFeedback={scanFeedback}
+                  scanLimit={scanLimit}
+                  onOpenLog={setLogRun}
+                  data={discoveredQuery.data}
+                  isLoading={discoveredQuery.isLoading}
+                  error={discoveredQuery.error}
+                  offset={tweetsOffset}
+                  onOffsetChange={setTweetsOffset}
+                  statusLabel={statusLabel}
+                  now={now}
+                />
               </TabsContent>
               <TabsContent
                 value="history"

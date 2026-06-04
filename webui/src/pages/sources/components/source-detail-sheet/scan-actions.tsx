@@ -12,7 +12,7 @@ const MIN_SCAN_LIMIT = 5;
 
 type ScanMode = "history" | "latest_refresh" | "from_start";
 
-type DetailActions = {
+export type DetailActions = {
   submitRecords: (input: { sourceId: number; records: Array<{ url: string }> }) => void;
   setStatus: (input: { sourceId: number; status: "active" | "paused" }) => void;
   startSession: (input: { sourceId: number; mode: ScanMode; limit: number; restart?: boolean }) => void;
