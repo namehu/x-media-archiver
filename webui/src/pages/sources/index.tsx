@@ -4,7 +4,7 @@ import { useSearchParams } from "react-router-dom";
 import type { ArchiveSubmission } from "@/lib/api";
 import { statusLabel } from "@/lib/formatters";
 import { CreateSource } from "./components/create-source";
-import { SourceDetailPanel } from "./components/source-detail-panel";
+import { SourceDetailPanel } from "./components/source-detail-sheet";
 import { SourcesList } from "./components/sources-list";
 import { useDownloadPolicy, useSourceDetail } from "./hooks/useSourceDetail";
 import { useSourceActions } from "./hooks/useSourceScan";

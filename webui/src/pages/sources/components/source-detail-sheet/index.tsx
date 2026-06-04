@@ -20,9 +20,9 @@ import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { Tooltip, TooltipContent, TooltipTrigger } from "@/components/ui/tooltip";
 import { scanStatusLabel, scanTriggerLabel } from "@/lib/formatters";
 import { formatDateTime } from "@/lib/utils";
-import { useSourceDiscovered, useSourceScanRuns } from "../hooks/useSourceDetail";
-import { SourceScanHistoryTab } from "./source-scan-history-tab";
-import { SourceTweetsTab } from "./source-tweets-tab";
+import { useSourceDiscovered, useSourceScanRuns } from "../../hooks/useSourceDetail";
+import { SourceScanHistoryTab } from "../source-scan-history-tab";
+import { SourceTweetsTab } from "../source-tweets-tab";
 import {
   formatElapsed,
   formatHistoryState,
@@ -32,7 +32,7 @@ import {
   parseRecordUrls,
   scanStatusTone,
   sourceStatusTone,
-} from "../utils";
+} from "../../utils";
 
 type DetailActions = {
   submitRecords: (input: { sourceId: number; records: Array<{ url: string }> }) => void;
