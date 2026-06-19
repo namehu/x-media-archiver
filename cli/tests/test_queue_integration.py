@@ -195,6 +195,34 @@ class QueueIntegrationTests(unittest.TestCase):
         self.assertEqual(process.call_args.args[0], [self.tweet_ids[0]])
         self.assertEqual(detail["status"], "queued")
 
+    def test_worker_claims_multiple_items_up_to_queue_batch_size(self) -> None:
+        submitted = submit_archive_batch(
+            [self.record(self.tweet_ids[0]), self.record(self.tweet_ids[1])],
+            "test_queue_batch_size_multi",
+        )
+        settings = SimpleNamespace(retry_limit=3, retry_backoff_minutes=15, queue_batch_size=2)
+        pipeline = {
+            "media": {
+                "backfilled_media_count": 2,
+                "verified_media_count": 2,
+                "missing_media_count": 0,
+                "corrupt_media_count": 0,
+            }
+        }
+        with (
+            patch("xarchiver.services.queue.process_tweet_scope", return_value=pipeline) as process,
+            patch(
+                "xarchiver.services.queue.fetch_tweet_statuses",
+                return_value={self.tweet_ids[0]: "verified", self.tweet_ids[1]: "verified"},
+            ),
+        ):
+            process_next_queued_run(settings)
+
+        detail = get_run_detail(int(submitted["run_id"]))
+        self.assertCountEqual(process.call_args.args[0], [self.tweet_ids[0], self.tweet_ids[1]])
+        self.assertEqual(detail["status"], "completed")
+        self.assertEqual([item["status"] for item in detail["items"]], ["verified", "verified"])
+
     def test_expired_processing_item_can_be_reclaimed_by_new_worker(self) -> None:
         submit_archive_batch([self.record(self.tweet_ids[2])], "test_queue_lease")
         first_claim = claim_next_items(3, batch_size=1, worker_id="worker-old")

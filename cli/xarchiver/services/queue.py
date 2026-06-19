@@ -381,7 +381,7 @@ def claim_next_items(
                     and i.retry_count < %s
                     and (i.next_attempt_at is null or i.next_attempt_at <= now())
                   order by i.id asc
-                  limit 1
+                  limit %s
                   for update skip locked
                 )
                 update archive_run_items
@@ -396,7 +396,7 @@ def claim_next_items(
                 where id in (select id from candidate_items)
                 returning id, archive_run_id, tweet_id, retry_count, worker_id, cancel_requested
                 """,
-                (retry_limit, retry_limit, worker_id, LEASE_SECONDS),
+                (retry_limit, retry_limit, batch_size, worker_id, LEASE_SECONDS),
             )
             rows = [ArchiveClaimedItemRow.model_validate(dict(row)) for row in cur.fetchall()]
             if rows:
