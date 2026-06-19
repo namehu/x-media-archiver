@@ -19,6 +19,7 @@ __pycache__/
 pg_data/
 
 node_modules/
+.superpowers/
 extension/.output/
 extension/.wxt/
 webui/dist/
