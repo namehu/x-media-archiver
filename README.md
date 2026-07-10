@@ -1,14 +1,14 @@
 # x-media-archiver
 
-Local-first X/Twitter media archiver built around a Dockerized pipeline:
+本地优先（local-first）的 X/Twitter 媒体归档工具，基于 Docker 化的流水线：
 
 ```text
 tweet URLs -> scoped download -> scoped media_assets backfill -> scoped verify
 ```
 
-## Quick Start
+## 快速开始
 
-Build the CLI image and initialize the local archive directories:
+构建 CLI 镜像并初始化本地归档目录：
 
 ```bash
 docker-compose build xarchiver
@@ -16,39 +16,39 @@ docker-compose run --rm xarchiver init /app/archive
 docker-compose run --rm xarchiver db migrate
 ```
 
-For disposable local validation, reset the metadata database and re-apply all migrations with:
+用于一次性本地验证时，可重置元数据数据库并重新应用所有迁移：
 
 ```bash
 docker-compose run --rm xarchiver db reset --yes
 ```
 
-This clears Postgres metadata only. It does not delete files under `archive/`.
+这只会清空 Postgres 元数据，不会删除 `archive/` 下的文件。
 
-Put exported X/Twitter cookies at:
+把导出的 X/Twitter cookies 放到：
 
 ```text
 secrets/cookies.txt
 ```
 
-The cookie file must use Netscape cookie format. Keep it local; it is ignored by git.
+cookie 文件必须使用 Netscape cookie 格式。请仅保留在本地；该文件已被 git 忽略。
 
-Replace `examples/tweet_urls.example.txt` with one tweet URL per line:
+用每行一个 tweet URL 替换 `examples/tweet_urls.example.txt`：
 
 ```text
 https://x.com/PhysInHistory/status/2058554692586885322
 https://x.com/dpoddolphinpro/status/2059072547585433944
 ```
 
-Profile URLs such as `https://x.com/XiangHupt/likes` are not valid inputs. The archiver expects concrete `/status/<tweet_id>` URLs.
+类似 `https://x.com/XiangHupt/likes` 的 profile URL 不是合法输入。归档器需要明确的 `/status/<tweet_id>` URL。
 
-Import and inspect the queue:
+导入并查看队列：
 
 ```bash
 docker-compose run --rm xarchiver import-urls /app/examples/tweet_urls.example.txt
 docker-compose run --rm xarchiver status
 ```
 
-Run the real download flow:
+运行真实下载流程：
 
 ```bash
 docker-compose run --rm xarchiver download --engine gallery-dl
@@ -57,32 +57,31 @@ docker-compose run --rm xarchiver verify --full
 docker-compose run --rm xarchiver export --format csv
 ```
 
-Output locations:
+输出位置：
 
 ```text
-archive/media/       downloaded media and metadata
-archive/exports/     CSV exports
-archive/state/       downloader state and runtime cookie copy
+archive/media/       已下载的媒体与元数据
+archive/exports/     CSV 导出
+archive/state/       下载器状态与运行时 cookie 副本
 ```
 
-Media files are stored under stable path segments:
+媒体文件按稳定的路径片段存储：
 
 ```text
 archive/media/<author_id>/<tweet_id>/<tweet_id>--p<media_index>.<ext>
 ```
 
-Usernames are kept in Postgres metadata for search and display, but are not used as the primary
-filesystem directory name.
+用户名保存在 Postgres 元数据中用于搜索与展示，但不作为文件系统目录名的主键。
 
-Recommended one-command workflow after exporting URLs from the browser extension:
+从浏览器扩展导出 URL 后，推荐的一条命令式工作流：
 
 ```bash
 docker-compose run --rm xarchiver archive-urls /app/examples/tweet_urls.example.txt
 ```
 
-This command parses the local file and submits a database-backed archive run. The API worker processes queued tweets while `xarchiver serve` is running, using scoped download, backfill, and verify operations. Run export commands separately when a database snapshot is needed.
+该命令会解析本地文件并提交一个基于数据库的归档 run。`xarchiver serve` 运行时，API worker 会处理队列中的 tweet，使用 scoped 下载、回填与校验操作。需要数据库快照时再单独运行导出命令。
 
-Queue JSONL input through the same service:
+也可通过同一服务提交 JSONL 输入：
 
 ```bash
 docker-compose run --rm xarchiver archive-jsonl /app/examples/tweets.example.jsonl
@@ -90,7 +89,7 @@ docker-compose run --rm xarchiver archive-jsonl /app/examples/tweets.example.jso
 
 ## Archive Queue
 
-Archive submissions are stored as runs and per-tweet task items in Postgres:
+归档提交在 Postgres 中存为 runs 与 per-tweet task items：
 
 ```text
 WebUI records / CLI file parser
@@ -99,84 +98,73 @@ WebUI records / CLI file parser
   -> scoped download / backfill / verify
 ```
 
-Run migrations before first use:
+首次使用前运行迁移：
 
 ```bash
 docker-compose run --rm xarchiver db migrate
 ```
 
-Database migrations are managed by Alembic under
-`cli/xarchiver/alembic/versions`. The current schema starts from a single
-baseline revision and can be downgraded with `xarchiver db downgrade`.
+数据库迁移由 Alembic 管理，位于 `cli/xarchiver/alembic/versions` 目录下。当前 schema 从单个基线版本起步，可使用 `xarchiver db downgrade` 进行降级。
 
-Backend data access intentionally stays layered rather than using a full ORM:
+后端数据访问刻意保持分层，不使用完整 ORM：
 
 ```text
-Alembic revisions                  -> schema changes and rollback
-SQLAlchemy Core query builders      -> default for queries and DML, including inserts, updates, deletes, and upserts
-Pydantic row models                 -> typed row validation at service boundaries
-Fixed SQL strings                   -> limited to migrations, advisory locks, hard-to-model Postgres features, or legacy migration work
+Alembic revisions                  -> 变更与回滚
+SQLAlchemy Core query builders      -> 查询与 DML（insert、update、delete、upsert）的默认选择
+Pydantic row models                 -> service 边界的类型化 row 校验
+Fixed SQL strings                   -> 仅限迁移、advisory lock、难以建模的 Postgres 特性或遗留迁移工作
 ```
 
-Shared Core table metadata lives in `cli/xarchiver/tables.py`, and compiled
-queries use `cli/xarchiver/sql_builder.py` so psycopg receives named parameters.
-New database reads and writes should use SQLAlchemy Core instead of hand-written
-SQL strings. If a new fixed SQL string is unavoidable, document the reason next
-to the call site.
+共享 Core 表元数据位于 `cli/xarchiver/tables.py`，编译后的查询使用 `cli/xarchiver/sql_builder.py`，确保 psycopg 接收命名参数。新增数据库读写应使用 SQLAlchemy Core，而非手写 SQL 字符串。若确实无法避免新增固定 SQL 字符串，需在调用处注明原因。
 
-Open the WebUI `Archive Queue` page to:
+打开 WebUI 的 `Archive Queue` 页面可：
 
 ```text
-1. Submit one or more tweet URLs.
-2. Select a local TXT or JSONL export for browser-side parsing and submission.
-3. Review runs and per-tweet task outcomes.
-4. Retry failed items as a new auditable run.
+1. 提交一个或多个 tweet URL。
+2. 选择本地 TXT 或 JSONL 导出文件，在浏览器侧解析并提交。
+3. 查看 runs 与逐条 tweet task 的结果。
+4. 将失败项作为新的可审计 run 进行重试。
 ```
 
-Queue behavior:
+队列行为：
 
 ```text
-1. Each submission creates an archive run and de-duplicates repeated tweet IDs inside that run.
-2. Already verified tweets are recorded as skipped_verified without disk I/O.
-3. Tweets already pending in another run are recorded as linked_pending without duplicate download.
-4. The API worker consumes pending/retryable task items only while the API service is running.
-5. Runs verify only newly affected media and report full-library totals from Postgres.
-6. CLI TXT/JSONL paths are input adapters only; no watched input directory is used.
+1. 每次提交都会创建一个 archive run，并在该 run 内去重重复的 tweet ID。
+2. 已 verified 的 tweets 会标记为 skipped_verified，不进行磁盘 I/O。
+3. 已在其他 run 中 pending 的 tweets 会标记为 linked_pending，不重复下载。
+4. 只有在 API 服务运行时，API worker 才会消费 pending/retryable 的 task items。
+5. run 的 verify 只校验本次新影响的媒体，并从 Postgres 汇报全库总数。
+6. CLI 的 TXT/JSONL 路径只是输入适配器；系统不使用"被监视的输入目录"。
 ```
 
-Full-disk maintenance is explicit:
+全盘维护为显式动作：
 
 ```bash
 docker-compose run --rm xarchiver backfill-media --full
 docker-compose run --rm xarchiver verify --full
 ```
 
-These maintenance commands traverse archived files and can generate significant disk I/O on large libraries. CSV export reads the database snapshot and does not perform a media-file hash scan.
+这些维护命令会遍历归档文件，对大库可能产生显著磁盘 I/O。CSV export 仅读取数据库快照，不会进行媒体文件 hash 扫描。
 
-## Local API and WebUI
+## 本地 API 与 WebUI
 
-The project includes a local FastAPI service and a React WebUI on top of the same Python archive core used by the CLI.
+项目在 CLI 使用的同一套 Python 归档内核之上，提供了本地 FastAPI 服务与 React WebUI。
 
-Start the API in Docker:
+在 Docker 中启动 API：
 
 ```bash
 docker-compose run --rm --service-ports xarchiver serve
 ```
 
-The compose file maps the API to the host loopback address:
+compose 文件会将 API 映射到宿主机回环地址：
 
 ```text
 http://127.0.0.1:18000
 ```
 
-VS Code can build the API image, start the API container, attach the Python debugger, and start the
-WebUI dev server from one debug entry. Open Run and Debug, select `Dev: API + WebUI`, and press F5.
-The API starts through `debugpy` on `127.0.0.1:5678` and serves requests immediately; breakpoints are
-hit after VS Code attaches. This debug entry intentionally does not enable uvicorn reload, so restart
-the debug session after Python code changes. The WebUI still runs locally through Vite, proxies API
-requests to `http://127.0.0.1:18000`, and can be opened manually at `http://127.0.0.1:5173`.
+VS Code 可通过一个调试入口构建 API 镜像、启动 API 容器、附加 Python 调试器并启动 WebUI 开发服务器。打开"运行和调试"，选择 `Dev: API + WebUI`，按 F5 启动。API 通过 `debugpy` 在 `127.0.0.1:5678` 上启动并立即响应请求；VS Code 附加后即可命中断点。该调试入口有意不启用 uvicorn reload，因此在 Python 代码变更后需重启调试会话。WebUI 仍通过 Vite 在本地运行，将 API 请求代理到 `http://127.0.0.1:18000`，可手动在 `http://127.0.0.1:5173` 打开。
 
-Available read-only API endpoints:
+可用的只读 API endpoints：
 
 ```text
 GET /health
@@ -195,8 +183,7 @@ GET /api/v1/settings/download-policy
 GET /api/v1/health/detail
 ```
 
-Available write API endpoints are serialized by a process-local lock. If one write action is already
-running, the API returns `409 write_action_in_progress`.
+可用的写 API endpoints 由进程内锁串行化。如果已有写动作正在运行，API 返回 `409 write_action_in_progress`。
 
 ```text
 POST /api/v1/actions/verify
@@ -220,7 +207,7 @@ POST /api/v1/maintenance/backfill
 POST /api/v1/maintenance/verify
 ```
 
-Run the WebUI:
+运行 WebUI：
 
 ```bash
 cd webui
@@ -228,15 +215,15 @@ npm install
 npm run dev
 ```
 
-Open:
+打开：
 
 ```text
 http://127.0.0.1:5173
 ```
 
-The WebUI uses React, TanStack Query, React Router, Tailwind, and local shadcn-style UI components under `webui/src/components/ui`.
+WebUI 使用 React、TanStack Query、React Router、Tailwind，以及位于 `webui/src/components/ui` 下的本地 shadcn 风格 UI 组件。
 
-Current pages:
+当前页面：
 
 ```text
 Dashboard
@@ -249,92 +236,73 @@ Archive Queue
 Sources
 ```
 
-Archive Queue accepts pasted URLs or local TXT/JSONL files parsed in the browser and submits structured database tasks. Operations can trigger requeue, recover-interrupted, and database snapshot export. Full backfill and full verify are isolated under Maintenance and require explicit disk-scan confirmation. The WebUI does not expose destructive file deletion.
+Archive Queue 支持粘贴 URL 或选择本地 TXT/JSONL 文件（浏览器侧解析后提交）来创建结构化的数据库任务。Operations 可触发 requeue、recover-interrupted 与数据库快照 export。完整 backfill 与完整 verify 被隔离在 Maintenance 下，并要求显式确认磁盘扫描。WebUI 不提供破坏性的文件删除能力。
 
-Sources records long-lived X/Twitter origins such as profile pages, media tabs, likes,
-bookmarks, search pages, or manual collections. A source can submit discovered tweet URLs into the
-same Archive Queue while preserving source-to-tweet traceability. The current implementation provides
-the recoverable source model, manual discovered-URL submission, and small-batch `gallery-dl` scanning
-for profile timelines and user media pages. Source scanning records discovered tweets only; it does
-not automatically submit them to the download queue. Use the explicit submit action when you are ready
-to download a controlled batch. Each controlled scan records its logical batch window,
-duplicate/new counts, and cursor diagnostics in `archive_sources.cursor_state`.
-Real validation on 2026-05-27 showed that numeric ranges are not an efficient continuation mechanism
-for deep media history. The source collector now persists the Twitter extractor's native continuation
-cursor and uses it for historical batches. Scanning records discoveries only and never submits downloads
-automatically. Every attempted source scan, plus
-each deferral caused by active downloads, is persisted in `source_scan_runs` with its range,
-cursor snapshots, counts, outcome, and error summary. The Sources detail page exposes the latest
-20 scan events and cumulative statistics so a stalled history scan can be diagnosed after restart
-without relying on container logs. Running scans write full `gallery-dl` logs under
-`archive/logs/source-scan-logs/` as JSONL operation log streams; the database stores the
-log stream id, relative path, level counters, latest progress, and other summary fields only.
-The WebUI source log box and `Operations -> Logs` read those log streams through the API.
+Sources 记录长期存在的 X/Twitter 来源，例如个人页、媒体页、likes、bookmarks、搜索页或手工集合。一个 source 可向同一 Archive Queue 提交发现的 tweet URL，同时保留 source-to-tweet 的可追溯关系。当前实现提供了可恢复的 source 模型、手动 discovered-URL 提交，以及用于 profile timeline 和用户媒体页的小批量 `gallery-dl` 扫描。source 扫描只记录 discovered tweets，不会自动提交到下载队列。准备下载受控批次时，需使用显式的 submit 动作。每次受控扫描会在 `archive_sources.cursor_state` 中记录其逻辑 batch window、重复/新增数量以及 cursor 诊断信息。
+2026-05-27 的真实验证表明，数值区间不是深层媒体历史的高效延续机制。source collector 现已持久化 Twitter extractor 的原生 continuation cursor，并将其用于历史批次。扫描只做发现记录，绝不自动提交下载。每次 source scan 尝试，以及因下载进行中导致的每次 defer，都会写入 `source_scan_runs`，包含其 range、cursor 快照、计数、结果与错误摘要。Sources 详情页展示最近 20 次扫描事件与累计统计，使得停滞的 history scan 可在重启后脱离容器日志进行诊断。运行中的扫描会将完整的 `gallery-dl` 日志以 JSONL 操作日志流形式写入 `archive/logs/source-scan-logs/`；数据库仅存储日志流 ID、相对路径、各级别计数器、最新进度等摘要字段。WebUI 的 source 日志面板和 `Operations -> Logs` 通过 API 读取这些日志流。
 
-See [`docs/source-scanning-workflow.md`](docs/source-scanning-workflow.md) for the button meanings and
-workflow, and [`docs/source-scanning-acceptance.md`](docs/source-scanning-acceptance.md) for the
-native-cursor blocker found during real source validation.
+按钮含义与操作流程见 [`docs/source-scanning-workflow.md`](docs/source-scanning-workflow.md)，真实验证中发现的原生 cursor 阻塞问题见 [`docs/source-scanning-acceptance.md`](docs/source-scanning-acceptance.md)。
 
-## Commands
+## 命令
 
-Dry-run a download job without calling the downloader:
+干跑（dry-run）下载任务，不调用下载器：
 
 ```bash
 docker-compose run --rm xarchiver download --engine gallery-dl --dry-run
 ```
 
-Rebuild `media_assets` from all existing files under `archive/media` (explicit full-disk maintenance):
+从 `archive/media` 下已有文件重建 `media_assets`（显式全盘维护）：
 
 ```bash
 docker-compose run --rm xarchiver backfill-media --full
 ```
 
-Verify file existence and hashes for the entire media library (explicit full-disk maintenance):
+校验整个媒体库的文件存在性与哈希（显式全盘维护）：
 
 ```bash
 docker-compose run --rm xarchiver verify --full
 ```
 
-Export verified media:
+导出已校验的媒体：
 
 ```bash
 docker-compose run --rm xarchiver export --format csv
 ```
 
-Export every media status:
+导出所有媒体状态：
 
 ```bash
 docker-compose run --rm xarchiver export --format csv --status all
 ```
 
-Export failures:
+导出失败项：
 
 ```bash
 docker-compose run --rm xarchiver export-failures
 ```
 
-Requeue retryable, missing, or corrupt tweets:
+重新入队可重试、缺失或损坏的 tweets：
 
 ```bash
 docker-compose run --rm xarchiver requeue
 docker-compose run --rm xarchiver requeue --status failed_retryable --status missing
 ```
 
-Recover interrupted runs that left jobs or tweets in running/downloading states:
+恢复因中断导致 job 或 tweet 留在 running/downloading 状态的 run：
 
 ```bash
 docker-compose run --rm xarchiver recover-interrupted
 docker-compose run --rm xarchiver recover-interrupted --timeout-minutes 30
 ```
 
-Export a static HTML gallery for verified media:
+导出已校验媒体的静态 HTML 图库：
 
 ```bash
 docker-compose run --rm xarchiver export-gallery
 docker-compose run --rm xarchiver export-gallery --status all
 ```
 
-Search archived media:
+搜索已归档媒体：
 
 ```bash
 docker-compose run --rm xarchiver search --author veritasium
@@ -342,24 +310,22 @@ docker-compose run --rm xarchiver search --text chaos --media-type video
 docker-compose run --rm xarchiver search --media-status all --limit 50
 ```
 
-Find duplicate media by sha256:
+按 sha256 查找重复媒体：
 
 ```bash
 docker-compose run --rm xarchiver duplicates
 docker-compose run --rm xarchiver export-duplicates
 ```
 
-Production deployment — including Supabase metadata storage, connection selection, migration
-checks, service operation, tuning, and backup/restore procedures — is documented in the unified
-[`docs/deploy/`](docs/deploy/README.md) handbook.
+生产部署的完整说明（包括 Supabase 元数据存储、连接选择、迁移检查、服务运行、调优以及备份/恢复流程）见统一手册 [`docs/deploy/`](docs/deploy/README.md)。
 
-If local port 5432 is already in use, override the development Postgres host port:
+如果本地端口 5432 已被占用，可覆盖开发 Postgres 的宿主机映射端口：
 
 ```bash
 POSTGRES_PORT=5434 docker-compose up -d postgres
 ```
 
-Retry behavior is controlled by environment variables:
+重试行为由环境变量控制：
 
 ```text
 RETRY_LIMIT=3
@@ -375,33 +341,30 @@ API_HOST=0.0.0.0
 API_PORT=18000
 ```
 
-`QUEUE_BATCH_SIZE` limits how many queued tweets the API worker claims in one pass. The downloader
-sleep settings are passed through to `gallery-dl` / `yt-dlp` so large batches do not hammer X/Twitter
-with back-to-back requests. `SOURCE_SCAN_BATCH_SIZE` and `SOURCE_SCAN_SLEEP_*` control historical
-source discovery separately from downloading.
+`QUEUE_BATCH_SIZE` 限制 API worker 每次领取多少条 queued tweet。下载器的 sleep 设置会透传到 `gallery-dl` / `yt-dlp`，避免大批量任务对 X/Twitter 发起紧密的连续请求。`SOURCE_SCAN_BATCH_SIZE` 与 `SOURCE_SCAN_SLEEP_*` 用于单独控制历史 source 发现（与下载分离）。
 
-## State Rules
+## 状态规则
 
-`verify` checks each `media_assets.local_path`:
+`verify` 会检查每个 `media_assets.local_path`：
 
 ```text
-file exists and sha256 matches     -> verified
-file missing                       -> missing
-file exists but sha256 mismatches  -> corrupt
+文件存在且 sha256 匹配     -> verified
+文件缺失                  -> missing
+文件存在但 sha256 不匹配   -> corrupt
 ```
 
-Tweet status is aggregated from child media assets:
+Tweet 状态由其子媒体资产聚合：
 
 ```text
-all verified        -> verified
-any corrupt         -> corrupt
-any missing         -> missing
-otherwise mixed     -> partial
+全部 verified        -> verified
+任意 corrupt         -> corrupt
+任意 missing         -> missing
+否则（混合）          -> partial
 ```
 
-## Tests
+## 测试
 
-Run the backend test suite inside Docker:
+在 Docker 中运行后端测试套件：
 
 ```bash
 bash scripts/lint_python.sh
@@ -409,9 +372,9 @@ docker-compose run --rm xarchiver db reset --yes
 docker-compose run --rm --entrypoint python xarchiver -m unittest discover -s /app/tests
 ```
 
-On Windows PowerShell, use `.\scripts\lint_python.ps1` for the lint step.
+在 Windows PowerShell 中，lint 步骤使用 `.\scripts\lint_python.ps1`。
 
-Run the full local validation set before a larger handoff:
+在较大交付前，运行完整的本地验证集：
 
 ```bash
 # Backend: reset disposable metadata DB and run all Python tests.
@@ -431,10 +394,9 @@ npm run check
 cd ..
 ```
 
-The backend reset clears Postgres metadata only; it does not delete media files under `archive/`.
-These checks do not perform real X/Twitter bulk scans or downloads.
+后端 reset 只会清空 Postgres 元数据，不会删除 `archive/` 下的媒体文件。这些检查不会对真实 X/Twitter 做批量扫描或下载。
 
-The suite covers:
+该套件覆盖：
 
 ```text
 tweet URL parsing
@@ -444,36 +406,33 @@ verify aggregation rules
 missing/corrupt/recovery integration flow
 ```
 
-The GitHub Actions CI pipeline runs the same backend suite on a freshly reset test database, plus
-`npm run check` in both `webui/` and `extension/`. See
-[`docs/engineering-ci-and-test-isolation.md`](docs/engineering-ci-and-test-isolation.md) for the
-test isolation contract.
+GitHub Actions CI 流水线会在重置后的测试数据库上运行同一套后端测试，并在 `webui/` 与 `extension/` 中执行 `npm run check`。测试隔离契约见 [`docs/engineering-ci-and-test-isolation.md`](docs/engineering-ci-and-test-isolation.md)。
 
-## Browser Extension
+## 浏览器扩展
 
-The extension is a WXT + React project with TypeScript and native Chrome extension i18n.
+扩展是一个 WXT + React 项目，使用 TypeScript 与原生 Chrome 扩展 i18n。
 
-Install dependencies:
+安装依赖：
 
 ```bash
 cd extension
 npm install
 ```
 
-Run the extension in WXT development mode:
+以 WXT 开发模式运行扩展：
 
 ```bash
 npm run dev
 ```
 
-Build a Chrome/Edge production bundle:
+构建 Chrome/Edge 生产 bundle：
 
 ```bash
 npm run build
 npm run zip
 ```
 
-Load the production build in Chrome or Edge:
+在 Chrome 或 Edge 中加载生产 build：
 
 ```text
 1. Open chrome://extensions
@@ -482,7 +441,7 @@ Load the production build in Chrome or Edge:
 4. Select extension/.output/chrome-mv3/
 ```
 
-Use it on an X/Twitter page such as likes, bookmarks, profile, search, or home:
+在 X/Twitter 页面（likes、bookmarks、profile、search 或 home）上使用：
 
 ```text
 1. Open the target page on x.com or twitter.com
@@ -493,29 +452,28 @@ Use it on an X/Twitter page such as likes, bookmarks, profile, search, or home:
 6. Export URLs or JSONL
 ```
 
-Exports:
+导出文件：
 
 ```text
-tweet_urls_<timestamp>.txt    one concrete /status/<tweet_id> URL per line
-tweets_<timestamp>.jsonl      richer records for xarchiver import
-scan_stats_<timestamp>.json   scan source, timing, counts, and auto-scroll outcome
+tweet_urls_<timestamp>.txt    每行一个明确的 /status/<tweet_id> URL
+tweets_<timestamp>.jsonl      更丰富的记录（供 xarchiver 导入）
+scan_stats_<timestamp>.json   扫描来源、耗时、计数与 auto-scroll 结果
 ```
 
-The popup also lets you set the maximum scroll rounds, consecutive empty rounds, and scan
-interval before starting a long auto-scroll scan.
+弹窗也允许你在启动长时间 auto-scroll 扫描前，设置最大滚动轮次、连续空轮次数以及扫描间隔。
 
-Popup UI strings live in:
+Popup UI 文案位于：
 
 ```text
 extension/public/_locales/en/messages.json
 extension/public/_locales/zh_CN/messages.json
 ```
 
-Import extension output into the CLI:
+将扩展导出内容导入 CLI：
 
 ```bash
 docker-compose run --rm xarchiver import-urls /app/examples/tweet_urls.example.txt
 docker-compose run --rm xarchiver import /app/examples/tweets.example.jsonl
 ```
 
-After exporting from the browser, place the downloaded file under `examples/` or another mounted directory before importing it in Docker.
+从浏览器导出文件后，请将其放到 `examples/` 或其他已挂载目录下，再在 Docker 中导入。
