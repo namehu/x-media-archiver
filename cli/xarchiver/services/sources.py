@@ -2165,10 +2165,9 @@ def get_source_downloads(source_id: int) -> dict[str, object]:
                        nullif(sum(i.total_bytes), 0)::bigint as total_bytes,
                        nullif(sum(i.speed_bps) filter (where i.status = 'processing'), 0)::bigint as speed_bps
                 from archive_run_items i
-                join archive_runs r on r.id = i.archive_run_id
-                where r.source_id = %s
+                where i.archive_run_id = %s
                 """,
-                (source_id,),
+                (int(active.id) if active else None,),
             )
             progress = dict(cur.fetchone())
     return {

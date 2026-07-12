@@ -502,21 +502,46 @@ def mark_run_items_progress(
     tweet_ids = [tweet["tweet_id"] for tweet in candidate_tweets]
     current_tweet_id = tweet_ids[0] if tweet_ids else None
     item_ids = [run_item_ids[tweet_id] for tweet_id in tweet_ids if run_item_ids and tweet_id in run_item_ids]
+    progress_item_id = item_ids[0] if item_ids else None
     with connect() as conn:
         with conn.cursor() as cur:
             if item_ids:
                 cur.execute(
                     """
                     update archive_run_items
-                    set downloaded_bytes = coalesce(%s, downloaded_bytes),
-                        total_bytes = coalesce(%s, total_bytes),
-                        speed_bps = coalesce(%s, speed_bps),
+                    set downloaded_bytes = case
+                          when %s::bigint is null then downloaded_bytes
+                          when id = %s then %s
+                          else 0
+                        end,
+                        total_bytes = case
+                          when %s::bigint is null then total_bytes
+                          when id = %s then %s
+                          else 0
+                        end,
+                        speed_bps = case
+                          when %s::bigint is null then speed_bps
+                          when id = %s then %s
+                          else 0
+                        end,
                         progress_message = %s,
                         last_progress_at = now(),
                         updated_at = now()
                     where id = any(%s)
                     """,
-                    (downloaded_bytes, total_bytes, speed_bps, message, item_ids),
+                    (
+                        downloaded_bytes,
+                        progress_item_id,
+                        downloaded_bytes,
+                        total_bytes,
+                        progress_item_id,
+                        total_bytes,
+                        speed_bps,
+                        progress_item_id,
+                        speed_bps,
+                        message,
+                        item_ids,
+                    ),
                 )
             cur.execute(
                 """
