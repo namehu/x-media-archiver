@@ -93,3 +93,19 @@ class SourceScanSessionRequest(BaseModel):
 class UpdateCookiesRequest(BaseModel):
     content: str
     label: str | None = None
+
+
+class AuthSetupRequest(BaseModel):
+    setup_token: str = Field(min_length=20, max_length=256)
+    username: str = Field(min_length=3, max_length=64, pattern=r"^[A-Za-z0-9._-]+$")
+    password: str = Field(min_length=12, max_length=128)
+
+
+class AuthLoginRequest(BaseModel):
+    username: str = Field(min_length=1, max_length=64)
+    password: str = Field(min_length=1, max_length=128)
+
+
+class AuthPasswordRequest(BaseModel):
+    current_password: str = Field(min_length=1, max_length=128)
+    new_password: str = Field(min_length=12, max_length=128)

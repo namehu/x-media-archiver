@@ -24,6 +24,9 @@ class Settings(BaseSettings):
     operation_log_max_bytes: int = Field(default=10 * 1024 * 1024, alias="OPERATION_LOG_MAX_BYTES")
     api_host: str = Field(default="127.0.0.1", alias="API_HOST")
     api_port: int = Field(default=18000, alias="API_PORT")
+    auth_mode: str = Field(default="password", alias="AUTH_MODE", pattern="^(password|disabled)$")
+    auth_cookie_secure: bool = Field(default=True, alias="AUTH_COOKIE_SECURE")
+    auth_session_ttl_hours: int = Field(default=168, alias="AUTH_SESSION_TTL_HOURS", ge=1, le=8760)
 
 
 @lru_cache

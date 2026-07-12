@@ -1,9 +1,40 @@
 from __future__ import annotations
 
-from sqlalchemy import BigInteger, Boolean, Column, DateTime, Integer, MetaData, SmallInteger, Table, Text
+from sqlalchemy import (
+    BigInteger,
+    Boolean,
+    Column,
+    DateTime,
+    ForeignKey,
+    Integer,
+    MetaData,
+    SmallInteger,
+    Table,
+    Text,
+)
 from sqlalchemy.dialects.postgresql import JSONB
 
 metadata = MetaData()
+
+auth_admin = Table(
+    "auth_admin",
+    metadata,
+    Column("id", SmallInteger, primary_key=True),
+    Column("username", Text, nullable=False),
+    Column("password_hash", Text, nullable=False),
+    Column("created_at", DateTime(timezone=True), nullable=False),
+    Column("updated_at", DateTime(timezone=True), nullable=False),
+)
+
+auth_sessions = Table(
+    "auth_sessions",
+    metadata,
+    Column("token_hash", Text, primary_key=True),
+    Column("admin_id", SmallInteger, ForeignKey("auth_admin.id", ondelete="CASCADE"), nullable=False),
+    Column("created_at", DateTime(timezone=True), nullable=False),
+    Column("last_seen_at", DateTime(timezone=True), nullable=False),
+    Column("expires_at", DateTime(timezone=True), nullable=False),
+)
 
 cookie_config = Table(
     "cookie_config",

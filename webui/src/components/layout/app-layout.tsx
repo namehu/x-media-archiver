@@ -10,6 +10,7 @@ import { Separator } from "../ui/separator";
 import { apiGet, type HealthDetail } from "../../lib/api";
 import { useTheme, type Theme } from "../../lib/theme";
 import { cn } from "../../lib/utils";
+import { AccountMenu } from "../auth/account-menu";
 
 const navGroups = [
   {
@@ -218,6 +219,7 @@ export function AppLayout() {
             >
               {themeIcons[theme]}
             </Button>
+            <AccountMenu />
           </div>
         </header>
         <main className="flex-1 overflow-auto bg-bg-surface p-6">

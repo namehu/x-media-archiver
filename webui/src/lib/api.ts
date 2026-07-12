@@ -376,6 +376,12 @@ export type CookieConfig = {
   updated_at?: string | null;
 };
 
+export type AuthSession = {
+  status: "uninitialized" | "anonymous" | "authenticated";
+  auth_mode: "password" | "disabled";
+  user?: { username: string } | null;
+};
+
 export type HealthDetail = {
   status: string;
   worker: {

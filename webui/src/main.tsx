@@ -2,11 +2,12 @@ import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
 import React, { Suspense, lazy } from "react";
 import ReactDOM from "react-dom/client";
 import { createBrowserRouter, RouterProvider } from "react-router-dom";
-import { AppLayout } from "./components/layout/AppLayout";
+import { AppLayout } from "./components/layout/app-layout";
 import { Skeleton } from "./components/ui/skeleton";
 import { Toaster } from "./components/ui/toaster";
 import { TooltipProvider } from "./components/ui/tooltip";
 import { applyTheme, getStoredTheme, ThemeProvider } from "./lib/theme";
+import { AuthGate } from "./lib/auth";
 import "./styles.css";
 
 const DashboardPage = lazy(() =>
@@ -78,7 +79,9 @@ ReactDOM.createRoot(document.getElementById("root")!).render(
     <ThemeProvider>
       <QueryClientProvider client={queryClient}>
         <TooltipProvider>
-          <RouterProvider router={router} />
+          <AuthGate>
+            <RouterProvider router={router} />
+          </AuthGate>
           <Toaster />
         </TooltipProvider>
       </QueryClientProvider>

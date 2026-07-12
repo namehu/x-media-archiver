@@ -15,12 +15,28 @@ from fastapi.staticfiles import StaticFiles
 from starlette.exceptions import HTTPException as StarletteHTTPException
 
 from xarchiver.api.deps import stop_worker
-from xarchiver.api.middleware import RequestIdMiddleware, configure_api_logging
-from xarchiver.api.v1 import actions, archive_runs, library, log_streams, maintenance, misc, settings, sources
+from xarchiver.api.middleware import (
+    LOCAL_DEV_ORIGINS,
+    AuthMiddleware,
+    RequestIdMiddleware,
+    configure_api_logging,
+)
+from xarchiver.api.v1 import (
+    actions,
+    archive_runs,
+    auth,
+    library,
+    log_streams,
+    maintenance,
+    misc,
+    settings,
+    sources,
+)
 from xarchiver.config import get_settings
 from xarchiver.core.errors import ArchiverError, error_response_payload
 from xarchiver.core.lock_manager import lock_manager
 from xarchiver.db import close_pool, open_pool
+from xarchiver.services.auth import initialize_setup_token
 from xarchiver.services.queue import count_expired_archive_item_leases, process_next_queued_run
 from xarchiver.services.sources import (
     process_next_source_history_scan,
@@ -34,6 +50,13 @@ logger = logging.getLogger(__name__)
 async def app_lifespan(_: FastAPI):
     stop_worker.clear()
     open_pool()
+    settings = get_settings()
+    if settings.auth_mode == "disabled":
+        logger.warning("Authentication is disabled; all Web/API routes are publicly accessible.")
+    else:
+        setup_token = initialize_setup_token(settings)
+        if setup_token:
+            logger.warning("Admin is not initialized. One-time setup token: %s", setup_token)
     worker_id = make_worker_id()
     expired_items = count_expired_archive_item_leases()
     expired_scans = recover_expired_source_scan_leases()
@@ -63,15 +86,13 @@ async def app_lifespan(_: FastAPI):
 def create_app() -> FastAPI:
     configure_api_logging()
     app = FastAPI(title="x-media-archiver local API", version="0.2.0", lifespan=app_lifespan)
+    app.add_middleware(AuthMiddleware)
     app.add_middleware(RequestIdMiddleware)
     app.add_middleware(
         CORSMiddleware,
-        allow_origins=[
-            "http://localhost:5173",
-            "http://127.0.0.1:5173",
-        ],
-        allow_credentials=False,
-        allow_methods=["GET", "POST", "DELETE"],
+        allow_origins=sorted(LOCAL_DEV_ORIGINS),
+        allow_credentials=True,
+        allow_methods=["GET", "POST", "PUT", "PATCH", "DELETE"],
         allow_headers=["*"],
     )
 
@@ -99,6 +120,7 @@ def create_app() -> FastAPI:
     def health() -> dict[str, str]:
         return {"status": "ok"}
 
+    app.include_router(auth.router, prefix="/api/v1")
     app.include_router(library.router, prefix="/api/v1")
     app.include_router(archive_runs.router, prefix="/api/v1")
     app.include_router(sources.router, prefix="/api/v1")

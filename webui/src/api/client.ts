@@ -44,6 +44,9 @@ export async function apiDelete<T>(path: string, options: ApiRequestOptions = {}
 export async function apiRequest<T>(path: string, options: ApiRequestOptions = {}): Promise<T> {
   const response = await fetch(apiUrl(path), buildRequestInit(options));
   if (!response.ok) {
+    if (response.status === 401 && !path.startsWith("/api/v1/auth/")) {
+      window.dispatchEvent(new Event("xma:unauthorized"));
+    }
     throw await buildApiError(response);
   }
   if (response.status === 204) {
@@ -54,7 +57,7 @@ export async function apiRequest<T>(path: string, options: ApiRequestOptions = {
 
 function buildRequestInit({ body, headers, ...options }: ApiRequestOptions): RequestInit {
   const requestHeaders = new Headers(headers);
-  const init: RequestInit = { ...options, headers: requestHeaders };
+  const init: RequestInit = { credentials: "include", ...options, headers: requestHeaders };
 
   if (body !== undefined) {
     const isFormData = body instanceof FormData;

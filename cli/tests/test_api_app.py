@@ -4,7 +4,9 @@ import logging
 import unittest
 from pathlib import Path
 
+from api_route_helpers import iter_app_routes
 from fastapi import HTTPException, Request
+from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import JSONResponse
 from starlette.exceptions import HTTPException as StarletteHTTPException
 
@@ -18,7 +20,7 @@ from xarchiver.api.deps import (
     resolve_archive_file,
     write_action_lock,
 )
-from xarchiver.api.middleware import JsonLogFormatter, RequestIdMiddleware
+from xarchiver.api.middleware import LOCAL_DEV_ORIGINS, JsonLogFormatter, RequestIdMiddleware
 from xarchiver.api.schemas import ArchiveSubmitRequest, VerifyRequest
 from xarchiver.core.errors import ArchiverError
 from xarchiver.core.events import EventBroker, format_sse_event
@@ -87,13 +89,22 @@ class ApiAppTests(unittest.TestCase):
 
     def test_app_registers_error_handlers_and_health(self) -> None:
         app = create_app()
-        get_paths = {route.path for route in app.routes if "GET" in getattr(route, "methods", set())}
+        get_paths = {
+            route.path for route in iter_app_routes(app) if "GET" in getattr(route, "methods", set())
+        }
 
         self.assertIn(ArchiverError, app.exception_handlers)
         self.assertIn("/health", get_paths)
 
+    def test_cors_is_limited_to_local_vite_origins(self) -> None:
+        app = create_app()
+        cors = next(middleware for middleware in app.user_middleware if middleware.cls is CORSMiddleware)
+
+        self.assertEqual(cors.kwargs["allow_origins"], sorted(LOCAL_DEV_ORIGINS))
+        self.assertTrue(cors.kwargs["allow_credentials"])
+
     def test_legacy_api_routes_are_removed(self) -> None:
-        paths = {route.path for route in create_app().routes}
+        paths = {route.path for route in iter_app_routes(create_app())}
 
         self.assertNotIn("/api/summary", paths)
         self.assertNotIn("/api/archive-runs", paths)

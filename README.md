@@ -162,6 +162,14 @@ compose 文件会将 API 映射到宿主机回环地址：
 http://127.0.0.1:18000
 ```
 
+Web/API 默认启用单管理员登录。首次启动时，从服务日志复制一次性设置令牌：
+
+```bash
+docker-compose logs xarchiver
+```
+
+打开 WebUI 后填写令牌、管理员用户名与不少于 12 个字符的密码。令牌仅保存在当前进程内，重启后会重新生成，初始化成功后立即失效。忘记密码时可在可信终端运行 `docker-compose run --rm xarchiver auth reset-password`；该命令会撤销全部浏览器会话。CLI 仍是拥有数据库权限的本地运维入口，不经过 Web 登录。
+
 VS Code 可通过一个调试入口构建 API 镜像、启动 API 容器、附加 Python 调试器并启动 WebUI 开发服务器。打开"运行和调试"，选择 `Dev: API + WebUI`，按 F5 启动。API 通过 `debugpy` 在 `127.0.0.1:5678` 上启动并立即响应请求；VS Code 附加后即可命中断点。该调试入口有意不启用 uvicorn reload，因此在 Python 代码变更后需重启调试会话。WebUI 仍通过 Vite 在本地运行，将 API 请求代理到 `http://127.0.0.1:18000`，可手动在 `http://127.0.0.1:5173` 打开。
 
 可用的只读 API endpoints：
@@ -339,7 +347,12 @@ SOURCE_SCAN_SLEEP_MAX_SECONDS=3
 STUCK_TIMEOUT_MINUTES=120
 API_HOST=0.0.0.0
 API_PORT=18000
+AUTH_MODE=password
+AUTH_COOKIE_SECURE=false
+AUTH_SESSION_TTL_HOURS=168
 ```
+
+生产环境只支持 WebUI 与 API 同源部署，必须经 HTTPS 反向代理访问并设置 `AUTH_COOKIE_SECURE=true`。只有明确保持本机隔离时才可设置 `AUTH_MODE=disabled`；禁用后所有 Web/API 路由均不再要求登录。
 
 `QUEUE_BATCH_SIZE` 限制 API worker 每次领取多少条 queued tweet。下载器的 sleep 设置会透传到 `gallery-dl` / `yt-dlp`，避免大批量任务对 X/Twitter 发起紧密的连续请求。`SOURCE_SCAN_BATCH_SIZE` 与 `SOURCE_SCAN_SLEEP_*` 用于单独控制历史 source 发现（与下载分离）。
 

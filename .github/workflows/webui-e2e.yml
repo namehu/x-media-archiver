@@ -66,8 +66,17 @@ jobs:
           cat /tmp/xarchiver-api.log
           exit 1
 
+      - name: Capture one-time setup token
+        run: |
+          token="$(grep -oE 'One-time setup token: [A-Za-z0-9_-]+' /tmp/xarchiver-api.log | tail -1 | awk '{print $4}')"
+          test -n "$token"
+          echo "::add-mask::$token"
+          echo "XMA_SETUP_TOKEN=$token" >> "$GITHUB_ENV"
+
       - name: Run WebUI smoke tests
         working-directory: webui
+        env:
+          XMA_SETUP_TOKEN: ${{ env.XMA_SETUP_TOKEN }}
         run: npm run e2e
 
       - name: Upload Playwright report

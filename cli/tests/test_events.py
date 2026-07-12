@@ -2,6 +2,7 @@ import asyncio
 import unittest
 from queue import Empty
 
+from api_route_helpers import iter_app_routes
 from starlette.requests import Request
 from starlette.responses import StreamingResponse
 
@@ -42,7 +43,11 @@ class EventBrokerTests(unittest.TestCase):
 
 class EventRouteTests(unittest.TestCase):
     def test_events_route_returns_text_event_stream(self) -> None:
-        route = next(route for route in create_app().routes if getattr(route, "path", None) == "/api/v1/events")
+        route = next(
+            route
+            for route in iter_app_routes(create_app())
+            if getattr(route, "path", None) == "/api/v1/events"
+        )
         request = Request(
             {
                 "type": "http",

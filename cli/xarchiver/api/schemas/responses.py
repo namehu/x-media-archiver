@@ -49,6 +49,16 @@ class CookieConfigResponse(FlexibleResponse):
     updated_at: datetime | None = None
 
 
+class AuthUserResponse(FlexibleResponse):
+    username: str
+
+
+class AuthSessionResponse(FlexibleResponse):
+    status: str
+    auth_mode: str
+    user: AuthUserResponse | None = None
+
+
 class WorkerHealthResponse(FlexibleResponse):
     stop_requested: bool
     write_lock_held: bool

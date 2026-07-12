@@ -11,18 +11,53 @@ const routes = [
 ];
 
 test.describe("WebUI smoke", () => {
-  test("renders core routes against the local API", async ({ page }) => {
+  test("renders core routes against the local API", async ({ browser, page }) => {
     const runtimeErrors: string[] = [];
     page.on("pageerror", (error) => runtimeErrors.push(error.message));
     page.on("console", (message) => {
       if (message.type() === "error") runtimeErrors.push(message.text());
     });
 
+    const setupToken = process.env.XMA_SETUP_TOKEN;
+    await page.goto("/");
+    if (await page.getByRole("heading", { name: "初始化管理员" }).isVisible()) {
+      expect(setupToken, "XMA_SETUP_TOKEN is required for a fresh auth database").toBeTruthy();
+      await page.getByLabel("一次性设置令牌").fill(setupToken!);
+      await page.getByLabel("用户名").fill("e2e-admin");
+      await page.getByLabel("密码", { exact: true }).fill("e2e-test-password-123");
+      await page.getByLabel("确认密码").fill("e2e-test-password-123");
+      await page.getByRole("button", { name: "创建管理员" }).click();
+      await expect(page.getByRole("link", { name: "仪表盘" })).toBeVisible();
+    }
+
     for (const route of routes) {
       await page.goto(route.path);
       await expect(page.getByRole("link", { name: route.label })).toBeVisible();
       await expect(page.getByText(route.text).first()).toBeVisible();
     }
+
+    await page.getByRole("button", { name: "e2e-admin" }).click();
+    await page.getByRole("menuitem", { name: "退出登录" }).click();
+    await expect(page.getByRole("heading", { name: "登录 x-media-archiver" })).toBeVisible();
+    await page.getByLabel("用户名").fill("e2e-admin");
+    await page.getByLabel("密码").fill("e2e-test-password-123");
+    await page.getByRole("button", { name: "登录" }).click();
+    await expect(page.getByRole("link", { name: "仪表盘" })).toBeVisible();
+
+    const oldSessionCookies = await page.context().cookies();
+    await page.getByRole("button", { name: "e2e-admin" }).click();
+    await page.getByRole("menuitem", { name: "修改密码" }).click();
+    await page.getByLabel("当前密码").fill("e2e-test-password-123");
+    await page.getByLabel("新密码").fill("e2e-updated-password-123");
+    await page.getByLabel("确认密码").fill("e2e-updated-password-123");
+    await page.getByRole("button", { name: "修改密码" }).click();
+    await expect(page.getByText("密码已修改")).toBeVisible();
+
+    const staleContext = await browser.newContext();
+    await staleContext.addCookies(oldSessionCookies);
+    const staleSession = await staleContext.request.get("http://127.0.0.1:18000/api/v1/auth/session");
+    expect(await staleSession.json()).toMatchObject({ status: "anonymous", user: null });
+    await staleContext.close();
 
     expect(runtimeErrors).toEqual([]);
   });

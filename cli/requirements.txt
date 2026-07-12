@@ -11,5 +11,6 @@ gallery-dl
 yt-dlp
 fastapi
 uvicorn[standard]
+pwdlib[argon2]
 debugpy
 ruff

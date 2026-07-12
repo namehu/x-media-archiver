@@ -2,6 +2,7 @@ import unittest
 from datetime import UTC, datetime
 from unittest.mock import patch
 
+from api_route_helpers import iter_app_routes
 from fastapi import HTTPException
 
 from xarchiver.api.app import create_app
@@ -9,8 +10,8 @@ from xarchiver.api.schemas import (
     ArchiveRunsPageResponse,
     ArchiveSourceDetailResponse,
     BackfillRequest,
-    SourceDiscoveryPageResponse,
     SourceCreateRequest,
+    SourceDiscoveryPageResponse,
     SourceScanRunsPageResponse,
     SourcesPageResponse,
     SourceStatusRequest,
@@ -27,17 +28,17 @@ class V1RouterSmokeTests(unittest.TestCase):
         self.app = create_app()
         self.get_paths = {
             route.path: route.endpoint
-            for route in self.app.routes
+            for route in iter_app_routes(self.app)
             if "GET" in getattr(route, "methods", set())
         }
         self.post_paths = {
             route.path: route.endpoint
-            for route in self.app.routes
+            for route in iter_app_routes(self.app)
             if "POST" in getattr(route, "methods", set())
         }
         self.delete_paths = {
             route.path: route.endpoint
-            for route in self.app.routes
+            for route in iter_app_routes(self.app)
             if "DELETE" in getattr(route, "methods", set())
         }
 
@@ -61,6 +62,7 @@ class V1RouterSmokeTests(unittest.TestCase):
             "/api/v1/settings/cookies",
             "/api/v1/health/detail",
             "/api/v1/media-file/{relative_path:path}",
+            "/api/v1/auth/session",
         ]
         for path in expected:
             self.assertIn(path, self.get_paths, f"GET {path} not registered")
@@ -87,6 +89,10 @@ class V1RouterSmokeTests(unittest.TestCase):
             "/api/v1/maintenance/backfill",
             "/api/v1/maintenance/verify",
             "/api/v1/settings/cookies",
+            "/api/v1/auth/setup",
+            "/api/v1/auth/login",
+            "/api/v1/auth/logout",
+            "/api/v1/auth/password",
         ]
         for path in expected:
             self.assertIn(path, self.post_paths, f"POST {path} not registered")
@@ -248,6 +254,7 @@ class V1RouterSmokeTests(unittest.TestCase):
         self.assertIn("/api/v1/actions/verify", paths)
         self.assertIn("/api/v1/health/detail", paths)
         self.assertIn("/api/v1/settings/cookies", paths)
+        self.assertIn("/api/v1/auth/session", paths)
 
     def test_v1_cookies_endpoints_do_not_return_content(self):
         with (

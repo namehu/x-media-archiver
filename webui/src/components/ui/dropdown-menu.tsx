@@ -3,6 +3,9 @@ import { cn } from "@/lib/utils";
 
 export const DropdownMenu = DropdownMenuPrimitive.Root;
 export const DropdownMenuTrigger = DropdownMenuPrimitive.Trigger;
+export const DropdownMenuGroup = DropdownMenuPrimitive.Group;
+export const DropdownMenuLabel = DropdownMenuPrimitive.Label;
+export const DropdownMenuSeparator = DropdownMenuPrimitive.Separator;
 
 export function DropdownMenuContent({ className, sideOffset = 6, ...props }: React.ComponentPropsWithoutRef<typeof DropdownMenuPrimitive.Content>) {
   return (

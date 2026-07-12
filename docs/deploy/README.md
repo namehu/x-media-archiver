@@ -89,13 +89,25 @@ docker compose --env-file .env.production -f docker-compose.prod.yml up -d
 docker compose --env-file .env.production -f docker-compose.prod.yml logs -f app
 ```
 
-容器入口（[`cli/docker-entrypoint.sh`](../../cli/docker-entrypoint.sh)）在启动 API 前会**自动执行 Alembic 数据库迁移**（幂等、按 `alembic_version` 记录版本，重复启动安全）。首次启动日志会出现 `Applied migration: ...` 或 `No pending migrations`。随后访问：
+容器入口（[`cli/docker-entrypoint.sh`](../../cli/docker-entrypoint.sh)）在启动 API 前会**自动执行 Alembic 数据库迁移**（幂等、按 `alembic_version` 记录版本，重复启动安全）。首次启动日志会出现 `Applied migration: ...` 或 `No pending migrations`。宿主机回环地址仅用于健康检查：
 
-```text
-http://127.0.0.1:18000
+```bash
+curl -fsS http://127.0.0.1:18000/health
 ```
 
-> 安全说明：API **没有内建鉴权**，这是单用户本地工具的有意设计。compose 默认把端口绑到宿主机回环 `127.0.0.1`。不要把该端口直接暴露公网；如需远程访问，请在前面放置带鉴权的反向代理或经 SSH/VPN 隧道。
+Web/API 默认启用单管理员鉴权。首次启动时，日志会输出 `One-time setup token`：
+
+```bash
+docker compose --env-file .env.production -f docker-compose.prod.yml logs app
+```
+
+先配置 HTTPS 反向代理，再通过最终同源地址（例如 `https://archive.example.com`）打开 WebUI，填写该令牌、管理员用户名和不少于 12 个字符的密码。生产默认 `AUTH_COOKIE_SECURE=true`，不要通过 `http://127.0.0.1:18000` 完成初始化，否则浏览器不会保存 Secure 会话 Cookie。令牌仅保存在当前进程中，容器重启会生成新令牌，初始化成功后立即失效。忘记密码时从可信终端运行以下命令，交互式输入新密码；所有浏览器会话会被撤销：
+
+```bash
+docker compose --env-file .env.production -f docker-compose.prod.yml run --rm app auth reset-password
+```
+
+compose 仍默认把端口绑定到 `127.0.0.1`。生产仅支持 WebUI 与 API 同源部署；公网访问必须经过 HTTPS 反向代理，保留原始 Host，并对 `/api/v1/auth/login` 增加代理层限流；不要直接发布容器端口。当前服务按单 Uvicorn 进程设计，不要自行增加多 worker，否则进程内 setup token 与登录限流状态无法共享。
 
 ### 2.4 升级版本
 
@@ -348,7 +360,12 @@ DATABASE_URL=...            # Postgres 连接串
 ARCHIVE_DIR=/app/archive    # 容器内归档根目录
 COOKIE_FILE=/app/secrets/cookies.txt # WebUI 未配置 cookies 时的兼容回退
 API_PORT=18000              # API 监听与发布端口；容器内 API_HOST 固定为 0.0.0.0
+AUTH_MODE=password          # 默认启用；仅可信本机部署可显式改为 disabled
+AUTH_COOKIE_SECURE=true     # 生产 HTTPS 必须为 true；本地 HTTP 开发设为 false
+AUTH_SESSION_TTL_HOURS=168  # 浏览器会话固定有效期
 ```
+
+`/health` 始终匿名供 Docker healthcheck 使用。其余 `/api/v1/*`、SSE、媒体文件与 API 文档均要求登录。生产不支持跨源 Cookie/CORS 部署；CLI 直接复用数据库 services，拥有容器执行权限的运维人员不受 Web 登录限制。
 
 ### 8.2 下载与重试
 
@@ -503,7 +520,9 @@ CI 会构建后端镜像、运行后端 ruff lint、在重置后的测试库上�
 - [ ] `.env.production` 未被提交；`POSTGRES_PASSWORD` 已改强密码且与 `DATABASE_URL` 一致，特殊字符已 URL 编码。
 - [ ] 外部库连接串使用 Direct 或 Session pooler，迁移/备份未走 Transaction pooler（端口 6543）。
 - [ ] 如启用 `verify-full`，根证书放在 `secrets/prod-supabase.cer` 且未提交。
-- [ ] API 端口未直接暴露公网；远程访问经过带鉴权的反向代理或隧道。
+- [ ] 已通过启动日志的一次性令牌初始化管理员，默认密码已安全保存。
+- [ ] 公网访问使用 HTTPS，`AUTH_COOKIE_SECURE=true`，反向代理保留 Host 并对登录接口限流。
+- [ ] API 端口未直接暴露公网；远程访问经过反向代理或隧道。
 - [ ] 数据库逻辑备份保存在仓库之外，本地 `archive/` 已单独备份。
 - [ ] 恢复演练在可丢弃库上完成，未指向唯一的媒体数据副本。
 - [ ] 发布镜像所需的 Docker Hub secrets（如使用）已在仓库配置。

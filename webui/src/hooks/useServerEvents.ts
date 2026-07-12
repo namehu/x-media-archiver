@@ -72,7 +72,9 @@ export function useServerEvents(topics: string[]): ServerEventsState {
     }
 
     let closed = false;
-    const eventSource = new EventSource(apiUrl(`/api/v1/events?topics=${encodeURIComponent(topicKey)}`));
+    const eventSource = new EventSource(apiUrl(`/api/v1/events?topics=${encodeURIComponent(topicKey)}`), {
+      withCredentials: true,
+    });
 
     const setStatus = (status: ServerEventsState["status"], lastEventAt?: number) => {
       lastStatusRef.current = status;

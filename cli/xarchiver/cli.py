@@ -38,10 +38,27 @@ from xarchiver.status import get_media_count, get_status_counts
 app = typer.Typer(help="Local-first X/Twitter media archiver.")
 db_app = typer.Typer(help="Database commands.")
 sources_app = typer.Typer(help="Source collector commands.")
+auth_app = typer.Typer(help="Authentication recovery commands.")
 app.add_typer(db_app, name="db")
 app.add_typer(sources_app, name="sources")
+app.add_typer(auth_app, name="auth")
 
 console = Console()
+
+
+@auth_app.command("reset-password")
+def auth_reset_password() -> None:
+    from xarchiver.services.auth import AuthError, reset_password
+
+    password = typer.prompt("New password", hide_input=True)
+    confirmation = typer.prompt("Confirm new password", hide_input=True)
+    if password != confirmation:
+        raise typer.BadParameter("Passwords do not match.")
+    try:
+        reset_password(password)
+    except AuthError as exc:
+        raise typer.BadParameter(str(exc)) from exc
+    console.print("Administrator password reset. All browser sessions were revoked.")
 
 
 @app.command()
@@ -418,6 +435,7 @@ def serve_command(
         host=host or settings.api_host,
         port=port or settings.api_port,
         reload=reload,
+        workers=1,
     )
 
 

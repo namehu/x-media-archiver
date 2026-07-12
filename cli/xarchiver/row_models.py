@@ -16,6 +16,19 @@ class RowModel(BaseModel):
         return getattr(self, key, default)
 
 
+class AuthAdminRow(RowModel):
+    id: int
+    username: str
+    password_hash: str
+
+
+class AuthSessionRow(RowModel):
+    id: int
+    username: str
+    last_seen_at: datetime
+    expires_at: datetime
+
+
 class SearchMediaRow(RowModel):
     tweet_id: str
     tweet_url: str

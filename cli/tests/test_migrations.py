@@ -29,6 +29,7 @@ class MigrationTests(unittest.TestCase):
                 "005_add_from_start_scan_trigger.py",
                 "006_source_download_controls.py",
                 "007_add_download_job_progress_message.py",
+                "008_single_admin_auth.py",
             ],
         )
         upgrade.assert_called_once()
@@ -40,7 +41,7 @@ class MigrationTests(unittest.TestCase):
 
         with (
             patch("xarchiver.migrations.get_settings", return_value=settings),
-            patch("xarchiver.migrations.current_alembic_revision", return_value="007_download_job_progress"),
+            patch("xarchiver.migrations.current_alembic_revision", return_value="008_single_admin_auth"),
             patch("xarchiver.migrations.command.upgrade") as upgrade,
         ):
             self.assertEqual(migrate(), [])
@@ -71,6 +72,7 @@ class MigrationTests(unittest.TestCase):
                 "005_add_from_start_scan_trigger.py",
                 "006_source_download_controls.py",
                 "007_add_download_job_progress_message.py",
+                "008_single_admin_auth.py",
             ],
         )
 
@@ -156,6 +158,20 @@ class MigrationTests(unittest.TestCase):
         sql = captured_sql[0]
         self.assertIn("alter table download_jobs", sql)
         self.assertIn("add column if not exists progress_message text", sql)
+
+    def test_single_admin_auth_revision_creates_admin_and_session_tables(self) -> None:
+        module = importlib.import_module("xarchiver.alembic.versions.008_single_admin_auth")
+
+        with (
+            patch.object(module.op, "create_table") as create_table,
+            patch.object(module.op, "create_index") as create_index,
+        ):
+            module.upgrade()
+
+        self.assertEqual([call.args[0] for call in create_table.call_args_list], ["auth_admin", "auth_sessions"])
+        create_index.assert_called_once_with(
+            "ix_auth_sessions_expires_at", "auth_sessions", ["expires_at"]
+        )
 
 
 if __name__ == "__main__":
