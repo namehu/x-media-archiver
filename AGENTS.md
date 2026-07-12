@@ -47,7 +47,7 @@ docker-compose run --rm xarchiver db migrate
 docker-compose run --rm --service-ports xarchiver serve
 ```
 
-API 默认地址为 `http://127.0.0.1:8000`。数据库和归档目录配置见 `.env.example` 与 `docker-compose.yml`。
+API 默认地址为 `http://127.0.0.1:18000`。数据库和归档目录配置见 `.env.example` 与 `docker-compose.yml`。
 
 ### WebUI
 

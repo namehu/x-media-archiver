@@ -407,7 +407,7 @@ def export_gallery_command(
 @app.command("serve")
 def serve_command(
     host: str | None = typer.Option(None, help="API host. Defaults to API_HOST or 127.0.0.1."),
-    port: int | None = typer.Option(None, help="API port. Defaults to API_PORT or 8000."),
+    port: int | None = typer.Option(None, help="API port. Defaults to API_PORT or 18000."),
     reload: bool = typer.Option(False, help="Enable uvicorn reload for local development."),
 ) -> None:
     import uvicorn

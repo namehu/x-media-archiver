@@ -23,7 +23,7 @@ class Settings(BaseSettings):
     source_scan_sleep_max_seconds: float = Field(default=3.0, alias="SOURCE_SCAN_SLEEP_MAX_SECONDS")
     operation_log_max_bytes: int = Field(default=10 * 1024 * 1024, alias="OPERATION_LOG_MAX_BYTES")
     api_host: str = Field(default="127.0.0.1", alias="API_HOST")
-    api_port: int = Field(default=8000, alias="API_PORT")
+    api_port: int = Field(default=18000, alias="API_PORT")
 
 
 @lru_cache

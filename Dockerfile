@@ -48,9 +48,9 @@ COPY --from=webui-builder /webui/dist /app/webui
 
 RUN chmod +x /app/docker-entrypoint.sh
 
-EXPOSE 8000
+EXPOSE 18000
 
 HEALTHCHECK --interval=30s --timeout=5s --start-period=20s --retries=3 \
-    CMD curl -fsS "http://127.0.0.1:8000/health" || exit 1
+    CMD curl -fsS "http://127.0.0.1:18000/health" || exit 1
 
 ENTRYPOINT ["/app/docker-entrypoint.sh"]
