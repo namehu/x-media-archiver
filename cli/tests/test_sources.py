@@ -5,7 +5,10 @@ from unittest.mock import patch
 from psycopg.types.json import Jsonb
 
 from xarchiver.db import connect
-from xarchiver.downloader import mark_run_items_progress
+from xarchiver.downloader import (
+    mark_run_items_progress,
+    mark_run_items_tweet_progress,
+)
 from xarchiver.services.sources import (
     build_active_scan_range,
     build_gallery_dl_scan_url,
@@ -15,12 +18,12 @@ from xarchiver.services.sources import (
     discover_records_with_gallery_dl,
     extract_gallery_dl_cursor,
     format_sleep_range,
+    get_source,
+    get_source_downloads,
     infer_author_username,
     is_media_scan_url,
     is_scan_session_complete,
     is_source_scan_complete,
-    get_source,
-    get_source_downloads,
     list_source_discovered_page,
     list_source_scan_runs_page,
     list_sources_page,
@@ -34,8 +37,8 @@ from xarchiver.services.sources import (
     scan_source,
     schedule_next_history_scan,
     source_scan_log_relative_path,
-    start_source_scan_session,
     start_source_scan_run,
+    start_source_scan_session,
     stop_source_scan_session,
     submit_source_downloads,
     update_session_progress_state,
@@ -836,6 +839,77 @@ class SourceDiscoveryIntegrationTests(unittest.TestCase):
         self.assertEqual(progress["downloaded_bytes"], 125)
         self.assertEqual(progress["total_bytes"], 500)
         self.assertEqual(progress["speed_bps"], 25)
+
+    def test_tweet_progress_updates_each_item_and_clears_stale_speeds(self) -> None:
+        source = create_source("user_media", self.source_urls[0])
+        record_source_discoveries(
+            int(source["id"]),
+            [
+                {
+                    "tweet_id": tweet_id,
+                    "url": f"https://x.com/sourcefixture/status/{tweet_id}",
+                    "author_username": "sourcefixture",
+                    "author_display_name": None,
+                    "text": None,
+                    "published_at": None,
+                    "collected_at": None,
+                    "raw_import": {"media_count": 1},
+                }
+                for tweet_id in self.tweet_ids
+            ],
+        )
+        submitted = submit_source_downloads(int(source["id"]), "all_unsubmitted")
+        with connect() as conn:
+            with conn.cursor() as cur:
+                cur.execute(
+                    "select id, tweet_id from archive_run_items where archive_run_id = %s order by id",
+                    (submitted["run_id"],),
+                )
+                item_ids = {str(row["tweet_id"]): int(row["id"]) for row in cur.fetchall()}
+                cur.execute(
+                    "insert into download_jobs (job_type, status, total_count, archive_run_id) values ('download', 'running', 2, %s) returning id",
+                    (submitted["run_id"],),
+                )
+                job_id = int(cur.fetchone()["id"])
+            conn.commit()
+        candidates = [{"tweet_id": tweet_id} for tweet_id in self.tweet_ids]
+
+        with patch("xarchiver.downloader.publish_event") as publish_event:
+            mark_run_items_tweet_progress(
+                job_id,
+                candidates,
+                item_ids,
+                "gallery-dl 下载中（估算）",
+                {
+                    self.tweet_ids[0]: {"downloaded_bytes": 100, "speed_bps": 10},
+                    self.tweet_ids[1]: {"downloaded_bytes": 250, "speed_bps": 25},
+                },
+                current_tweet_id=self.tweet_ids[1],
+            )
+            publish_event.assert_called_once()
+
+        mark_run_items_tweet_progress(
+            job_id,
+            candidates,
+            item_ids,
+            "yt-dlp 下载中",
+            {self.tweet_ids[0]: {"downloaded_bytes": 150, "total_bytes": 300, "speed_bps": 15}},
+            current_tweet_id=self.tweet_ids[0],
+        )
+
+        with connect() as conn:
+            with conn.cursor() as cur:
+                cur.execute(
+                    "select tweet_id, downloaded_bytes, total_bytes, speed_bps from archive_run_items where archive_run_id = %s order by tweet_id",
+                    (submitted["run_id"],),
+                )
+                rows = {str(row["tweet_id"]): row for row in cur.fetchall()}
+
+        self.assertEqual(rows[self.tweet_ids[0]]["downloaded_bytes"], 150)
+        self.assertEqual(rows[self.tweet_ids[0]]["total_bytes"], 300)
+        self.assertEqual(rows[self.tweet_ids[0]]["speed_bps"], 15)
+        self.assertEqual(rows[self.tweet_ids[1]]["downloaded_bytes"], 250)
+        self.assertEqual(rows[self.tweet_ids[1]]["speed_bps"], 0)
 
     def test_recover_expired_source_scan_lease_marks_run_failed(self) -> None:
         source = create_source("profile", self.source_urls[2])

@@ -32,7 +32,7 @@ logger = logging.getLogger(__name__)
 YTDLP_PROGRESS_PREFIX = "xarchiver-progress:"
 YTDLP_PROGRESS_RE = re.compile(
     rf"{re.escape(YTDLP_PROGRESS_PREFIX)}"
-    r"(?P<status>[^|]*)\|(?P<downloaded>[^|]*)\|(?P<total>[^|]*)\|(?P<estimate>[^|]*)\|(?P<speed>[^|]*)"
+    r"(?P<tweet_id>[^|]*)\|(?P<status>[^|]*)\|(?P<downloaded>[^|]*)\|(?P<total>[^|]*)\|(?P<estimate>[^|]*)\|(?P<speed>[^|]*)"
 )
 
 
@@ -405,7 +405,7 @@ def build_command(engine: str, settings: Settings, input_path: Path, cookie_path
         "--write-info-json",
         "--write-thumbnail",
         "--progress-template",
-        f"download:{YTDLP_PROGRESS_PREFIX}%(progress.status)s|%(progress.downloaded_bytes)s|%(progress.total_bytes)s|%(progress.total_bytes_estimate)s|%(progress.speed)s",
+        f"download:{YTDLP_PROGRESS_PREFIX}%(info.id)s|%(progress.status)s|%(progress.downloaded_bytes)s|%(progress.total_bytes)s|%(progress.total_bytes_estimate)s|%(progress.speed)s",
         "--download-archive",
         str(settings.archive_dir / "state" / "yt-dlp-downloaded.txt"),
         "-a",
@@ -603,6 +603,90 @@ def mark_run_items_finished(
         conn.commit()
 
 
+def mark_run_items_tweet_progress(
+    job_id: int,
+    candidate_tweets: list[dict[str, str]],
+    run_item_ids: dict[str, int] | None,
+    message: str,
+    progress_by_tweet: dict[str, dict[str, int]],
+    current_tweet_id: str | None = None,
+) -> None:
+    """Persist one progress sample per tweet and publish one event for the whole batch."""
+    if not candidate_tweets or not progress_by_tweet:
+        return
+    tweet_ids = [tweet["tweet_id"] for tweet in candidate_tweets]
+    item_ids = [run_item_ids[tweet_id] for tweet_id in tweet_ids if run_item_ids and tweet_id in run_item_ids]
+    rows = [
+        (
+            progress.get("downloaded_bytes"),
+            progress.get("total_bytes"),
+            progress.get("speed_bps"),
+            run_item_ids[tweet_id],
+        )
+        for tweet_id, progress in progress_by_tweet.items()
+        if run_item_ids and tweet_id in run_item_ids
+    ]
+    downloaded_bytes = sum(progress.get("downloaded_bytes", 0) for progress in progress_by_tweet.values())
+    total_values = [progress["total_bytes"] for progress in progress_by_tweet.values() if progress.get("total_bytes", 0) > 0]
+    total_bytes = sum(total_values) if total_values else None
+    speed_bps = sum(progress.get("speed_bps", 0) for progress in progress_by_tweet.values())
+    with connect() as conn:
+        with conn.cursor() as cur:
+            if item_ids:
+                cur.execute(
+                    """
+                    update archive_run_items
+                    set speed_bps = 0,
+                        progress_message = %s,
+                        last_progress_at = now(),
+                        updated_at = now()
+                    where id = any(%s)
+                    """,
+                    (message, item_ids),
+                )
+            if rows:
+                cur.executemany(
+                    """
+                    update archive_run_items
+                    set downloaded_bytes = coalesce(%s, downloaded_bytes),
+                        total_bytes = coalesce(%s, total_bytes),
+                        speed_bps = coalesce(%s, 0),
+                        progress_message = %s,
+                        last_progress_at = now(),
+                        updated_at = now()
+                    where id = %s
+                    """,
+                    [(downloaded, total, speed, message, item_id) for downloaded, total, speed, item_id in rows],
+                )
+            cur.execute(
+                """
+                update download_jobs
+                set current_tweet_id = %s,
+                    downloaded_bytes = %s,
+                    total_bytes = coalesce(%s, total_bytes),
+                    speed_bps = %s,
+                    progress_message = %s,
+                    last_progress_at = now()
+                where id = %s
+                """,
+                (current_tweet_id, downloaded_bytes, total_bytes, speed_bps, message, job_id),
+            )
+        conn.commit()
+    publish_event(
+        "archive_runs",
+        "archive.run.progress",
+        {
+            "job_id": job_id,
+            "tweet_ids": list(progress_by_tweet),
+            "current_tweet_id": current_tweet_id,
+            "progress_message": message,
+            "downloaded_bytes": downloaded_bytes,
+            "total_bytes": total_bytes,
+            "speed_bps": speed_bps,
+        },
+    )
+
+
 def fetch_media_sizes(tweet_ids: list[str]) -> dict[str, int]:
     if not tweet_ids:
         return {}
@@ -649,14 +733,20 @@ def run_command_with_progress(
             progress = parse_downloader_progress(chunk)
             if progress:
                 progress_seen = True
-                mark_run_items_progress(
+                tweet_id = str(progress["tweet_id"])
+                mark_run_items_tweet_progress(
                     job_id,
                     candidate_tweets,
                     run_item_ids,
                     f"{engine} 下载中",
-                    downloaded_bytes=progress["downloaded_bytes"],
-                    total_bytes=progress["total_bytes"],
-                    speed_bps=progress["speed_bps"],
+                    {
+                        tweet_id: {
+                            "downloaded_bytes": int(progress["downloaded_bytes"]),
+                            "total_bytes": int(progress["total_bytes"]),
+                            "speed_bps": int(progress["speed_bps"]),
+                        }
+                    },
+                    current_tweet_id=tweet_id,
                 )
 
     stdout_thread = Thread(target=read_stream, args=(process.stdout, stdout_chunks), daemon=True)
@@ -664,26 +754,37 @@ def run_command_with_progress(
     stdout_thread.start()
     stderr_thread.start()
 
-    previous_bytes = estimate_downloaded_bytes(settings.archive_dir, [tweet["tweet_id"] for tweet in candidate_tweets])
+    tweet_ids = [tweet["tweet_id"] for tweet in candidate_tweets]
+    previous_by_tweet = estimate_downloaded_bytes_by_tweet(settings.archive_dir, tweet_ids)
     previous_at = time.monotonic()
     while process.poll() is None:
         time.sleep(1)
         if engine == "yt-dlp" and progress_seen:
             continue
-        current_bytes = estimate_downloaded_bytes(settings.archive_dir, [tweet["tweet_id"] for tweet in candidate_tweets])
+        current_by_tweet = estimate_downloaded_bytes_by_tweet(settings.archive_dir, tweet_ids)
         current_at = time.monotonic()
         elapsed = max(current_at - previous_at, 0.001)
-        speed = max(0, int((current_bytes - previous_bytes) / elapsed))
-        if current_bytes or speed:
-            mark_run_items_progress(
+        progress_by_tweet = {
+            tweet_id: {
+                "downloaded_bytes": current_by_tweet[tweet_id],
+                "speed_bps": max(0, int((current_by_tweet[tweet_id] - previous_by_tweet[tweet_id]) / elapsed)),
+            }
+            for tweet_id in tweet_ids
+        }
+        if any(progress["downloaded_bytes"] or progress["speed_bps"] for progress in progress_by_tweet.values()):
+            current_tweet_id = next(
+                (tweet_id for tweet_id in tweet_ids if progress_by_tweet[tweet_id]["speed_bps"] > 0),
+                None,
+            )
+            mark_run_items_tweet_progress(
                 job_id,
                 candidate_tweets,
                 run_item_ids,
                 f"{engine} 下载中（估算）",
-                downloaded_bytes=current_bytes,
-                speed_bps=speed,
+                progress_by_tweet,
+                current_tweet_id=current_tweet_id,
             )
-        previous_bytes = current_bytes
+        previous_by_tweet = current_by_tweet
         previous_at = current_at
 
     return_code = process.wait()
@@ -692,7 +793,7 @@ def run_command_with_progress(
     return subprocess.CompletedProcess(command, return_code, "".join(stdout_chunks), "".join(stderr_chunks))
 
 
-def parse_downloader_progress(line: str) -> dict[str, int] | None:
+def parse_downloader_progress(line: str) -> dict[str, int | str] | None:
     match = YTDLP_PROGRESS_RE.search(line)
     if not match:
         return None
@@ -702,6 +803,7 @@ def parse_downloader_progress(line: str) -> dict[str, int] | None:
     if downloaded is None and total is None and speed is None:
         return None
     return {
+        "tweet_id": match.group("tweet_id").strip(),
         "downloaded_bytes": downloaded or 0,
         "total_bytes": total or 0,
         "speed_bps": speed or 0,
@@ -721,25 +823,29 @@ def parse_progress_number(value: str | None) -> int | None:
 
 
 def estimate_downloaded_bytes(archive_dir: Path, tweet_ids: list[str]) -> int:
+    return sum(estimate_downloaded_bytes_by_tweet(archive_dir, tweet_ids).values())
+
+
+def estimate_downloaded_bytes_by_tweet(archive_dir: Path, tweet_ids: list[str]) -> dict[str, int]:
+    sizes = {tweet_id: 0 for tweet_id in tweet_ids}
     if not tweet_ids:
-        return 0
+        return sizes
     media_dir = archive_dir / "media"
     if not media_dir.exists():
-        return 0
-    total = 0
+        return sizes
     tweet_tokens = set(tweet_ids)
     for path in media_dir.rglob("*"):
         if not path.is_file():
             continue
-        path_text = path.as_posix()
-        if not any(tweet_id in path_text for tweet_id in tweet_tokens):
+        tweet_id = next((part for part in path.parts if part in tweet_tokens), None)
+        if tweet_id is None:
             continue
         if path.suffix.lower() in {".json", ".part", ".ytdl"}:
             if path.suffix.lower() == ".part":
-                total += safe_file_size(path)
+                sizes[tweet_id] += safe_file_size(path)
             continue
-        total += safe_file_size(path)
-    return total
+        sizes[tweet_id] += safe_file_size(path)
+    return sizes
 
 
 def safe_file_size(path: Path) -> int:

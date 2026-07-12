@@ -9,6 +9,7 @@ from xarchiver.db import connect
 from xarchiver.downloader import (
     build_command,
     classify_error,
+    estimate_downloaded_bytes_by_tweet,
     fetch_download_candidates,
     format_sleep_range,
     parse_downloader_progress,
@@ -110,20 +111,37 @@ class DownloaderTests(unittest.TestCase):
         self.assertIn("--newline", command)
         self.assertIn("--no-color", command)
         self.assertIn("--progress-template", command)
-        self.assertTrue(any("xarchiver-progress:" in value for value in command))
+        template = next(value for value in command if "xarchiver-progress:" in value)
+        self.assertIn("%(info.id)s", template)
 
     def test_parse_downloader_progress_reads_yt_dlp_template_output(self) -> None:
-        progress = parse_downloader_progress("xarchiver-progress:downloading|2048|4096|8192|512")
+        progress = parse_downloader_progress("xarchiver-progress:123|downloading|2048|4096|8192|512")
 
         self.assertEqual(
             progress,
-            {"downloaded_bytes": 2048, "total_bytes": 4096, "speed_bps": 512},
+            {"tweet_id": "123", "downloaded_bytes": 2048, "total_bytes": 4096, "speed_bps": 512},
         )
 
     def test_parse_downloader_progress_uses_estimated_total(self) -> None:
-        progress = parse_downloader_progress("xarchiver-progress:downloading|2048|NA|8192|512")
+        progress = parse_downloader_progress("xarchiver-progress:123|downloading|2048|NA|8192|512")
 
         self.assertEqual(progress["total_bytes"], 8192)
+
+    def test_estimate_downloaded_bytes_groups_files_by_exact_tweet_directory(self) -> None:
+        with tempfile.TemporaryDirectory() as tmp:
+            archive_dir = Path(tmp)
+            first = archive_dir / "media" / "author" / "123"
+            second = archive_dir / "media" / "author" / "1234"
+            first.mkdir(parents=True)
+            second.mkdir(parents=True)
+            (first / "photo.jpg").write_bytes(b"123")
+            (first / "video.part").write_bytes(b"12345")
+            (first / "metadata.json").write_bytes(b"ignored")
+            (second / "video.mp4").write_bytes(b"1234567")
+
+            sizes = estimate_downloaded_bytes_by_tweet(archive_dir, ["123", "1234"])
+
+        self.assertEqual(sizes, {"123": 8, "1234": 7})
 
     def test_prepare_cookies_writes_file_fallback_to_runtime_path(self) -> None:
         with tempfile.TemporaryDirectory() as tmp:
