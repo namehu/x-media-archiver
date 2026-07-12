@@ -1,3 +1,5 @@
+# syntax=docker/dockerfile:1.7
+
 # Self-contained production image: builds the React WebUI and bakes it into the
 # Python CLI/API image so the server serves both from a single origin.
 #
@@ -11,7 +13,8 @@ WORKDIR /webui
 
 # Install dependencies first for better layer caching.
 COPY webui/package.json webui/package-lock.json ./
-RUN npm ci
+RUN --mount=type=cache,target=/root/.npm,sharing=locked \
+    npm ci
 
 # The generated API types are committed, so the build does not need the backend.
 COPY webui/ ./
@@ -22,31 +25,34 @@ FROM python:3.12-slim AS runtime
 
 ENV PYTHONDONTWRITEBYTECODE=1 \
     PYTHONUNBUFFERED=1 \
-    PIP_NO_CACHE_DIR=1 \
     API_HOST=0.0.0.0 \
     WEBUI_DIST=/app/webui
 
 WORKDIR /app
 
-RUN apt-get update && apt-get install -y --no-install-recommends \
+RUN --mount=type=cache,target=/var/cache/apt,sharing=locked \
+    --mount=type=cache,target=/var/lib/apt/lists,sharing=locked \
+    rm -f /etc/apt/apt.conf.d/docker-clean \
+    && apt-get update \
+    && apt-get install -y --no-install-recommends \
     ffmpeg \
     ca-certificates \
     curl \
-    git \
-    && rm -rf /var/lib/apt/lists/*
+    git
 
 # Python dependencies.
 COPY cli/requirements.txt /app/requirements.txt
-RUN pip install --upgrade pip \
-    && pip install -r /app/requirements.txt
+RUN --mount=type=cache,target=/root/.cache/pip,sharing=locked \
+    python -m pip install --upgrade pip \
+    && python -m pip install -r /app/requirements.txt
 
 # Backend source (xarchiver package, Alembic migrations, gallery-dl.conf, entrypoint).
-COPY cli/ /app/
+COPY --chmod=755 cli/docker-entrypoint.sh /app/docker-entrypoint.sh
+COPY cli/xarchiver/ /app/xarchiver/
+COPY cli/gallery-dl.conf /app/gallery-dl.conf
 
 # Built WebUI from stage 1.
 COPY --from=webui-builder /webui/dist /app/webui
-
-RUN chmod +x /app/docker-entrypoint.sh
 
 EXPOSE 18000
 
