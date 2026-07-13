@@ -47,10 +47,19 @@ from xarchiver.services.operation_logs import (
     parse_gallery_dl_log_level,
     redact_sensitive_text,
 )
-from xarchiver.services.queue import get_run_detail, list_runs, submit_archive_batch
-from xarchiver.services.queue import has_pending_download_work
+from xarchiver.services.queue import (
+    get_run_detail,
+    has_pending_download_work,
+    list_runs,
+    submit_archive_batch,
+)
 from xarchiver.sql_builder import compile_query
-from xarchiver.tables import archive_run_items, archive_runs, archive_sources, media_assets, source_discovered_tweets, source_scan_runs, tweets
+from xarchiver.tables import (
+    archive_sources,
+    source_discovered_tweets,
+    source_scan_runs,
+    tweets,
+)
 
 VALID_SOURCE_TYPES = {"profile", "user_media", "likes", "bookmarks", "search", "manual"}
 VALID_SOURCE_STATUSES = {"active", "paused", "completed", "failed"}
