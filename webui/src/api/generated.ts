@@ -1295,7 +1295,6 @@ export interface components {
             status: string;
             /** Auth Mode */
             auth_mode: string;
-            /** User */
             user?: components["schemas"]["AuthUserResponse"] | null;
         } & {
             [key: string]: unknown;
