@@ -11,6 +11,7 @@ from xarchiver.row_models import (
 
 
 def get_health_detail() -> dict[str, object]:
+    """健康检查主入口，聚合 worker 状态、数据库连接池、队列、来源及最近错误信息。"""
     with connect() as conn:
         with conn.cursor() as cur:
             return {
@@ -27,6 +28,9 @@ def get_health_detail() -> dict[str, object]:
 
 
 def get_queue_summary(cur) -> dict[str, object]:
+    """归档队列概览：各状态的条目数、各状态的运行数及最近一次运行记录。"""
+
+    # 按状态统计 archive_run_items 数量
     cur.execute(
         """
         select status, count(*)::int as count
@@ -39,6 +43,7 @@ def get_queue_summary(cur) -> dict[str, object]:
         for row in (StatusCountRow.model_validate(dict(row)) for row in cur.fetchall())
     }
 
+    # 按状态统计 archive_runs 数量
     cur.execute(
         """
         select status, count(*)::int as count
@@ -51,6 +56,7 @@ def get_queue_summary(cur) -> dict[str, object]:
         for row in (StatusCountRow.model_validate(dict(row)) for row in cur.fetchall())
     }
 
+    # 获取最近一次归档运行记录
     cur.execute(
         """
         select id, trigger_type, status, started_at, finished_at, error_message
@@ -78,6 +84,9 @@ def get_queue_summary(cur) -> dict[str, object]:
 
 
 def get_source_summary(cur) -> dict[str, object]:
+    """归档来源概览：各状态的来源数、开启历史记录来源数、活跃扫描数及最近一次扫描记录。"""
+
+    # 按状态统计 archive_sources 数量
     cur.execute(
         """
         select status, count(*)::int as count
@@ -90,6 +99,7 @@ def get_source_summary(cur) -> dict[str, object]:
         for row in (StatusCountRow.model_validate(dict(row)) for row in cur.fetchall())
     }
 
+    # 统计已开启自动化且处于活跃状态的来源数（排除 stopped / paused / completed）
     cur.execute(
         """
         select count(*)::int as count
@@ -100,6 +110,7 @@ def get_source_summary(cur) -> dict[str, object]:
     )
     history_enabled = int(cur.fetchone()["count"])
 
+    # 统计当前进行中的扫描运行数
     cur.execute(
         """
         select count(*)::int as count
@@ -109,6 +120,7 @@ def get_source_summary(cur) -> dict[str, object]:
     )
     active_scan_runs = int(cur.fetchone()["count"])
 
+    # 获取最近一次扫描运行记录
     cur.execute(
         """
         select id, source_id, trigger_type, status, requested_limit, error_category,
@@ -136,6 +148,8 @@ def get_source_summary(cur) -> dict[str, object]:
 
 
 def get_recent_errors(cur, limit: int = 5) -> list[dict[str, object]]:
+    """获取最近错误记录，合并 archive_run_items 和 source_scan_runs 两表的错误数据。"""
+    # 使用 union all 合并两类错误来源，按发生时间倒序取最近若干条
     cur.execute(
         """
         select 'archive_item' as kind,
