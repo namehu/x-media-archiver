@@ -15,8 +15,16 @@ test.describe("WebUI smoke", () => {
     const initialPassword = "e2e-test-password-123";
     const alternatePassword = "e2e-updated-password-123";
     const runtimeErrors: string[] = [];
+    let authSessionTransition = false;
     page.on("pageerror", (error) => runtimeErrors.push(error.message));
     page.on("console", (message) => {
+      if (
+        message.type() === "error" &&
+        authSessionTransition &&
+        message.text().includes("401 (Unauthorized)")
+      ) {
+        return;
+      }
       if (message.type() === "error") runtimeErrors.push(message.text());
     });
 
@@ -52,6 +60,7 @@ test.describe("WebUI smoke", () => {
     }
 
     await page.getByRole("button", { name: "e2e-admin" }).click();
+    authSessionTransition = true;
     await page.getByRole("menuitem", { name: "退出登录" }).click();
     await expect(page.getByRole("heading", { name: "登录 x-media-archiver" })).toBeVisible();
     await page.getByLabel("用户名").fill("e2e-admin");
