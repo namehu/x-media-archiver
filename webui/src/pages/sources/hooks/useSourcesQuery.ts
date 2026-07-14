@@ -11,7 +11,6 @@ export function useSourcesQuery(statusFilter: string, typeFilter: string, offset
       apiGet<SourcePageResponse>(
         `/api/v1/sources?${sourceQueryString(statusFilter, typeFilter, SOURCES_PAGE_SIZE, offset)}`,
       ),
-    refetchInterval: 15000,
   });
 }
 

@@ -7,8 +7,8 @@ import { Checkbox } from "@/components/ui/checkbox";
 import { Pagination } from "@/components/ui/pagination";
 import { Progress } from "@/components/ui/progress";
 import { formatDateTime } from "@/lib/utils";
-import { formatDiscoveredMedia } from "../utils";
 import type { DetailActions } from "./source-detail-sheet/scan-actions";
+import { ChevronDown, ChevronUp, FileQuestion, Film, Image, Images } from "lucide-react";
 
 const PAGE_SIZE = 50;
 
@@ -34,14 +34,22 @@ export function SourceTweetsTab({
   const tweets = data?.rows ?? [];
   const [selected, setSelected] = React.useState<Set<string>>(new Set());
   const selectedIds = Array.from(selected);
-  const selectableIds = tweets.filter((tweet) => canQueue(tweet) || canCancel(tweet.active_item_status)).map((tweet) => tweet.tweet_id);
-  const selectedQueueIds = tweets.filter((tweet) => selected.has(tweet.tweet_id) && canQueue(tweet)).map((tweet) => tweet.tweet_id);
+  const selectableIds = tweets
+    .filter((tweet) => canQueue(tweet) || canCancel(tweet.active_item_status))
+    .map((tweet) => tweet.tweet_id);
+  const selectedQueueIds = tweets
+    .filter((tweet) => selected.has(tweet.tweet_id) && canQueue(tweet))
+    .map((tweet) => tweet.tweet_id);
   const selectedActiveIds = tweets
     .filter((tweet) => selected.has(tweet.tweet_id) && tweet.active_run_id && canCancel(tweet.active_item_status))
     .map((tweet) => tweet.tweet_id);
-  const selectedActiveRunIds = Array.from(new Set(tweets
-    .filter((tweet) => selected.has(tweet.tweet_id) && tweet.active_run_id && canCancel(tweet.active_item_status))
-    .map((tweet) => Number(tweet.active_run_id))));
+  const selectedActiveRunIds = Array.from(
+    new Set(
+      tweets
+        .filter((tweet) => selected.has(tweet.tweet_id) && tweet.active_run_id && canCancel(tweet.active_item_status))
+        .map((tweet) => Number(tweet.active_run_id)),
+    ),
+  );
 
   React.useEffect(() => {
     setSelected(new Set());
@@ -105,66 +113,21 @@ export function SourceTweetsTab({
         style={{ height: "100%" }}
         data={tweets}
         itemContent={(_, tweet) => (
-          <div className="pb-2">
-            <div className="rounded-lg border border-border-subtle bg-bg-surface p-3 text-sm">
-              <div className="flex items-start justify-between gap-3">
-                <div className="flex min-w-0 flex-1 gap-3">
-                  <Checkbox
-                    className="mt-1"
-                    checked={selected.has(tweet.tweet_id)}
-                    disabled={!canQueue(tweet) && !canCancel(tweet.active_item_status)}
-                    onCheckedChange={(checked) => {
-                      setSelected((current) => {
-                        const next = new Set(current);
-                        if (checked) next.add(tweet.tweet_id);
-                        else next.delete(tweet.tweet_id);
-                        return next;
-                      });
-                    }}
-                  />
-                <div className="min-w-0 flex-1 space-y-2">
-                  <div className="whitespace-pre-wrap break-words text-sm leading-6 text-fg-primary">
-                    {tweet.text || "暂无 Tweet 文本"}
-                  </div>
-                  <div className="flex flex-wrap gap-2 text-xs text-fg-secondary">
-                    {formatDiscoveredMedia(tweet.raw_payload)}
-                  </div>
-                  <div className="flex flex-wrap gap-x-2 gap-y-1 text-xs text-fg-secondary">
-                    <span>{tweet.tweet_id}</span>
-                    <span>{formatDateTime(tweet.discovered_at)}</span>
-                    <span>{tweet.active_run_id ? `下载 Run #${tweet.active_run_id}` : tweet.archive_run_id ? `历史 Run #${tweet.archive_run_id}` : "未入队"}</span>
-                  </div>
-                  <TweetDownloadProgress tweet={tweet} statusLabel={statusLabel} />
-                </div>
-                </div>
-                <div className="flex shrink-0 flex-col items-end gap-2 whitespace-nowrap text-center">
-                  <Badge>{statusLabel(tweet.download_status)}</Badge>
-                  {tweet.active_item_status ? <Badge tone="secondary">{statusLabel(tweet.active_item_status)}</Badge> : null}
-                  {canQueue(tweet) ? (
-                    <Button
-                      type="button"
-                      size="sm"
-                      variant="secondary"
-                      disabled={actions.pending.download}
-                      onClick={() => actions.submitDownload({ sourceId, scope: "selected", tweetIds: [tweet.tweet_id] })}
-                    >
-                      下载
-                    </Button>
-                  ) : canCancel(tweet.active_item_status) && tweet.active_run_id ? (
-                    <Button
-                      type="button"
-                      size="sm"
-                      variant="outline"
-                      disabled={actions.pending.download}
-                      onClick={() => actions.cancelDownloadItems({ runId: tweet.active_run_id as number, tweetIds: [tweet.tweet_id] })}
-                    >
-                      取消
-                    </Button>
-                  ) : null}
-                </div>
-              </div>
-            </div>
-          </div>
+          <TweetListItem
+            tweet={tweet}
+            sourceId={sourceId}
+            selected={selected.has(tweet.tweet_id)}
+            onSelectionChange={(checked) => {
+              setSelected((current) => {
+                const next = new Set(current);
+                if (checked) next.add(tweet.tweet_id);
+                else next.delete(tweet.tweet_id);
+                return next;
+              });
+            }}
+            actions={actions}
+            statusLabel={statusLabel}
+          />
         )}
       />
     </div>
@@ -198,23 +161,33 @@ function TweetDownloadProgress({
   const message = tweet.progress_message || defaultProgressMessage(tweet);
 
   return (
-    <div className="rounded-md border border-border-subtle bg-bg-muted/60 p-2">
-      <div className="mb-2 flex flex-wrap items-center justify-between gap-2">
+    <div className="flex flex-col gap-1.5 pt-1">
+      <div className="flex flex-wrap items-center justify-between gap-2 text-xs">
         <div className="flex min-w-0 flex-wrap items-center gap-2">
           <Badge tone={progressTone(activeStatus || tweet.download_status)}>
             {activeStatus ? statusLabel(activeStatus) : statusLabel(tweet.download_status)}
           </Badge>
           {tweet.cancel_requested ? <Badge tone="warning">取消请求中</Badge> : null}
-          <span className="min-w-0 break-words text-xs text-fg-secondary">{message}</span>
+          <span className="min-w-0 break-words text-fg-secondary">{message}</span>
         </div>
-        <span className="text-xs tabular-nums text-fg-secondary">{percent == null ? "估算中" : `${percent}%`}</span>
+        {(total > 0 || downloaded > 0 || isActive || percent !== null) && (
+          <div className="flex items-center gap-3 text-fg-secondary tabular-nums">
+            {downloaded > 0 || total > 0 ? (
+              <span>
+                {formatBytes(downloaded)} {total > 0 ? `/ ${formatBytes(total)}` : ""}
+              </span>
+            ) : null}
+            {Boolean(tweet.speed_bps) && <span>{formatBytes(tweet.speed_bps)}/s</span>}
+            <span>{percent == null ? "估算中" : `${percent}%`}</span>
+          </div>
+        )}
       </div>
-      <Progress value={percent ?? (isActive ? 8 : 0)} className={isActive && percent == null ? "opacity-70" : ""} />
-      <div className="mt-2 grid gap-x-3 gap-y-1 text-xs text-fg-secondary sm:grid-cols-3">
-        <span>已下载: {formatBytes(downloaded)}</span>
-        <span>总大小: {total > 0 ? formatBytes(total) : "未知"}</span>
-        <span>速度: {formatBytes(tweet.speed_bps)}/s</span>
-      </div>
+      {(isActive || percent !== null) && (
+        <Progress
+          value={percent ?? (isActive ? 8 : 0)}
+          className={`h-1.5 ${isActive && percent == null ? "opacity-70" : ""}`}
+        />
+      )}
     </div>
   );
 }
@@ -263,4 +236,173 @@ function formatBytes(value?: number | null) {
     index += 1;
   }
   return `${size.toFixed(index === 0 ? 0 : 1)} ${units[index]}`;
+}
+
+function TweetMediaInfo({ payload }: { payload: any }) {
+  const count = Number(payload?.media_count || 0);
+  const types = new Set(payload?.media_types || []);
+
+  if (!count) {
+    return (
+      <span className="flex items-center gap-1">
+        <FileQuestion className="h-3.5 w-3.5" />
+        未知媒体
+      </span>
+    );
+  }
+
+  if (types.has("photo") && types.has("video")) {
+    return (
+      <span className="flex items-center gap-1 text-blue-500">
+        <Images className="h-3.5 w-3.5" />
+        图片/视频 {count}
+      </span>
+    );
+  }
+  if (types.has("video")) {
+    return (
+      <span className="flex items-center gap-1 text-purple-500">
+        <Film className="h-3.5 w-3.5" />
+        视频 {count}
+      </span>
+    );
+  }
+  if (types.has("photo")) {
+    return (
+      <span className="flex items-center gap-1 text-emerald-500">
+        <Image className="h-3.5 w-3.5" />
+        图片 {count}
+      </span>
+    );
+  }
+  return (
+    <span className="flex items-center gap-1">
+      <Images className="h-3.5 w-3.5" />
+      媒体 {count}
+    </span>
+  );
+}
+
+function TweetText({ text }: { text?: string | null }) {
+  const [expanded, setExpanded] = React.useState(false);
+
+  if (!text) {
+    return <div className="text-sm leading-6 text-fg-secondary italic">暂无 Tweet 文本</div>;
+  }
+
+  const isLong = text.length > 100 || (text.match(/\n/g) || []).length > 1;
+
+  return (
+    <div className="space-y-1">
+      <div
+        className={`break-words text-sm leading-6 text-fg-primary ${expanded ? "whitespace-pre-wrap" : "line-clamp-2"}`}
+      >
+        {text}
+      </div>
+      {isLong && (
+        <button
+          type="button"
+          onClick={() => setExpanded(!expanded)}
+          className="flex items-center gap-0.5 text-xs text-brand hover:underline"
+        >
+          {expanded ? (
+            <>
+              收起 <ChevronUp className="h-3 w-3" />
+            </>
+          ) : (
+            <>
+              展开 <ChevronDown className="h-3 w-3" />
+            </>
+          )}
+        </button>
+      )}
+    </div>
+  );
+}
+
+function TweetListItem({
+  tweet,
+  sourceId,
+  selected,
+  onSelectionChange,
+  actions,
+  statusLabel,
+}: {
+  tweet: TweetRow;
+  sourceId: number;
+  selected: boolean;
+  onSelectionChange: (checked: boolean) => void;
+  actions: DetailActions;
+  statusLabel: (status?: string | null) => string;
+}) {
+  return (
+    <div className="pb-2">
+      <div className="rounded-lg border border-border-subtle bg-bg-surface p-3 transition-colors hover:border-border-strong">
+        <div className="flex items-start justify-between gap-3">
+          <div className="flex min-w-0 flex-1 gap-3">
+            <Checkbox
+              className="mt-1"
+              checked={selected}
+              disabled={!canQueue(tweet) && !canCancel(tweet.active_item_status)}
+              onCheckedChange={onSelectionChange}
+            />
+            <div className="min-w-0 flex-1 space-y-3">
+              <TweetText text={tweet.text} />
+              <div className="flex flex-wrap items-center gap-x-3 gap-y-2 text-xs text-fg-secondary">
+                <TweetMediaInfo payload={tweet.raw_payload} />
+                <span className="h-3 w-px bg-border-strong" />
+                <span className="font-mono">{tweet.tweet_id}</span>
+                <span className="h-3 w-px bg-border-strong" />
+                <span>{formatDateTime(tweet.discovered_at)}</span>
+                <span className="h-3 w-px bg-border-strong" />
+                <span className="flex items-center gap-1">
+                  {tweet.active_run_id ? (
+                    <>
+                      <span className="relative flex h-2 w-2">
+                        <span className="absolute inline-flex h-full w-full animate-ping rounded-full bg-brand opacity-75"></span>
+                        <span className="relative inline-flex h-2 w-2 rounded-full bg-brand"></span>
+                      </span>
+                      下载 Run #{tweet.active_run_id}
+                    </>
+                  ) : tweet.archive_run_id ? (
+                    `历史 Run #${tweet.archive_run_id}`
+                  ) : (
+                    "未入队"
+                  )}
+                </span>
+              </div>
+              <TweetDownloadProgress tweet={tweet} statusLabel={statusLabel} />
+            </div>
+          </div>
+          <div className="flex shrink-0 flex-col items-end gap-2 whitespace-nowrap text-center">
+            <Badge>{statusLabel(tweet.download_status)}</Badge>
+            {tweet.active_item_status ? <Badge tone="secondary">{statusLabel(tweet.active_item_status)}</Badge> : null}
+            {canQueue(tweet) ? (
+              <Button
+                type="button"
+                size="sm"
+                variant="secondary"
+                disabled={actions.pending.download}
+                onClick={() => actions.submitDownload({ sourceId, scope: "selected", tweetIds: [tweet.tweet_id] })}
+              >
+                下载
+              </Button>
+            ) : canCancel(tweet.active_item_status) && tweet.active_run_id ? (
+              <Button
+                type="button"
+                size="sm"
+                variant="outline"
+                disabled={actions.pending.download}
+                onClick={() =>
+                  actions.cancelDownloadItems({ runId: tweet.active_run_id as number, tweetIds: [tweet.tweet_id] })
+                }
+              >
+                取消
+              </Button>
+            ) : null}
+          </div>
+        </div>
+      </div>
+    </div>
+  );
 }
