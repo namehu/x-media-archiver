@@ -135,6 +135,17 @@ textarea {
   animation: sheet-out-to-left var(--dur-slow) var(--ease-out) forwards;
 }
 
+.tweet-video-player .art-video-player {
+  background-color: transparent;
+  --art-bottom-height: 72px;
+  --art-bottom-offset: 8px;
+  --art-control-height: 40px;
+}
+
+.tweet-video-player .art-video-player .art-bottom {
+  background-image: linear-gradient(to top, rgba(0, 0, 0, 0.56), rgba(0, 0, 0, 0.18), transparent);
+}
+
 @media (prefers-reduced-motion: reduce) {
   *,
   *::before,

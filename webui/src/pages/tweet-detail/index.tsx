@@ -1,20 +1,21 @@
-import { useEffect, useMemo, useState } from "react";
+import { useMemo, useState } from "react";
 import { useQuery } from "@tanstack/react-query";
 import { CalendarDays, ExternalLink, FileText, Image as ImageIcon, Images, Loader2, RotateCcw } from "lucide-react";
 import { useParams } from "react-router-dom";
 import { apiGet, type MediaRow, type TweetDetail } from "../../lib/api";
 import { errorLabel, mediaTypeLabel, statusLabel } from "../../lib/formatters";
-import { formatBytes, formatDateTime } from "../../lib/utils";
+import { formatDateTime } from "../../lib/utils";
 import { Badge } from "../../components/ui/badge";
 import { Button } from "../../components/ui/button";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "../../components/ui/card";
-import { Dialog, DialogContent, DialogDescription, DialogHeader, DialogTitle } from "../../components/ui/dialog";
 import { EmptyState } from "../../components/ui/empty-state";
 import { ErrorState } from "../../components/ui/error-state";
 import { MediaThumbnail } from "../../components/ui/media-thumbnail";
 import { Skeleton } from "../../components/ui/skeleton";
 import { StatusDot } from "../../components/ui/status-dot";
-import { Tooltip, TooltipContent, TooltipTrigger } from "../../components/ui/tooltip";
+import { ImagePreviewDialog } from "./components/image-preview-dialog";
+import { MediaDetails } from "./components/media-details";
+import { VideoMediaPlayer } from "./components/video-media-player";
 
 type Attempt = TweetDetail["attempts"][number];
 type Tone = "default" | "secondary" | "success" | "warning" | "danger";
@@ -22,26 +23,11 @@ type DotStatus = "running" | "success" | "warning" | "danger" | "idle";
 
 export function TweetDetailPage() {
   const { tweetId } = useParams();
-  const [previewIndex, setPreviewIndex] = useState<number | null>(null);
   const { data, isLoading, error } = useQuery({
     queryKey: ["tweet", tweetId],
     queryFn: () => apiGet<TweetDetail>(`/api/v1/library/tweets/${tweetId}`),
     enabled: Boolean(tweetId),
   });
-
-  const selectedMedia = previewIndex === null ? null : data?.media[previewIndex] ?? null;
-  const canPreviewNext = data ? previewIndex !== null && previewIndex < data.media.length - 1 : false;
-  const canPreviewPrevious = previewIndex !== null && previewIndex > 0;
-
-  useEffect(() => {
-    if (previewIndex === null) return;
-    const onKeyDown = (event: KeyboardEvent) => {
-      if (event.key.toLowerCase() === "j" && canPreviewNext) setPreviewIndex((index) => (index === null ? index : index + 1));
-      if (event.key.toLowerCase() === "k" && canPreviewPrevious) setPreviewIndex((index) => (index === null ? index : index - 1));
-    };
-    window.addEventListener("keydown", onKeyDown);
-    return () => window.removeEventListener("keydown", onKeyDown);
-  }, [canPreviewNext, canPreviewPrevious, previewIndex]);
 
   if (isLoading) return <TweetDetailSkeleton />;
   if (error || !data) return <ErrorState title="未找到 Tweet" detail={String(error || "未找到 Tweet")} />;
@@ -90,7 +76,6 @@ export function TweetDetailPage() {
           <MediaGrid
             media={data.media}
             title="媒体"
-            onPreview={setPreviewIndex}
             emptyText="暂无预览"
           />
           <aside className="space-y-4 xl:sticky xl:top-4 xl:self-start">
@@ -112,18 +97,6 @@ export function TweetDetailPage() {
           </aside>
         </div>
 
-        <MediaPreviewDialog
-          media={selectedMedia}
-          index={previewIndex}
-          count={data.media.length}
-          canNext={canPreviewNext}
-          canPrevious={canPreviewPrevious}
-          onNext={() => setPreviewIndex((index) => (index === null ? index : Math.min(index + 1, data.media.length - 1)))}
-          onPrevious={() => setPreviewIndex((index) => (index === null ? index : Math.max(index - 1, 0)))}
-          onOpenChange={(open) => {
-            if (!open) setPreviewIndex(null);
-          }}
-        />
     </div>
   );
 }
@@ -131,14 +104,15 @@ export function TweetDetailPage() {
 function MediaGrid({
   media,
   title,
-  onPreview,
   emptyText,
 }: {
   media: MediaRow[];
   title: string;
-  onPreview: (index: number) => void;
   emptyText: string;
 }) {
+  const images = media.filter((item) => !isVideoMedia(item));
+  const videos = media.filter(isVideoMedia);
+  const [imagePreviewIndex, setImagePreviewIndex] = useState<number | null>(null);
   return (
     <Card className="overflow-hidden">
       <CardHeader className="border-b border-border-subtle bg-bg-muted/30 p-4 pb-3 sm:p-5 sm:pb-4">
@@ -155,32 +129,47 @@ function MediaGrid({
           <EmptyState icon={<ImageIcon className="h-5 w-5" />} title={emptyText} />
         ) : (
           <div className="grid gap-3 sm:grid-cols-2 2xl:grid-cols-3">
-            {media.map((item, index) => (
+            {images.map((item, index) => (
               <article
-                key={`${item.local_path || item.media_url || "media"}-${item.media_index ?? index}`}
-                className="group relative overflow-hidden rounded-xl border border-border-subtle bg-bg-muted transition duration-base ease-out hover:-translate-y-0.5 hover:border-border-strong hover:shadow-2"
+                key={`${item.local_path || item.media_url || "image"}-${index}`}
+                className="group overflow-hidden rounded-xl border border-border-subtle bg-bg-muted transition duration-base ease-out hover:-translate-y-0.5 hover:border-border-strong hover:shadow-2"
               >
                 <MediaThumbnail
                   src={item.media_url}
                   alt={item.local_path || mediaTypeLabel(item.media_type)}
                   mediaType={item.media_type}
                   className="rounded-none"
-                  onClick={item.media_url ? () => onPreview(index) : undefined}
+                  onClick={item.media_url ? () => setImagePreviewIndex(index) : undefined}
                 />
-                <div className="flex items-center justify-between gap-3 px-3 py-2.5 text-sm">
-                  <div className="min-w-0">
-                    <span className="font-medium text-fg-primary">{mediaTypeLabel(item.media_type)}</span>
-                    <span className="ml-2 text-xs text-fg-secondary">{formatBytes(item.file_size)}</span>
-                  </div>
-                  <Badge tone={toneForStatus(item.media_status)}>{statusLabel(item.media_status)}</Badge>
-                </div>
+                <MediaDetails media={item} />
+              </article>
+            ))}
+            {videos.map((item, index) => (
+              <article
+                key={`${item.local_path || item.media_url || "video"}-${index}`}
+                className="overflow-hidden rounded-xl border border-border-subtle bg-bg-muted"
+              >
+                <VideoMediaPlayer media={item} />
+                <MediaDetails media={item} />
               </article>
             ))}
           </div>
         )}
       </CardContent>
+      <ImagePreviewDialog
+        media={images}
+        activeIndex={imagePreviewIndex}
+        onActiveIndexChange={setImagePreviewIndex}
+        onOpenChange={(open) => {
+          if (!open) setImagePreviewIndex(null);
+        }}
+      />
     </Card>
   );
+}
+
+function isVideoMedia(media: MediaRow) {
+  return media.media_type === "video" || Boolean(media.media_url?.match(/\.(mp4|mov|m4v|webm)(\?|$)/i));
 }
 
 function MetadataCard({
@@ -266,93 +255,6 @@ function AttemptsTimeline({
         )}
       </CardContent>
     </Card>
-  );
-}
-
-function MediaPreviewDialog({
-  media,
-  index,
-  count,
-  canNext,
-  canPrevious,
-  onNext,
-  onPrevious,
-  onOpenChange,
-}: {
-  media: MediaRow | null;
-  index: number | null;
-  count: number;
-  canNext: boolean;
-  canPrevious: boolean;
-  onNext: () => void;
-  onPrevious: () => void;
-  onOpenChange: (open: boolean) => void;
-}) {
-  const isVideo = media?.media_type === "video" || Boolean(media?.media_url?.match(/\.(mp4|mov|m4v|webm)(\?|$)/i));
-
-  return (
-    <Dialog open={Boolean(media)} onOpenChange={onOpenChange}>
-      <DialogContent className="max-h-[calc(100dvh-32px)] w-[min(calc(100vw-24px),1120px)] overflow-y-auto p-4 sm:w-[min(calc(100vw-32px),1120px)]">
-        <DialogHeader className="pr-8">
-          <DialogTitle>{media ? mediaTypeLabel(media.media_type) : "Media"}</DialogTitle>
-          <DialogDescription>
-            {index === null ? "-" : `${index + 1} / ${count}`} · {media ? statusLabel(media.media_status) : "-"}
-          </DialogDescription>
-        </DialogHeader>
-        {media ? (
-          <div className="grid gap-4 lg:grid-cols-[minmax(0,1fr)_280px]">
-            <div className="flex min-h-[220px] items-center justify-center overflow-hidden rounded-lg bg-bg-muted sm:min-h-[320px]">
-              {media.media_url ? (
-                isVideo ? (
-                  <video className="max-h-[70vh] w-full object-contain" src={media.media_url} controls autoPlay preload="metadata" />
-                ) : (
-                  <img className="max-h-[70vh] w-full object-contain" src={media.media_url} alt="" />
-                )
-              ) : (
-                <div className="flex flex-col items-center gap-2 text-sm text-fg-secondary">
-                  <ImageIcon className="h-6 w-6" />
-                  No preview
-                </div>
-              )}
-            </div>
-            <div className="space-y-4">
-              <div className="grid grid-cols-2 gap-2">
-                <Tooltip>
-                  <TooltipTrigger asChild>
-                    <Button variant="outline" size="sm" disabled={!canPrevious} onClick={onPrevious}>
-                      K
-                    </Button>
-                  </TooltipTrigger>
-                  <TooltipContent>Previous media</TooltipContent>
-                </Tooltip>
-                <Tooltip>
-                  <TooltipTrigger asChild>
-                    <Button variant="outline" size="sm" disabled={!canNext} onClick={onNext}>
-                      J
-                    </Button>
-                  </TooltipTrigger>
-                  <TooltipContent>Next media</TooltipContent>
-                </Tooltip>
-              </div>
-              <div className="rounded-lg border border-border-subtle bg-bg-surface p-3 text-sm">
-                <MetadataLine label="Size" value={formatBytes(media.file_size)} />
-                <MetadataLine label="Dimensions" value={media.width && media.height ? `${media.width} x ${media.height}` : "-"} />
-                <MetadataLine label="Path" value={media.local_path || "-"} />
-              </div>
-            </div>
-          </div>
-        ) : null}
-      </DialogContent>
-    </Dialog>
-  );
-}
-
-function MetadataLine({ label, value }: { label: string; value: string }) {
-  return (
-    <div className="grid gap-1 border-b border-border-subtle py-2 first:pt-0 last:border-0 last:pb-0">
-      <span className="text-xs text-fg-tertiary">{label}</span>
-      <span className="break-words text-sm font-medium text-fg-primary">{value}</span>
-    </div>
   );
 }
 
