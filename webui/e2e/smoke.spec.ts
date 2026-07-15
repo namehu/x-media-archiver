@@ -1,5 +1,7 @@
 import { expect, test, type Page } from "@playwright/test";
 
+const apiBaseUrl = process.env.XMA_API_BASE_URL ?? "http://127.0.0.1:18000";
+
 const routes = [
   { path: "/", label: "仪表盘", text: "媒体文件" },
   { path: "/library", label: "媒体库", text: "webui-e2e fixture tweet" },
@@ -57,17 +59,17 @@ test.describe("WebUI smoke", () => {
       await expect(page.getByText(route.text).first()).toBeVisible();
     }
 
-    await page.getByRole("button", { name: "e2e-admin" }).click();
+    await page.getByRole("button", { name: "账户菜单" }).click();
     authSessionTransition = true;
     await page.getByRole("menuitem", { name: "退出登录" }).click();
-    await expect(page.getByRole("heading", { name: "登录 x-media-archiver" })).toBeVisible();
+    await expect(page.getByRole("heading", { name: "欢迎回来" })).toBeVisible();
     await page.getByLabel("用户名").fill("e2e-admin");
     await page.getByLabel("密码").fill(password);
-    await page.getByRole("button", { name: "登录" }).click();
+    await page.getByRole("button", { name: "登 录" }).click();
     await expect(page.getByRole("link", { name: "仪表盘" })).toBeVisible();
 
     const oldSessionCookies = await page.context().cookies();
-    await page.getByRole("button", { name: "e2e-admin" }).click();
+    await page.getByRole("button", { name: "账户菜单" }).click();
     await page.getByRole("menuitem", { name: "修改密码" }).click();
     const nextPassword = password === initialPassword ? alternatePassword : initialPassword;
     await page.getByLabel("当前密码").fill(password);
@@ -78,7 +80,7 @@ test.describe("WebUI smoke", () => {
 
     const staleContext = await browser.newContext();
     await staleContext.addCookies(oldSessionCookies);
-    const staleSession = await staleContext.request.get("http://127.0.0.1:18000/api/v1/auth/session");
+    const staleSession = await staleContext.request.get(`${apiBaseUrl}/api/v1/auth/session`);
     expect(await staleSession.json()).toMatchObject({ status: "anonymous", user: null });
     await staleContext.close();
 
@@ -93,7 +95,7 @@ async function waitForAuthScreen(page: Page): Promise<"authenticated" | "login" 
       async () => {
         if (await page.getByRole("link", { name: "仪表盘" }).isVisible()) authScreen = "authenticated";
         else if (await page.getByRole("heading", { name: "初始化管理员" }).isVisible()) authScreen = "setup";
-        else if (await page.getByRole("heading", { name: "登录 x-media-archiver" }).isVisible()) authScreen = "login";
+        else if (await page.getByRole("heading", { name: "欢迎回来" }).isVisible()) authScreen = "login";
         return authScreen !== null;
       },
       { timeout: 10_000 },
@@ -105,7 +107,7 @@ async function waitForAuthScreen(page: Page): Promise<"authenticated" | "login" 
 async function signIn(page: Page, password: string) {
   await page.getByLabel("用户名").fill("e2e-admin");
   await page.getByLabel("密码").fill(password);
-  await page.getByRole("button", { name: "登录" }).click();
+  await page.getByRole("button", { name: "登 录" }).click();
   try {
     await page.getByRole("link", { name: "仪表盘" }).waitFor({ state: "visible", timeout: 3_000 });
     return true;
