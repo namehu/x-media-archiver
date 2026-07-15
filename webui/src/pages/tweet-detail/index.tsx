@@ -1,6 +1,6 @@
 import { useEffect, useMemo, useState } from "react";
 import { useQuery } from "@tanstack/react-query";
-import { ExternalLink, FileText, Image as ImageIcon, Loader2, RotateCcw } from "lucide-react";
+import { CalendarDays, ExternalLink, FileText, Image as ImageIcon, Images, Loader2, RotateCcw } from "lucide-react";
 import { useParams } from "react-router-dom";
 import { apiGet, type MediaRow, type TweetDetail } from "../../lib/api";
 import { errorLabel, mediaTypeLabel, statusLabel } from "../../lib/formatters";
@@ -50,45 +50,50 @@ export function TweetDetailPage() {
   const statusTone = toneForStatus(data.tweet.tweet_status);
 
   return (
-    <div className="space-y-4">
-        <Card className="overflow-hidden">
-          <CardContent className="p-4">
-            <div className="flex flex-col gap-4 lg:flex-row lg:items-start lg:justify-between">
-              <div className="min-w-0 space-y-3">
+    <div className="mx-auto max-w-[1480px] space-y-6">
+        <Card className="relative overflow-hidden border-border-strong bg-bg-elevated shadow-2">
+          <div className="pointer-events-none absolute inset-x-0 top-0 h-1 bg-brand" />
+          <CardContent className="p-5 sm:p-6">
+            <div className="flex flex-col gap-6 lg:flex-row lg:items-start lg:justify-between">
+              <div className="min-w-0 max-w-4xl space-y-4">
                 <div className="flex flex-wrap items-center gap-2">
+                  <span className="text-xs font-semibold uppercase tracking-[0.16em] text-fg-tertiary">已归档 Tweet</span>
                   <Badge tone={statusTone} className="gap-1">
                     <StatusDot status={dotForStatus(data.tweet.tweet_status)} />
                     {statusLabel(data.tweet.tweet_status)}
                   </Badge>
-                  <span className="text-xs text-fg-tertiary">{data.tweet.tweet_id}</span>
                 </div>
                 <div>
-                  <h1 className="break-words text-2xl font-bold text-fg-primary">{authorName}</h1>
-                  {data.tweet.author_username ? <p className="text-sm text-fg-secondary">@{data.tweet.author_username}</p> : null}
+                  <h1 className="break-words text-3xl font-bold tracking-tight text-fg-primary">{authorName}</h1>
+                  {data.tweet.author_username ? <p className="mt-1 text-base text-fg-secondary">@{data.tweet.author_username}</p> : null}
                 </div>
-                <p className="max-w-4xl whitespace-pre-wrap text-sm leading-6 text-fg-primary">
+                <p className="whitespace-pre-wrap text-base leading-7 text-fg-primary">
                   {data.tweet.tweet_text || "暂无 Tweet 文本"}
                 </p>
               </div>
               {data.tweet.tweet_url ? (
-                <Button variant="outline" size="sm" onClick={() => window.open(data.tweet.tweet_url || "", "_blank", "noopener,noreferrer")}>
+                <Button variant="secondary" size="sm" onClick={() => window.open(data.tweet.tweet_url || "", "_blank", "noopener,noreferrer")}>
                   <ExternalLink className="h-4 w-4" />
-                  打开 Tweet
+                  在 X 中查看
                 </Button>
               ) : null}
+            </div>
+            <div className="mt-6 flex flex-wrap gap-x-6 gap-y-3 border-t border-border-subtle pt-4 text-sm text-fg-secondary">
+              <span className="inline-flex items-center gap-2"><CalendarDays className="h-4 w-4 text-fg-tertiary" />{formatDateTime(data.tweet.published_at)}</span>
+              <span className="inline-flex items-center gap-2"><Images className="h-4 w-4 text-fg-tertiary" />{data.media.length} 个媒体文件</span>
+              <span className="font-mono text-xs text-fg-tertiary">{data.tweet.tweet_id}</span>
             </div>
           </CardContent>
         </Card>
 
-        <div className="grid gap-4 lg:grid-cols-[minmax(0,3fr)_minmax(320px,2fr)]">
+        <div className="grid gap-6 xl:grid-cols-[minmax(0,1fr)_360px]">
           <MediaGrid
             media={data.media}
             title="媒体"
             onPreview={setPreviewIndex}
-            noPreviewText="暂无预览"
             emptyText="暂无预览"
           />
-          <aside className="space-y-4 lg:sticky lg:top-4 lg:self-start">
+          <aside className="space-y-4 xl:sticky xl:top-4 xl:self-start">
             <MetadataCard
               tweet={data.tweet}
               labels={{
@@ -127,54 +132,47 @@ function MediaGrid({
   media,
   title,
   onPreview,
-  noPreviewText,
   emptyText,
 }: {
   media: MediaRow[];
   title: string;
   onPreview: (index: number) => void;
-  noPreviewText: string;
   emptyText: string;
 }) {
   return (
-    <Card>
-      <CardHeader>
+    <Card className="overflow-hidden">
+      <CardHeader className="border-b border-border-subtle bg-bg-muted/30 p-5 pb-4">
         <div className="flex items-center justify-between gap-3">
           <div>
-            <CardTitle>{title}</CardTitle>
-            <CardDescription>{media.length}</CardDescription>
+            <CardTitle className="text-xl">{title}</CardTitle>
+            <CardDescription className="mt-1">点击媒体可查看大图与文件详情</CardDescription>
           </div>
-          <Badge tone="secondary">{media.length}</Badge>
+          <Badge tone="secondary">共 {media.length} 项</Badge>
         </div>
       </CardHeader>
-      <CardContent>
+      <CardContent className="p-4 sm:p-5">
         {media.length === 0 ? (
           <EmptyState icon={<ImageIcon className="h-5 w-5" />} title={emptyText} />
         ) : (
-          <div className="grid gap-3 sm:grid-cols-2 xl:grid-cols-3">
+          <div className="grid gap-3 sm:grid-cols-2 2xl:grid-cols-3">
             {media.map((item, index) => (
               <article
                 key={`${item.local_path || item.media_url || "media"}-${item.media_index ?? index}`}
-                className="overflow-hidden rounded-lg border border-border-subtle bg-bg-surface transition duration-base ease-out hover:border-border-strong hover:shadow-2"
+                className="group relative overflow-hidden rounded-xl border border-border-subtle bg-bg-muted transition duration-base ease-out hover:-translate-y-0.5 hover:border-border-strong hover:shadow-2"
               >
                 <MediaThumbnail
                   src={item.media_url}
                   alt={item.local_path || mediaTypeLabel(item.media_type)}
                   mediaType={item.media_type}
+                  className="rounded-none"
                   onClick={item.media_url ? () => onPreview(index) : undefined}
                 />
-                <div className="space-y-2 p-3 text-sm">
-                  <div className="flex items-center justify-between gap-2">
+                <div className="flex items-center justify-between gap-3 px-3 py-2.5 text-sm">
+                  <div className="min-w-0">
                     <span className="font-medium text-fg-primary">{mediaTypeLabel(item.media_type)}</span>
-                    <Badge tone={toneForStatus(item.media_status)}>{statusLabel(item.media_status)}</Badge>
+                    <span className="ml-2 text-xs text-fg-secondary">{formatBytes(item.file_size)}</span>
                   </div>
-                  <div className="flex flex-wrap gap-2 text-xs text-fg-secondary">
-                    <span>{formatBytes(item.file_size)}</span>
-                    {item.width && item.height ? <span>{item.width} x {item.height}</span> : null}
-                  </div>
-                  <code className="block truncate text-xs text-fg-tertiary" title={item.local_path || noPreviewText}>
-                    {item.local_path || noPreviewText}
-                  </code>
+                  <Badge tone={toneForStatus(item.media_status)}>{statusLabel(item.media_status)}</Badge>
                 </div>
               </article>
             ))}
