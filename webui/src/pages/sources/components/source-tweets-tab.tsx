@@ -6,6 +6,7 @@ import { Button } from "@/components/ui/button";
 import { Checkbox } from "@/components/ui/checkbox";
 import { Pagination } from "@/components/ui/pagination";
 import { Progress } from "@/components/ui/progress";
+import { Tooltip, TooltipContent, TooltipTrigger } from "@/components/ui/tooltip";
 import { cn, formatDateTime } from "@/lib/utils";
 import type { DetailActions } from "./source-detail-sheet/scan-actions";
 import { ChevronDown, ChevronUp, FileQuestion, Film, Image, Images } from "lucide-react";
@@ -168,13 +169,7 @@ function canCancel(status?: string | null) {
   return status === "pending" || status === "blocked" || status === "failed_retryable" || status === "processing";
 }
 
-function TweetDownloadProgress({
-  tweet,
-  statusLabel,
-}: {
-  tweet: TweetRow;
-  statusLabel: (status?: string | null) => string;
-}) {
+function TweetDownloadProgress({ tweet }: { tweet: TweetRow }) {
   const activeStatus = tweet.active_item_status;
   const downloaded = Number(tweet.downloaded_bytes || tweet.downloaded_media_bytes || 0);
   const total = Number(tweet.total_bytes || tweet.downloaded_media_bytes || 0);
@@ -186,9 +181,6 @@ function TweetDownloadProgress({
     <div className="flex flex-col gap-1.5 pt-1">
       <div className="flex flex-wrap items-center justify-between gap-2 text-xs">
         <div className="flex min-w-0 flex-wrap items-center gap-2">
-          <Badge tone={progressTone(activeStatus || tweet.download_status)}>
-            {activeStatus ? statusLabel(activeStatus) : statusLabel(tweet.download_status)}
-          </Badge>
           {tweet.cancel_requested ? <Badge tone="warning">取消请求中</Badge> : null}
           <span className="min-w-0 break-words text-fg-secondary">{message}</span>
         </div>
@@ -238,14 +230,6 @@ function defaultProgressMessage(tweet: TweetRow) {
 
 function statusLabelFallback(status?: string | null) {
   return status ? String(status) : "等待下载";
-}
-
-function progressTone(status?: string | null): "default" | "secondary" | "warning" | "danger" | "success" {
-  if (status === "processing" || status === "downloading") return "default";
-  if (status === "verified" || status === "downloaded" || status === "skipped_verified") return "success";
-  if (status === "blocked" || status === "paused" || status === "failed_retryable") return "warning";
-  if (status === "failed" || status === "failed_permanent" || status === "cancelled") return "danger";
-  return "secondary";
 }
 
 function formatBytes(value?: number | null) {
@@ -393,12 +377,14 @@ function TweetListItem({
                   )}
                 </span>
               </div>
-              <TweetDownloadProgress tweet={tweet} statusLabel={statusLabel} />
+              <TweetDownloadProgress tweet={tweet} />
             </div>
           </div>
           <div className="flex shrink-0 flex-col items-end gap-2 whitespace-nowrap text-center">
-            <Badge>{statusLabel(tweet.download_status)}</Badge>
-            {tweet.active_item_status ? <Badge tone="secondary">{statusLabel(tweet.active_item_status)}</Badge> : null}
+            <SourceTweetStatusBadge status={tweet.download_status} statusLabel={statusLabel} />
+            {tweet.active_item_status ? (
+              <SourceTweetStatusBadge status={tweet.active_item_status} statusLabel={statusLabel} tone="secondary" />
+            ) : null}
             {canQueue(tweet) ? (
               <Button
                 type="button"
@@ -427,4 +413,57 @@ function TweetListItem({
       </div>
     </div>
   );
+}
+
+function SourceTweetStatusBadge({
+  status,
+  statusLabel,
+  tone,
+}: {
+  status?: string | null;
+  statusLabel: (status?: string | null) => string;
+  tone?: "default" | "secondary" | "success" | "warning" | "danger";
+}) {
+  const isVerified = status === "verified";
+  const label = isVerified ? "已完成" : statusLabel(status);
+  const description = sourceTweetStatusDescription(status);
+
+  return (
+    <Tooltip>
+      <TooltipTrigger asChild>
+        <span tabIndex={0} aria-label={`${label}：${description}`}>
+          <Badge tone={tone}>{label}</Badge>
+        </span>
+      </TooltipTrigger>
+      <TooltipContent className="max-w-xs">{description}</TooltipContent>
+    </Tooltip>
+  );
+}
+
+function sourceTweetStatusDescription(status?: string | null) {
+  switch (status) {
+    case "pending":
+      return "尚未完成下载与文件校验；如未创建下载任务，可点击“下载”。";
+    case "processing":
+    case "downloading":
+      return "下载任务正在处理，完成后会自动校验本地文件。";
+    case "verified":
+      return "媒体已下载到本地，并已确认文件存在且校验值匹配。";
+    case "downloaded":
+      return "媒体文件已下载到本地，但尚未完成完整性校验。";
+    case "blocked":
+      return "正在等待同一来源的前序下载任务结束。";
+    case "failed_retryable":
+      return "本次下载失败，系统稍后可以重试。";
+    case "failed_permanent":
+      return "下载失败且已达到重试上限，需要人工处理。";
+    case "cancelled":
+      return "下载任务已取消，未完成的媒体不会继续处理。";
+    case "missing":
+      return "校验时未找到本地媒体文件。";
+    case "corrupt":
+      return "本地媒体文件与记录的校验值不一致。";
+    default:
+      return "这是该 Tweet 当前的归档处理状态。";
+  }
 }
