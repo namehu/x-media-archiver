@@ -73,17 +73,16 @@ export function SourceDetailPanel({
   const scanLimit = useNumberInput("20");
   const [activeTab, setActiveTab] = React.useState("tweets");
   const [tweetsOffset, setTweetsOffset] = React.useState(0);
-  const [historyOffset, setHistoryOffset] = React.useState(0);
   const [logRun, setLogRun] = React.useState<SourceScanRun | null>(null);
   const persistedScanLimit = source ? preferredScanLimit(source, policy) : 20;
   const discoveredQuery = useSourceDiscovered(source?.id ?? null, tweetsOffset, activeTab === "tweets");
   const downloadsQuery = useSourceDownloads(source?.id ?? null, activeTab === "tweets");
   const scanRunsQuery = useSourceScanRuns(
     source?.id ?? null,
-    historyOffset,
     activeTab === "history",
     source?.active_scan_run?.status === "running",
   );
+  const scanRuns = scanRunsQuery.data?.pages.flatMap((page) => page.rows) ?? [];
 
   React.useEffect(() => {
     if (!source) return;
@@ -93,7 +92,6 @@ export function SourceDetailPanel({
   React.useEffect(() => {
     setActiveTab("tweets");
     setTweetsOffset(0);
-    setHistoryOffset(0);
   }, [source?.id]);
 
   return (
@@ -134,7 +132,7 @@ export function SourceDetailPanel({
                 <TabsList className="flex-wrap">
                   <TabsTrigger value="tweets">发现的 Tweet</TabsTrigger>
                   <TabsTrigger value="details">详情</TabsTrigger>
-                  <TabsTrigger value="history">扫描历史（最近 20 批）</TabsTrigger>
+                  <TabsTrigger value="history">扫描历史</TabsTrigger>
                   <TabsTrigger value="config">提交与导入</TabsTrigger>
                 </TabsList>
               </SheetHeader>
@@ -173,13 +171,14 @@ export function SourceDetailPanel({
                 value="history"
                 className="min-h-0 flex-1 overflow-hidden px-6 pb-6 pt-4 data-[state=active]:flex data-[state=active]:flex-col"
               >
-                <div className="relative flex min-h-0 flex-1 flex-col border-l-2 border-border-subtle pl-0">
+                <div className="relative flex min-h-0 flex-1 flex-col">
                   <SourceScanHistoryTab
-                    data={scanRunsQuery.data}
+                    runs={scanRuns}
                     isLoading={scanRunsQuery.isLoading}
+                    isFetchingNextPage={scanRunsQuery.isFetchingNextPage}
+                    hasNextPage={scanRunsQuery.hasNextPage}
                     error={scanRunsQuery.error}
-                    offset={historyOffset}
-                    onOffsetChange={setHistoryOffset}
+                    onLoadMore={() => scanRunsQuery.fetchNextPage()}
                     now={now}
                   />
                 </div>

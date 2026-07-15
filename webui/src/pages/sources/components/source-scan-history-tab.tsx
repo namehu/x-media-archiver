@@ -1,30 +1,27 @@
 import { Virtuoso } from "react-virtuoso";
-import type { SourceScanRunsPageResponse } from "@/lib/api";
+import type { SourceScanRun } from "@/lib/api";
 import { Badge } from "@/components/ui/badge";
-import { Pagination } from "@/components/ui/pagination";
 import { formatDateTime } from "@/lib/utils";
 import { scanStatusLabel, scanTriggerLabel } from "@/lib/formatters";
 import { formatElapsed, formatRunRange, scanStatusTone } from "../utils";
 
-const PAGE_SIZE = 20;
-
 export function SourceScanHistoryTab({
-  data,
+  runs,
   isLoading,
+  isFetchingNextPage,
+  hasNextPage,
   error,
-  offset,
-  onOffsetChange,
+  onLoadMore,
   now,
 }: {
-  data?: SourceScanRunsPageResponse;
+  runs: SourceScanRun[];
   isLoading: boolean;
+  isFetchingNextPage: boolean;
+  hasNextPage: boolean;
   error: unknown;
-  offset: number;
-  onOffsetChange: (offset: number) => void;
+  onLoadMore: () => void;
   now: number;
 }) {
-  const runs = data?.rows ?? [];
-
   if (isLoading) {
     return <p className="py-4 text-sm text-fg-secondary">加载中...</p>;
   }
@@ -39,24 +36,27 @@ export function SourceScanHistoryTab({
 
   return (
     <div className="flex h-full min-h-0 flex-col gap-3">
-      {data ? (
-        <Pagination
-          offset={offset}
-          count={data.count}
-          totalCount={data.total_count}
-          pageSize={PAGE_SIZE}
-          onOffsetChange={onOffsetChange}
-          label="第 {start}-{end} 项，共 {total} 项"
-        />
-      ) : null}
       <Virtuoso
         className="min-h-0 flex-1"
         style={{ height: "100%" }}
         data={runs}
+        endReached={() => {
+          if (hasNextPage && !isFetchingNextPage) onLoadMore();
+        }}
+        components={{
+          Footer: () =>
+            isFetchingNextPage ? (
+              <p className="py-2 text-center text-xs text-fg-secondary">正在加载更多记录...</p>
+            ) : hasNextPage ? (
+              <p className="py-2 text-center text-xs text-fg-tertiary">继续下拉加载更多</p>
+            ) : (
+              <p className="py-2 text-center text-xs text-fg-tertiary">已显示全部扫描记录</p>
+            ),
+        }}
         itemContent={(index, run) => (
           <div className="relative pb-6 pl-6">
             {/* 时间轴竖线 */}
-            {index !== runs.length - 1 && (
+            {(index !== runs.length - 1 || hasNextPage) && (
               <div className="absolute bottom-[-8px] left-[4px] top-3 w-[2px] bg-border-subtle" />
             )}
             {/* 节点圆点 */}

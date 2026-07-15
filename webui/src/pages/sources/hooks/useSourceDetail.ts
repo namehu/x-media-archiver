@@ -1,4 +1,4 @@
-import { useQuery } from "@tanstack/react-query";
+import { useInfiniteQuery, useQuery } from "@tanstack/react-query";
 import {
   apiGet,
   type ArchiveSourceDetail,
@@ -42,12 +42,17 @@ export function useSourceDiscovered(sourceId: number | null, offset: number, ena
   });
 }
 
-export function useSourceScanRuns(sourceId: number | null, offset: number, enabled: boolean, hasActiveScan: boolean) {
+export function useSourceScanRuns(sourceId: number | null, enabled: boolean, hasActiveScan: boolean) {
   const pageSize = 20;
-  return useQuery({
-    queryKey: ["source-scan-runs", sourceId, offset],
-    queryFn: () =>
-      apiGet<SourceScanRunsPageResponse>(`/api/v1/sources/${sourceId}/scan-runs?limit=${pageSize}&offset=${offset}`),
+  return useInfiniteQuery({
+    queryKey: ["source-scan-runs", sourceId],
+    queryFn: ({ pageParam }) =>
+      apiGet<SourceScanRunsPageResponse>(`/api/v1/sources/${sourceId}/scan-runs?limit=${pageSize}&offset=${pageParam}`),
+    initialPageParam: 0,
+    getNextPageParam: (lastPage) => {
+      const nextOffset = lastPage.offset + lastPage.count;
+      return nextOffset < lastPage.total_count ? nextOffset : undefined;
+    },
     enabled: enabled && sourceId !== null,
     refetchInterval: enabled && hasActiveScan ? 3000 : false,
   });
