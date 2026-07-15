@@ -6,7 +6,7 @@ import { Button } from "@/components/ui/button";
 import { Checkbox } from "@/components/ui/checkbox";
 import { Pagination } from "@/components/ui/pagination";
 import { Progress } from "@/components/ui/progress";
-import { formatDateTime } from "@/lib/utils";
+import { cn, formatDateTime } from "@/lib/utils";
 import type { DetailActions } from "./source-detail-sheet/scan-actions";
 import { ChevronDown, ChevronUp, FileQuestion, Film, Image, Images } from "lucide-react";
 
@@ -67,47 +67,69 @@ export function SourceTweetsTab({
     return <p className="py-4 text-sm text-fg-secondary">还没有发现记录。</p>;
   }
 
+  const hasSelection = selectedIds.length > 0;
+
   return (
     <div className="flex h-full min-h-0 flex-col gap-3">
-      <div className="flex flex-wrap items-center justify-between gap-2 rounded-lg border border-border-subtle bg-bg-surface px-3 py-2 text-sm">
-        <div className="flex flex-wrap items-center gap-2">
-          <Checkbox
-            checked={selectableIds.length > 0 && selectedIds.length === selectableIds.length}
-            disabled={selectableIds.length === 0}
-            onCheckedChange={(checked) => setSelected(new Set(checked ? selectableIds : []))}
-          />
-          <span className="text-fg-secondary">已选 {selectedIds.length} 个可下载 Tweet</span>
+      <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
+        <div
+          className={cn(
+            "flex flex-1 flex-wrap items-center justify-between gap-3 rounded-lg px-3 py-2 text-sm transition-colors",
+            hasSelection ? "bg-brand-soft/50 ring-1 ring-brand/20" : "bg-transparent",
+          )}
+        >
+          <div className="flex items-center gap-2">
+            <Checkbox
+              checked={selectableIds.length > 0 && selectedIds.length === selectableIds.length}
+              disabled={selectableIds.length === 0}
+              onCheckedChange={(checked) => setSelected(new Set(checked ? selectableIds : []))}
+            />
+            <span className={cn("font-medium transition-colors", hasSelection ? "text-brand" : "text-fg-secondary")}>
+              {hasSelection ? `已选择 ${selectedIds.length} 项` : "全选本页可操作项"}
+            </span>
+          </div>
+
+          {hasSelection && (
+            <div className="flex flex-wrap items-center gap-2 animate-in fade-in zoom-in-95 duration-200">
+              <Button
+                type="button"
+                size="sm"
+                disabled={!selectedQueueIds.length || actions.pending.download}
+                onClick={() => actions.submitDownload({ sourceId, scope: "selected", tweetIds: selectedQueueIds })}
+              >
+                下载选中 ({selectedQueueIds.length})
+              </Button>
+              <Button
+                type="button"
+                size="sm"
+                variant={selectedActiveIds.length ? "outline" : "ghost"}
+                className={
+                  selectedActiveIds.length ? "border-danger text-danger hover:bg-danger-soft hover:text-danger" : ""
+                }
+                disabled={!selectedActiveIds.length || selectedActiveRunIds.length !== 1 || actions.pending.download}
+                onClick={() =>
+                  actions.cancelDownloadItems({ runId: selectedActiveRunIds[0], tweetIds: selectedActiveIds })
+                }
+              >
+                取消选中
+              </Button>
+            </div>
+          )}
         </div>
-        <div className="flex flex-wrap gap-2">
-          <Button
-            type="button"
-            size="sm"
-            disabled={!selectedQueueIds.length || actions.pending.download}
-            onClick={() => actions.submitDownload({ sourceId, scope: "selected", tweetIds: selectedQueueIds })}
-          >
-            下载选中
-          </Button>
-          <Button
-            type="button"
-            size="sm"
-            variant="secondary"
-            disabled={!selectedActiveIds.length || selectedActiveRunIds.length !== 1 || actions.pending.download}
-            onClick={() => actions.cancelDownloadItems({ runId: selectedActiveRunIds[0], tweetIds: selectedActiveIds })}
-          >
-            取消选中
-          </Button>
+
+        <div className="shrink-0 px-1">
+          {data ? (
+            <Pagination
+              offset={offset}
+              count={data.count}
+              totalCount={data.total_count}
+              pageSize={PAGE_SIZE}
+              onOffsetChange={onOffsetChange}
+              label="第 {start}-{end} 项，共 {total} 项"
+            />
+          ) : null}
         </div>
       </div>
-      {data ? (
-        <Pagination
-          offset={offset}
-          count={data.count}
-          totalCount={data.total_count}
-          pageSize={PAGE_SIZE}
-          onOffsetChange={onOffsetChange}
-          label="第 {start}-{end} 项，共 {total} 项"
-        />
-      ) : null}
       <Virtuoso
         className="min-h-0 flex-1"
         style={{ height: "100%" }}

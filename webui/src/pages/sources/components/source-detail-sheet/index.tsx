@@ -1,5 +1,11 @@
 import * as React from "react";
-import type { ArchiveSourceDetail, ArchiveSubmission, DownloadPolicy, SourceDownloadSummary, SourceScanRun } from "@/lib/api";
+import type {
+  ArchiveSourceDetail,
+  ArchiveSubmission,
+  DownloadPolicy,
+  SourceDownloadSummary,
+  SourceScanRun,
+} from "@/lib/api";
 import { Sheet, SheetContent, SheetHeader, SheetTitle } from "@/components/ui/sheet";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { useSourceDiscovered, useSourceDownloads, useSourceScanRuns } from "../../hooks/useSourceDetail";
@@ -23,7 +29,12 @@ type DetailActions = {
   pauseSession: (sourceId: number) => void;
   resumeSession: (sourceId: number) => void;
   submitDiscovered: (input: { sourceId: number; limit?: number }) => void;
-  submitDownload: (input: { sourceId: number; scope: "selected" | "all_unsubmitted" | "failed"; tweetIds?: string[]; limit?: number }) => void;
+  submitDownload: (input: {
+    sourceId: number;
+    scope: "selected" | "all_unsubmitted" | "failed";
+    tweetIds?: string[];
+    limit?: number;
+  }) => void;
   pauseDownload: (runId: number) => void;
   resumeDownload: (runId: number) => void;
   stopDownload: (runId: number) => void;
@@ -102,39 +113,35 @@ export function SourceDetailPanel({
         ) : (
           <>
             <Tabs value={activeTab} onValueChange={setActiveTab} className="flex h-full min-h-0 flex-col">
-              <SheetHeader className="mb-0 shrink-0 gap-4 px-6 pb-0 pt-6 pr-12">
-                <SheetTitle className="sr-only">{source.label || source.author_username || "来源详情"}</SheetTitle>
+              <SheetHeader className="mb-0 shrink-0 px-6 pb-2 pt-6 pr-12">
+                <SheetTitle className="sr-only">{source.label || source.author_username || "未知来源"}</SheetTitle>
 
-                <div className="flex items-start justify-between gap-3">
-                  <div>
-                    <div className="flex items-center gap-2">
-                      <Badge tone={sourceStatusTone(source.status)}>{statusLabel(source.status)}</Badge>
-                      <h2 className="text-xl font-semibold text-fg-primary">
-                        {source.label || source.author_username || "来源详情"}
-                      </h2>
-                    </div>
+                <div className="flex flex-col gap-4 sm:flex-row sm:items-center sm:justify-between">
+                  <div className="flex min-w-0 flex-wrap items-center gap-3">
+                    <Badge tone={sourceStatusTone(source.status)}>{statusLabel(source.status)}</Badge>
+                    <h2 className="truncate text-xl font-semibold text-fg-primary">
+                      {source.label || source.author_username || "未知来源"}
+                    </h2>
                     {source.source_url ? (
                       <a
-                        className="mt-0.5 inline-flex min-w-0 items-center gap-1 break-all text-sm text-brand hover:text-brand-hover"
+                        className="inline-flex shrink-0 items-center gap-1 text-sm text-brand hover:text-brand-hover"
                         href={source.source_url}
                         target="_blank"
                         rel="noreferrer"
+                        title={source.source_url}
                       >
-                        <span className="break-all">{source.source_url}</span>
-                        <ExternalLink className="h-3.5 w-3.5 shrink-0" />
+                        <ExternalLink className="h-4 w-4" />
                       </a>
-                    ) : (
-                      <p className="mt-0.5 text-sm text-fg-secondary">无</p>
-                    )}
+                    ) : null}
                   </div>
-                </div>
 
-                <TabsList className="flex-wrap">
-                  <TabsTrigger value="tweets">发现的 Tweet</TabsTrigger>
-                  <TabsTrigger value="details">详情</TabsTrigger>
-                  <TabsTrigger value="history">扫描历史</TabsTrigger>
-                  <TabsTrigger value="config">提交与导入</TabsTrigger>
-                </TabsList>
+                  <TabsList className="shrink-0 flex-wrap">
+                    <TabsTrigger value="tweets">发现的 Tweet</TabsTrigger>
+                    <TabsTrigger value="details">详情</TabsTrigger>
+                    <TabsTrigger value="history">扫描历史</TabsTrigger>
+                    <TabsTrigger value="config">提交与导入</TabsTrigger>
+                  </TabsList>
+                </div>
               </SheetHeader>
               <TabsContent
                 value="tweets"

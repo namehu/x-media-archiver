@@ -4,9 +4,9 @@ import { Tooltip, TooltipContent, TooltipTrigger } from "@/components/ui/tooltip
 
 export function ActionBlock({ title, hint, children }: { title: string; hint?: string; children: React.ReactNode }) {
   return (
-    <div className="space-y-3 rounded-lg border border-border-subtle p-3">
+    <div className="flex h-full flex-col space-y-3 rounded-xl bg-bg-muted/40 p-4">
       <div className="flex items-center gap-1.5">
-        <span className="text-sm font-semibold text-fg-primary">{title}</span>
+        <span className="font-semibold text-fg-primary">{title}</span>
         {hint ? (
           <Tooltip>
             <TooltipTrigger asChild>

@@ -19,7 +19,12 @@ export type DetailActions = {
   pauseSession: (sourceId: number) => void;
   resumeSession: (sourceId: number) => void;
   submitDiscovered: (input: { sourceId: number; limit?: number }) => void;
-  submitDownload: (input: { sourceId: number; scope: "selected" | "all_unsubmitted" | "failed"; tweetIds?: string[]; limit?: number }) => void;
+  submitDownload: (input: {
+    sourceId: number;
+    scope: "selected" | "all_unsubmitted" | "failed";
+    tweetIds?: string[];
+    limit?: number;
+  }) => void;
   pauseDownload: (runId: number) => void;
   resumeDownload: (runId: number) => void;
   stopDownload: (runId: number) => void;
@@ -87,6 +92,7 @@ export function ScanActions({
           <Badge tone="secondary">正在{modeLabel}</Badge>
           <Button
             type="button"
+            size="sm"
             variant="secondary"
             disabled={actions.pending.history}
             onClick={() => actions.pauseSession(source.id)}
@@ -95,6 +101,7 @@ export function ScanActions({
           </Button>
           <Button
             type="button"
+            size="sm"
             variant="secondary"
             disabled={actions.pending.history}
             onClick={() => actions.stopHistory(source.id)}
@@ -105,11 +112,17 @@ export function ScanActions({
       ) : isPaused ? (
         <>
           <Badge tone="warning">已暂停：{modeLabel}</Badge>
-          <Button type="button" disabled={actions.pending.history} onClick={() => actions.resumeSession(source.id)}>
+          <Button
+            type="button"
+            size="sm"
+            disabled={actions.pending.history}
+            onClick={() => actions.resumeSession(source.id)}
+          >
             恢复{modeLabel}
           </Button>
           <Button
             type="button"
+            size="sm"
             variant="secondary"
             disabled={actions.pending.history}
             onClick={() => actions.stopHistory(source.id)}
@@ -171,7 +184,7 @@ function ScanStartButtons({
 
   if (!hasDiscovered && !stopped && !historyCompleted) {
     return (
-      <Button type="button" disabled={!canStart} onClick={() => onStart("history")}>
+      <Button type="button" size="sm" disabled={!canStart} onClick={() => onStart("history")}>
         开始扫描
       </Button>
     );
@@ -180,10 +193,16 @@ function ScanStartButtons({
   if (historyCompleted) {
     return (
       <>
-        <Button type="button" disabled={!canStart} onClick={() => onStart("latest_refresh", true)}>
+        <Button type="button" size="sm" disabled={!canStart} onClick={() => onStart("latest_refresh", true)}>
           补充最新推文
         </Button>
-        <Button type="button" variant="secondary" disabled={!canStart} onClick={() => onStart("from_start", true)}>
+        <Button
+          type="button"
+          size="sm"
+          variant="secondary"
+          disabled={!canStart}
+          onClick={() => onStart("from_start", true)}
+        >
           从头扫描/补断层
         </Button>
       </>
@@ -192,7 +211,7 @@ function ScanStartButtons({
 
   if (latestRefreshCompleted) {
     return (
-      <Button type="button" disabled={!canStart} onClick={() => onStart("latest_refresh", true)}>
+      <Button type="button" size="sm" disabled={!canStart} onClick={() => onStart("latest_refresh", true)}>
         再次补充最新推文
       </Button>
     );
@@ -201,19 +220,25 @@ function ScanStartButtons({
   return (
     <>
       {activeMode === "latest_refresh" ? (
-        <Button type="button" disabled={!canStart} onClick={() => onStart("latest_refresh")}>
+        <Button type="button" size="sm" disabled={!canStart} onClick={() => onStart("latest_refresh")}>
           继续补充最新推文
         </Button>
       ) : null}
       {activeMode === "from_start" ? (
-        <Button type="button" disabled={!canStart} onClick={() => onStart("from_start")}>
+        <Button type="button" size="sm" disabled={!canStart} onClick={() => onStart("from_start")}>
           继续从头扫描/补断层
         </Button>
       ) : null}
-      <Button type="button" disabled={!canStart} onClick={() => onStart("history")}>
+      <Button type="button" size="sm" disabled={!canStart} onClick={() => onStart("history")}>
         {activeMode === "history" ? "继续历史扫描" : "继续扫描历史"}
       </Button>
-      <Button type="button" variant="secondary" disabled={!canStart} onClick={() => onStart("latest_refresh", true)}>
+      <Button
+        type="button"
+        size="sm"
+        variant="secondary"
+        disabled={!canStart}
+        onClick={() => onStart("latest_refresh", true)}
+      >
         补充最新推文
       </Button>
     </>

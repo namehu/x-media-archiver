@@ -42,16 +42,22 @@ export function SourceTweetsContent({
 }) {
   return (
     <div className="flex min-h-0 flex-1 flex-col gap-4">
-      <div className="shrink-0 space-y-4">
-        <ScanActions
-          source={source}
-          actions={actions}
-          scanFeedback={scanFeedback}
-          scanLimit={scanLimit}
-          onOpenLog={onOpenLog}
-        />
-        {source.active_scan_run ? <ActiveScan run={source.active_scan_run} source={source} now={now} /> : null}
-        <SourceDownloadPanel source={source} downloads={downloads} actions={actions} statusLabel={statusLabel} />
+      <div className="shrink-0">
+        <div className="grid gap-4 lg:grid-cols-2">
+          <ScanActions
+            source={source}
+            actions={actions}
+            scanFeedback={scanFeedback}
+            scanLimit={scanLimit}
+            onOpenLog={onOpenLog}
+          />
+          <SourceDownloadPanel source={source} downloads={downloads} actions={actions} statusLabel={statusLabel} />
+        </div>
+        {source.active_scan_run ? (
+          <div className="mt-4">
+            <ActiveScan run={source.active_scan_run} source={source} now={now} />
+          </div>
+        ) : null}
       </div>
       <div className="min-h-0 flex-1">
         <SourceTweetsTab
@@ -85,74 +91,96 @@ function SourceDownloadPanel({
   const blocked = downloads?.blocked_runs ?? [];
   const runningItem = active?.items.find((item) => item.status === "processing");
   const totalItems = active?.items.length ?? 0;
-  const doneItems = active?.items.filter((item) => ["verified", "skipped_verified", "failed_permanent", "cancelled"].includes(item.status)).length ?? 0;
+  const doneItems =
+    active?.items.filter((item) =>
+      ["verified", "skipped_verified", "failed_permanent", "cancelled"].includes(item.status),
+    ).length ?? 0;
   const progress = totalItems ? Math.round((doneItems / totalItems) * 100) : 0;
   const hasUnsubmitted = (source.unsubmitted_tweet_count ?? 0) > 0;
 
   return (
-    <div className="rounded-lg border border-border-subtle bg-bg-surface p-3 text-sm">
-      <div className="flex flex-col gap-3 lg:flex-row lg:items-start lg:justify-between">
-        <div className="min-w-0">
-          <div className="flex flex-wrap items-center gap-2">
-            <span className="font-semibold text-fg-primary">下载工作台</span>
-            {active ? <Badge>{statusLabel(active.status)}</Badge> : null}
-            {paused.length ? <Badge tone="warning">暂停 {paused.length}</Badge> : null}
-            {blocked.length ? <Badge tone="secondary">等待 {blocked.length}</Badge> : null}
-          </div>
-          <div className="mt-2 grid gap-x-4 gap-y-1 text-xs text-fg-secondary sm:grid-cols-2">
-            <span>当前 Run: {active ? `#${active.id}` : "空闲"}</span>
-            <span>任务进度: {totalItems ? `${doneItems}/${totalItems} (${progress}%)` : "-"}</span>
-            <span>实时速度: {formatBytes(downloads?.speed_bps)}/s</span>
-            <span>已下载: {formatBytes(downloads?.downloaded_bytes)}</span>
-            <span>等待: {(downloads?.pending_count ?? 0) + (downloads?.blocked_count ?? 0)}</span>
-            <span>失败: {downloads?.failed_count ?? 0}</span>
-          </div>
-          {runningItem ? (
-            <p className="mt-2 text-xs text-fg-secondary">
-              当前 Tweet {runningItem.tweet_id}: {runningItem.progress_message || "下载器处理中"}
-            </p>
-          ) : null}
-          {paused.length ? (
-            <p className="mt-2 text-xs text-warning">继续下载只会恢复暂停 Run，新扫描到的推文需要单独点击下载新发现。</p>
-          ) : null}
+    <div className="flex h-full flex-col justify-between space-y-3 rounded-xl bg-bg-muted/40 p-4 text-sm">
+      <div className="min-w-0">
+        <div className="flex flex-wrap items-center gap-2">
+          <span className="font-semibold text-fg-primary">下载工作台</span>
+          {active ? <Badge>{statusLabel(active.status)}</Badge> : null}
+          {paused.length ? <Badge tone="warning">暂停 {paused.length}</Badge> : null}
+          {blocked.length ? <Badge tone="secondary">等待 {blocked.length}</Badge> : null}
         </div>
-        <div className="flex flex-wrap gap-2">
-          {active?.status === "running" || active?.status === "queued" ? (
-            <Button type="button" variant="secondary" disabled={actions.pending.download} onClick={() => actions.pauseDownload(active.id)}>
-              暂停下载
-            </Button>
-          ) : null}
-          {paused[0] ? (
-            <Button type="button" variant="secondary" disabled={actions.pending.download} onClick={() => actions.resumeDownload(paused[0].id)}>
-              继续下载
-            </Button>
-          ) : null}
-          {active || paused[0] ? (
-            <Button
-              type="button"
-              variant="outline"
-              disabled={actions.pending.download}
-              onClick={() => actions.stopDownload((active ?? paused[0]).id)}
-            >
-              停止下载
-            </Button>
-          ) : null}
+        <div className="mt-3 flex flex-wrap items-center gap-x-4 gap-y-2 text-xs text-fg-secondary">
+          <span className="flex items-center gap-1.5">
+            <span
+              className={cn("h-1.5 w-1.5 rounded-full", active ? "bg-brand animate-pulse" : "bg-fg-tertiary")}
+            ></span>
+            {active ? `Run #${active.id}` : "空闲"}
+          </span>
+          <span>{formatBytes(downloads?.speed_bps)}/s</span>
+          <span>
+            进度: {progress}% ({doneItems}/{totalItems})
+          </span>
+          <span>等待: {(downloads?.pending_count ?? 0) + (downloads?.blocked_count ?? 0)}</span>
+          <span>失败: {downloads?.failed_count ?? 0}</span>
+        </div>
+        {runningItem ? (
+          <p className="mt-2 truncate text-xs text-fg-secondary">
+            <span className="font-mono">{runningItem.tweet_id}</span>: {runningItem.progress_message || "下载器处理中"}
+          </p>
+        ) : null}
+        {paused.length ? (
+          <p className="mt-2 text-xs text-warning">继续下载只会恢复暂停 Run，新发现的推文需手动点击下载。</p>
+        ) : null}
+      </div>
+      <div className="flex flex-wrap gap-2 pt-1">
+        {active?.status === "running" || active?.status === "queued" ? (
           <Button
             type="button"
-            disabled={!hasUnsubmitted || actions.pending.download}
-            onClick={() => actions.submitDownload({ sourceId: source.id, scope: "all_unsubmitted" })}
-          >
-            下载新发现
-          </Button>
-          <Button
-            type="button"
+            size="sm"
             variant="secondary"
             disabled={actions.pending.download}
-            onClick={() => actions.submitDownload({ sourceId: source.id, scope: "failed" })}
+            onClick={() => actions.pauseDownload(active.id)}
           >
-            重试失败
+            暂停下载
           </Button>
-        </div>
+        ) : null}
+        {paused[0] ? (
+          <Button
+            type="button"
+            size="sm"
+            variant="secondary"
+            disabled={actions.pending.download}
+            onClick={() => actions.resumeDownload(paused[0].id)}
+          >
+            继续下载
+          </Button>
+        ) : null}
+        {active || paused[0] ? (
+          <Button
+            type="button"
+            size="sm"
+            variant="outline"
+            disabled={actions.pending.download}
+            onClick={() => actions.stopDownload((active ?? paused[0]).id)}
+          >
+            停止下载
+          </Button>
+        ) : null}
+        <Button
+          type="button"
+          size="sm"
+          disabled={!hasUnsubmitted || actions.pending.download}
+          onClick={() => actions.submitDownload({ sourceId: source.id, scope: "all_unsubmitted" })}
+        >
+          下载新发现
+        </Button>
+        <Button
+          type="button"
+          size="sm"
+          variant="secondary"
+          disabled={actions.pending.download}
+          onClick={() => actions.submitDownload({ sourceId: source.id, scope: "failed" })}
+        >
+          重试失败
+        </Button>
       </div>
       {actions.errors.download ? <p className="mt-2 text-xs text-danger">{String(actions.errors.download)}</p> : null}
     </div>
