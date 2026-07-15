@@ -16,7 +16,6 @@ import { SourceTweetsContent } from "./source-tweets-content";
 import { DownloadActions } from "./download-actions";
 import { ManualImport } from "./manual-import";
 import { ScanLogDialog } from "./scan-log-dialog";
-import { useNumberInput, type NumberInputState } from "./use-number-input";
 import { Badge } from "@/components/ui/badge";
 import { ExternalLink } from "lucide-react";
 
@@ -81,7 +80,6 @@ export function SourceDetailPanel({
   actions: DetailActions;
   onManualSubmitted: () => void;
 }) {
-  const scanLimit = useNumberInput("20");
   const [activeTab, setActiveTab] = React.useState("tweets");
   const [tweetsOffset, setTweetsOffset] = React.useState(0);
   const [logRun, setLogRun] = React.useState<SourceScanRun | null>(null);
@@ -94,11 +92,6 @@ export function SourceDetailPanel({
     source?.active_scan_run?.status === "running",
   );
   const scanRuns = scanRunsQuery.data?.pages.flatMap((page) => page.rows) ?? [];
-
-  React.useEffect(() => {
-    if (!source) return;
-    scanLimit.set(String(persistedScanLimit));
-  }, [source?.id, persistedScanLimit]);
 
   React.useEffect(() => {
     setActiveTab("tweets");
@@ -152,7 +145,7 @@ export function SourceDetailPanel({
                   actions={actions}
                   now={now}
                   scanFeedback={scanFeedback}
-                  scanLimit={scanLimit}
+                  scanLimit={persistedScanLimit}
                   onOpenLog={setLogRun}
                   data={discoveredQuery.data}
                   downloads={downloadsQuery.data as SourceDownloadSummary | undefined}
@@ -171,7 +164,7 @@ export function SourceDetailPanel({
                   source={source}
                   now={now}
                   detailUpdatedAt={detailUpdatedAt}
-                  scanLimit={scanLimit.clamped(200)}
+                  scanLimit={persistedScanLimit}
                 />
               </TabsContent>
               <TabsContent

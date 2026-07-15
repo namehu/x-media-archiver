@@ -9,7 +9,6 @@ import { cn, formatDateTime } from "@/lib/utils";
 import { formatElapsed, formatRunRange, scanStatusTone } from "../../utils";
 import { SourceTweetsTab } from "../source-tweets-tab";
 import { ScanActions, type DetailActions } from "./scan-actions";
-import type { NumberInputState } from "./use-number-input";
 
 export function SourceTweetsContent({
   source,
@@ -29,7 +28,7 @@ export function SourceTweetsContent({
   source: ArchiveSourceDetail;
   actions: DetailActions;
   scanFeedback: Record<string, unknown> | null;
-  scanLimit: NumberInputState;
+  scanLimit: number;
   onOpenLog: (run: SourceScanRun) => void;
   data?: SourceDiscoveryPageResponse;
   downloads?: SourceDownloadSummary;
