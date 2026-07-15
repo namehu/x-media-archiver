@@ -327,7 +327,7 @@ docker-compose run --rm xarchiver export-duplicates
 
 生产部署的完整说明（包括 Supabase 元数据存储、连接选择、迁移检查、服务运行、调优以及备份/恢复流程）见统一手册 [`docs/deploy/`](docs/deploy/README.md)。
 
-如果本地端口 5432 已被占用，可覆盖开发 Postgres 的宿主机映射端口：
+开发环境默认将宿主机 `5333` 映射到 Postgres 容器的 `5432`。如需覆盖默认宿主机端口：
 
 ```bash
 POSTGRES_PORT=5434 docker-compose up -d postgres
