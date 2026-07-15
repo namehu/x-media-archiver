@@ -71,7 +71,7 @@ export function SourceDetailPanel({
   onManualSubmitted: () => void;
 }) {
   const scanLimit = useNumberInput("20");
-  const [activeTab, setActiveTab] = React.useState("details");
+  const [activeTab, setActiveTab] = React.useState("tweets");
   const [tweetsOffset, setTweetsOffset] = React.useState(0);
   const [historyOffset, setHistoryOffset] = React.useState(0);
   const [logRun, setLogRun] = React.useState<SourceScanRun | null>(null);
@@ -91,7 +91,7 @@ export function SourceDetailPanel({
   }, [source?.id, persistedScanLimit]);
 
   React.useEffect(() => {
-    setActiveTab("details");
+    setActiveTab("tweets");
     setTweetsOffset(0);
     setHistoryOffset(0);
   }, [source?.id]);
@@ -132,23 +132,12 @@ export function SourceDetailPanel({
                 </div>
 
                 <TabsList className="flex-wrap">
+                  <TabsTrigger value="tweets">发现的 Tweet</TabsTrigger>
                   <TabsTrigger value="details">详情</TabsTrigger>
-                  <TabsTrigger value="tweets">最近发现的 Tweet</TabsTrigger>
                   <TabsTrigger value="history">扫描历史（最近 20 批）</TabsTrigger>
                   <TabsTrigger value="config">提交与导入</TabsTrigger>
                 </TabsList>
               </SheetHeader>
-              <TabsContent
-                value="details"
-                className="min-h-0 flex-1 overflow-y-auto px-6 pb-6 pt-4 data-[state=active]:block"
-              >
-                <SourceDetailContent
-                  source={source}
-                  now={now}
-                  detailUpdatedAt={detailUpdatedAt}
-                  scanLimit={scanLimit.clamped(200)}
-                />
-              </TabsContent>
               <TabsContent
                 value="tweets"
                 className="min-h-0 flex-1 overflow-hidden px-6 pb-6 pt-4 data-[state=active]:flex data-[state=active]:flex-col"
@@ -156,6 +145,7 @@ export function SourceDetailPanel({
                 <SourceTweetsContent
                   source={source}
                   actions={actions}
+                  now={now}
                   scanFeedback={scanFeedback}
                   scanLimit={scanLimit}
                   onOpenLog={setLogRun}
@@ -166,7 +156,17 @@ export function SourceDetailPanel({
                   offset={tweetsOffset}
                   onOffsetChange={setTweetsOffset}
                   statusLabel={statusLabel}
+                />
+              </TabsContent>
+              <TabsContent
+                value="details"
+                className="min-h-0 flex-1 overflow-y-auto px-6 pb-6 pt-4 data-[state=active]:block"
+              >
+                <SourceDetailContent
+                  source={source}
                   now={now}
+                  detailUpdatedAt={detailUpdatedAt}
+                  scanLimit={scanLimit.clamped(200)}
                 />
               </TabsContent>
               <TabsContent

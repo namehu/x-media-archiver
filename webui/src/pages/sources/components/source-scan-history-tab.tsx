@@ -26,11 +26,11 @@ export function SourceScanHistoryTab({
   const runs = data?.rows ?? [];
 
   if (isLoading) {
-    return <p className="py-4 pl-5 text-sm text-fg-secondary">加载中...</p>;
+    return <p className="py-4 text-sm text-fg-secondary">加载中...</p>;
   }
 
   if (error) {
-    return <p className="py-4 pl-5 text-sm text-danger">{String(error)}</p>;
+    return <p className="py-4 text-sm text-danger">{String(error)}</p>;
   }
 
   if (runs.length === 0) {
@@ -38,7 +38,7 @@ export function SourceScanHistoryTab({
   }
 
   return (
-    <div className="flex h-full min-h-0 flex-col gap-3 pl-5">
+    <div className="flex h-full min-h-0 flex-col gap-3">
       {data ? (
         <Pagination
           offset={offset}
@@ -53,51 +53,57 @@ export function SourceScanHistoryTab({
         className="min-h-0 flex-1"
         style={{ height: "100%" }}
         data={runs}
-        itemContent={(_, run) => (
-          <div className="relative pb-4">
-            {/* 时间轴竖线由父容器 before 伪元素提供，节点用绝对定位圆点 */}
+        itemContent={(index, run) => (
+          <div className="relative pb-6 pl-6">
+            {/* 时间轴竖线 */}
+            {index !== runs.length - 1 && (
+              <div className="absolute bottom-[-8px] left-[4px] top-3 w-[2px] bg-border-subtle" />
+            )}
+            {/* 节点圆点 */}
             <div
               className={[
-                "absolute left-0 top-1.5 h-2.5 w-2.5 rounded-full border-2 bg-bg-surface",
+                "absolute left-0 top-1.5 z-10 h-2.5 w-2.5 rounded-full border-2 bg-bg-surface",
                 run.status === "running" ? "animate-breathe border-brand" : "border-border-strong",
               ].join(" ")}
             />
-            <div className="text-xs text-fg-secondary">
-              {run.status === "running"
-                ? `已运行 ${formatElapsed(run.started_at, now)}`
-                : formatDateTime(run.finished_at || run.created_at)}
+            <div className="flex flex-col gap-1.5">
+              <div className="text-xs font-medium text-fg-secondary">
+                {run.status === "running"
+                  ? `已运行 ${formatElapsed(run.started_at, now)}`
+                  : formatDateTime(run.finished_at || run.created_at)}
+              </div>
+              <div className="flex flex-wrap items-center gap-2">
+                <Badge>{scanTriggerLabel(run.trigger_type)}</Badge>
+                <Badge tone={scanStatusTone(run.status)}>{scanStatusLabel(run.status)}</Badge>
+              </div>
+              <div className="mt-1 flex flex-wrap gap-x-4 gap-y-1 text-xs text-fg-secondary">
+                <span>
+                  范围: <span className="text-fg-primary">{formatRunRange(run.range_start, run.range_end)}</span>
+                </span>
+                <span>
+                  发现: <span className="text-fg-primary">{run.discovered_tweet_count}</span>
+                </span>
+                <span>
+                  新增: <span className="text-fg-primary">{run.new_tweet_count}</span>
+                </span>
+                <span>
+                  已存在: <span className="text-fg-primary">{run.duplicate_tweet_count}</span>
+                </span>
+                <span>
+                  媒体预估: <span className="text-fg-primary">{run.discovered_media_count}</span>
+                </span>
+              </div>
+              {run.error_message ? (
+                <div className="mt-1 rounded-md border border-danger/20 bg-danger/5 p-2 text-xs text-danger">
+                  <span className="font-semibold">{run.error_category || "失败"}:</span> {run.error_message}
+                </div>
+              ) : null}
+              {run.progress_message ? (
+                <div className="mt-1 rounded-md border border-border-subtle bg-bg-muted/50 p-2 text-xs text-fg-secondary">
+                  <span className="font-semibold">最近日志:</span> {run.progress_message}
+                </div>
+              ) : null}
             </div>
-            <div className="mt-1 flex flex-wrap items-center gap-2">
-              <Badge>{scanTriggerLabel(run.trigger_type)}</Badge>
-              <Badge tone={scanStatusTone(run.status)}>{scanStatusLabel(run.status)}</Badge>
-            </div>
-            <div className="mt-1.5 flex flex-wrap gap-x-4 gap-y-0.5 text-xs text-fg-secondary">
-              <span>
-                范围: {formatRunRange(run.range_start, run.range_end)}
-              </span>
-              <span>
-                发现: {run.discovered_tweet_count}
-              </span>
-              <span>
-                新增: {run.new_tweet_count}
-              </span>
-              <span>
-                已存在: {run.duplicate_tweet_count}
-              </span>
-              <span>
-                媒体预估: {run.discovered_media_count}
-              </span>
-            </div>
-            {run.error_message ? (
-              <p className="mt-1.5 break-words text-xs text-danger">
-                {run.error_category || "失败"}: {run.error_message}
-              </p>
-            ) : null}
-            {run.progress_message ? (
-              <p className="mt-1.5 break-words text-xs text-fg-secondary">
-                最近日志: {run.progress_message}
-              </p>
-            ) : null}
           </div>
         )}
       />
