@@ -96,11 +96,39 @@ export function ScanActions({
     <ActionBlock
       title="扫描来源"
       hint="扫描只发现并记录 Tweet 与媒体预估，不会自动提交下载；同一来源同一时间只运行一个扫描会话。每批先读取来源 cursor 与下一批范围；下载队列忙时只记录等待，空闲时才调用 gallery-dl 枚举。子进程完整返回后才会解析、去重并落库，再按延迟时间调度下一批。暂停只阻止后续调度，不会终止已启动的 gallery-dl 子进程；该批结束后会保留 cursor 与发现记录。"
+      contentClassName="flex flex-1 flex-col justify-between gap-3 text-sm"
     >
-      <span className="text-sm text-fg-secondary">每批 <span className="font-semibold text-fg-primary">{scanLimit}</span> 条</span>
-      {isRunning ? (
-        <>
-          <Badge tone="secondary">正在{modeLabel}</Badge>
+      <div className="min-w-0">
+        <div className="flex flex-wrap items-center gap-2">
+          <span className="text-fg-secondary">每批 <span className="font-semibold text-fg-primary">{scanLimit}</span> 条</span>
+          {isRunning ? <Badge tone="secondary">正在{modeLabel}</Badge> : null}
+          {isPaused ? <Badge tone="warning">已暂停：{modeLabel}</Badge> : null}
+          {!isRunning && !isPaused ? <Badge tone="secondary">待命</Badge> : null}
+        </div>
+        <p className="mt-3 text-xs text-fg-secondary">仅发现并记录 Tweet；不会自动提交下载。</p>
+        {activeRun ? (
+          <button
+            type="button"
+            className="mt-2 text-xs font-semibold text-brand hover:text-brand-hover"
+            onClick={() => onOpenLog(activeRun)}
+          >
+            查看最新扫描日志
+          </button>
+        ) : null}
+        {actions.errors.history || actions.errors.status ? (
+          <div className="mt-2"><ErrorLine error={actions.errors.history || actions.errors.status} /></div>
+        ) : null}
+        {scanFeedback ? (
+          <p className="mt-2 rounded-lg bg-bg-muted p-2.5 text-xs text-fg-primary">
+            本次扫描记录 {Number(scanFeedback.discovered_count || 0)} 条 Tweet，其中{" "}
+            {Number(scanFeedback.new_discovered_count || 0)} 条为新发现、{Number(scanFeedback.duplicate_count || 0)}{" "}
+            条已存在，尚未提交下载。{scanFeedback.completed ? "可能已到结尾" : ""}
+          </p>
+        ) : null}
+      </div>
+      <div className="flex flex-wrap gap-2 pt-1">
+        {isRunning ? (
+          <>
           <Button
             type="button"
             size="sm"
@@ -119,10 +147,9 @@ export function ScanActions({
           >
             停止
           </Button>
-        </>
-      ) : isPaused ? (
-        <>
-          <Badge tone="warning">已暂停：{modeLabel}</Badge>
+          </>
+        ) : isPaused ? (
+          <>
           <Button
             type="button"
             size="sm"
@@ -140,37 +167,19 @@ export function ScanActions({
           >
             停止
           </Button>
-        </>
-      ) : (
-        <ScanStartButtons
-          source={source}
-          activeMode={activeMode}
-          hasDiscovered={hasDiscovered}
-          canStart={canStart}
-          onStart={(mode, restart) =>
-            setConfirmation({ action: "start", mode, restart: Boolean(restart), limit: scanLimit })
-          }
-        />
-      )}
-      {activeRun ? (
-        <button
-          type="button"
-          className="text-sm font-semibold text-brand hover:text-brand-hover"
-          onClick={() => onOpenLog(activeRun)}
-        >
-          查看最新扫描日志
-        </button>
-      ) : null}
-      {actions.errors.history || actions.errors.status ? (
-        <ErrorLine error={actions.errors.history || actions.errors.status} />
-      ) : null}
-      {scanFeedback ? (
-        <p className="basis-full rounded-lg bg-bg-muted p-3 text-sm text-fg-primary">
-          本次扫描记录 {Number(scanFeedback.discovered_count || 0)} 条 Tweet，其中{" "}
-          {Number(scanFeedback.new_discovered_count || 0)} 条为新发现、{Number(scanFeedback.duplicate_count || 0)}{" "}
-          条已存在，尚未提交下载。{scanFeedback.completed ? "可能已到结尾" : ""}
-        </p>
-      ) : null}
+          </>
+        ) : (
+          <ScanStartButtons
+            source={source}
+            activeMode={activeMode}
+            hasDiscovered={hasDiscovered}
+            canStart={canStart}
+            onStart={(mode, restart) =>
+              setConfirmation({ action: "start", mode, restart: Boolean(restart), limit: scanLimit })
+            }
+          />
+        )}
+      </div>
       <ScanConfirmationDialog
         confirmation={confirmation}
         pending={actions.pending.history}

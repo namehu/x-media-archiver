@@ -9,6 +9,7 @@ import { cn, formatDateTime } from "@/lib/utils";
 import { formatElapsed, formatRunRange, scanStatusTone } from "../../utils";
 import { SourceTweetsTab } from "../source-tweets-tab";
 import { ScanActions, type DetailActions } from "./scan-actions";
+import { ActionBlock } from "./action-block";
 
 export function SourceTweetsContent({
   source,
@@ -98,10 +99,9 @@ function SourceDownloadPanel({
   const hasUnsubmitted = (source.unsubmitted_tweet_count ?? 0) > 0;
 
   return (
-    <div className="flex h-full flex-col justify-between space-y-3 rounded-xl bg-bg-muted/40 p-4 text-sm">
+    <ActionBlock title="下载工作台" contentClassName="flex flex-1 flex-col justify-between gap-3 text-sm">
       <div className="min-w-0">
         <div className="flex flex-wrap items-center gap-2">
-          <span className="font-semibold text-fg-primary">下载工作台</span>
           {active ? <Badge>{statusLabel(active.status)}</Badge> : null}
           {paused.length ? <Badge tone="warning">暂停 {paused.length}</Badge> : null}
           {blocked.length ? <Badge tone="secondary">等待 {blocked.length}</Badge> : null}
@@ -182,7 +182,7 @@ function SourceDownloadPanel({
         </Button>
       </div>
       {actions.errors.download ? <p className="mt-2 text-xs text-danger">{String(actions.errors.download)}</p> : null}
-    </div>
+    </ActionBlock>
   );
 }
 
