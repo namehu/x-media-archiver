@@ -1,5 +1,5 @@
 import { useMemo, useState } from "react";
-import { Grid2X2, ListFilter } from "lucide-react";
+import { Grid2X2, ListFilter, SlidersHorizontal } from "lucide-react";
 import { useQuery } from "@tanstack/react-query";
 import { apiGet, mediaQueryString, type MediaRow, type PageResponse } from "../../lib/api";
 import { Card, CardDescription, CardHeader, CardTitle } from "../../components/ui/card";
@@ -14,6 +14,8 @@ import {
 } from "./components/library-filter-panel";
 import { LibraryResultsToolbar } from "./components/library-results-toolbar";
 import { MediaGrid } from "./components/media-grid";
+import { Collapsible, CollapsibleContent, CollapsibleTrigger } from "../../components/ui/collapsible";
+import { Button } from "../../components/ui/button";
 
 const PAGE_SIZE = 60;
 
@@ -21,6 +23,7 @@ export function LibraryPage() {
   const [filters, setFilters] = useState<LibraryFilters>(DEFAULT_LIBRARY_FILTERS);
   const [submitted, setSubmitted] = useState<LibraryFilters>(DEFAULT_LIBRARY_FILTERS);
   const [offset, setOffset] = useState(0);
+  const [mobileFiltersOpen, setMobileFiltersOpen] = useState(false);
   const draftFilterCount = useMemo(() => countActiveFilters(filters), [filters]);
   const query = useMemo(
     () => mediaQueryString({ ...submitted, limit: String(PAGE_SIZE), offset: String(offset) }),
@@ -43,7 +46,7 @@ export function LibraryPage() {
   };
 
   return (
-    <div className="flex flex-col gap-5">
+    <div className="flex flex-col gap-4 sm:gap-5">
       <section className="flex flex-col justify-between gap-4 md:flex-row md:items-end">
         <div>
           <h1 className="text-2xl font-bold tracking-tight text-fg-primary">媒体库</h1>
@@ -52,7 +55,29 @@ export function LibraryPage() {
       </section>
 
       <section className="grid gap-4 lg:grid-cols-[280px_minmax(0,1fr)]">
-        <aside className="min-w-0">
+        <div className="lg:hidden">
+          <Collapsible open={mobileFiltersOpen} onOpenChange={setMobileFiltersOpen}>
+            <CollapsibleTrigger asChild>
+              <Button type="button" variant="secondary" className="w-full justify-between">
+                <span className="flex items-center gap-2"><SlidersHorizontal className="h-4 w-4" />筛选媒体</span>
+                <span className="text-xs text-fg-secondary">{draftFilterCount ? `${draftFilterCount} 项条件` : "默认条件"}</span>
+              </Button>
+            </CollapsibleTrigger>
+            <CollapsibleContent className="pt-3">
+              <LibraryFilterPanel
+                filters={filters}
+                activeCount={draftFilterCount}
+                onFiltersChange={setFilters}
+                onApply={() => {
+                  applyFilters();
+                  setMobileFiltersOpen(false);
+                }}
+                onReset={resetFilters}
+              />
+            </CollapsibleContent>
+          </Collapsible>
+        </div>
+        <aside className="hidden min-w-0 lg:block">
           <LibraryFilterPanel
             filters={filters}
             activeCount={draftFilterCount}

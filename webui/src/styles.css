@@ -109,6 +109,32 @@ textarea {
   font-variant-numeric: tabular-nums;
 }
 
+@keyframes sheet-in-from-left {
+  from {
+    transform: translateX(-100%);
+  }
+  to {
+    transform: translateX(0);
+  }
+}
+
+@keyframes sheet-out-to-left {
+  from {
+    transform: translateX(0);
+  }
+  to {
+    transform: translateX(-100%);
+  }
+}
+
+.sheet-content[data-sheet-side="left"][data-state="open"] {
+  animation: sheet-in-from-left var(--dur-slow) var(--ease-spring) forwards;
+}
+
+.sheet-content[data-sheet-side="left"][data-state="closed"] {
+  animation: sheet-out-to-left var(--dur-slow) var(--ease-out) forwards;
+}
+
 @media (prefers-reduced-motion: reduce) {
   *,
   *::before,

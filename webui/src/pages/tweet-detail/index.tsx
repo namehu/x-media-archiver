@@ -50,11 +50,11 @@ export function TweetDetailPage() {
   const statusTone = toneForStatus(data.tweet.tweet_status);
 
   return (
-    <div className="mx-auto max-w-[1480px] space-y-6">
+    <div className="mx-auto max-w-[1480px] space-y-4 sm:space-y-6">
         <Card className="relative overflow-hidden border-border-strong bg-bg-elevated shadow-2">
           <div className="pointer-events-none absolute inset-x-0 top-0 h-1 bg-brand" />
-          <CardContent className="p-5 sm:p-6">
-            <div className="flex flex-col gap-6 lg:flex-row lg:items-start lg:justify-between">
+          <CardContent className="p-4 sm:p-6">
+            <div className="flex flex-col gap-5 sm:gap-6 lg:flex-row lg:items-start lg:justify-between">
               <div className="min-w-0 max-w-4xl space-y-4">
                 <div className="flex flex-wrap items-center gap-2">
                   <span className="text-xs font-semibold uppercase tracking-[0.16em] text-fg-tertiary">已归档 Tweet</span>
@@ -64,7 +64,7 @@ export function TweetDetailPage() {
                   </Badge>
                 </div>
                 <div>
-                  <h1 className="break-words text-3xl font-bold tracking-tight text-fg-primary">{authorName}</h1>
+                  <h1 className="break-words text-2xl font-bold tracking-tight text-fg-primary sm:text-3xl">{authorName}</h1>
                   {data.tweet.author_username ? <p className="mt-1 text-base text-fg-secondary">@{data.tweet.author_username}</p> : null}
                 </div>
                 <p className="whitespace-pre-wrap text-base leading-7 text-fg-primary">
@@ -72,16 +72,16 @@ export function TweetDetailPage() {
                 </p>
               </div>
               {data.tweet.tweet_url ? (
-                <Button variant="secondary" size="sm" onClick={() => window.open(data.tweet.tweet_url || "", "_blank", "noopener,noreferrer")}>
+                <Button className="self-start" variant="secondary" size="sm" onClick={() => window.open(data.tweet.tweet_url || "", "_blank", "noopener,noreferrer")}>
                   <ExternalLink className="h-4 w-4" />
                   在 X 中查看
                 </Button>
               ) : null}
             </div>
-            <div className="mt-6 flex flex-wrap gap-x-6 gap-y-3 border-t border-border-subtle pt-4 text-sm text-fg-secondary">
+            <div className="mt-5 flex flex-col gap-2 border-t border-border-subtle pt-4 text-sm text-fg-secondary sm:mt-6 sm:flex-row sm:flex-wrap sm:gap-x-6 sm:gap-y-3">
               <span className="inline-flex items-center gap-2"><CalendarDays className="h-4 w-4 text-fg-tertiary" />{formatDateTime(data.tweet.published_at)}</span>
               <span className="inline-flex items-center gap-2"><Images className="h-4 w-4 text-fg-tertiary" />{data.media.length} 个媒体文件</span>
-              <span className="font-mono text-xs text-fg-tertiary">{data.tweet.tweet_id}</span>
+              <span className="break-all font-mono text-xs text-fg-tertiary">{data.tweet.tweet_id}</span>
             </div>
           </CardContent>
         </Card>
@@ -141,7 +141,7 @@ function MediaGrid({
 }) {
   return (
     <Card className="overflow-hidden">
-      <CardHeader className="border-b border-border-subtle bg-bg-muted/30 p-5 pb-4">
+      <CardHeader className="border-b border-border-subtle bg-bg-muted/30 p-4 pb-3 sm:p-5 sm:pb-4">
         <div className="flex items-center justify-between gap-3">
           <div>
             <CardTitle className="text-xl">{title}</CardTitle>
@@ -150,7 +150,7 @@ function MediaGrid({
           <Badge tone="secondary">共 {media.length} 项</Badge>
         </div>
       </CardHeader>
-      <CardContent className="p-4 sm:p-5">
+      <CardContent className="p-3 sm:p-5">
         {media.length === 0 ? (
           <EmptyState icon={<ImageIcon className="h-5 w-5" />} title={emptyText} />
         ) : (
@@ -292,7 +292,7 @@ function MediaPreviewDialog({
 
   return (
     <Dialog open={Boolean(media)} onOpenChange={onOpenChange}>
-      <DialogContent className="w-[min(calc(100vw-32px),1120px)] p-4">
+      <DialogContent className="max-h-[calc(100dvh-32px)] w-[min(calc(100vw-24px),1120px)] overflow-y-auto p-4 sm:w-[min(calc(100vw-32px),1120px)]">
         <DialogHeader className="pr-8">
           <DialogTitle>{media ? mediaTypeLabel(media.media_type) : "Media"}</DialogTitle>
           <DialogDescription>
@@ -301,7 +301,7 @@ function MediaPreviewDialog({
         </DialogHeader>
         {media ? (
           <div className="grid gap-4 lg:grid-cols-[minmax(0,1fr)_280px]">
-            <div className="flex min-h-[320px] items-center justify-center overflow-hidden rounded-lg bg-bg-muted">
+            <div className="flex min-h-[220px] items-center justify-center overflow-hidden rounded-lg bg-bg-muted sm:min-h-[320px]">
               {media.media_url ? (
                 isVideo ? (
                   <video className="max-h-[70vh] w-full object-contain" src={media.media_url} controls autoPlay preload="metadata" />

@@ -1,4 +1,5 @@
 import { useState, type FormEvent } from "react";
+import { UserRound } from "lucide-react";
 import { toast } from "sonner";
 import { Button } from "@/components/ui/button";
 import {
@@ -65,7 +66,10 @@ export function AccountMenu() {
     <>
       <DropdownMenu>
         <DropdownMenuTrigger asChild>
-          <Button variant="ghost" size="sm">{session.user?.username || "管理员"}</Button>
+          <Button variant="ghost" size="icon" className="sm:w-auto sm:px-3" aria-label="账户菜单">
+            <UserRound className="h-4 w-4" />
+            <span className="ml-2 hidden sm:inline">{session.user?.username || "管理员"}</span>
+          </Button>
         </DropdownMenuTrigger>
         <DropdownMenuContent align="end">
           <DropdownMenuLabel className="px-2 py-1.5 text-xs text-fg-tertiary">
