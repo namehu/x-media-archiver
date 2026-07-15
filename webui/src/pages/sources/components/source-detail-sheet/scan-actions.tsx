@@ -72,7 +72,7 @@ export function ScanActions({
   return (
     <ActionBlock
       title="扫描来源"
-      hint="扫描只发现并记录 Tweet 与媒体预估，不会自动提交下载；同一来源同一时间只运行一个扫描会话。"
+      hint="扫描只发现并记录 Tweet 与媒体预估，不会自动提交下载；同一来源同一时间只运行一个扫描会话。每批先读取来源 cursor 与下一批范围；下载队列忙时只记录等待，空闲时才调用 gallery-dl 枚举。子进程完整返回后才会解析、去重并落库，再按延迟时间调度下一批。暂停只阻止后续调度，不会终止已启动的 gallery-dl 子进程；该批结束后会保留 cursor 与发现记录。"
     >
       <Input
         className="w-28"
