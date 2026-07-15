@@ -4,6 +4,16 @@ import type { ArchiveSourceDetail, SourceDiscoveryPageResponse, SourceDownloadSu
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Collapsible, CollapsibleContent, CollapsibleTrigger } from "@/components/ui/collapsible";
+import {
+  AlertDialog,
+  AlertDialogAction,
+  AlertDialogCancel,
+  AlertDialogContent,
+  AlertDialogDescription,
+  AlertDialogFooter,
+  AlertDialogHeader,
+  AlertDialogTitle,
+} from "@/components/ui/alert-dialog";
 import { scanStatusLabel, scanTriggerLabel } from "@/lib/formatters";
 import { cn, formatDateTime } from "@/lib/utils";
 import { formatElapsed, formatRunRange, scanStatusTone } from "../../utils";
@@ -17,12 +27,13 @@ export function SourceTweetsContent({
   scanFeedback,
   scanLimit,
   onOpenLog,
-  data,
+  pages,
   downloads,
   isLoading,
   error,
-  offset,
-  onOffsetChange,
+  isFetchingNextPage,
+  hasNextPage,
+  onLoadMore,
   statusLabel,
   now,
 }: {
@@ -31,12 +42,13 @@ export function SourceTweetsContent({
   scanFeedback: Record<string, unknown> | null;
   scanLimit: number;
   onOpenLog: (run: SourceScanRun) => void;
-  data?: SourceDiscoveryPageResponse;
+  pages: SourceDiscoveryPageResponse[];
   downloads?: SourceDownloadSummary;
   isLoading: boolean;
   error: unknown;
-  offset: number;
-  onOffsetChange: (offset: number) => void;
+  isFetchingNextPage: boolean;
+  hasNextPage: boolean | undefined;
+  onLoadMore: () => void;
   statusLabel: (status?: string | null) => string;
   now: number;
 }) {
@@ -61,13 +73,14 @@ export function SourceTweetsContent({
       </div>
       <div className="min-h-0 flex-1">
         <SourceTweetsTab
-          data={data}
+          pages={pages}
           sourceId={source.id}
           actions={actions}
           isLoading={isLoading}
           error={error}
-          offset={offset}
-          onOffsetChange={onOffsetChange}
+          isFetchingNextPage={isFetchingNextPage}
+          hasNextPage={hasNextPage}
+          onLoadMore={onLoadMore}
           statusLabel={statusLabel}
         />
       </div>
@@ -86,6 +99,7 @@ function SourceDownloadPanel({
   actions: DetailActions;
   statusLabel: (status?: string | null) => string;
 }) {
+  const [confirmAllUnsubmitted, setConfirmAllUnsubmitted] = React.useState(false);
   const active = downloads?.active_run;
   const paused = downloads?.paused_runs ?? [];
   const blocked = downloads?.blocked_runs ?? [];
@@ -167,9 +181,9 @@ function SourceDownloadPanel({
           type="button"
           size="sm"
           disabled={!hasUnsubmitted || actions.pending.download}
-          onClick={() => actions.submitDownload({ sourceId: source.id, scope: "all_unsubmitted" })}
+          onClick={() => setConfirmAllUnsubmitted(true)}
         >
-          下载新发现
+          下载全部未入队
         </Button>
         <Button
           type="button"
@@ -182,6 +196,25 @@ function SourceDownloadPanel({
         </Button>
       </div>
       {actions.errors.download ? <p className="mt-2 text-xs text-danger">{String(actions.errors.download)}</p> : null}
+      <AlertDialog open={confirmAllUnsubmitted} onOpenChange={setConfirmAllUnsubmitted}>
+        <AlertDialogContent>
+          <AlertDialogHeader>
+            <AlertDialogTitle>下载全部未入队 Tweet？</AlertDialogTitle>
+            <AlertDialogDescription>
+              将把该来源 {source.unsubmitted_tweet_count ?? 0} 条尚未入队的发现记录提交为一个下载任务。已下载、已验证、已取消和失败记录不会被重复加入；失败记录请使用“重试失败”。
+            </AlertDialogDescription>
+          </AlertDialogHeader>
+          <AlertDialogFooter>
+            <AlertDialogCancel disabled={actions.pending.download}>取消</AlertDialogCancel>
+            <AlertDialogAction
+              disabled={actions.pending.download}
+              onClick={() => actions.submitDownload({ sourceId: source.id, scope: "all_unsubmitted" })}
+            >
+              确认下载
+            </AlertDialogAction>
+          </AlertDialogFooter>
+        </AlertDialogContent>
+      </AlertDialog>
     </ActionBlock>
   );
 }

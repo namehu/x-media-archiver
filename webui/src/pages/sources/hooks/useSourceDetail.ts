@@ -31,12 +31,17 @@ export function useSourceDownloads(sourceId: number | null, enabled: boolean) {
   });
 }
 
-export function useSourceDiscovered(sourceId: number | null, offset: number, enabled: boolean) {
+export function useSourceDiscovered(sourceId: number | null, enabled: boolean) {
   const pageSize = 50;
-  return useQuery({
-    queryKey: ["source-discovered", sourceId, offset],
-    queryFn: () =>
-      apiGet<SourceDiscoveryPageResponse>(`/api/v1/sources/${sourceId}/discovered?limit=${pageSize}&offset=${offset}`),
+  return useInfiniteQuery({
+    queryKey: ["source-discovered", sourceId],
+    queryFn: ({ pageParam }) =>
+      apiGet<SourceDiscoveryPageResponse>(`/api/v1/sources/${sourceId}/discovered?limit=${pageSize}&offset=${pageParam}`),
+    initialPageParam: 0,
+    getNextPageParam: (lastPage) => {
+      const nextOffset = lastPage.offset + lastPage.count;
+      return nextOffset < lastPage.total_count ? nextOffset : undefined;
+    },
     enabled: enabled && sourceId !== null,
     refetchInterval: enabled ? 15000 : false,
   });

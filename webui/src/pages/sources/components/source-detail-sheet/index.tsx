@@ -81,10 +81,9 @@ export function SourceDetailPanel({
   onManualSubmitted: () => void;
 }) {
   const [activeTab, setActiveTab] = React.useState("tweets");
-  const [tweetsOffset, setTweetsOffset] = React.useState(0);
   const [logRun, setLogRun] = React.useState<SourceScanRun | null>(null);
   const persistedScanLimit = source ? preferredScanLimit(source, policy) : 20;
-  const discoveredQuery = useSourceDiscovered(source?.id ?? null, tweetsOffset, activeTab === "tweets");
+  const discoveredQuery = useSourceDiscovered(source?.id ?? null, activeTab === "tweets");
   const downloadsQuery = useSourceDownloads(source?.id ?? null, activeTab === "tweets");
   const scanRunsQuery = useSourceScanRuns(
     source?.id ?? null,
@@ -95,7 +94,6 @@ export function SourceDetailPanel({
 
   React.useEffect(() => {
     setActiveTab("tweets");
-    setTweetsOffset(0);
   }, [source?.id]);
 
   return (
@@ -147,12 +145,13 @@ export function SourceDetailPanel({
                   scanFeedback={scanFeedback}
                   scanLimit={persistedScanLimit}
                   onOpenLog={setLogRun}
-                  data={discoveredQuery.data}
+                  pages={discoveredQuery.data?.pages ?? []}
                   downloads={downloadsQuery.data as SourceDownloadSummary | undefined}
                   isLoading={discoveredQuery.isLoading}
+                  isFetchingNextPage={discoveredQuery.isFetchingNextPage}
+                  hasNextPage={discoveredQuery.hasNextPage}
                   error={discoveredQuery.error || downloadsQuery.error}
-                  offset={tweetsOffset}
-                  onOffsetChange={setTweetsOffset}
+                  onLoadMore={() => discoveredQuery.fetchNextPage()}
                   statusLabel={statusLabel}
                 />
               </TabsContent>

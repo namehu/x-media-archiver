@@ -4,35 +4,41 @@ import type { SourceDiscoveryPageResponse } from "@/lib/api";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Checkbox } from "@/components/ui/checkbox";
-import { Pagination } from "@/components/ui/pagination";
 import { Progress } from "@/components/ui/progress";
 import { Tooltip, TooltipContent, TooltipTrigger } from "@/components/ui/tooltip";
 import { cn, formatDateTime } from "@/lib/utils";
 import type { DetailActions } from "./source-detail-sheet/scan-actions";
 import { ChevronDown, ChevronUp, FileQuestion, Film, Image, Images } from "lucide-react";
 
-const PAGE_SIZE = 50;
-
 export function SourceTweetsTab({
-  data,
+  pages,
   sourceId,
   actions,
   isLoading,
   error,
-  offset,
-  onOffsetChange,
+  isFetchingNextPage,
+  hasNextPage,
+  onLoadMore,
   statusLabel,
 }: {
-  data?: SourceDiscoveryPageResponse;
+  pages: SourceDiscoveryPageResponse[];
   sourceId: number;
   actions: DetailActions;
   isLoading: boolean;
   error: unknown;
-  offset: number;
-  onOffsetChange: (offset: number) => void;
+  isFetchingNextPage: boolean;
+  hasNextPage: boolean | undefined;
+  onLoadMore: () => void;
   statusLabel: (status?: string | null) => string;
 }) {
-  const tweets = data?.rows ?? [];
+  const tweets = React.useMemo(
+    () =>
+      pages
+        .flatMap((page) => page.rows)
+        .filter((tweet, index, rows) => rows.findIndex((row) => row.tweet_id === tweet.tweet_id) === index),
+    [pages],
+  );
+  const totalCount = pages[0]?.total_count ?? 0;
   const [selected, setSelected] = React.useState<Set<string>>(new Set());
   const selectedIds = Array.from(selected);
   const selectableIds = tweets
@@ -54,7 +60,7 @@ export function SourceTweetsTab({
 
   React.useEffect(() => {
     setSelected(new Set());
-  }, [offset, data?.rows]);
+  }, [sourceId]);
 
   if (isLoading) {
     return <p className="py-4 text-sm text-fg-secondary">加载中...</p>;
@@ -86,7 +92,7 @@ export function SourceTweetsTab({
               onCheckedChange={(checked) => setSelected(new Set(checked ? selectableIds : []))}
             />
             <span className={cn("font-medium transition-colors", hasSelection ? "text-brand" : "text-fg-secondary")}>
-              {hasSelection ? `已选择 ${selectedIds.length} 项` : "全选本页可操作项"}
+              {hasSelection ? `已选择 ${selectedIds.length} 项` : "全选已加载可操作项"}
             </span>
           </div>
 
@@ -117,24 +123,14 @@ export function SourceTweetsTab({
             </div>
           )}
         </div>
-
-        <div className="shrink-0 px-1">
-          {data ? (
-            <Pagination
-              offset={offset}
-              count={data.count}
-              totalCount={data.total_count}
-              pageSize={PAGE_SIZE}
-              onOffsetChange={onOffsetChange}
-              label="第 {start}-{end} 项，共 {total} 项"
-            />
-          ) : null}
-        </div>
       </div>
       <Virtuoso
         className="min-h-0 flex-1"
         style={{ height: "100%" }}
         data={tweets}
+        endReached={() => {
+          if (hasNextPage && !isFetchingNextPage) onLoadMore();
+        }}
         itemContent={(_, tweet) => (
           <TweetListItem
             tweet={tweet}
@@ -152,6 +148,21 @@ export function SourceTweetsTab({
             statusLabel={statusLabel}
           />
         )}
+        components={{
+          Footer: () => (
+            <div className="py-3 text-center text-xs text-fg-secondary">
+              {isFetchingNextPage
+                ? "正在加载更多..."
+                : hasNextPage
+                  ? (
+                    <button type="button" className="text-brand hover:underline" onClick={onLoadMore}>
+                      加载更多
+                    </button>
+                  )
+                  : `已加载全部 ${totalCount} 条记录`}
+            </div>
+          ),
+        }}
       />
     </div>
   );
