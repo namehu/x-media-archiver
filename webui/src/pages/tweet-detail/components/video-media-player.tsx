@@ -1,15 +1,18 @@
 import { useEffect, useRef } from "react";
 import Artplayer from "artplayer";
 import type { MediaRow } from "@/lib/api";
+import { createArtplayerCleanup } from "@/lib/artplayer-lifecycle";
 
 export function VideoMediaPlayer({ media }: { media: MediaRow }) {
   const containerRef = useRef<HTMLDivElement | null>(null);
   const src = media.media_url;
 
   useEffect(() => {
-    if (!src || !containerRef.current) return undefined;
+    const container = containerRef.current;
+    if (!src || !container) return undefined;
+
     const player = new Artplayer({
-      container: containerRef.current,
+      container,
       url: src,
       autoSize: true,
       fullscreen: true,
@@ -19,7 +22,8 @@ export function VideoMediaPlayer({ media }: { media: MediaRow }) {
       aspectRatio: true,
       theme: brandColor(),
     });
-    return () => player.destroy(false);
+
+    return createArtplayerCleanup(player, container);
   }, [src]);
 
   if (!src) {

@@ -146,6 +146,12 @@ textarea {
   background-image: linear-gradient(to top, rgba(0, 0, 0, 0.56), rgba(0, 0, 0, 0.18), transparent);
 }
 
+/* Temporary release guard for a destroyed ArtPlayer node stranded in web fullscreen. */
+body > .art-video-player.art-fullscreen-web.art-destroy {
+  display: none !important;
+  pointer-events: none !important;
+}
+
 @media (prefers-reduced-motion: reduce) {
   *,
   *::before,

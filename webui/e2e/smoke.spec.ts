@@ -59,6 +59,20 @@ test.describe("WebUI smoke", () => {
       await expect(page.getByText(route.text).first()).toBeVisible();
     }
 
+    await page.route("**/api/v1/library/tweets/webui-e2e-verified", async (route) => {
+      const response = await route.fetch();
+      const detail = await response.json();
+      detail.media[0].media_type = "video";
+      await route.fulfill({ response, json: detail });
+    });
+    await page.goto("/tweets/webui-e2e-verified");
+    await expect(page.locator(".tweet-video-player .art-video-player")).toBeVisible();
+    await page.locator(".art-icon-fullscreenWebOn").locator("..").click();
+    await expect(page.locator("body > .art-video-player.art-fullscreen-web")).toHaveCount(1);
+    await page.goBack();
+    await expect(page.getByRole("link", { name: "操作" })).toBeVisible();
+    await expect(page.locator("body > .art-video-player.art-fullscreen-web")).toHaveCount(0);
+
     await page.getByRole("button", { name: "账户菜单" }).click();
     authSessionTransition = true;
     await page.getByRole("menuitem", { name: "退出登录" }).click();
