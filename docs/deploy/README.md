@@ -380,7 +380,12 @@ STUCK_TIMEOUT_MINUTES=120
 QUEUE_BATCH_SIZE=20            # API worker 每轮领取的 queued tweet 数
 DOWNLOADER_SLEEP_MIN_SECONDS=0 # 透传给 gallery-dl / yt-dlp，避免紧密连续请求
 DOWNLOADER_SLEEP_MAX_SECONDS=3
+DOWNLOADER_PROGRESS_FALLBACK_INTERVAL_SECONDS=10 # 全目录进度兜底扫描间隔；0 表示禁用
 ```
+
+下载进度优先使用 yt-dlp/gallery-dl 原生进度，其次只读取当前明确文件及其
+`.part` 文件大小。全媒体目录递归扫描仅在原生进度和明确路径都不可用时触发，
+并受 `DOWNLOADER_PROGRESS_FALLBACK_INTERVAL_SECONDS` 限制。
 
 ### 8.3 来源扫描（与下载独立）
 

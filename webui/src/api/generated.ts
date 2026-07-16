@@ -1418,6 +1418,8 @@ export interface components {
             downloader_sleep_min_seconds: number;
             /** Downloader Sleep Max Seconds */
             downloader_sleep_max_seconds: number;
+            /** Downloader Progress Fallback Interval Seconds */
+            downloader_progress_fallback_interval_seconds: number;
             /** Default Download Engine */
             default_download_engine: string;
             /** Source Scan Batch Size */

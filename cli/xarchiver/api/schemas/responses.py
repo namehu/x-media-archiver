@@ -36,6 +36,7 @@ class DownloadPolicyResponse(FlexibleResponse):
     queue_batch_size: int
     downloader_sleep_min_seconds: float
     downloader_sleep_max_seconds: float
+    downloader_progress_fallback_interval_seconds: float
     default_download_engine: str
     source_scan_batch_size: int
     source_scan_sleep_min_seconds: float

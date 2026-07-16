@@ -18,6 +18,12 @@ class Settings(BaseSettings):
     queue_batch_size: int = Field(default=20, alias="QUEUE_BATCH_SIZE")
     downloader_sleep_min_seconds: float = Field(default=0.0, alias="DOWNLOADER_SLEEP_MIN_SECONDS")
     downloader_sleep_max_seconds: float = Field(default=3.0, alias="DOWNLOADER_SLEEP_MAX_SECONDS")
+    downloader_progress_fallback_interval_seconds: float = Field(
+        default=10.0,
+        alias="DOWNLOADER_PROGRESS_FALLBACK_INTERVAL_SECONDS",
+        ge=0.0,
+        le=300.0,
+    )
     source_scan_batch_size: int = Field(default=20, alias="SOURCE_SCAN_BATCH_SIZE")
     source_scan_sleep_min_seconds: float = Field(default=0.0, alias="SOURCE_SCAN_SLEEP_MIN_SECONDS")
     source_scan_sleep_max_seconds: float = Field(default=3.0, alias="SOURCE_SCAN_SLEEP_MAX_SECONDS")

@@ -115,6 +115,9 @@ def download_policy() -> dict[str, object]:
         "queue_batch_size": settings.queue_batch_size,
         "downloader_sleep_min_seconds": settings.downloader_sleep_min_seconds,
         "downloader_sleep_max_seconds": settings.downloader_sleep_max_seconds,
+        "downloader_progress_fallback_interval_seconds": (
+            settings.downloader_progress_fallback_interval_seconds
+        ),
         "default_download_engine": settings.default_download_engine,
         "source_scan_batch_size": settings.source_scan_batch_size,
         "source_scan_sleep_min_seconds": settings.source_scan_sleep_min_seconds,

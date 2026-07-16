@@ -118,6 +118,35 @@ archive/media/<author_id>/<tweet_id>/<tweet_id>--p<media_index>.<ext>
 ID-like segments, not usernames, because usernames can change and path-unsafe characters should not
 control archive layout.
 
+## 下载进度契约
+
+下载进度按以下优先级采集：
+
+```text
+yt-dlp / gallery-dl 原生进度
+  -> 当前明确文件或 .part 文件的定向 stat
+  -> 当前批次 Tweet ID 的低频全目录兜底扫描
+```
+
+yt-dlp 使用 `--progress-template` 输出 Tweet `display_id`、已下载字节、总字节
+或估算总字节以及速度。gallery-dl 使用自定义 `output.mode` 输出带稳定前缀的
+`start`、`progress`、`success` 和 `skip` 事件。
+gallery-dl 的字节与速度占位符是带十进制或二进制单位的格式化值，CLI 负责还原为
+整数；该值用于实时展示，不替代下载完成后的真实文件大小回填。
+
+gallery-dl 的原生进度是单文件粒度。CLI 必须累计同一 Tweet 已完成文件的大小，
+但不能把当前单文件总大小当作整个 Tweet 的总大小。总大小未知时 WebUI 显示
+“估算中”。
+
+全目录递归扫描仅作为最后兜底，由以下配置控制：
+
+```text
+DOWNLOADER_PROGRESS_FALLBACK_INTERVAL_SECONDS=10
+```
+
+默认每 10 秒最多执行一次，设置为 `0` 时完全禁用。进度解析或采样失败只能降低
+可观测性，不得中断下载或改变错误分类。
+
 如果下载器无法直接生成该结构，CLI 负责下载后移动或重命名。
 
 当前验证结论：

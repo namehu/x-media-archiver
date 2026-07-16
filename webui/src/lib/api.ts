@@ -376,6 +376,7 @@ export type DownloadPolicy = {
   queue_batch_size: number;
   downloader_sleep_min_seconds: number;
   downloader_sleep_max_seconds: number;
+  downloader_progress_fallback_interval_seconds: number;
   default_download_engine: string;
   source_scan_batch_size: number;
   source_scan_sleep_min_seconds: number;

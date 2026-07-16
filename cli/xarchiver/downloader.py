@@ -1,12 +1,14 @@
 from __future__ import annotations
 
+import json
 import logging
 import re
 import shutil
 import subprocess
 import time
+from dataclasses import dataclass, field
 from pathlib import Path
-from threading import Thread
+from threading import Lock, Thread
 
 from sqlalchemy import and_, bindparam, func, literal_column, or_, select
 from sqlalchemy.sql import ColumnElement
@@ -34,6 +36,38 @@ YTDLP_PROGRESS_RE = re.compile(
     rf"{re.escape(YTDLP_PROGRESS_PREFIX)}"
     r"(?P<tweet_id>[^|]*)\|(?P<status>[^|]*)\|(?P<downloaded>[^|]*)\|(?P<total>[^|]*)\|(?P<estimate>[^|]*)\|(?P<speed>[^|]*)"
 )
+GALLERY_DL_PROGRESS_PREFIX = "xarchiver-gdl:"
+GALLERY_DL_FILE_RE = re.compile(
+    rf"{re.escape(GALLERY_DL_PROGRESS_PREFIX)}(?P<event>start|success|skip)\|(?P<filename>.*)"
+)
+GALLERY_DL_PROGRESS_RE = re.compile(
+    rf"{re.escape(GALLERY_DL_PROGRESS_PREFIX)}progress\|"
+    r"(?P<downloaded>[^|]*)\|(?P<speed>[^|]*)\|(?P<total>[^|]*)\|(?P<percent>[^|]*)"
+)
+GALLERY_DL_SIZE_RE = re.compile(
+    r"^(?P<value>\d+(?:\.\d+)?)(?P<unit>[KMGTPEZY]?)(?P<binary>i?)$",
+    re.IGNORECASE,
+)
+GALLERY_DL_OUTPUT_MODE = {
+    "start": f"{GALLERY_DL_PROGRESS_PREFIX}start|{{}}\n",
+    "success": f"{GALLERY_DL_PROGRESS_PREFIX}success|{{}}\n",
+    "skip": f"{GALLERY_DL_PROGRESS_PREFIX}skip|{{}}\n",
+    "progress": f"{GALLERY_DL_PROGRESS_PREFIX}progress|{{0}}|{{1}}|0|0\n",
+    "progress-total": f"{GALLERY_DL_PROGRESS_PREFIX}progress|{{0}}|{{1}}|{{2}}|{{3}}\n",
+}
+
+
+@dataclass
+class DownloadProgressState:
+    native_progress_seen: bool = False
+    last_native_progress_at: float | None = None
+    current_tweet_id: str | None = None
+    current_path: Path | None = None
+    previous_bytes: int = 0
+    previous_sample_at: float | None = None
+    last_fallback_scan_at: float | None = None
+    completed_bytes_by_tweet: dict[str, int] = field(default_factory=dict)
+    completed_paths: set[Path] = field(default_factory=set)
 
 
 def download(
@@ -376,6 +410,14 @@ def build_command(engine: str, settings: Settings, input_path: Path, cookie_path
             f"extractor.twitter.cookies={cookie_path}" if cookie_path is not None else "extractor.twitter.cookies=",
             "-o",
             "extractor.twitter.cookies-update=false",
+            "-o",
+            f"output.mode={json.dumps(GALLERY_DL_OUTPUT_MODE, separators=(',', ':'))}",
+            "-o",
+            "output.ansi=false",
+            "-o",
+            "output.shorten=false",
+            "-o",
+            "downloader.progress=1.0",
             "--destination",
             str(settings.archive_dir / "media"),
             "--sleep-request",
@@ -404,8 +446,10 @@ def build_command(engine: str, settings: Settings, input_path: Path, cookie_path
         sleep_max,
         "--write-info-json",
         "--write-thumbnail",
+        "--progress-delta",
+        "1",
         "--progress-template",
-        f"download:{YTDLP_PROGRESS_PREFIX}%(info.id)s|%(progress.status)s|%(progress.downloaded_bytes)s|%(progress.total_bytes)s|%(progress.total_bytes_estimate)s|%(progress.speed)s",
+        f"download:{YTDLP_PROGRESS_PREFIX}%(info.display_id)s|%(progress.status)s|%(progress.downloaded_bytes)s|%(progress.total_bytes)s|%(progress.total_bytes_estimate)s|%(progress.speed)s",
         "--download-archive",
         str(settings.archive_dir / "state" / "yt-dlp-downloaded.txt"),
         "-a",
@@ -721,19 +765,27 @@ def run_command_with_progress(
     )
     stdout_chunks: list[str] = []
     stderr_chunks: list[str] = []
-
-    progress_seen = False
+    progress_state = DownloadProgressState(last_fallback_scan_at=time.monotonic())
+    state_lock = Lock()
+    tweet_ids = [tweet["tweet_id"] for tweet in candidate_tweets]
+    tweet_id_set = set(tweet_ids)
 
     def read_stream(stream, chunks: list[str]) -> None:
-        nonlocal progress_seen
         if stream is None:
             return
         for chunk in stream:
             chunks.append(chunk)
-            progress = parse_downloader_progress(chunk)
-            if progress:
-                progress_seen = True
+            if engine == "yt-dlp":
+                progress = parse_downloader_progress(chunk)
+                if not progress:
+                    continue
                 tweet_id = str(progress["tweet_id"])
+                if tweet_id not in tweet_id_set:
+                    continue
+                with state_lock:
+                    progress_state.native_progress_seen = True
+                    progress_state.last_native_progress_at = time.monotonic()
+                    progress_state.current_tweet_id = tweet_id
                 mark_run_items_tweet_progress(
                     job_id,
                     candidate_tweets,
@@ -748,26 +800,98 @@ def run_command_with_progress(
                     },
                     current_tweet_id=tweet_id,
                 )
+                continue
+            event = parse_gallery_dl_progress(chunk)
+            if not event:
+                continue
+            handle_gallery_dl_progress_event(
+                event,
+                settings.archive_dir,
+                tweet_id_set,
+                progress_state,
+                state_lock,
+                job_id,
+                candidate_tweets,
+                run_item_ids,
+            )
 
     stdout_thread = Thread(target=read_stream, args=(process.stdout, stdout_chunks), daemon=True)
     stderr_thread = Thread(target=read_stream, args=(process.stderr, stderr_chunks), daemon=True)
     stdout_thread.start()
     stderr_thread.start()
 
-    tweet_ids = [tweet["tweet_id"] for tweet in candidate_tweets]
-    previous_by_tweet = estimate_downloaded_bytes_by_tweet(settings.archive_dir, tweet_ids)
-    previous_at = time.monotonic()
+    fallback_previous_by_tweet = {tweet_id: 0 for tweet_id in tweet_ids}
+    fallback_sampled = False
+    fallback_interval = max(
+        0.0,
+        float(getattr(settings, "downloader_progress_fallback_interval_seconds", 10.0)),
+    )
     while process.poll() is None:
         time.sleep(1)
-        if engine == "yt-dlp" and progress_seen:
+        current_at = time.monotonic()
+        with state_lock:
+            native_progress_seen = progress_state.native_progress_seen
+            last_native_progress_at = progress_state.last_native_progress_at
+            current_tweet_id = progress_state.current_tweet_id
+            current_path = progress_state.current_path
+            previous_bytes = progress_state.previous_bytes
+            previous_sample_at = progress_state.previous_sample_at
+            completed_bytes = progress_state.completed_bytes_by_tweet.get(current_tweet_id or "", 0)
+            last_fallback_scan_at = progress_state.last_fallback_scan_at
+        if current_tweet_id and current_path:
+            if (
+                last_native_progress_at is not None
+                and current_at - last_native_progress_at < 2.0
+            ):
+                continue
+            current_file_bytes = sample_current_download_path(current_path)
+            if current_file_bytes is None:
+                continue
+            elapsed = max(current_at - (previous_sample_at or current_at), 0.001)
+            speed_bps = (
+                max(0, int((current_file_bytes - previous_bytes) / elapsed))
+                if previous_sample_at is not None
+                else 0
+            )
+            downloaded_bytes = completed_bytes + current_file_bytes
+            with state_lock:
+                progress_state.previous_bytes = current_file_bytes
+                progress_state.previous_sample_at = current_at
+            if downloaded_bytes or speed_bps:
+                mark_run_items_tweet_progress(
+                    job_id,
+                    candidate_tweets,
+                    run_item_ids,
+                    f"{engine} 下载中（文件采样）",
+                    {
+                        current_tweet_id: {
+                            "downloaded_bytes": downloaded_bytes,
+                            "speed_bps": speed_bps,
+                        }
+                    },
+                    current_tweet_id=current_tweet_id,
+                )
+            continue
+        if native_progress_seen:
+            continue
+        if not should_run_fallback_scan(
+            last_fallback_scan_at,
+            current_at,
+            fallback_interval,
+        ):
             continue
         current_by_tweet = estimate_downloaded_bytes_by_tweet(settings.archive_dir, tweet_ids)
-        current_at = time.monotonic()
-        elapsed = max(current_at - previous_at, 0.001)
+        elapsed = max(current_at - (last_fallback_scan_at or current_at), 0.001)
         progress_by_tweet = {
             tweet_id: {
                 "downloaded_bytes": current_by_tweet[tweet_id],
-                "speed_bps": max(0, int((current_by_tweet[tweet_id] - previous_by_tweet[tweet_id]) / elapsed)),
+                "speed_bps": max(
+                    0,
+                    int(
+                        (current_by_tweet[tweet_id] - fallback_previous_by_tweet[tweet_id])
+                        / elapsed
+                    ),
+                ) if fallback_sampled else 0,
             }
             for tweet_id in tweet_ids
         }
@@ -784,8 +908,10 @@ def run_command_with_progress(
                 progress_by_tweet,
                 current_tweet_id=current_tweet_id,
             )
-        previous_by_tweet = current_by_tweet
-        previous_at = current_at
+        fallback_previous_by_tweet = current_by_tweet
+        fallback_sampled = True
+        with state_lock:
+            progress_state.last_fallback_scan_at = current_at
 
     return_code = process.wait()
     stdout_thread.join(timeout=1)
@@ -808,6 +934,170 @@ def parse_downloader_progress(line: str) -> dict[str, int | str] | None:
         "total_bytes": total or 0,
         "speed_bps": speed or 0,
     }
+
+
+def parse_gallery_dl_progress(line: str) -> dict[str, int | str] | None:
+    file_match = GALLERY_DL_FILE_RE.search(line.strip())
+    if file_match:
+        return {
+            "event": file_match.group("event"),
+            "filename": file_match.group("filename").strip(),
+        }
+    progress_match = GALLERY_DL_PROGRESS_RE.search(line.strip())
+    if not progress_match:
+        return None
+    return {
+        "event": "progress",
+        "downloaded_bytes": parse_gallery_dl_size(progress_match.group("downloaded")) or 0,
+        "speed_bps": parse_gallery_dl_size(progress_match.group("speed")) or 0,
+        "total_bytes": parse_gallery_dl_size(progress_match.group("total")) or 0,
+        "percent": parse_progress_number(progress_match.group("percent")) or 0,
+    }
+
+
+def parse_gallery_dl_size(value: str | None) -> int | None:
+    if value is None:
+        return None
+    match = GALLERY_DL_SIZE_RE.fullmatch(value.strip())
+    if not match:
+        return None
+    number = float(match.group("value"))
+    unit = match.group("unit").upper()
+    if not unit:
+        return max(0, int(number))
+    exponent = "KMGTPEZY".index(unit) + 1
+    base = 1024 if match.group("binary") else 1000
+    return max(0, int(number * (base**exponent)))
+
+
+def handle_gallery_dl_progress_event(
+    event: dict[str, int | str],
+    archive_dir: Path,
+    tweet_ids: set[str],
+    state: DownloadProgressState,
+    state_lock: Lock,
+    job_id: int,
+    candidate_tweets: list[dict[str, str]],
+    run_item_ids: dict[str, int] | None,
+) -> None:
+    event_type = str(event["event"])
+    if event_type in {"start", "success", "skip"}:
+        resolved = resolve_gallery_dl_progress_path(
+            str(event.get("filename") or ""),
+            archive_dir,
+            tweet_ids,
+        )
+        if resolved is None:
+            return
+        tweet_id, path = resolved
+        if event_type == "start":
+            with state_lock:
+                state.current_tweet_id = tweet_id
+                state.current_path = path
+                state.previous_bytes = 0
+                state.previous_sample_at = None
+            return
+        if event_type == "success":
+            final_bytes = sample_current_download_path(path) or 0
+            with state_lock:
+                if path not in state.completed_paths:
+                    state.completed_paths.add(path)
+                    state.completed_bytes_by_tweet[tweet_id] = (
+                        state.completed_bytes_by_tweet.get(tweet_id, 0) + final_bytes
+                    )
+                downloaded_bytes = state.completed_bytes_by_tweet[tweet_id]
+                state.current_tweet_id = None
+                state.current_path = None
+                state.previous_bytes = 0
+                state.previous_sample_at = None
+            mark_run_items_tweet_progress(
+                job_id,
+                candidate_tweets,
+                run_item_ids,
+                "gallery-dl 文件下载完成",
+                {
+                    tweet_id: {
+                        "downloaded_bytes": downloaded_bytes,
+                        "speed_bps": 0,
+                    }
+                },
+                current_tweet_id=tweet_id,
+            )
+            return
+        with state_lock:
+            state.current_tweet_id = None
+            state.current_path = None
+            state.previous_bytes = 0
+            state.previous_sample_at = None
+        return
+    if event_type != "progress":
+        return
+    with state_lock:
+        tweet_id = state.current_tweet_id
+        if tweet_id is None:
+            return
+        state.native_progress_seen = True
+        state.last_native_progress_at = time.monotonic()
+        state.previous_bytes = int(event.get("downloaded_bytes") or 0)
+        state.previous_sample_at = state.last_native_progress_at
+        downloaded_bytes = (
+            state.completed_bytes_by_tweet.get(tweet_id, 0)
+            + int(event.get("downloaded_bytes") or 0)
+        )
+    mark_run_items_tweet_progress(
+        job_id,
+        candidate_tweets,
+        run_item_ids,
+        "gallery-dl 下载中",
+        {
+            tweet_id: {
+                "downloaded_bytes": downloaded_bytes,
+                "speed_bps": int(event.get("speed_bps") or 0),
+            }
+        },
+        current_tweet_id=tweet_id,
+    )
+
+
+def resolve_gallery_dl_progress_path(
+    filename: str,
+    archive_dir: Path,
+    tweet_ids: set[str],
+) -> tuple[str, Path] | None:
+    if not filename:
+        return None
+    media_dir = (archive_dir / "media").resolve()
+    path = Path(filename)
+    if not path.is_absolute():
+        path = media_dir / path
+    try:
+        resolved_path = path.resolve()
+        resolved_path.relative_to(media_dir)
+    except (OSError, ValueError):
+        return None
+    tweet_id = next((part for part in resolved_path.parts if part in tweet_ids), None)
+    if tweet_id is None:
+        return None
+    return tweet_id, resolved_path
+
+
+def sample_current_download_path(path: Path) -> int | None:
+    part_path = Path(f"{path}.part")
+    if part_path.is_file():
+        return safe_file_size(part_path)
+    if path.is_file():
+        return safe_file_size(path)
+    return None
+
+
+def should_run_fallback_scan(
+    last_scan_at: float | None,
+    current_at: float,
+    interval_seconds: float,
+) -> bool:
+    if interval_seconds <= 0:
+        return False
+    return last_scan_at is None or current_at - last_scan_at >= interval_seconds
 
 
 def parse_progress_number(value: str | None) -> int | None:

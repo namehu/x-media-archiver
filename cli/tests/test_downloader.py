@@ -1,19 +1,27 @@
 import tempfile
 import unittest
 from pathlib import Path
+from threading import Lock
 from types import SimpleNamespace
 from unittest.mock import patch
 
 from xarchiver.core.errors import ErrorCategory, classify_x_error
 from xarchiver.db import connect
 from xarchiver.downloader import (
+    DownloadProgressState,
     build_command,
     classify_error,
     estimate_downloaded_bytes_by_tweet,
     fetch_download_candidates,
     format_sleep_range,
+    handle_gallery_dl_progress_event,
     parse_downloader_progress,
+    parse_gallery_dl_progress,
+    parse_gallery_dl_size,
     prepare_cookies,
+    resolve_gallery_dl_progress_path,
+    sample_current_download_path,
+    should_run_fallback_scan,
     validate_cookie_file,
 )
 
@@ -63,17 +71,22 @@ class DownloaderTests(unittest.TestCase):
             downloader_sleep_max_seconds=3,
         )
 
+        cookie_path = Path("/app/archive/state/runtime-cookies.txt")
         command = build_command(
             "gallery-dl",
             settings,
             Path("/app/archive/raw/input.txt"),
-            Path("/app/archive/state/runtime-cookies.txt"),
+            cookie_path,
         )
 
         self.assertIn("--sleep-request", command)
         self.assertIn("0-3", command)
-        self.assertIn("extractor.twitter.cookies=/app/archive/state/runtime-cookies.txt", command)
+        self.assertIn(f"extractor.twitter.cookies={cookie_path}", command)
         self.assertIn("extractor.twitter.cookies-update=false", command)
+        self.assertTrue(any("output.mode=" in value for value in command))
+        self.assertIn("output.ansi=false", command)
+        self.assertIn("output.shorten=false", command)
+        self.assertIn("downloader.progress=1.0", command)
 
     def test_yt_dlp_command_includes_sleep_options(self) -> None:
         settings = SimpleNamespace(
@@ -82,17 +95,18 @@ class DownloaderTests(unittest.TestCase):
             downloader_sleep_max_seconds=3,
         )
 
+        cookie_path = Path("/app/archive/state/runtime-cookies.txt")
         command = build_command(
             "yt-dlp",
             settings,
             Path("/app/archive/raw/input.txt"),
-            Path("/app/archive/state/runtime-cookies.txt"),
+            cookie_path,
         )
 
         self.assertIn("--sleep-requests", command)
         self.assertIn("--sleep-interval", command)
         self.assertIn("--max-sleep-interval", command)
-        self.assertIn("/app/archive/state/runtime-cookies.txt", command)
+        self.assertIn(str(cookie_path), command)
 
     def test_yt_dlp_command_includes_native_progress_template(self) -> None:
         settings = SimpleNamespace(
@@ -110,9 +124,10 @@ class DownloaderTests(unittest.TestCase):
 
         self.assertIn("--newline", command)
         self.assertIn("--no-color", command)
+        self.assertIn("--progress-delta", command)
         self.assertIn("--progress-template", command)
         template = next(value for value in command if "xarchiver-progress:" in value)
-        self.assertIn("%(info.id)s", template)
+        self.assertIn("%(info.display_id)s", template)
 
     def test_parse_downloader_progress_reads_yt_dlp_template_output(self) -> None:
         progress = parse_downloader_progress("xarchiver-progress:123|downloading|2048|4096|8192|512")
@@ -126,6 +141,145 @@ class DownloaderTests(unittest.TestCase):
         progress = parse_downloader_progress("xarchiver-progress:123|downloading|2048|NA|8192|512")
 
         self.assertEqual(progress["total_bytes"], 8192)
+
+    def test_parse_gallery_dl_file_event(self) -> None:
+        progress = parse_gallery_dl_progress(
+            "xarchiver-gdl:start|/app/archive/media/author/123/123--p1.jpg"
+        )
+
+        self.assertEqual(
+            progress,
+            {
+                "event": "start",
+                "filename": "/app/archive/media/author/123/123--p1.jpg",
+            },
+        )
+
+    def test_parse_gallery_dl_progress_event(self) -> None:
+        progress = parse_gallery_dl_progress("xarchiver-gdl:progress|2.04K|512|4.09K|50")
+
+        self.assertEqual(
+            progress,
+            {
+                "event": "progress",
+                "downloaded_bytes": 2040,
+                "speed_bps": 512,
+                "total_bytes": 4090,
+                "percent": 50,
+            },
+        )
+
+    def test_parse_gallery_dl_size_supports_binary_units(self) -> None:
+        self.assertEqual(parse_gallery_dl_size("1.50Mi"), 1572864)
+
+    def test_resolve_gallery_dl_progress_path_maps_exact_tweet_directory(self) -> None:
+        archive_dir = Path("/app/archive")
+
+        resolved = resolve_gallery_dl_progress_path(
+            "author/123/123--p1.jpg",
+            archive_dir,
+            {"123", "1234"},
+        )
+
+        self.assertEqual(
+            resolved,
+            (
+                "123",
+                (archive_dir / "media" / "author" / "123" / "123--p1.jpg").resolve(),
+            ),
+        )
+
+    def test_resolve_gallery_dl_progress_path_rejects_outside_media_root(self) -> None:
+        resolved = resolve_gallery_dl_progress_path(
+            "/tmp/123/file.jpg",
+            Path("/app/archive"),
+            {"123"},
+        )
+
+        self.assertIsNone(resolved)
+
+    def test_sample_current_download_path_prefers_part_file(self) -> None:
+        with tempfile.TemporaryDirectory() as tmp:
+            target = Path(tmp) / "video.mp4"
+            target.write_bytes(b"done")
+            Path(f"{target}.part").write_bytes(b"partial")
+
+            size = sample_current_download_path(target)
+
+        self.assertEqual(size, 7)
+
+    def test_sample_current_download_path_uses_completed_file(self) -> None:
+        with tempfile.TemporaryDirectory() as tmp:
+            target = Path(tmp) / "photo.jpg"
+            target.write_bytes(b"complete")
+
+            size = sample_current_download_path(target)
+
+        self.assertEqual(size, 8)
+
+    def test_fallback_scan_interval_can_be_delayed_or_disabled(self) -> None:
+        self.assertFalse(should_run_fallback_scan(100.0, 109.9, 10.0))
+        self.assertTrue(should_run_fallback_scan(100.0, 110.0, 10.0))
+        self.assertFalse(should_run_fallback_scan(None, 110.0, 0.0))
+
+    def test_gallery_dl_progress_accumulates_completed_files_per_tweet(self) -> None:
+        with tempfile.TemporaryDirectory() as tmp:
+            archive_dir = Path(tmp)
+            first = archive_dir / "media" / "author" / "123" / "123--p1.jpg"
+            second = archive_dir / "media" / "author" / "123" / "123--p2.jpg"
+            first.parent.mkdir(parents=True)
+            first.write_bytes(b"1234567")
+            state = DownloadProgressState()
+            state_lock = Lock()
+            candidate_tweets = [{"tweet_id": "123", "url": "https://x.com/test/status/123"}]
+
+            with patch("xarchiver.downloader.mark_run_items_tweet_progress") as mark_progress:
+                handle_gallery_dl_progress_event(
+                    {"event": "start", "filename": str(first)},
+                    archive_dir,
+                    {"123"},
+                    state,
+                    state_lock,
+                    1,
+                    candidate_tweets,
+                    {"123": 10},
+                )
+                handle_gallery_dl_progress_event(
+                    {"event": "success", "filename": str(first)},
+                    archive_dir,
+                    {"123"},
+                    state,
+                    state_lock,
+                    1,
+                    candidate_tweets,
+                    {"123": 10},
+                )
+                handle_gallery_dl_progress_event(
+                    {"event": "start", "filename": str(second)},
+                    archive_dir,
+                    {"123"},
+                    state,
+                    state_lock,
+                    1,
+                    candidate_tweets,
+                    {"123": 10},
+                )
+                handle_gallery_dl_progress_event(
+                    {"event": "progress", "downloaded_bytes": 3, "speed_bps": 2},
+                    archive_dir,
+                    {"123"},
+                    state,
+                    state_lock,
+                    1,
+                    candidate_tweets,
+                    {"123": 10},
+                )
+
+        self.assertEqual(state.completed_bytes_by_tweet, {"123": 7})
+        self.assertEqual(
+            mark_progress.call_args.args[4],
+            {"123": {"downloaded_bytes": 10, "speed_bps": 2}},
+        )
 
     def test_estimate_downloaded_bytes_groups_files_by_exact_tweet_directory(self) -> None:
         with tempfile.TemporaryDirectory() as tmp:
