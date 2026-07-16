@@ -101,7 +101,12 @@ def classify_x_error(stderr: str | None, *, no_output_hint: bool = True) -> Erro
         for pattern in (
             "timeout",
             "timed out",
-            "connection",
+            "connection refused",
+            "connection reset",
+            "connection aborted",
+            "connection error",
+            "failed to establish a new connection",
+            "name resolution",
             "network",
             "temporary failure",
             "sslerror",

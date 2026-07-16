@@ -49,6 +49,11 @@ class CookieConfigResponse(FlexibleResponse):
     source: str
     label: str | None = None
     updated_at: datetime | None = None
+    validation_status: str
+    validated_at: datetime | None = None
+    auth_token_expires_at: datetime | None = None
+    validation_error_category: str | None = None
+    validation_message: str | None = None
 
 
 class AuthUserResponse(FlexibleResponse):

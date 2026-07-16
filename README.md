@@ -30,7 +30,7 @@ docker-compose run --rm xarchiver db reset --yes
 secrets/cookies.txt
 ```
 
-cookie 文件必须使用 Netscape cookie 格式。请仅保留在本地；该文件已被 git 忽略。
+cookie 文件必须使用 Netscape cookie 格式，并包含 X/Twitter 的 `auth_token` 与 `ct0`。请仅保留在本地；该文件已被 git 忽略。WebUI 的 `Operations -> Cookies` 可在保存后通过 X Bookmarks 最小化请求检测登录状态；检测不会保存 Bookmarks 内容，也不会自动刷新或回写 token。
 
 用每行一个 tweet URL 替换 `examples/tweet_urls.example.txt`：
 

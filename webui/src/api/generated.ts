@@ -791,6 +791,23 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/api/v1/settings/cookies/check": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /** Check Cookies Config */
+        post: operations["check_cookies_config_api_v1_settings_cookies_check_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
 }
 export type webhooks = Record<string, never>;
 export interface components {
@@ -1338,6 +1355,16 @@ export interface components {
             label?: string | null;
             /** Updated At */
             updated_at?: string | null;
+            /** Validation Status */
+            validation_status: string;
+            /** Validated At */
+            validated_at?: string | null;
+            /** Auth Token Expires At */
+            auth_token_expires_at?: string | null;
+            /** Validation Error Category */
+            validation_error_category?: string | null;
+            /** Validation Message */
+            validation_message?: string | null;
         } & {
             [key: string]: unknown;
         };
@@ -3863,6 +3890,26 @@ export interface operations {
         };
     };
     delete_cookies_config_api_v1_settings_cookies_delete: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["CookieConfigResponse"];
+                };
+            };
+        };
+    };
+    check_cookies_config_api_v1_settings_cookies_check_post: {
         parameters: {
             query?: never;
             header?: never;

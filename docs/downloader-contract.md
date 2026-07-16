@@ -102,7 +102,9 @@ notes:
 archive/state/runtime-cookies.txt
 ```
 
-`gallery-dl` 与 `yt-dlp` 都只接收这个运行时文件路径。API 和 WebUI 只返回 cookies 配置状态、来源、备注和更新时间，不返回 cookies 正文。
+`gallery-dl` 与 `yt-dlp` 都只接收这个运行时文件路径。API 和 WebUI 只返回 cookies 配置状态、来源、备注、更新时间、声明过期时间和最近检测结果，不返回 cookies 正文、内容哈希或临时文件路径。
+
+WebUI 保存数据库 cookies 前会校验 Netscape 七列格式、X/Twitter 域、`auth_token`、`ct0` 与非零 expiration。保存后可调用 `POST /api/v1/settings/cookies/check`，使用独立的 `0600` 临时文件对 `https://x.com/i/bookmarks` 执行 limit=1 的 gallery-dl 认证探测。stdout 会被丢弃，检测完成后删除临时文件。检测不启用 `cookies-update`，不承担 token 刷新职责。
 
 ## 统一输出契约
 

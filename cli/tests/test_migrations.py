@@ -30,6 +30,7 @@ class MigrationTests(unittest.TestCase):
                 "006_source_download_controls.py",
                 "007_add_download_job_progress_message.py",
                 "008_single_admin_auth.py",
+                "009_add_cookie_validation.py",
             ],
         )
         upgrade.assert_called_once()
@@ -41,7 +42,7 @@ class MigrationTests(unittest.TestCase):
 
         with (
             patch("xarchiver.migrations.get_settings", return_value=settings),
-            patch("xarchiver.migrations.current_alembic_revision", return_value="008_single_admin_auth"),
+            patch("xarchiver.migrations.current_alembic_revision", return_value="009_add_cookie_validation"),
             patch("xarchiver.migrations.command.upgrade") as upgrade,
         ):
             self.assertEqual(migrate(), [])
@@ -73,6 +74,7 @@ class MigrationTests(unittest.TestCase):
                 "006_source_download_controls.py",
                 "007_add_download_job_progress_message.py",
                 "008_single_admin_auth.py",
+                "009_add_cookie_validation.py",
             ],
         )
 
@@ -172,6 +174,18 @@ class MigrationTests(unittest.TestCase):
         create_index.assert_called_once_with(
             "ix_auth_sessions_expires_at", "auth_sessions", ["expires_at"]
         )
+
+    def test_cookie_validation_revision_adds_status_columns(self) -> None:
+        module = importlib.import_module("xarchiver.alembic.versions.009_add_cookie_validation")
+        captured_sql: list[str] = []
+
+        with patch.object(module.op, "execute", side_effect=captured_sql.append):
+            module.upgrade()
+
+        sql = captured_sql[0]
+        self.assertIn("add column if not exists validation_status", sql)
+        self.assertIn("add column if not exists validated_at", sql)
+        self.assertIn("add column if not exists validated_content_sha256", sql)
 
 
 if __name__ == "__main__":

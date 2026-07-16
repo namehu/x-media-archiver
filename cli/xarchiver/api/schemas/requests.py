@@ -91,7 +91,7 @@ class SourceScanSessionRequest(BaseModel):
 
 
 class UpdateCookiesRequest(BaseModel):
-    content: str
+    content: str = Field(max_length=1024 * 1024)
     label: str | None = None
 
 

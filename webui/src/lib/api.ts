@@ -376,6 +376,11 @@ export type CookieConfig = {
   source: "database" | "file" | "none";
   label?: string | null;
   updated_at?: string | null;
+  validation_status: "unchecked" | "valid" | "invalid" | "expired" | "error";
+  validated_at?: string | null;
+  auth_token_expires_at?: string | null;
+  validation_error_category?: string | null;
+  validation_message?: string | null;
 };
 
 export type AuthSession = {

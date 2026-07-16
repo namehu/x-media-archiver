@@ -180,7 +180,9 @@ docker manifest inspect ghcr.io/<owner>/x-media-archiver:latest
 
 ### 4.2 cookies
 
-推荐在 WebUI 的 Operations / Cookies 页面粘贴或上传导出的 X/Twitter cookies。WebUI 保存后，cookies 会以明文保存在本地 Postgres 的 `cookie_config` 表中，并优先用于下载和来源扫描。
+推荐在 WebUI 的 Operations / Cookies 页面粘贴或上传导出的 X/Twitter cookies。WebUI 会先校验 Netscape 格式、X/Twitter 域名、`auth_token`、`ct0` 和声明过期时间；保存后再通过 X Bookmarks 的最小化 gallery-dl 请求检测登录状态。Bookmarks 返回内容会被丢弃，仅保存检测状态和脱敏错误。
+
+检测只判断当前 cookies 是否可用，不提供自动刷新。gallery-dl 运行时仍设置 `cookies-update=false`，不会把请求过程中变化的 session cookies 静默写回 Postgres。检测遇到网络错误或限流时显示“检测失败”，不会误报为 token 已过期。
 
 如果不使用 WebUI 配置，也可以继续把 cookies 放到部署目录的 `secrets/` 下作为兼容回退：
 
@@ -190,8 +192,9 @@ secrets/cookies.txt
 
 ```text
 1. 必须是 Netscape cookie 格式。
-2. 该文件被 .gitignore 忽略，仅保留在本地，绝不提交。
-3. compose 以只读方式挂载 secrets/ 到容器 /app/secrets。
+2. 必须包含 X/Twitter 域下非空的 auth_token 和 ct0。
+3. 该文件被 .gitignore 忽略，仅保留在本地，绝不提交。
+4. compose 以只读方式挂载 secrets/ 到容器 /app/secrets。
 ```
 
 优先级固定为：

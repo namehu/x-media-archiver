@@ -43,6 +43,12 @@ cookie_config = Table(
     Column("content", Text),
     Column("label", Text),
     Column("updated_at", DateTime(timezone=True)),
+    Column("validation_status", Text),
+    Column("validated_at", DateTime(timezone=True)),
+    Column("auth_token_expires_at", DateTime(timezone=True)),
+    Column("validation_error_category", Text),
+    Column("validation_message", Text),
+    Column("validated_content_sha256", Text),
 )
 
 tweets = Table(

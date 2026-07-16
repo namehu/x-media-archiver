@@ -63,6 +63,8 @@ test.describe("WebUI smoke", () => {
       await expect(page.getByRole("link", { name: route.label })).toBeVisible();
       await expect(page.getByText(route.text).first()).toBeVisible();
     }
+    await page.getByRole("tab", { name: "Cookies" }).click();
+    await expect(page.getByRole("button", { name: "检测 Cookies" })).toBeVisible();
 
     await page.route("**/api/v1/library/tweets/webui-e2e-verified", async (route) => {
       const response = await route.fetch();

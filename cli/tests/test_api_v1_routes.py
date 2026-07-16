@@ -89,6 +89,7 @@ class V1RouterSmokeTests(unittest.TestCase):
             "/api/v1/maintenance/backfill",
             "/api/v1/maintenance/verify",
             "/api/v1/settings/cookies",
+            "/api/v1/settings/cookies/check",
             "/api/v1/auth/setup",
             "/api/v1/auth/login",
             "/api/v1/auth/logout",
@@ -257,11 +258,22 @@ class V1RouterSmokeTests(unittest.TestCase):
         self.assertIn("/api/v1/auth/session", paths)
 
     def test_v1_cookies_endpoints_do_not_return_content(self):
+        response = {
+            "configured": True,
+            "source": "database",
+            "label": "test",
+            "updated_at": None,
+            "validation_status": "unchecked",
+            "validated_at": None,
+            "auth_token_expires_at": None,
+            "validation_error_category": None,
+            "validation_message": "cookie_not_checked",
+        }
         with (
             patch("xarchiver.api.v1.settings.save_cookie_content") as save_mock,
             patch(
                 "xarchiver.api.v1.settings.get_cookie_config",
-                return_value={"configured": True, "source": "database", "label": "test", "updated_at": None},
+                return_value=response,
             ),
         ):
             result = self.post_paths["/api/v1/settings/cookies"](
@@ -269,6 +281,29 @@ class V1RouterSmokeTests(unittest.TestCase):
             )
 
         save_mock.assert_called_once_with("secret-cookie-content", "test")
+        self.assertNotIn("content", result)
+        self.assertNotIn("validated_content_sha256", result)
+
+    def test_v1_cookie_check_endpoint_returns_safe_status(self):
+        response = {
+            "configured": True,
+            "source": "database",
+            "label": "test",
+            "updated_at": None,
+            "validation_status": "valid",
+            "validated_at": None,
+            "auth_token_expires_at": None,
+            "validation_error_category": None,
+            "validation_message": "cookie_check_valid",
+        }
+        with patch(
+            "xarchiver.api.v1.settings.check_cookie_config",
+            return_value=response,
+        ) as check:
+            result = self.post_paths["/api/v1/settings/cookies/check"]()
+
+        check.assert_called_once()
+        self.assertEqual(result["validation_status"], "valid")
         self.assertNotIn("content", result)
 
 
