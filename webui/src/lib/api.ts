@@ -367,6 +367,8 @@ export type DownloadPolicy = {
   source_scan_batch_size: number;
   source_scan_sleep_min_seconds: number;
   source_scan_sleep_max_seconds: number;
+  source_scan_http_timeout_seconds: number;
+  source_scan_http_retries: number;
 };
 
 export type CookieConfig = {

@@ -21,6 +21,13 @@ class Settings(BaseSettings):
     source_scan_batch_size: int = Field(default=20, alias="SOURCE_SCAN_BATCH_SIZE")
     source_scan_sleep_min_seconds: float = Field(default=0.0, alias="SOURCE_SCAN_SLEEP_MIN_SECONDS")
     source_scan_sleep_max_seconds: float = Field(default=3.0, alias="SOURCE_SCAN_SLEEP_MAX_SECONDS")
+    source_scan_http_timeout_seconds: float = Field(
+        default=15.0,
+        alias="SOURCE_SCAN_HTTP_TIMEOUT_SECONDS",
+        ge=1.0,
+        le=120.0,
+    )
+    source_scan_http_retries: int = Field(default=2, alias="SOURCE_SCAN_HTTP_RETRIES", ge=0, le=10)
     operation_log_max_bytes: int = Field(default=10 * 1024 * 1024, alias="OPERATION_LOG_MAX_BYTES")
     api_host: str = Field(default="127.0.0.1", alias="API_HOST")
     api_port: int = Field(default=18000, alias="API_PORT")

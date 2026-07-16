@@ -1013,6 +1013,8 @@ def scan_source(
                 scan_range["end"],
                 settings.source_scan_sleep_min_seconds,
                 settings.source_scan_sleep_max_seconds,
+                settings.source_scan_http_timeout_seconds,
+                settings.source_scan_http_retries,
                 continuation_cursor=str(scan_cursor) if scan_cursor else None,
                 cookie_path=prepare_cookies(settings),
                 scan_run_id=scan_run_id,
@@ -1076,7 +1078,7 @@ def finish_scan_source_result(
 ) -> dict[str, object]:
     if not records:
         lease.ensure_active()
-        scan_succeeded = scan_meta.get("exit_code") == 0
+        scan_succeeded = scan_meta.get("exit_code") == 0 and not scan_meta.get("error_category")
         completed = scan_succeeded and advances_history
         ensure_source_scan_lease(scan_run_id, worker_id)
         cursor_after = (
@@ -1089,7 +1091,7 @@ def finish_scan_source_result(
                 completed=completed,
                 session_mode=session_mode,
             )
-            if advances_history
+            if advances_history and scan_succeeded
             else cursor_state
         )
         error_category = None if scan_succeeded else str(scan_meta.get("error_category") or "failed")
@@ -1196,6 +1198,8 @@ def discover_records_with_gallery_dl(
     end: int,
     sleep_min_seconds: float = 2.0,
     sleep_max_seconds: float = 6.0,
+    http_timeout_seconds: float = 15.0,
+    http_retries: int = 2,
     continuation_cursor: str | None = None,
     cookie_path: Path | None = None,
     scan_run_id: int | None = None,
@@ -1212,6 +1216,10 @@ def discover_records_with_gallery_dl(
         "--dump-json",
         "--sleep-request",
         format_sleep_range(sleep_min_seconds, sleep_max_seconds),
+        "--http-timeout",
+        f"{http_timeout_seconds:g}",
+        "--retries",
+        str(http_retries),
     ]
     if cookie_path is not None:
         command.extend(
@@ -1239,6 +1247,23 @@ def discover_records_with_gallery_dl(
             "error_category": classify_source_error(stderr_excerpt),
             "error_message": stderr_excerpt or f"gallery-dl exited with {result.returncode}",
         }
+    soft_error = detect_gallery_dl_exhausted_retry(result.stderr)
+    if soft_error is not None:
+        error_category, error_message = soft_error
+        if scan_run_id is not None:
+            append_source_scan_log(
+                scan_run_id,
+                "error",
+                "source-scan",
+                f"gallery-dl exhausted HTTP retries despite exit code 0: {error_message}",
+                worker_id=worker_id,
+            )
+        return [], {
+            "exit_code": result.returncode,
+            "error_category": error_category,
+            "error_message": error_message,
+            "stderr_excerpt": stderr_excerpt,
+        }
     records = parse_gallery_dl_records(result.stdout, source_url)
     return records, {
         "exit_code": result.returncode,
@@ -1250,6 +1275,17 @@ def discover_records_with_gallery_dl(
         "cursor_mode": "native",
         "continuation_cursor": extract_gallery_dl_cursor(result.stderr),
     }
+
+
+def detect_gallery_dl_exhausted_retry(stderr: str | None) -> tuple[str, str] | None:
+    for line in reversed((stderr or "").splitlines()):
+        match = re.search(r"\((\d+)/(\d+)\)\s*$", line)
+        if match is None or match.group(1) != match.group(2):
+            continue
+        category = classify_source_error(line)
+        if category != ErrorCategory.UNKNOWN.value:
+            return category, line[-1000:]
+    return None
 
 
 def run_gallery_dl_streaming(command: list[str], scan_run_id: int, worker_id: str | None) -> subprocess.CompletedProcess[str]:
@@ -1383,7 +1419,7 @@ def build_active_scan_range(cursor_state: dict[str, Any], limit: int, restart: b
 
 
 def is_source_scan_complete(scan_meta: dict[str, object], scan_range: dict[str, int], discovered_count: int) -> bool:
-    if scan_meta.get("exit_code") != 0:
+    if scan_meta.get("exit_code") != 0 or scan_meta.get("error_category"):
         return False
     return not scan_meta.get("continuation_cursor")
 
@@ -1397,7 +1433,7 @@ def is_scan_session_complete(
 ) -> bool:
     if mode is None:
         return False
-    if scan_meta.get("exit_code") != 0:
+    if scan_meta.get("exit_code") != 0 or scan_meta.get("error_category"):
         return False
     if mode == "latest_refresh" and duplicate_count > LATEST_REFRESH_DUPLICATE_THRESHOLD:
         return True
@@ -1415,11 +1451,11 @@ def extract_gallery_dl_cursor(stderr: str | None) -> str | None:
 
 
 def scan_run_status(scan_meta: dict[str, object], completed: bool) -> str:
-    if completed:
-        return "completed_empty_batch" if int(scan_meta.get("raw_record_count") or 0) == 0 else "completed_end_of_source"
     category = str(scan_meta.get("error_category") or "")
     if category in {"rate_limited", "auth_required", "network_error"}:
         return category
+    if completed:
+        return "completed_empty_batch" if int(scan_meta.get("raw_record_count") or 0) == 0 else "completed_end_of_source"
     if scan_meta.get("exit_code") == 0:
         return "succeeded"
     return "failed"

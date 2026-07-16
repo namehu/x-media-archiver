@@ -370,6 +370,11 @@ sequenceDiagram
 | 重复点击下载 | 事务锁和唯一 active item 约束阻止重复 item | 返回已有任务和已归档统计 |
 | 同一来源已有 active run | 新来源 run 进入 blocked | 页面显示等待前序任务 |
 
+扫描网络请求默认使用 `SOURCE_SCAN_HTTP_TIMEOUT_SECONDS=15` 和
+`SOURCE_SCAN_HTTP_RETRIES=2`。gallery-dl 可能在 HTTP 重试耗尽后仍返回退出码 0；
+worker 会额外识别末次重试错误，将整批标记为 `network_error`，不保存不完整输出，
+也不推进 continuation cursor。
+
 ## 10. 验收要求
 
 后端验收：

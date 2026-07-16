@@ -344,6 +344,8 @@ DOWNLOADER_SLEEP_MAX_SECONDS=3
 SOURCE_SCAN_BATCH_SIZE=20
 SOURCE_SCAN_SLEEP_MIN_SECONDS=0
 SOURCE_SCAN_SLEEP_MAX_SECONDS=3
+SOURCE_SCAN_HTTP_TIMEOUT_SECONDS=15
+SOURCE_SCAN_HTTP_RETRIES=2
 STUCK_TIMEOUT_MINUTES=120
 API_HOST=0.0.0.0
 API_PORT=18000
@@ -354,7 +356,7 @@ AUTH_SESSION_TTL_HOURS=168
 
 生产环境只支持 WebUI 与 API 同源部署，必须经 HTTPS 反向代理访问并设置 `AUTH_COOKIE_SECURE=true`。只有明确保持本机隔离时才可设置 `AUTH_MODE=disabled`；禁用后所有 Web/API 路由均不再要求登录。
 
-`QUEUE_BATCH_SIZE` 限制 API worker 每次领取多少条 queued tweet。下载器的 sleep 设置会透传到 `gallery-dl` / `yt-dlp`，避免大批量任务对 X/Twitter 发起紧密的连续请求。`SOURCE_SCAN_BATCH_SIZE` 与 `SOURCE_SCAN_SLEEP_*` 用于单独控制历史 source 发现（与下载分离）。
+`QUEUE_BATCH_SIZE` 限制 API worker 每次领取多少条 queued tweet。下载器的 sleep 设置会透传到 `gallery-dl` / `yt-dlp`，避免大批量任务对 X/Twitter 发起紧密的连续请求。`SOURCE_SCAN_BATCH_SIZE` 与 `SOURCE_SCAN_SLEEP_*` 用于单独控制历史 source 发现（与下载分离）。`SOURCE_SCAN_HTTP_TIMEOUT_SECONDS` 和 `SOURCE_SCAN_HTTP_RETRIES` 收敛单次扫描请求的网络等待；gallery-dl 即使在重试耗尽后返回 0，扫描器也会根据错误日志将该批标记为 `network_error`，且不会推进 cursor。
 
 ## 状态规则
 

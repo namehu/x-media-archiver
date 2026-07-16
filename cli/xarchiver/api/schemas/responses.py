@@ -40,6 +40,8 @@ class DownloadPolicyResponse(FlexibleResponse):
     source_scan_batch_size: int
     source_scan_sleep_min_seconds: float
     source_scan_sleep_max_seconds: float
+    source_scan_http_timeout_seconds: float
+    source_scan_http_retries: int
 
 
 class CookieConfigResponse(FlexibleResponse):

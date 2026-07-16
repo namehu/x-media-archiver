@@ -16,6 +16,7 @@ from xarchiver.services.sources import (
     count_discovered_media,
     create_source,
     discover_records_with_gallery_dl,
+    detect_gallery_dl_exhausted_retry,
     extract_gallery_dl_cursor,
     format_sleep_range,
     get_source,
@@ -173,6 +174,13 @@ class SourceServiceTests(unittest.TestCase):
             )
         )
         self.assertFalse(is_source_scan_complete({"exit_code": 1, "continuation_cursor": None}, {"limit": 20}, 0))
+        self.assertFalse(
+            is_source_scan_complete(
+                {"exit_code": 0, "error_category": "network_error", "continuation_cursor": None},
+                {"limit": 20},
+                0,
+            )
+        )
 
     def test_extract_gallery_dl_cursor_uses_last_page_cursor(self) -> None:
         stderr = "[twitter][debug] Cursor: first\n[twitter][debug] Cursor: second\n"
@@ -208,12 +216,42 @@ class SourceServiceTests(unittest.TestCase):
         command = run.call_args.args[0]
         self.assertIn("--post-range", command)
         self.assertIn("1-20", command)
+        self.assertIn("--http-timeout", command)
+        self.assertIn("15", command)
+        self.assertIn("--retries", command)
+        self.assertIn("2", command)
         self.assertIn("-o", command)
         self.assertIn("cursor=old-cursor", command)
         self.assertNotIn("--range", command)
         self.assertEqual(rows[0]["tweet_id"], "123")
         self.assertEqual(meta["cursor_mode"], "native")
         self.assertEqual(meta["continuation_cursor"], "next-cursor")
+
+    def test_discover_records_treats_exhausted_timeout_as_failure_even_with_zero_exit(self) -> None:
+        completed = SimpleNamespace(
+            returncode=0,
+            stdout='[[2, {"tweet_id": 123, "author": {"name": "alice"}}]]',
+            stderr=(
+                "[twitter][debug] HTTPSConnectionPool(host='x.com', port=443): "
+                "Read timed out. (read timeout=15) (3/3)\n"
+            ),
+        )
+        with (
+            patch("xarchiver.services.sources.shutil.which", return_value="/usr/bin/gallery-dl"),
+            patch("xarchiver.services.sources.subprocess.run", return_value=completed),
+        ):
+            rows, meta = discover_records_with_gallery_dl("https://x.com/alice/media", 1, 20)
+
+        self.assertEqual(rows, [])
+        self.assertEqual(meta["exit_code"], 0)
+        self.assertEqual(meta["error_category"], "network_error")
+        self.assertIn("(3/3)", str(meta["error_message"]))
+
+    def test_detect_gallery_dl_exhausted_retry_classifies_ssl_eof(self) -> None:
+        detected = detect_gallery_dl_exhausted_retry(
+            "[twitter][debug] SSLError: UNEXPECTED_EOF_WHILE_READING (3/3)\n"
+        )
+        self.assertEqual(detected, ("network_error", "[twitter][debug] SSLError: UNEXPECTED_EOF_WHILE_READING (3/3)"))
 
     def test_merge_discovery_payload_retains_media_across_ranges(self) -> None:
         merged = merge_discovery_payload(
@@ -230,6 +268,7 @@ class SourceServiceTests(unittest.TestCase):
         self.assertEqual(scan_run_status({"exit_code": 0, "raw_record_count": 13}, True), "completed_end_of_source")
         self.assertEqual(scan_run_status({"error_category": "rate_limited"}, False), "rate_limited")
         self.assertEqual(scan_run_status({"error_category": "network_error"}, False), "network_error")
+        self.assertEqual(scan_run_status({"exit_code": 0, "error_category": "network_error"}, True), "network_error")
         self.assertEqual(scan_run_status({"error_category": "command_not_found"}, False), "failed")
 
     def test_count_discovered_media_sums_batch_estimates(self) -> None:
@@ -285,7 +324,12 @@ class SourceServiceTests(unittest.TestCase):
 
     def test_latest_refresh_empty_batch_does_not_advance_or_complete_history_cursor(self) -> None:
         cursor = {"next_start_index": 81, "last_completed": False}
-        settings = SimpleNamespace(source_scan_sleep_min_seconds=2, source_scan_sleep_max_seconds=6)
+        settings = SimpleNamespace(
+            source_scan_sleep_min_seconds=2,
+            source_scan_sleep_max_seconds=6,
+            source_scan_http_timeout_seconds=15,
+            source_scan_http_retries=2,
+        )
         with (
             patch(
                 "xarchiver.services.sources.get_source",
@@ -327,8 +371,66 @@ class SourceServiceTests(unittest.TestCase):
             worker_id=None,
         )
 
+    def test_zero_exit_network_error_does_not_advance_cursor(self) -> None:
+        cursor = {"next_start_index": 21, "last_completed": False}
+        settings = SimpleNamespace(
+            source_scan_sleep_min_seconds=2,
+            source_scan_sleep_max_seconds=6,
+            source_scan_http_timeout_seconds=15,
+            source_scan_http_retries=2,
+        )
+        with (
+            patch(
+                "xarchiver.services.sources.get_source",
+                return_value={
+                    "status": "active",
+                    "source_type": "user_media",
+                    "source_url": "https://x.com/example/media",
+                    "cursor_state": cursor,
+                },
+            ),
+            patch("xarchiver.services.sources.start_source_scan_run", return_value=9),
+            patch(
+                "xarchiver.services.sources.discover_records_with_gallery_dl",
+                return_value=(
+                    [],
+                    {
+                        "exit_code": 0,
+                        "error_category": "network_error",
+                        "error_message": "Read timed out. (3/3)",
+                    },
+                ),
+            ),
+            patch("xarchiver.services.sources.prepare_cookies", return_value=None),
+            patch("xarchiver.services.sources.update_source_cursor") as update_cursor,
+            patch("xarchiver.services.sources.mark_source_scan_result") as mark_result,
+            patch("xarchiver.services.sources.finish_source_scan_run") as finish_run,
+        ):
+            result = scan_source(1, 20, settings=settings, session_mode="history")
+
+        self.assertFalse(result["completed"])
+        update_cursor.assert_not_called()
+        mark_result.assert_called_once_with(
+            1,
+            error_category="network_error",
+            error_message="Read timed out. (3/3)",
+        )
+        finish_run.assert_called_once_with(
+            9,
+            "network_error",
+            cursor_after=cursor,
+            error_category="network_error",
+            error_message="Read timed out. (3/3)",
+            worker_id=None,
+        )
+
     def test_likes_source_scan_is_supported(self) -> None:
-        settings = SimpleNamespace(source_scan_sleep_min_seconds=2, source_scan_sleep_max_seconds=6)
+        settings = SimpleNamespace(
+            source_scan_sleep_min_seconds=2,
+            source_scan_sleep_max_seconds=6,
+            source_scan_http_timeout_seconds=15,
+            source_scan_http_retries=2,
+        )
         with (
             patch(
                 "xarchiver.services.sources.get_source",

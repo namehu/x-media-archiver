@@ -1399,6 +1399,8 @@ export interface components {
             source_scan_sleep_min_seconds: number;
             /** Source Scan Sleep Max Seconds */
             source_scan_sleep_max_seconds: number;
+            source_scan_http_timeout_seconds: number;
+            source_scan_http_retries: number;
         } & {
             [key: string]: unknown;
         };

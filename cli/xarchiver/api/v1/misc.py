@@ -119,6 +119,8 @@ def download_policy() -> dict[str, object]:
         "source_scan_batch_size": settings.source_scan_batch_size,
         "source_scan_sleep_min_seconds": settings.source_scan_sleep_min_seconds,
         "source_scan_sleep_max_seconds": settings.source_scan_sleep_max_seconds,
+        "source_scan_http_timeout_seconds": settings.source_scan_http_timeout_seconds,
+        "source_scan_http_retries": settings.source_scan_http_retries,
     }
 
 

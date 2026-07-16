@@ -98,7 +98,16 @@ def classify_x_error(stderr: str | None, *, no_output_hint: bool = True) -> Erro
         return ErrorCategory.RATE_LIMITED
     if any(
         pattern in text
-        for pattern in ("timeout", "timed out", "connection", "network", "temporary failure")
+        for pattern in (
+            "timeout",
+            "timed out",
+            "connection",
+            "network",
+            "temporary failure",
+            "sslerror",
+            "unexpected_eof",
+            "eof occurred",
+        )
     ):
         return ErrorCategory.NETWORK_ERROR
     if "404" in text or "not found" in text:
