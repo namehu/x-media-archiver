@@ -4,7 +4,7 @@
     {
       "label": "Dev: Build API image",
       "type": "shell",
-      "command": "docker-compose build xarchiver",
+      "command": "docker compose build xarchiver",
       "problemMatcher": [],
       "presentation": {
         "reveal": "always",
@@ -14,15 +14,15 @@
     {
       "label": "Dev: Maybe build API image",
       "type": "shell",
-      "command": "$ErrorActionPreference = 'Stop'; $timeoutSeconds = 3; Write-Host \"Build API image before debug? [y/N] Default: N in $timeoutSeconds seconds\"; $choice = $null; $deadline = (Get-Date).AddSeconds($timeoutSeconds); while ((Get-Date) -lt $deadline -and $null -eq $choice) { try { if ([Console]::KeyAvailable) { $choice = [Console]::ReadKey($true).KeyChar } } catch { break }; Start-Sleep -Milliseconds 100 }; if ($choice -eq 'y' -or $choice -eq 'Y') { docker-compose build xarchiver } else { Write-Host 'Skipping API image build.' }",
+      "command": "$ErrorActionPreference = 'Stop'; $timeoutSeconds = 3; Write-Host \"Build API image before debug? [y/N] Default: N in $timeoutSeconds seconds\"; $choice = $null; $deadline = (Get-Date).AddSeconds($timeoutSeconds); while ((Get-Date) -lt $deadline -and $null -eq $choice) { try { if ([Console]::KeyAvailable) { $choice = [Console]::ReadKey($true).KeyChar } } catch { break }; Start-Sleep -Milliseconds 100 }; if ($choice -eq 'y' -or $choice -eq 'Y') { docker compose build xarchiver } else { Write-Host 'Skipping API image build.' }",
       "windows": {
-        "command": "$ErrorActionPreference = 'Stop'; $timeoutSeconds = 3; Write-Host \"Build API image before debug? [y/N] Default: N in $timeoutSeconds seconds\"; $choice = $null; $deadline = (Get-Date).AddSeconds($timeoutSeconds); while ((Get-Date) -lt $deadline -and $null -eq $choice) { try { if ([Console]::KeyAvailable) { $choice = [Console]::ReadKey($true).KeyChar } } catch { break }; Start-Sleep -Milliseconds 100 }; if ($choice -eq 'y' -or $choice -eq 'Y') { docker-compose build xarchiver } else { Write-Host 'Skipping API image build.' }"
+        "command": "$ErrorActionPreference = 'Stop'; $timeoutSeconds = 3; Write-Host \"Build API image before debug? [y/N] Default: N in $timeoutSeconds seconds\"; $choice = $null; $deadline = (Get-Date).AddSeconds($timeoutSeconds); while ((Get-Date) -lt $deadline -and $null -eq $choice) { try { if ([Console]::KeyAvailable) { $choice = [Console]::ReadKey($true).KeyChar } } catch { break }; Start-Sleep -Milliseconds 100 }; if ($choice -eq 'y' -or $choice -eq 'Y') { docker compose build xarchiver } else { Write-Host 'Skipping API image build.' }"
       },
       "osx": {
-        "command": "bash -lc 'echo \"Build API image before debug? [y/N] Default: N in 3 seconds\"; if read -r -n 1 -t 3 choice; then echo; else choice=\"\"; echo; fi; case \"$choice\" in y|Y) docker-compose build xarchiver ;; *) echo \"Skipping API image build.\" ;; esac'"
+        "command": "bash -lc 'echo \"Build API image before debug? [y/N] Default: N in 3 seconds\"; if read -r -n 1 -t 3 choice; then echo; else choice=\"\"; echo; fi; case \"$choice\" in y|Y) docker compose build xarchiver ;; *) echo \"Skipping API image build.\" ;; esac'"
       },
       "linux": {
-        "command": "bash -lc 'echo \"Build API image before debug? [y/N] Default: N in 3 seconds\"; if read -r -n 1 -t 3 choice; then echo; else choice=\"\"; echo; fi; case \"$choice\" in y|Y) docker-compose build xarchiver ;; *) echo \"Skipping API image build.\" ;; esac'"
+        "command": "bash -lc 'echo \"Build API image before debug? [y/N] Default: N in 3 seconds\"; if read -r -n 1 -t 3 choice; then echo; else choice=\"\"; echo; fi; case \"$choice\" in y|Y) docker compose build xarchiver ;; *) echo \"Skipping API image build.\" ;; esac'"
       },
       "problemMatcher": [],
       "presentation": {
@@ -34,7 +34,7 @@
     {
       "label": "Dev: Migrate API database",
       "type": "shell",
-      "command": "docker-compose run --rm --entrypoint python xarchiver -m xarchiver.cli db migrate",
+      "command": "docker compose run --rm --entrypoint python xarchiver -m xarchiver.cli db migrate",
       "dependsOn": "Dev: Maybe build API image",
       "dependsOrder": "sequence",
       "problemMatcher": [],
@@ -46,7 +46,7 @@
     {
       "label": "Dev: API debug container",
       "type": "shell",
-      "command": "docker-compose run --rm -p 127.0.0.1:18000:18000 -p 127.0.0.1:5678:5678 --entrypoint python xarchiver -m debugpy --listen 0.0.0.0:5678 -m xarchiver.cli serve --host 0.0.0.0 --port 18000",
+      "command": "docker compose run --rm -p 127.0.0.1:18000:18000 -p 127.0.0.1:5678:5678 --entrypoint python xarchiver -m debugpy --listen 0.0.0.0:5678 -m xarchiver.cli serve --host 0.0.0.0 --port 18000",
       "dependsOn": "Dev: Migrate API database",
       "dependsOrder": "sequence",
       "isBackground": true,
