@@ -472,9 +472,24 @@ class SourceDiscoveryPageResponse(PageMetaResponse):
     rows: list[SourceDiscoveryResponse]
 
 
+class SourceDownloadCountsResponse(FlexibleResponse):
+    total_count: int = 0
+    settled_count: int = 0
+    pending_count: int = 0
+    blocked_count: int = 0
+    processing_count: int = 0
+    failed_retryable_count: int = 0
+    verified_count: int = 0
+    skipped_verified_count: int = 0
+    linked_pending_count: int = 0
+    failed_permanent_count: int = 0
+    cancelled_count: int = 0
+
+
 class SourceDownloadSummaryResponse(FlexibleResponse):
     source_id: int
     active_run: ArchiveRunDetailResponse | None = None
+    active_counts: SourceDownloadCountsResponse = Field(default_factory=SourceDownloadCountsResponse)
     paused_runs: list[ArchiveRunRowResponse] = Field(default_factory=list)
     blocked_runs: list[ArchiveRunRowResponse] = Field(default_factory=list)
     recent_runs: list[ArchiveRunRowResponse] = Field(default_factory=list)

@@ -104,12 +104,8 @@ function SourceDownloadPanel({
   const paused = downloads?.paused_runs ?? [];
   const blocked = downloads?.blocked_runs ?? [];
   const runningItem = active?.items.find((item) => item.status === "processing");
-  const totalItems = active?.items.length ?? 0;
-  const doneItems =
-    active?.items.filter((item) =>
-      ["verified", "skipped_verified", "failed_permanent", "cancelled"].includes(item.status),
-    ).length ?? 0;
-  const progress = totalItems ? Math.round((doneItems / totalItems) * 100) : 0;
+  const counts = downloads?.active_counts;
+  const waitingCount = (counts?.pending_count ?? 0) + (counts?.blocked_count ?? 0);
   const hasUnsubmitted = (source.unsubmitted_tweet_count ?? 0) > 0;
 
   return (
@@ -120,19 +116,24 @@ function SourceDownloadPanel({
           {paused.length ? <Badge tone="warning">暂停 {paused.length}</Badge> : null}
           {blocked.length ? <Badge tone="secondary">等待 {blocked.length}</Badge> : null}
         </div>
-        <div className="mt-3 flex flex-wrap items-center gap-x-4 gap-y-2 text-xs text-fg-secondary">
+        <div className="mt-3 flex flex-wrap items-center gap-x-3 gap-y-2 text-xs text-fg-secondary">
           <span className="flex items-center gap-1.5">
             <span
-              className={cn("h-1.5 w-1.5 rounded-full", active ? "bg-brand animate-pulse" : "bg-fg-tertiary")}
+              className={cn("size-1.5 rounded-full", active ? "animate-pulse bg-brand" : "bg-fg-tertiary")}
             ></span>
             {active ? `Run #${active.id}` : "空闲"}
           </span>
-          <span>{formatBytes(downloads?.speed_bps)}/s</span>
-          <span>
-            进度: {progress}% ({doneItems}/{totalItems})
-          </span>
-          <span>等待: {(downloads?.pending_count ?? 0) + (downloads?.blocked_count ?? 0)}</span>
-          <span>失败: {downloads?.failed_count ?? 0}</span>
+          {active ? (
+            <>
+              <span>处理 {counts?.settled_count ?? 0}/{counts?.total_count ?? 0}</span>
+              <span>处理中 {counts?.processing_count ?? 0}</span>
+              <span>等待 {waitingCount}</span>
+              <span>重试 {counts?.failed_retryable_count ?? 0}</span>
+              <span>失败 {counts?.failed_permanent_count ?? 0}</span>
+            </>
+          ) : null}
+          {downloads?.speed_bps ? <span>{formatBytes(downloads.speed_bps)}/s</span> : null}
+          {downloads?.downloaded_bytes ? <span>{formatBytes(downloads.downloaded_bytes)}</span> : null}
         </div>
         {runningItem ? (
           <p className="mt-2 truncate text-xs text-fg-secondary">

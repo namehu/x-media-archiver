@@ -882,6 +882,22 @@ class SourceDiscoveryIntegrationTests(unittest.TestCase):
         summary = get_source_downloads(int(source["id"]))
 
         self.assertEqual(summary["active_run"]["id"], second["run_id"])
+        self.assertEqual(
+            summary["active_counts"],
+            {
+                "total_count": 1,
+                "settled_count": 0,
+                "pending_count": 0,
+                "blocked_count": 0,
+                "processing_count": 1,
+                "failed_retryable_count": 0,
+                "verified_count": 0,
+                "skipped_verified_count": 0,
+                "linked_pending_count": 0,
+                "failed_permanent_count": 0,
+                "cancelled_count": 0,
+            },
+        )
         self.assertEqual(summary["downloaded_bytes"], 125)
         self.assertEqual(summary["total_bytes"], 500)
         self.assertEqual(summary["speed_bps"], 25)

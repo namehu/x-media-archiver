@@ -1977,11 +1977,72 @@ export interface components {
             /** Limit */
             limit?: number | null;
         };
+        /** SourceDownloadCountsResponse */
+        SourceDownloadCountsResponse: {
+            /**
+             * Total Count
+             * @default 0
+             */
+            total_count: number;
+            /**
+             * Settled Count
+             * @default 0
+             */
+            settled_count: number;
+            /**
+             * Pending Count
+             * @default 0
+             */
+            pending_count: number;
+            /**
+             * Blocked Count
+             * @default 0
+             */
+            blocked_count: number;
+            /**
+             * Processing Count
+             * @default 0
+             */
+            processing_count: number;
+            /**
+             * Failed Retryable Count
+             * @default 0
+             */
+            failed_retryable_count: number;
+            /**
+             * Verified Count
+             * @default 0
+             */
+            verified_count: number;
+            /**
+             * Skipped Verified Count
+             * @default 0
+             */
+            skipped_verified_count: number;
+            /**
+             * Linked Pending Count
+             * @default 0
+             */
+            linked_pending_count: number;
+            /**
+             * Failed Permanent Count
+             * @default 0
+             */
+            failed_permanent_count: number;
+            /**
+             * Cancelled Count
+             * @default 0
+             */
+            cancelled_count: number;
+        } & {
+            [key: string]: unknown;
+        };
         /** SourceDownloadSummaryResponse */
         SourceDownloadSummaryResponse: {
             /** Source Id */
             source_id: number;
             active_run?: components["schemas"]["ArchiveRunDetailResponse"] | null;
+            active_counts?: components["schemas"]["SourceDownloadCountsResponse"];
             /** Paused Runs */
             paused_runs?: components["schemas"]["ArchiveRunRowResponse"][];
             /** Blocked Runs */

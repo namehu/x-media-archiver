@@ -48,6 +48,7 @@ from xarchiver.services.operation_logs import (
     redact_sensitive_text,
 )
 from xarchiver.services.queue import (
+    count_run_items,
     get_run_detail,
     has_pending_download_work,
     list_runs,
@@ -2189,6 +2190,9 @@ def get_source_downloads(source_id: int) -> dict[str, object]:
     runs = list_runs(limit=20, source_id=source_id)
     active = next((run for run in runs if run.status in {"queued", "running"}), None)
     active_detail = get_run_detail(int(active.id)) if active else None
+    active_counts = build_source_download_counts(
+        count_run_items(int(active.id)) if active else {}
+    )
     paused_runs = [dict(run) for run in runs if run.status == "paused"]
     blocked_runs = [dict(run) for run in runs if run.status == "blocked"]
     with connect() as conn:
@@ -2218,6 +2222,7 @@ def get_source_downloads(source_id: int) -> dict[str, object]:
     return {
         "source_id": source_id,
         "active_run": active_detail,
+        "active_counts": active_counts,
         "paused_runs": paused_runs,
         "blocked_runs": blocked_runs,
         "recent_runs": [dict(run) for run in runs],
@@ -2232,6 +2237,32 @@ def get_source_downloads(source_id: int) -> dict[str, object]:
         "total_bytes": progress.get("total_bytes"),
         "speed_bps": progress.get("speed_bps"),
     }
+
+
+def build_source_download_counts(task_counts: dict[str, int]) -> dict[str, int]:
+    counts = {
+        "pending_count": int(task_counts.get("pending_count", 0)),
+        "blocked_count": int(task_counts.get("blocked_item_count", 0)),
+        "processing_count": int(task_counts.get("processing_count", 0)),
+        "failed_retryable_count": int(task_counts.get("failed_retryable_count", 0)),
+        "verified_count": int(task_counts.get("verified_count", 0)),
+        "skipped_verified_count": int(task_counts.get("skipped_verified_count", 0)),
+        "linked_pending_count": int(task_counts.get("linked_pending_count", 0)),
+        "failed_permanent_count": int(task_counts.get("failed_count", 0)),
+        "cancelled_count": int(task_counts.get("cancelled_count", 0)),
+    }
+    counts["total_count"] = sum(counts.values())
+    counts["settled_count"] = sum(
+        counts[key]
+        for key in (
+            "verified_count",
+            "skipped_verified_count",
+            "linked_pending_count",
+            "failed_permanent_count",
+            "cancelled_count",
+        )
+    )
+    return counts
 
 
 def fetch_unsubmitted_discoveries(

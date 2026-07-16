@@ -338,6 +338,19 @@ export type SourceScanRunsPageResponse = PageResponse<SourceScanRun>;
 export type SourceDownloadSummary = {
   source_id: number;
   active_run?: ArchiveRunDetail | null;
+  active_counts: {
+    total_count: number;
+    settled_count: number;
+    pending_count: number;
+    blocked_count: number;
+    processing_count: number;
+    failed_retryable_count: number;
+    verified_count: number;
+    skipped_verified_count: number;
+    linked_pending_count: number;
+    failed_permanent_count: number;
+    cancelled_count: number;
+  };
   paused_runs: ArchiveRun[];
   blocked_runs: ArchiveRun[];
   recent_runs: ArchiveRun[];
