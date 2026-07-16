@@ -54,17 +54,19 @@ function MediaCard({ row }: { row: MediaRow }) {
   const navigate = useNavigate();
   const title = row.author_display_name || row.author_username || "未知作者";
   const statusTone = row.media_status === "verified" || row.media_status === "downloaded" ? "success" : "warning";
+  const openTweet = () => navigate(`/tweets/${row.tweet_id}`);
 
   return (
     <Card
       className="group overflow-hidden hover:border-border-strong hover:shadow-2 cursor-pointer"
-      onClick={() => navigate(`/tweets/${row.tweet_id}`)}
+      onClick={openTweet}
     >
       <MediaThumbnail
         src={row.media_url}
         mediaType={row.media_type}
         alt={row.tweet_text || title}
         className="rounded-none"
+        onClick={openTweet}
       />
       <CardContent className="flex flex-col gap-2.5 p-3">
         <div className="flex items-start justify-between gap-3">
