@@ -70,6 +70,13 @@ test.describe("WebUI smoke", () => {
     await page.locator(".art-icon-fullscreenWebOn").locator("..").click();
     await expect(page.locator("body > .art-video-player.art-fullscreen-web")).toHaveCount(1);
     await page.goBack();
+    await expect(page).toHaveURL(/\/tweets\/webui-e2e-verified$/);
+    await expect(page.locator("body > .art-video-player.art-fullscreen-web")).toHaveCount(0);
+    await page.goForward();
+    await expect(page.locator("body > .art-video-player.art-fullscreen-web")).toHaveCount(1);
+    await page.goBack();
+    await expect(page.locator("body > .art-video-player.art-fullscreen-web")).toHaveCount(0);
+    await page.goBack();
     await expect(page.getByRole("link", { name: "操作" })).toBeVisible();
     await expect(page.locator("body > .art-video-player.art-fullscreen-web")).toHaveCount(0);
 
