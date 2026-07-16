@@ -46,9 +46,14 @@ test.describe("WebUI smoke", () => {
       authScreen = await waitForAuthScreen(page);
     }
     if (authScreen === "login") {
-      if (!(await signIn(page, initialPassword))) {
-        expect(await signIn(page, alternatePassword), "E2E administrator password is unavailable").toBeTruthy();
-        password = alternatePassword;
+      authSessionTransition = true;
+      try {
+        if (!(await signIn(page, initialPassword))) {
+          expect(await signIn(page, alternatePassword), "E2E administrator password is unavailable").toBeTruthy();
+          password = alternatePassword;
+        }
+      } finally {
+        authSessionTransition = false;
       }
     }
     await expect(page.getByRole("link", { name: "仪表盘" })).toBeVisible();

@@ -66,7 +66,7 @@ export function SetupPage({ error, pending, onSubmit }: SetupPageProps) {
                 <Input
                   id="setup-username"
                   autoComplete="username"
-                  pattern="[A-Za-z0-9._-]{3,64}"
+                  pattern={"[A-Za-z0-9._\\-]{3,64}"}
                   value={username}
                   onChange={(event) => setUsername(event.target.value)}
                   required
