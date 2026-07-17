@@ -22,6 +22,7 @@ class DuplicateIntegrationTests(unittest.TestCase):
         with connect() as conn:
             with conn.cursor() as cur:
                 for index, tweet_id in enumerate(self.tweet_ids, start=1):
+                    media_status = "verified" if index == 1 else "downloaded"
                     cur.execute(
                         """
                         insert into tweets (tweet_id, url, author_username, download_status)
@@ -41,9 +42,9 @@ class DuplicateIntegrationTests(unittest.TestCase):
                             source_engine,
                             download_status
                         )
-                        values (%s, 1, 'photo', %s, 100, 'same-hash', 'test', 'verified')
+                        values (%s, 1, 'photo', %s, 100, 'same-hash', 'test', %s)
                         """,
-                        (tweet_id, f"/app/archive/media/dup/{tweet_id}.jpg"),
+                        (tweet_id, f"/app/archive/media/dup/{tweet_id}.jpg", media_status),
                     )
                 for index, tweet_id in enumerate(self.other_tweet_ids, start=3):
                     cur.execute(
@@ -86,6 +87,8 @@ class DuplicateIntegrationTests(unittest.TestCase):
         rows = [row for row in fetch_duplicate_rows() if row["sha256"] == "same-hash"]
         self.assertEqual(len(rows), 2)
         self.assertTrue(all(row["duplicate_count"] == 2 for row in rows))
+        self.assertTrue(all(isinstance(row["id"], int) for row in rows))
+        self.assertTrue(all(row["media_index"] == 1 for row in rows))
 
         result = export_duplicates_csv(self.settings.archive_dir, self.output_path)
         self.assertGreaterEqual(result["rows"], 2)
@@ -97,13 +100,23 @@ class DuplicateIntegrationTests(unittest.TestCase):
         self.assertEqual(exported[0]["media_relative_path"], "media/dup/duplicate-fixture-1.jpg")
 
     def test_duplicates_page_returns_current_rows_and_total_counts(self) -> None:
-        page = list_duplicates_page(self.settings, limit=2, offset=2)
+        page = list_duplicates_page(self.settings, limit=1, offset=0)
 
-        self.assertEqual(page["count"], 2)
-        self.assertGreaterEqual(page["total_count"], 4)
+        self.assertEqual(page["count"], 1)
+        self.assertEqual(len(page["groups"]), 1)
+        self.assertEqual(len(page["groups"][0]["rows"]), 2)
+        self.assertEqual(page["groups"][0]["duplicate_count"], 2)
+        self.assertTrue(all(isinstance(row["id"], int) for row in page["groups"][0]["rows"]))
+        self.assertEqual(page["groups"][0]["rows"][0]["media_status"], "verified")
+        self.assertGreaterEqual(page["total_count"], 2)
+        self.assertGreaterEqual(page["total_media_count"], 4)
         self.assertGreaterEqual(page["duplicate_groups"], 2)
-        self.assertEqual(page["limit"], 2)
-        self.assertEqual(page["offset"], 2)
+        self.assertEqual(page["limit"], 1)
+        self.assertEqual(page["offset"], 0)
+
+        next_page = list_duplicates_page(self.settings, limit=1, offset=1)
+        self.assertEqual(next_page["count"], 1)
+        self.assertNotEqual(page["groups"][0]["sha256"], next_page["groups"][0]["sha256"])
 
 
 if __name__ == "__main__":

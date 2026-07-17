@@ -85,7 +85,7 @@ def failures(
 
 @router.get("/duplicates", response_model=DuplicatesPageResponse)
 def duplicates(
-    limit: int = Query(100, ge=1, le=500),
+    limit: int = Query(20, ge=1, le=100),
     offset: int = Query(0, ge=0),
 ) -> dict[str, object]:
     return list_duplicates_page(get_settings(), limit=limit, offset=offset)

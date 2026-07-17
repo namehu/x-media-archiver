@@ -9,6 +9,7 @@ from xarchiver.exporter import (
     count_all_duplicate_groups,
     count_duplicate_groups,
     count_duplicate_rows,
+    fetch_duplicate_group_rows,
     fetch_duplicate_rows,
     fetch_export_rows,
 )
@@ -191,12 +192,26 @@ def list_duplicates(settings: Settings) -> dict[str, object]:
 
 
 def list_duplicates_page(settings: Settings, limit: int = 100, offset: int = 0) -> dict[str, object]:
-    rows = [attach_media_url(row, settings.archive_dir) for row in fetch_duplicate_rows(limit=limit, offset=offset)]
+    rows = [attach_media_url(row, settings.archive_dir) for row in fetch_duplicate_group_rows(limit=limit, offset=offset)]
+    groups: list[dict[str, object]] = []
+    for row in rows:
+        if not groups or groups[-1]["sha256"] != row["sha256"]:
+            groups.append(
+                {
+                    "sha256": row["sha256"],
+                    "duplicate_count": row["duplicate_count"],
+                    "total_size": row["total_size"],
+                    "rows": [],
+                }
+            )
+        groups[-1]["rows"].append(row)
+    duplicate_groups = count_all_duplicate_groups()
     return {
-        "duplicate_groups": count_all_duplicate_groups(),
-        "rows": rows,
-        "count": len(rows),
-        "total_count": count_duplicate_rows(),
+        "duplicate_groups": duplicate_groups,
+        "total_media_count": count_duplicate_rows(),
+        "groups": groups,
+        "count": len(groups),
+        "total_count": duplicate_groups,
         "limit": limit,
         "offset": offset,
     }

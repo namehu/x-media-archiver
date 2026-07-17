@@ -57,8 +57,21 @@ export type PageResponse<T> = {
   offset: number;
 };
 
-export type DuplicatesResponse = PageResponse<MediaRow> & {
+export type DuplicateGroup = {
+  sha256: string;
+  duplicate_count: number;
+  total_size: number;
+  rows: MediaRow[];
+};
+
+export type DuplicatesResponse = {
+  groups: DuplicateGroup[];
+  count: number;
+  total_count: number;
+  limit: number;
+  offset: number;
   duplicate_groups: number;
+  total_media_count: number;
 };
 
 export type TweetDetail = {

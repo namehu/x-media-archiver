@@ -35,7 +35,7 @@ flowchart LR
 非目标：
 
 - 不在扫描子进程内下载真实媒体文件；下载由 archive queue worker 执行。
-- WebUI 媒体库允许按 `media_assets.id` 显式批量删除媒体文件。删除必须经过不可恢复确认、写操作串行化、`archive/media` 路径边界校验和审计；来源发现、Tweet 与下载历史保留，受影响 Tweet 标记为 `missing` 以支持手动重新归档。
+- WebUI 媒体库与重复媒体页允许按 `media_assets.id` 显式批量删除媒体文件。重复媒体按完整 SHA-256 组分页，可快捷保留建议项并选择其余副本；用户仍可手动调整选择。删除必须经过不可恢复确认、写操作串行化、`archive/media` 路径边界校验和审计；来源发现、Tweet 与下载历史保留，受影响 Tweet 标记为 `missing` 以支持手动重新归档。
 - 不把全库扫描、全量校验等维护动作隐式塞入普通扫描请求。
 - 不为旧的纯数字 checkpoint 兼容流程新增复杂迁移逻辑。
 

@@ -5,12 +5,9 @@ import { useInfiniteQuery, useMutation, useQueryClient } from "@tanstack/react-q
 import { useLocation, useNavigationType } from "react-router-dom";
 import type { GridStateSnapshot } from "react-virtuoso";
 import {
-  ApiError,
   apiDelete,
   apiGet,
   mediaQueryString,
-  type ActionResponse,
-  type MediaDeleteResult,
   type MediaRow,
   type PageResponse,
 } from "../../lib/api";
@@ -25,16 +22,19 @@ import {
 } from "./components/library-filter-panel";
 import { LibraryResultsToolbar } from "./components/library-results-toolbar";
 import { MediaGrid } from "./components/media-grid";
-import { MediaDeleteDialog } from "./components/media-delete-dialog";
-import { MediaSelectionBar } from "./components/media-selection-bar";
+import { MediaDeleteDialog } from "../../components/media-delete-dialog";
+import { MediaSelectionBar } from "../../components/media-selection-bar";
+import {
+  formatDeletedBytes,
+  mediaDeleteErrorMessage,
+  type MediaDeleteResponse,
+} from "../../lib/media-deletion";
 import { Collapsible, CollapsibleContent, CollapsibleTrigger } from "../../components/ui/collapsible";
 import { Button } from "../../components/ui/button";
 import { getLibraryBrowseState, saveLibraryBrowseState } from "./library-browse-state";
 
 const PAGE_SIZE = 60;
 const MAX_DELETE_SELECTION = 200;
-
-type MediaDeleteResponse = Omit<ActionResponse, "result"> & { result: MediaDeleteResult };
 
 export function LibraryPage() {
   const location = useLocation();
@@ -114,7 +114,7 @@ export function LibraryPage() {
         queryClient.invalidateQueries({ queryKey: ["source-discovered"] }),
       ]);
       toast.success(
-        `已删除 ${response.result.deleted_media_count} 项媒体，释放 ${formatDeleteBytes(response.result.deleted_bytes)}`,
+        `已删除 ${response.result.deleted_media_count} 项媒体，释放 ${formatDeletedBytes(response.result.deleted_bytes)}`,
       );
     },
   });
@@ -285,7 +285,7 @@ export function LibraryPage() {
         count={selectedIds.size}
         estimatedBytes={selectedBytes}
         pending={deleteMutation.isPending}
-        error={deleteMutation.error ? deleteErrorMessage(deleteMutation.error) : null}
+        error={deleteMutation.error ? mediaDeleteErrorMessage(deleteMutation.error) : null}
         onOpenChange={(open) => {
           setDeleteDialogOpen(open);
           if (!open) setDeleteOperationId(null);
@@ -296,24 +296,6 @@ export function LibraryPage() {
       />
     </div>
   );
-}
-
-function formatDeleteBytes(bytes: number) {
-  if (bytes < 1024) return `${bytes} B`;
-  if (bytes < 1024 * 1024) return `${(bytes / 1024).toFixed(1)} KB`;
-  if (bytes < 1024 * 1024 * 1024) return `${(bytes / 1024 / 1024).toFixed(1)} MB`;
-  return `${(bytes / 1024 / 1024 / 1024).toFixed(1)} GB`;
-}
-
-function deleteErrorMessage(error: unknown) {
-  if (error instanceof ApiError) {
-    if (error.status === 409) return "所选 Tweet 仍有下载任务或其他写操作，请先停止任务后重试。";
-    if (error.status === 404) return "部分媒体已不存在，请刷新媒体库后重新选择。";
-    if (error.code === "invalid_media_delete_path" || error.message.includes("invalid_media_delete_path")) {
-      return "检测到不安全的媒体路径，未执行删除。";
-    }
-  }
-  return error instanceof Error ? error.message : "删除媒体失败，请重试。";
 }
 
 function countActiveFilters(filters: LibraryFilters) {

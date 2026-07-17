@@ -7,7 +7,7 @@ from html import escape
 from pathlib import Path
 from urllib.parse import quote
 
-from sqlalchemy import Integer, bindparam, func, lateral, select, true
+from sqlalchemy import Integer, bindparam, case, func, lateral, select, true
 
 from xarchiver.archive import ensure_archive_dirs
 from xarchiver.db import connect
@@ -274,9 +274,41 @@ def fetch_duplicate_rows(limit: int | None = None, offset: int = 0) -> list[Dupl
             return [DuplicateRow.model_validate(dict(row)) for row in cur.fetchall()]
 
 
+def fetch_duplicate_group_rows(limit: int = 20, offset: int = 0) -> list[DuplicateRow]:
+    sql, params = build_duplicate_group_rows_query(limit=limit, offset=offset)
+    with connect() as conn:
+        with conn.cursor() as cur:
+            cur.execute(sql, params)
+            return [DuplicateRow.model_validate(dict(row)) for row in cur.fetchall()]
+
+
 def build_duplicate_rows_query(limit: int | None = None, offset: int = 0) -> tuple[str, dict[str, object]]:
+    duplicate_hashes = _duplicate_hashes_cte()
+    statement = _duplicate_rows_statement(duplicate_hashes)
+    if limit is not None:
+        statement = statement.limit(bindparam("limit", limit)).offset(bindparam("offset", offset))
+    return compile_query(statement)
+
+
+def build_duplicate_group_rows_query(limit: int = 20, offset: int = 0) -> tuple[str, dict[str, object]]:
+    duplicate_hashes = _duplicate_hashes_cte()
+    paged_duplicate_hashes = (
+        select(
+            duplicate_hashes.c.sha256,
+            duplicate_hashes.c.duplicate_count,
+            duplicate_hashes.c.total_size,
+        )
+        .order_by(duplicate_hashes.c.duplicate_count.desc(), duplicate_hashes.c.sha256.asc())
+        .limit(bindparam("limit", limit))
+        .offset(bindparam("offset", offset))
+        .cte("paged_duplicate_hashes")
+    )
+    return compile_query(_duplicate_rows_statement(paged_duplicate_hashes))
+
+
+def _duplicate_hashes_cte():
     duplicate_count = func.count().label("duplicate_count")
-    duplicate_hashes = (
+    return (
         select(
             media_assets.c.sha256,
             duplicate_count,
@@ -291,14 +323,19 @@ def build_duplicate_rows_query(limit: int | None = None, offset: int = 0) -> tup
         .having(func.count() > 1)
         .cte("duplicate_hashes")
     )
+
+
+def _duplicate_rows_statement(duplicate_hashes):
     statement = (
         select(
             duplicate_hashes.c.sha256,
             duplicate_hashes.c.duplicate_count.cast(Integer).label("duplicate_count"),
             duplicate_hashes.c.total_size,
+            media_assets.c.id,
             tweets.c.tweet_id,
             tweets.c.url.label("tweet_url"),
             tweets.c.author_username,
+            media_assets.c.media_index,
             media_assets.c.media_type,
             media_assets.c.download_status.label("media_status"),
             media_assets.c.local_path,
@@ -313,14 +350,11 @@ def build_duplicate_rows_query(limit: int | None = None, offset: int = 0) -> tup
         .order_by(
             duplicate_hashes.c.duplicate_count.desc(),
             duplicate_hashes.c.sha256.asc(),
-            tweets.c.tweet_id.asc(),
-            media_assets.c.media_index.asc().nulls_last(),
+            case((media_assets.c.download_status == "verified", 0), else_=1).asc(),
             media_assets.c.id.asc(),
         )
     )
-    if limit is not None:
-        statement = statement.limit(bindparam("limit", limit)).offset(bindparam("offset", offset))
-    return compile_query(statement)
+    return statement
 
 
 def count_duplicate_rows() -> int:

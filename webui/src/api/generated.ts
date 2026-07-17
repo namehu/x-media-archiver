@@ -1468,20 +1468,31 @@ export interface components {
         } & {
             [key: string]: unknown;
         };
-        /** DuplicateRowResponse */
-        DuplicateRowResponse: {
+        /** DuplicateGroupResponse */
+        DuplicateGroupResponse: {
             /** Sha256 */
             sha256: string;
             /** Duplicate Count */
             duplicate_count: number;
             /** Total Size */
             total_size: number;
+            /** Rows */
+            rows: components["schemas"]["DuplicateMediaResponse"][];
+        } & {
+            [key: string]: unknown;
+        };
+        /** DuplicateMediaResponse */
+        DuplicateMediaResponse: {
+            /** Id */
+            id: number;
             /** Tweet Id */
             tweet_id: string;
             /** Tweet Url */
             tweet_url: string;
             /** Author Username */
             author_username?: string | null;
+            /** Media Index */
+            media_index?: number | null;
             /** Media Type */
             media_type?: string | null;
             /** Media Status */
@@ -1507,10 +1518,12 @@ export interface components {
             limit: number;
             /** Offset */
             offset: number;
-            /** Rows */
-            rows: components["schemas"]["DuplicateRowResponse"][];
+            /** Groups */
+            groups: components["schemas"]["DuplicateGroupResponse"][];
             /** Duplicate Groups */
             duplicate_groups: number;
+            /** Total Media Count */
+            total_media_count: number;
         } & {
             [key: string]: unknown;
         };

@@ -1,5 +1,5 @@
 import { AlertTriangle, Loader2 } from "lucide-react";
-import { Alert, AlertDescription, AlertTitle } from "../../../components/ui/alert";
+import { Alert, AlertDescription, AlertTitle } from "./ui/alert";
 import {
   AlertDialog,
   AlertDialogCancel,
@@ -8,9 +8,9 @@ import {
   AlertDialogFooter,
   AlertDialogHeader,
   AlertDialogTitle,
-} from "../../../components/ui/alert-dialog";
-import { Button } from "../../../components/ui/button";
-import { formatBytes } from "../../../lib/utils";
+} from "./ui/alert-dialog";
+import { Button } from "./ui/button";
+import { formatBytes } from "../lib/utils";
 
 type MediaDeleteDialogProps = {
   open: boolean;
@@ -18,6 +18,7 @@ type MediaDeleteDialogProps = {
   estimatedBytes: number;
   pending: boolean;
   error: string | null;
+  fullySelectedGroupCount?: number;
   onOpenChange: (open: boolean) => void;
   onConfirm: () => void;
 };
@@ -28,6 +29,7 @@ export function MediaDeleteDialog({
   estimatedBytes,
   pending,
   error,
+  fullySelectedGroupCount = 0,
   onOpenChange,
   onConfirm,
 }: MediaDeleteDialogProps) {
@@ -42,6 +44,15 @@ export function MediaDeleteDialog({
             <span>Tweet、来源和下载历史会保留，Tweet 将标记为“文件缺失”，之后可以重新归档。</span>
           </AlertDialogDescription>
         </AlertDialogHeader>
+        {fullySelectedGroupCount ? (
+          <Alert variant="destructive">
+            <AlertTriangle />
+            <AlertTitle>重复组将被清空</AlertTitle>
+            <AlertDescription>
+              当前选择会删除 {fullySelectedGroupCount} 个重复组的全部媒体，不会保留副本。
+            </AlertDescription>
+          </Alert>
+        ) : null}
         {error ? (
           <Alert variant="destructive">
             <AlertTriangle />

@@ -1,7 +1,7 @@
 import unittest
 from datetime import UTC, datetime
 from uuid import uuid4
-from unittest.mock import patch
+from unittest.mock import ANY, patch
 
 from api_route_helpers import iter_app_routes
 from fastapi import HTTPException
@@ -11,6 +11,7 @@ from xarchiver.api.schemas import (
     ArchiveRunsPageResponse,
     ArchiveSourceDetailResponse,
     BackfillRequest,
+    DuplicatesPageResponse,
     MediaDeleteRequest,
     SourceCreateRequest,
     SourceDiscoveryPageResponse,
@@ -113,6 +114,42 @@ class V1RouterSmokeTests(unittest.TestCase):
             )
         self.assertEqual(ctx.exception.status_code, 400)
         self.assertEqual(ctx.exception.detail, "physical_delete_confirmation_required")
+
+    def test_v1_duplicates_response_uses_complete_groups_with_media_ids(self):
+        page = {
+            "groups": [
+                {
+                    "sha256": "same-hash",
+                    "duplicate_count": 2,
+                    "total_size": 200,
+                    "rows": [
+                        {
+                            "id": 41,
+                            "tweet_id": "123",
+                            "tweet_url": "https://x.com/test/status/123",
+                            "media_index": 1,
+                            "media_status": "verified",
+                            "media_relative_path": "media/test/123/image.jpg",
+                        }
+                    ],
+                }
+            ],
+            "count": 1,
+            "total_count": 3,
+            "limit": 20,
+            "offset": 0,
+            "duplicate_groups": 3,
+            "total_media_count": 7,
+        }
+        with patch("xarchiver.api.v1.library.list_duplicates_page", return_value=page) as list_page:
+            result = self.get_paths["/api/v1/library/duplicates"](limit=20, offset=0)
+
+        payload = DuplicatesPageResponse.model_validate(result).model_dump(mode="json")
+        self.assertEqual(payload["groups"][0]["rows"][0]["id"], 41)
+        self.assertEqual(payload["groups"][0]["rows"][0]["media_index"], 1)
+        self.assertEqual(payload["total_count"], 3)
+        self.assertEqual(payload["total_media_count"], 7)
+        list_page.assert_called_once_with(ANY, limit=20, offset=0)
 
     # ── Error parity: v1 endpoints enforce same guards as legacy ──────────────
 

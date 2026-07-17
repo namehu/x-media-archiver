@@ -328,9 +328,11 @@ class DuplicateRow(RowModel):
     sha256: str
     duplicate_count: int
     total_size: int
+    id: int
     tweet_id: str
     tweet_url: str
     author_username: str | None = None
+    media_index: int | None = None
     media_type: str | None = None
     media_status: str
     local_path: str | None = None

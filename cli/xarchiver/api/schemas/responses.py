@@ -351,19 +351,25 @@ class FailureRowResponse(FlexibleResponse):
     latest_finished_at: datetime | None = None
 
 
-class DuplicateRowResponse(FlexibleResponse):
-    sha256: str
-    duplicate_count: int
-    total_size: int
+class DuplicateMediaResponse(FlexibleResponse):
+    id: int
     tweet_id: str
     tweet_url: str
     author_username: str | None = None
+    media_index: int | None = None
     media_type: str | None = None
     media_status: str
     local_path: str | None = None
     file_size: int | None = None
     media_relative_path: str
     media_url: str | None = None
+
+
+class DuplicateGroupResponse(FlexibleResponse):
+    sha256: str
+    duplicate_count: int
+    total_size: int
+    rows: list[DuplicateMediaResponse]
 
 
 class MediaPageResponse(PageMetaResponse):
@@ -383,8 +389,9 @@ class SourcesPageResponse(PageMetaResponse):
 
 
 class DuplicatesPageResponse(PageMetaResponse):
-    rows: list[DuplicateRowResponse]
+    groups: list[DuplicateGroupResponse]
     duplicate_groups: int
+    total_media_count: int
 
 
 class ArchiveSourceResponse(FlexibleResponse):

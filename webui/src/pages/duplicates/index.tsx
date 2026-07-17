@@ -1,12 +1,28 @@
-import { useMemo, useState } from "react";
-import { Files, Gauge, GitCompare, HardDrive, Image as ImageIcon } from "lucide-react";
+import { useEffect, useMemo, useState } from "react";
+import { CheckCheck, Files, Gauge, GitCompare, HardDrive, Image as ImageIcon } from "lucide-react";
 import { Link } from "react-router-dom";
-import { useQuery } from "@tanstack/react-query";
-import { apiGet, type DuplicatesResponse, type MediaRow } from "../../lib/api";
+import { toast } from "sonner";
+import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
+import {
+  apiDelete,
+  apiGet,
+  type DuplicateGroup,
+  type DuplicatesResponse,
+  type MediaRow,
+} from "../../lib/api";
+import {
+  formatDeletedBytes,
+  mediaDeleteErrorMessage,
+  type MediaDeleteResponse,
+} from "../../lib/media-deletion";
 import { mediaTypeLabel } from "../../lib/formatters";
 import { formatBytes } from "../../lib/utils";
+import { MediaDeleteDialog } from "../../components/media-delete-dialog";
+import { MediaSelectionBar } from "../../components/media-selection-bar";
 import { Badge } from "../../components/ui/badge";
+import { Button } from "../../components/ui/button";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "../../components/ui/card";
+import { Checkbox } from "../../components/ui/checkbox";
 import { EmptyState } from "../../components/ui/empty-state";
 import { ErrorState } from "../../components/ui/error-state";
 import { MediaThumbnail } from "../../components/ui/media-thumbnail";
@@ -14,23 +30,124 @@ import { Pagination } from "../../components/ui/pagination";
 import { Skeleton } from "../../components/ui/skeleton";
 import { StatCard } from "../../components/ui/stat-card";
 
-const PAGE_SIZE = 100;
+const PAGE_SIZE = 20;
+const MAX_DELETE_SELECTION = 200;
 
 export function DuplicatesPage() {
+  const queryClient = useQueryClient();
   const [offset, setOffset] = useState(0);
-  const { data, isLoading, error, refetch } = useQuery({
+  const [selectedIds, setSelectedIds] = useState<Set<number>>(() => new Set());
+  const [deleteDialogOpen, setDeleteDialogOpen] = useState(false);
+  const [deleteOperationId, setDeleteOperationId] = useState<string | null>(null);
+  const duplicatesQuery = useQuery({
     queryKey: ["duplicates", offset],
     queryFn: () => apiGet<DuplicatesResponse>(`/api/v1/library/duplicates?limit=${PAGE_SIZE}&offset=${offset}`),
   });
+  const groups = useMemo(() => duplicatesQuery.data?.groups ?? [], [duplicatesQuery.data]);
+  const rows = useMemo(() => groups.flatMap((group) => group.rows), [groups]);
+  const model = useMemo(
+    () => buildDuplicateModel(groups, duplicatesQuery.data?.duplicate_groups ?? 0, duplicatesQuery.data?.total_media_count ?? 0),
+    [groups, duplicatesQuery.data?.duplicate_groups, duplicatesQuery.data?.total_media_count],
+  );
+  const selectedRows = useMemo(() => rows.filter((row) => selectedIds.has(row.id)), [rows, selectedIds]);
+  const selectedBytes = useMemo(
+    () => selectedRows.reduce((total, row) => total + (row.file_size ?? 0), 0),
+    [selectedRows],
+  );
+  const fullySelectedGroupCount = useMemo(
+    () => groups.filter((group) => group.rows.length > 0 && group.rows.every((row) => selectedIds.has(row.id))).length,
+    [groups, selectedIds],
+  );
+  const deleteMutation = useMutation({
+    mutationFn: (operationId: string) =>
+      apiDelete<MediaDeleteResponse>("/api/v1/library/media", {
+        body: {
+          operation_id: operationId,
+          media_ids: Array.from(selectedIds),
+          confirm_physical_delete: true,
+        },
+      }),
+    onSuccess: async (response) => {
+      setDeleteDialogOpen(false);
+      setDeleteOperationId(null);
+      setSelectedIds(new Set());
+      await Promise.all([
+        queryClient.resetQueries({ queryKey: ["duplicates"] }),
+        queryClient.resetQueries({ queryKey: ["media"] }),
+        queryClient.invalidateQueries({ queryKey: ["tweet"] }),
+        queryClient.invalidateQueries({ queryKey: ["summary"] }),
+        queryClient.invalidateQueries({ queryKey: ["failures"] }),
+        queryClient.invalidateQueries({ queryKey: ["source-discovered"] }),
+      ]);
+      toast.success(
+        `已删除 ${response.result.deleted_media_count} 项媒体，释放 ${formatDeletedBytes(response.result.deleted_bytes)}`,
+      );
+    },
+  });
 
-  const rows = data?.rows ?? [];
-  const model = useMemo(() => buildDuplicateModel(rows, data?.duplicate_groups ?? 0), [rows, data?.duplicate_groups]);
+  useEffect(() => {
+    const availableIds = new Set(rows.map((row) => row.id));
+    setSelectedIds((current) => {
+      const next = new Set([...current].filter((id) => availableIds.has(id)));
+      return setsEqual(current, next) ? current : next;
+    });
+  }, [rows]);
 
-  if (isLoading) return <DuplicatesSkeleton />;
-  if (error) return <ErrorState title="API 不可用" detail={String(error)} onRetry={() => void refetch()} />;
+  useEffect(() => {
+    if (!duplicatesQuery.isFetching && duplicatesQuery.data?.count === 0 && offset > 0) {
+      setSelectedIds(new Set());
+      setOffset(Math.max(0, offset - PAGE_SIZE));
+    }
+  }, [duplicatesQuery.data?.count, duplicatesQuery.isFetching, offset]);
+
+  if (duplicatesQuery.isLoading) return <DuplicatesSkeleton />;
+  if (duplicatesQuery.error) {
+    return <ErrorState title="API 不可用" detail={String(duplicatesQuery.error)} onRetry={() => void duplicatesQuery.refetch()} />;
+  }
+
+  const changePage = (nextOffset: number) => {
+    setSelectedIds(new Set());
+    setOffset(nextOffset);
+  };
+
+  const toggleSelected = (row: MediaRow) => {
+    setSelectedIds((current) => {
+      const next = new Set(current);
+      if (next.has(row.id)) next.delete(row.id);
+      else if (next.size >= MAX_DELETE_SELECTION) toast.error("单次最多选择 200 个媒体项。");
+      else next.add(row.id);
+      return next;
+    });
+  };
+
+  const selectRedundantRows = (targetGroups: DuplicateGroup[], preserveOtherSelections: boolean) => {
+    let truncated = false;
+    setSelectedIds((current) => {
+      const next = preserveOtherSelections ? new Set(current) : new Set<number>();
+      for (const group of targetGroups) {
+        const [keeper, ...redundantRows] = group.rows;
+        if (keeper) next.delete(keeper.id);
+        for (const row of redundantRows) {
+          if (next.size >= MAX_DELETE_SELECTION && !next.has(row.id)) {
+            truncated = true;
+            continue;
+          }
+          next.add(row.id);
+        }
+      }
+      return next;
+    });
+    if (truncated) toast.info("已选择前 200 个重复媒体项，其余项目可分批处理。");
+  };
+
+  const openDeleteDialog = () => {
+    deleteMutation.reset();
+    setDeleteOperationId(crypto.randomUUID());
+    setDeleteDialogOpen(true);
+  };
 
   return (
-    <div className="space-y-5">
+    <div className="flex flex-col gap-5">
       <section className="flex flex-col justify-between gap-4 md:flex-row md:items-end">
         <div>
           <h1 className="text-2xl font-bold tracking-tight text-fg-primary">重复媒体</h1>
@@ -38,127 +155,196 @@ export function DuplicatesPage() {
             {model.groupCount.toLocaleString()} 组 · {model.fileCount.toLocaleString()} 个文件
           </p>
         </div>
-        {data ? (
-          <Pagination
-            offset={offset}
-            count={data.count}
-            totalCount={data.total_count}
-            pageSize={PAGE_SIZE}
-            onOffsetChange={setOffset}
-            label="第 {start}-{end} 项，共 {total} 项"
-          />
-        ) : null}
+        <div className="flex flex-wrap items-center gap-2">
+          {groups.length ? (
+            <Button type="button" variant="outline" size="sm" onClick={() => selectRedundantRows(groups, false)}>
+              <CheckCheck data-icon="inline-start" />
+              选择本页冗余项
+            </Button>
+          ) : null}
+          {selectedIds.size ? (
+            <Button type="button" variant="ghost" size="sm" onClick={() => setSelectedIds(new Set())}>
+              清除选择
+            </Button>
+          ) : null}
+          {duplicatesQuery.data ? (
+            <Pagination
+              offset={offset}
+              count={duplicatesQuery.data.count}
+              totalCount={duplicatesQuery.data.total_count}
+              pageSize={PAGE_SIZE}
+              onOffsetChange={changePage}
+              label="第 {start}-{end} 组，共 {total} 组"
+            />
+          ) : null}
+        </div>
       </section>
 
       <section className="grid gap-4 md:grid-cols-2 xl:grid-cols-4">
         <StatCard
           label="重复组"
           value={model.groupCount.toLocaleString()}
-          detail="重复媒体"
+          detail="完整哈希分组"
           icon={<GitCompare className="h-4 w-4" />}
           tone={model.groupCount ? "warning" : "success"}
           sparklineData={model.groupSizes}
         />
         <StatCard
-          label="个文件"
+          label="文件"
           value={model.fileCount.toLocaleString()}
-          detail={`第 ${data?.total_count ? offset + 1 : 0}-${Math.min(offset + (data?.count ?? 0), data?.total_count ?? 0)} 项，共 ${data?.total_count ?? 0} 项`}
+          detail={`本页 ${model.loadedFileCount} 个文件`}
           icon={<Files className="h-4 w-4" />}
           tone="brand"
         />
         <StatCard
-          label="已检查"
-          value={formatBytes(model.duplicateBytes)}
-          detail="文件路径"
+          label="本页空间"
+          value={formatBytes(model.pageBytes)}
+          detail="主媒体文件"
           icon={<HardDrive className="h-4 w-4" />}
-          tone={model.duplicateBytes ? "warning" : "brand"}
+          tone={model.pageBytes ? "warning" : "brand"}
         />
         <StatCard
           label="媒体"
           value={model.dominantMediaType ? mediaTypeLabel(model.dominantMediaType) : "-"}
-          detail={model.dominantMediaTypeCount ? `${model.dominantMediaTypeCount} 个文件` : "没有重复媒体。"}
+          detail={model.dominantMediaTypeCount ? `本页 ${model.dominantMediaTypeCount} 个文件` : "没有重复媒体。"}
           icon={<ImageIcon className="h-4 w-4" />}
           tone="brand"
         />
       </section>
 
-      {model.groups.length ? (
-        <section className="space-y-4">
-          {model.groups.map((group) => (
-            <DuplicateGroupCard key={group.sha256} group={group} />
+      {groups.length ? (
+        <section className="flex flex-col gap-4">
+          {groups.map((group) => (
+            <DuplicateGroupCard
+              key={group.sha256}
+              group={group}
+              selectedIds={selectedIds}
+              onToggleSelected={toggleSelected}
+              onSelectRedundant={() => selectRedundantRows([group], true)}
+            />
           ))}
-          {data && data.rows.length > 0 ? (
+          {duplicatesQuery.data ? (
             <Pagination
               offset={offset}
-              count={data.count}
-              totalCount={data.total_count}
+              count={duplicatesQuery.data.count}
+              totalCount={duplicatesQuery.data.total_count}
               pageSize={PAGE_SIZE}
-              onOffsetChange={setOffset}
-              label="第 {start}-{end} 项，共 {total} 项"
+              onOffsetChange={changePage}
+              label="第 {start}-{end} 组，共 {total} 组"
             />
           ) : null}
         </section>
       ) : (
         <EmptyState icon={<GitCompare className="h-5 w-5" />} title="没有重复媒体。" description="清洁" />
       )}
+
+      <MediaSelectionBar
+        count={selectedIds.size}
+        estimatedBytes={selectedBytes}
+        onClear={() => setSelectedIds(new Set())}
+        onDelete={openDeleteDialog}
+      />
+      <MediaDeleteDialog
+        open={deleteDialogOpen}
+        count={selectedIds.size}
+        estimatedBytes={selectedBytes}
+        pending={deleteMutation.isPending}
+        error={deleteMutation.error ? mediaDeleteErrorMessage(deleteMutation.error) : null}
+        fullySelectedGroupCount={fullySelectedGroupCount}
+        onOpenChange={(open) => {
+          setDeleteDialogOpen(open);
+          if (!open) setDeleteOperationId(null);
+        }}
+        onConfirm={() => {
+          if (deleteOperationId) deleteMutation.mutate(deleteOperationId);
+        }}
+      />
     </div>
   );
 }
 
 function DuplicateGroupCard({
   group,
+  selectedIds,
+  onToggleSelected,
+  onSelectRedundant,
 }: {
   group: DuplicateGroup;
+  selectedIds: Set<number>;
+  onToggleSelected: (row: MediaRow) => void;
+  onSelectRedundant: () => void;
 }) {
   const primary = group.rows[0];
-  const compareRows = group.rows.slice(0, 4);
-  const extraCount = Math.max(0, group.rows.length - compareRows.length);
-
   return (
     <Card className="overflow-hidden hover:border-border-strong hover:shadow-2">
       <CardHeader className="gap-3">
         <div className="flex flex-col justify-between gap-3 lg:flex-row lg:items-start">
           <div className="min-w-0">
             <CardTitle className="flex flex-wrap items-center gap-2">
-              <Badge tone="warning">{group.displayCount} 个文件</Badge>
-              <span className="break-all font-mono text-sm font-semibold text-fg-primary">{group.shortHash}</span>
+              <Badge tone="warning">{group.duplicate_count} 个文件</Badge>
+              <span className="break-all font-mono text-sm font-semibold text-fg-primary">{shortHash(group.sha256)}</span>
             </CardTitle>
             <CardDescription className="mt-1 break-all">{group.sha256}</CardDescription>
           </div>
-          <div className="flex flex-wrap gap-2">
-            <Badge tone="secondary">{formatBytes(group.totalSize)}</Badge>
+          <div className="flex flex-wrap items-center gap-2">
+            <Badge tone="secondary">{formatBytes(group.total_size)}</Badge>
             <Badge tone="default">{mediaTypeLabel(primary?.media_type)}</Badge>
+            <Button type="button" variant="outline" size="sm" onClick={onSelectRedundant}>
+              <CheckCheck data-icon="inline-start" />
+              保留一项，选择其余
+            </Button>
           </div>
         </div>
-        <HashMatchBar count={group.displayCount} max={group.maxCount} />
+        <HashMatchBar count={group.duplicate_count} />
       </CardHeader>
 
-      <CardContent className="space-y-4">
+      <CardContent>
         <div className="grid gap-3 lg:grid-cols-2 2xl:grid-cols-4">
-          {compareRows.map((row, index) => (
-            <DuplicateMediaCard key={`${row.tweet_id}-${row.media_index ?? index}-${index}`} row={row} index={index} />
+          {group.rows.map((row, index) => (
+            <DuplicateMediaCard
+              key={row.id}
+              row={row}
+              index={index}
+              keeper={index === 0}
+              selected={selectedIds.has(row.id)}
+              onToggleSelected={() => onToggleSelected(row)}
+            />
           ))}
         </div>
-        {extraCount ? (
-          <div className="rounded-lg border border-border-subtle bg-bg-surface p-3 text-sm text-fg-secondary">
-            +{extraCount} 个文件
-          </div>
-        ) : null}
       </CardContent>
     </Card>
   );
 }
 
-function DuplicateMediaCard({ row, index }: { row: MediaRow; index: number }) {
+function DuplicateMediaCard({
+  row,
+  index,
+  keeper,
+  selected,
+  onToggleSelected,
+}: {
+  row: MediaRow;
+  index: number;
+  keeper: boolean;
+  selected: boolean;
+  onToggleSelected: () => void;
+}) {
   return (
-    <div className="min-w-0 overflow-hidden rounded-lg border border-border-subtle bg-bg-surface transition duration-fast hover:border-border-strong">
+    <div className="relative min-w-0 overflow-hidden rounded-lg border border-border-subtle bg-bg-surface transition duration-fast hover:border-border-strong">
+      <div className="absolute left-2 top-2 z-10 flex items-center gap-2 rounded-md bg-bg-elevated/95 p-2 shadow-2 backdrop-blur">
+        <Checkbox
+          checked={selected}
+          onCheckedChange={onToggleSelected}
+          onClick={(event) => event.stopPropagation()}
+          aria-label={`选择媒体 ${row.id}`}
+        />
+        {keeper ? <Badge tone="default">建议保留</Badge> : null}
+      </div>
       <MediaThumbnail src={row.media_url} mediaType={row.media_type} alt={row.tweet_text || row.tweet_id} className="rounded-b-none" />
-      <div className="space-y-3 p-3">
+      <div className="flex flex-col gap-3 p-3">
         <div className="flex items-start justify-between gap-3">
           <div className="min-w-0">
-            <div className="text-xs font-semibold uppercase text-fg-tertiary">
-              媒体 #{index + 1}
-            </div>
+            <div className="text-xs font-semibold uppercase text-fg-tertiary">媒体 #{index + 1}</div>
             <Link className="mt-1 block truncate text-sm font-semibold text-brand hover:text-brand-hover" to={`/tweets/${row.tweet_id}`}>
               Tweet 详情
             </Link>
@@ -167,7 +353,7 @@ function DuplicateMediaCard({ row, index }: { row: MediaRow; index: number }) {
         </div>
         <div className="grid gap-2 text-xs text-fg-secondary">
           <div className="flex items-center justify-between gap-3">
-            <span>导出行数</span>
+            <span>文件大小</span>
             <span className="tabular-nums text-fg-primary">{formatBytes(row.file_size)}</span>
           </div>
           <div className="min-w-0 break-all rounded-md bg-bg-elevated px-2 py-1 font-mono text-[11px] text-fg-tertiary">
@@ -179,21 +365,15 @@ function DuplicateMediaCard({ row, index }: { row: MediaRow; index: number }) {
   );
 }
 
-function HashMatchBar({ count, max }: { count: number; max: number }) {
-  const percent = max ? Math.max(10, Math.round((count / max) * 100)) : 0;
+function HashMatchBar({ count }: { count: number }) {
   return (
     <div className="rounded-lg border border-border-subtle bg-bg-surface p-3">
-      <div className="mb-2 flex items-center justify-between gap-3 text-xs font-medium text-fg-secondary">
+      <div className="flex items-center justify-between gap-3 text-xs font-medium text-fg-secondary">
         <span className="inline-flex items-center gap-1">
           <Gauge className="h-3.5 w-3.5 text-brand" />
-          SHA-256
+          SHA-256 完全一致
         </span>
-        <span>
-          {count} / {max || count} 个文件
-        </span>
-      </div>
-      <div className="h-2 overflow-hidden rounded-full bg-bg-muted">
-        <div className="h-full rounded-full bg-brand" style={{ width: `${percent}%` }} />
+        <span>{count} 个文件</span>
       </div>
     </div>
   );
@@ -201,7 +381,7 @@ function HashMatchBar({ count, max }: { count: number; max: number }) {
 
 function DuplicatesSkeleton() {
   return (
-    <div className="space-y-5">
+    <div className="flex flex-col gap-5">
       <section>
         <h1 className="text-2xl font-bold tracking-tight text-fg-primary">重复媒体</h1>
         <p className="mt-1 text-sm text-fg-secondary">正在加载重复媒体</p>
@@ -213,7 +393,7 @@ function DuplicatesSkeleton() {
       </div>
       {Array.from({ length: 3 }).map((_, index) => (
         <Card key={index}>
-          <CardContent className="space-y-4 p-4">
+          <CardContent className="flex flex-col gap-4 p-4">
             <Skeleton className="h-12" />
             <div className="grid gap-3 lg:grid-cols-2 2xl:grid-cols-4">
               {Array.from({ length: 4 }).map((__, childIndex) => (
@@ -227,47 +407,33 @@ function DuplicatesSkeleton() {
   );
 }
 
-type DuplicateGroup = {
-  sha256: string;
-  shortHash: string;
-  rows: MediaRow[];
-  displayCount: number;
-  totalSize: number;
-  maxCount: number;
-};
-
-function buildDuplicateModel(rows: MediaRow[], duplicateGroups: number) {
-  const groupsByHash = new Map<string, MediaRow[]>();
+function buildDuplicateModel(groups: DuplicateGroup[], duplicateGroups: number, totalMediaCount: number) {
   const mediaTypeCounts = new Map<string, number>();
-  let duplicateBytes = 0;
-  for (const row of rows) {
-    const sha = row.sha256 || "-";
-    const group = groupsByHash.get(sha) ?? [];
-    group.push(row);
-    groupsByHash.set(sha, group);
-    if (row.media_type) mediaTypeCounts.set(row.media_type, (mediaTypeCounts.get(row.media_type) ?? 0) + 1);
-    duplicateBytes += row.file_size ?? 0;
+  let pageBytes = 0;
+  let loadedFileCount = 0;
+  for (const group of groups) {
+    for (const row of group.rows) {
+      if (row.media_type) mediaTypeCounts.set(row.media_type, (mediaTypeCounts.get(row.media_type) ?? 0) + 1);
+      pageBytes += row.file_size ?? 0;
+      loadedFileCount += 1;
+    }
   }
-  const maxCount = Math.max(0, ...rows.map((row) => row.duplicate_count ?? 0), ...[...groupsByHash.values()].map((group) => group.length));
-  const groups = [...groupsByHash.entries()]
-    .map(([sha256, groupRows]) => ({
-      sha256,
-      shortHash: sha256 === "-" ? "-" : `${sha256.slice(0, 10)}...${sha256.slice(-8)}`,
-      rows: groupRows,
-      displayCount: Math.max(groupRows[0]?.duplicate_count ?? groupRows.length, groupRows.length),
-      totalSize: groupRows.reduce((sum, row) => sum + (row.file_size ?? 0), 0),
-      maxCount,
-    }))
-    .sort((a, b) => b.displayCount - a.displayCount);
   const [dominantMediaType, dominantMediaTypeCount = 0] = [...mediaTypeCounts.entries()].sort((a, b) => b[1] - a[1])[0] ?? [];
-
   return {
-    groups,
-    groupCount: duplicateGroups || groups.length,
-    fileCount: rows.length,
-    duplicateBytes,
+    groupCount: duplicateGroups,
+    fileCount: totalMediaCount,
+    loadedFileCount,
+    pageBytes,
     dominantMediaType,
     dominantMediaTypeCount,
-    groupSizes: groups.map((group) => group.displayCount).slice(0, 12),
+    groupSizes: groups.map((group) => group.duplicate_count).slice(0, 12),
   };
+}
+
+function shortHash(sha256: string) {
+  return `${sha256.slice(0, 10)}...${sha256.slice(-8)}`;
+}
+
+function setsEqual(left: Set<number>, right: Set<number>) {
+  return left.size === right.size && [...left].every((value) => right.has(value));
 }
