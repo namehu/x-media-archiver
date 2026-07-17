@@ -1,5 +1,5 @@
-import { NavLink, Outlet, useNavigate } from "react-router-dom";
-import { useMemo, useState } from "react";
+import { NavLink, Outlet, useLocation, useNavigate, useNavigationType } from "react-router-dom";
+import { useEffect, useMemo, useState } from "react";
 import { Menu, Monitor, Moon, Sun, type LucideIcon } from "lucide-react";
 import { useQuery } from "@tanstack/react-query";
 import { useServerEvents } from "../../hooks/useServerEvents";
@@ -13,6 +13,7 @@ import { apiGet, type HealthDetail } from "../../lib/api";
 import { useTheme, type Theme } from "../../lib/theme";
 import { cn } from "../../lib/utils";
 import { AccountMenu } from "../auth/account-menu";
+import { AppScrollContainerProvider } from "./app-scroll-container";
 
 const navGroups = [
   {
@@ -53,9 +54,12 @@ const themeLabels: Record<Theme, string> = {
 
 export function AppLayout() {
   const { theme, setTheme } = useTheme();
+  const location = useLocation();
   const navigate = useNavigate();
+  const navigationType = useNavigationType();
   const [commandOpen, setCommandOpen] = useState(false);
   const [mobileNavigationOpen, setMobileNavigationOpen] = useState(false);
+  const [scrollContainer, setScrollContainer] = useState<HTMLElement | null>(null);
   const events = useServerEvents(["archive_runs", "sources", "source_scans", "worker", "logs"]);
   const healthQuery = useQuery({
     queryKey: ["health-detail"],
@@ -67,6 +71,10 @@ export function AppLayout() {
   const queueWork = (health?.queue.pending_items ?? 0) + (health?.queue.processing_items ?? 0);
   const activeScans = health?.sources.active_scan_runs ?? 0;
   const recentErrors = health?.recent_errors.length ?? 0;
+
+  useEffect(() => {
+    if (scrollContainer && navigationType !== "POP") scrollContainer.scrollTo({ top: 0 });
+  }, [location.key, navigationType, scrollContainer]);
 
   const cycleTheme = () => {
     const next = themeOrder[(themeOrder.indexOf(theme) + 1) % themeOrder.length];
@@ -135,7 +143,7 @@ export function AppLayout() {
   );
 
   return (
-    <div className="flex min-h-screen bg-bg-base text-fg-primary">
+    <div className="flex h-screen overflow-hidden bg-bg-base text-fg-primary">
       {/* Sidebar */}
       <aside className="hidden w-60 flex-shrink-0 flex-col border-r border-border-subtle bg-bg-base lg:flex">
         <Navigation />
@@ -212,8 +220,14 @@ export function AppLayout() {
             <AccountMenu />
           </div>
         </header>
-        <main className="flex-1 overflow-auto bg-bg-surface p-4 sm:p-6">
-          <Outlet />
+        <main
+          ref={setScrollContainer}
+          data-app-scroll-container
+          className="flex-1 overflow-auto bg-bg-surface p-4 sm:p-6"
+        >
+          <AppScrollContainerProvider container={scrollContainer}>
+            <Outlet />
+          </AppScrollContainerProvider>
         </main>
       </div>
       <CommandPalette

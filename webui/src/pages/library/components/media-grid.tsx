@@ -1,27 +1,86 @@
-import { forwardRef, type CSSProperties, type HTMLAttributes } from "react";
+import { forwardRef, useCallback, useEffect, useRef, type CSSProperties, type HTMLAttributes } from "react";
 import { ExternalLink } from "lucide-react";
 import { useNavigate } from "react-router-dom";
-import { VirtuosoGrid } from "react-virtuoso";
+import { VirtuosoGrid, type GridComponents, type GridStateSnapshot } from "react-virtuoso";
 import { Badge } from "../../../components/ui/badge";
+import { Button } from "../../../components/ui/button";
 import { Card, CardContent } from "../../../components/ui/card";
 import { MediaThumbnail } from "../../../components/ui/media-thumbnail";
+import { useAppScrollContainer } from "../../../components/layout/app-scroll-container";
 import type { MediaRow } from "../../../lib/api";
 import { mediaTypeLabel, statusLabel } from "../../../lib/formatters";
 import { formatBytes, formatDateTime } from "../../../lib/utils";
 
-export function MediaGrid({ rows }: { rows: MediaRow[] }) {
+type MediaGridProps = {
+  rows: MediaRow[];
+  hasNextPage: boolean;
+  isFetchingNextPage: boolean;
+  nextPageError: unknown;
+  restoreStateFrom: GridStateSnapshot | null;
+  onLoadMore: () => void;
+  onRetryLoadMore: () => void;
+  onStateChanged: (state: GridStateSnapshot) => void;
+};
+
+type MediaGridContext = Pick<
+  MediaGridProps,
+  "hasNextPage" | "isFetchingNextPage" | "nextPageError" | "onLoadMore" | "onRetryLoadMore"
+> & { scrollParent: HTMLElement };
+
+export function MediaGrid({
+  rows,
+  hasNextPage,
+  isFetchingNextPage,
+  nextPageError,
+  restoreStateFrom,
+  onLoadMore,
+  onRetryLoadMore,
+  onStateChanged,
+}: MediaGridProps) {
+  const scrollParent = useAppScrollContainer();
+  const loadMorePendingRef = useRef(false);
+
+  useEffect(() => {
+    if (!isFetchingNextPage) loadMorePendingRef.current = false;
+  }, [isFetchingNextPage]);
+
+  const requestLoadMore = useCallback(() => {
+    if (!hasNextPage || isFetchingNextPage || nextPageError || loadMorePendingRef.current) return;
+    loadMorePendingRef.current = true;
+    onLoadMore();
+  }, [hasNextPage, isFetchingNextPage, nextPageError, onLoadMore]);
+
+  if (!scrollParent) return null;
+
   return (
     <VirtuosoGrid
-      useWindowScroll
+      customScrollParent={scrollParent}
       data={rows}
+      context={{
+        hasNextPage,
+        isFetchingNextPage,
+        nextPageError,
+        onLoadMore: requestLoadMore,
+        onRetryLoadMore,
+        scrollParent,
+      }}
       components={gridComponents}
+      computeItemKey={mediaItemKey}
+      endReached={requestLoadMore}
       itemContent={(_, row) => <MediaCard row={row} />}
+      restoreStateFrom={restoreStateFrom}
+      stateChanged={onStateChanged}
     />
   );
 }
 
-const GridList = forwardRef<HTMLDivElement, HTMLAttributes<HTMLDivElement> & { style?: CSSProperties }>(
-  ({ style, children, ...props }, ref) => (
+type GridListComponentProps = HTMLAttributes<HTMLDivElement> & {
+  context: MediaGridContext;
+  style?: CSSProperties;
+};
+
+const GridList = forwardRef<HTMLDivElement, GridListComponentProps>(
+  ({ context: _context, style, children, ...props }, ref) => (
     <div
       ref={ref}
       style={{
@@ -39,16 +98,59 @@ const GridList = forwardRef<HTMLDivElement, HTMLAttributes<HTMLDivElement> & { s
 );
 GridList.displayName = "GridList";
 
-const GridItem = ({ children, ...props }: HTMLAttributes<HTMLDivElement>) => (
+type GridItemComponentProps = HTMLAttributes<HTMLDivElement> & { context: MediaGridContext };
+
+const GridItem = ({ context: _context, children, ...props }: GridItemComponentProps) => (
   <div className="min-w-0" {...props}>
     {children}
   </div>
 );
 
-const gridComponents = {
+const gridComponents: GridComponents<MediaGridContext> = {
   List: GridList,
   Item: GridItem,
+  Footer: MediaGridFooter,
 };
+
+function MediaGridFooter({ context }: { context: MediaGridContext }) {
+  const sentinelRef = useRef<HTMLDivElement>(null);
+
+  useEffect(() => {
+    const sentinel = sentinelRef.current;
+    if (!sentinel || !context.hasNextPage || context.isFetchingNextPage || context.nextPageError) return undefined;
+    const observer = new IntersectionObserver(
+      ([entry]) => {
+        if (entry.isIntersecting && context.scrollParent.scrollTop > 0) context.onLoadMore();
+      },
+      { root: context.scrollParent, rootMargin: "0px 0px 400px" },
+    );
+    observer.observe(sentinel);
+    return () => observer.disconnect();
+  }, [context]);
+
+  let content: React.ReactNode;
+  if (context.nextPageError) {
+    content = (
+      <div className="flex flex-col items-center gap-2 py-5 text-center text-sm text-fg-secondary">
+        <span>加载更多媒体失败，已加载的内容会继续保留。</span>
+        <Button type="button" variant="outline" size="sm" onClick={context.onRetryLoadMore}>
+          重试
+        </Button>
+      </div>
+    );
+  } else if (context.isFetchingNextPage) {
+    content = <p className="py-5 text-center text-sm text-fg-secondary">正在加载更多...</p>;
+  } else if (context.hasNextPage) {
+    content = <p className="py-5 text-center text-sm text-fg-tertiary">继续下拉加载更多</p>;
+  } else {
+    content = <p className="py-5 text-center text-sm text-fg-tertiary">已显示全部媒体</p>;
+  }
+  return <div ref={sentinelRef}>{content}</div>;
+}
+
+function mediaItemKey(index: number, row: MediaRow) {
+  return [row.tweet_id, row.media_index ?? "none", row.local_path || row.media_url || index].join(":");
+}
 
 function MediaCard({ row }: { row: MediaRow }) {
   const navigate = useNavigate();

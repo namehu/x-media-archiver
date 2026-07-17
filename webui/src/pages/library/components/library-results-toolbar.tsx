@@ -6,22 +6,18 @@ import type { LibraryFilters } from "./library-filter-panel";
 
 type LibraryResultsToolbarProps = {
   filters: LibraryFilters;
-  offset: number;
-  count: number;
+  loadedCount: number;
   totalCount: number;
   onReset: () => void;
 };
 
 export function LibraryResultsToolbar({
   filters,
-  offset,
-  count,
+  loadedCount,
   totalCount,
   onReset,
 }: LibraryResultsToolbarProps) {
   const chips = buildFilterChips(filters);
-  const start = totalCount ? offset + 1 : 0;
-  const end = Math.min(offset + count, totalCount);
 
   return (
     <div className="rounded-lg border border-border-subtle bg-bg-elevated p-3">
@@ -32,7 +28,7 @@ export function LibraryResultsToolbar({
             <span className="text-sm font-semibold text-fg-primary">结果</span>
             <Badge tone="secondary">{totalCount.toLocaleString()} 项</Badge>
             <span className="text-xs text-fg-tertiary">
-              第 {start.toLocaleString()}-{end.toLocaleString()} 项
+              已加载 {loadedCount.toLocaleString()} 项
             </span>
           </div>
           <div className="mt-2 flex flex-wrap items-center gap-2">

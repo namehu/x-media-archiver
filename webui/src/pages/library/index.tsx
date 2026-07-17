@@ -1,11 +1,12 @@
-import { useMemo, useState } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { Grid2X2, ListFilter, SlidersHorizontal } from "lucide-react";
-import { useQuery } from "@tanstack/react-query";
+import { useInfiniteQuery, useQueryClient } from "@tanstack/react-query";
+import { useLocation, useNavigationType } from "react-router-dom";
+import type { GridStateSnapshot } from "react-virtuoso";
 import { apiGet, mediaQueryString, type MediaRow, type PageResponse } from "../../lib/api";
 import { Card, CardDescription, CardHeader, CardTitle } from "../../components/ui/card";
 import { EmptyState } from "../../components/ui/empty-state";
 import { ErrorState } from "../../components/ui/error-state";
-import { Pagination } from "../../components/ui/pagination";
 import { Skeleton } from "../../components/ui/skeleton";
 import {
   DEFAULT_LIBRARY_FILTERS,
@@ -16,34 +17,102 @@ import { LibraryResultsToolbar } from "./components/library-results-toolbar";
 import { MediaGrid } from "./components/media-grid";
 import { Collapsible, CollapsibleContent, CollapsibleTrigger } from "../../components/ui/collapsible";
 import { Button } from "../../components/ui/button";
+import { getLibraryBrowseState, saveLibraryBrowseState } from "./library-browse-state";
 
 const PAGE_SIZE = 60;
 
 export function LibraryPage() {
-  const [filters, setFilters] = useState<LibraryFilters>(DEFAULT_LIBRARY_FILTERS);
-  const [submitted, setSubmitted] = useState<LibraryFilters>(DEFAULT_LIBRARY_FILTERS);
-  const [offset, setOffset] = useState(0);
-  const [mobileFiltersOpen, setMobileFiltersOpen] = useState(false);
-  const draftFilterCount = useMemo(() => countActiveFilters(filters), [filters]);
-  const query = useMemo(
-    () => mediaQueryString({ ...submitted, limit: String(PAGE_SIZE), offset: String(offset) }),
-    [offset, submitted],
+  const location = useLocation();
+  const navigationType = useNavigationType();
+  const queryClient = useQueryClient();
+  const [restoredState] = useState(() =>
+    navigationType === "POP" ? getLibraryBrowseState(location.key) : undefined,
   );
-  const { data, isLoading, error, refetch } = useQuery({
+  const [filters, setFilters] = useState<LibraryFilters>(
+    () => restoredState?.filters ?? { ...DEFAULT_LIBRARY_FILTERS },
+  );
+  const [submitted, setSubmitted] = useState<LibraryFilters>(
+    () => restoredState?.submittedFilters ?? { ...DEFAULT_LIBRARY_FILTERS },
+  );
+  const [restoreGridState, setRestoreGridState] = useState<GridStateSnapshot | null>(
+    restoredState?.gridState ?? null,
+  );
+  const [gridVersion, setGridVersion] = useState(0);
+  const [mobileFiltersOpen, setMobileFiltersOpen] = useState(false);
+  const filtersRef = useRef(filters);
+  const submittedRef = useRef(submitted);
+  const gridStateRef = useRef<GridStateSnapshot | null>(restoreGridState);
+  filtersRef.current = filters;
+  submittedRef.current = submitted;
+  const draftFilterCount = useMemo(() => countActiveFilters(filters), [filters]);
+  const query = useMemo(() => mediaQueryString(submitted), [submitted]);
+  const mediaQuery = useInfiniteQuery({
     queryKey: ["media", query],
-    queryFn: () => apiGet<PageResponse<MediaRow>>(`/api/v1/library/media?${query}`),
+    queryFn: ({ pageParam }) => {
+      const pageQuery = mediaQueryString({
+        ...submitted,
+        limit: String(PAGE_SIZE),
+        offset: String(pageParam),
+      });
+      return apiGet<PageResponse<MediaRow>>(`/api/v1/library/media?${pageQuery}`);
+    },
+    initialPageParam: 0,
+    getNextPageParam: (lastPage) => {
+      const nextOffset = lastPage.offset + lastPage.count;
+      return lastPage.count > 0 && nextOffset < lastPage.total_count ? nextOffset : undefined;
+    },
+    gcTime: Infinity,
+    refetchOnMount: restoredState ? false : true,
   });
+  const rows = useMemo(() => mediaQuery.data?.pages.flatMap((page) => page.rows) ?? [], [mediaQuery.data]);
+  const totalCount = mediaQuery.data?.pages[0]?.total_count ?? 0;
+
+  useEffect(
+    () => () => {
+      saveLibraryBrowseState(location.key, {
+        filters: filtersRef.current,
+        submittedFilters: submittedRef.current,
+        gridState: gridStateRef.current,
+      });
+    },
+    [location.key],
+  );
+
+  const resetGridAndQuery = useCallback(
+    (nextFilters: LibraryFilters) => {
+      const nextQuery = mediaQueryString(nextFilters);
+      gridStateRef.current = null;
+      setRestoreGridState(null);
+      setGridVersion((version) => version + 1);
+      void queryClient.resetQueries({ queryKey: ["media", nextQuery], exact: true });
+    },
+    [queryClient],
+  );
 
   const applyFilters = () => {
-    setOffset(0);
-    setSubmitted(filters);
+    const nextFilters = { ...filters };
+    resetGridAndQuery(nextFilters);
+    setSubmitted(nextFilters);
   };
 
   const resetFilters = () => {
-    setOffset(0);
-    setFilters(DEFAULT_LIBRARY_FILTERS);
-    setSubmitted(DEFAULT_LIBRARY_FILTERS);
+    const nextFilters = { ...DEFAULT_LIBRARY_FILTERS };
+    resetGridAndQuery(nextFilters);
+    setFilters(nextFilters);
+    setSubmitted(nextFilters);
   };
+
+  const handleGridStateChanged = useCallback(
+    (state: GridStateSnapshot) => {
+      gridStateRef.current = state;
+      saveLibraryBrowseState(location.key, {
+        filters: filtersRef.current,
+        submittedFilters: submittedRef.current,
+        gridState: state,
+      });
+    },
+    [location.key],
+  );
 
   return (
     <div className="flex flex-col gap-4 sm:gap-5">
@@ -88,35 +157,34 @@ export function LibraryPage() {
         </aside>
 
         <main className="flex min-w-0 flex-col gap-4">
-          {isLoading ? <LibrarySkeleton /> : null}
-          {error ? <ErrorState title="API 不可用" detail={String(error)} onRetry={() => void refetch()} /> : null}
+          {mediaQuery.isLoading ? <LibrarySkeleton /> : null}
+          {mediaQuery.error && !mediaQuery.data ? (
+            <ErrorState title="API 不可用" detail={String(mediaQuery.error)} onRetry={() => void mediaQuery.refetch()} />
+          ) : null}
 
-          {data ? (
+          {mediaQuery.data ? (
             <>
               <LibraryResultsToolbar
                 filters={submitted}
-                offset={offset}
-                count={data.count}
-                totalCount={data.total_count}
+                loadedCount={rows.length}
+                totalCount={totalCount}
                 onReset={resetFilters}
               />
-              {data.rows.length ? (
-                <MediaGrid rows={data.rows} />
+              {rows.length ? (
+                <MediaGrid
+                  key={`${query}:${gridVersion}`}
+                  rows={rows}
+                  hasNextPage={Boolean(mediaQuery.hasNextPage)}
+                  isFetchingNextPage={mediaQuery.isFetchingNextPage}
+                  nextPageError={mediaQuery.isFetchNextPageError ? mediaQuery.error : null}
+                  restoreStateFrom={restoreGridState}
+                  onLoadMore={() => void mediaQuery.fetchNextPage()}
+                  onRetryLoadMore={() => void mediaQuery.fetchNextPage()}
+                  onStateChanged={handleGridStateChanged}
+                />
               ) : (
                 <EmptyState icon={<ListFilter className="h-5 w-5" />} title="当前筛选条件下没有媒体。" />
               )}
-              {data.rows.length ? (
-                <div className="flex justify-end">
-                  <Pagination
-                    offset={offset}
-                    count={data.count}
-                    totalCount={data.total_count}
-                    pageSize={PAGE_SIZE}
-                    onOffsetChange={setOffset}
-                    label="第 {start}-{end} 项，共 {total} 项"
-                  />
-                </div>
-              ) : null}
             </>
           ) : null}
         </main>
