@@ -1,5 +1,6 @@
 import unittest
 from datetime import UTC, datetime
+from uuid import uuid4
 from unittest.mock import patch
 
 from api_route_helpers import iter_app_routes
@@ -10,6 +11,7 @@ from xarchiver.api.schemas import (
     ArchiveRunsPageResponse,
     ArchiveSourceDetailResponse,
     BackfillRequest,
+    MediaDeleteRequest,
     SourceCreateRequest,
     SourceDiscoveryPageResponse,
     SourcePinRequest,
@@ -102,6 +104,15 @@ class V1RouterSmokeTests(unittest.TestCase):
 
     def test_v1_delete_routes_registered(self):
         self.assertIn("/api/v1/settings/cookies", self.delete_paths)
+        self.assertIn("/api/v1/library/media", self.delete_paths)
+
+    def test_v1_media_delete_rejects_unconfirmed(self):
+        with self.assertRaises(HTTPException) as ctx:
+            self.delete_paths["/api/v1/library/media"](
+                MediaDeleteRequest(operation_id=uuid4(), media_ids=[1])
+            )
+        self.assertEqual(ctx.exception.status_code, 400)
+        self.assertEqual(ctx.exception.detail, "physical_delete_confirmation_required")
 
     # ── Error parity: v1 endpoints enforce same guards as legacy ──────────────
 

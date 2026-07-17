@@ -51,6 +51,7 @@ class SearchUnitTests(unittest.TestCase):
     def test_search_media_row_supports_dict_style_access(self) -> None:
         row = SearchMediaRow.model_validate(
             {
+                "id": 1,
                 "tweet_id": "1",
                 "tweet_url": "https://x.com/a/status/1",
                 "published_at": datetime(2026, 1, 1, tzinfo=UTC),
@@ -67,7 +68,7 @@ class SearchUnitTests(unittest.TestCase):
 
     def test_search_media_row_rejects_missing_required_fields(self) -> None:
         with self.assertRaises(ValidationError):
-            SearchMediaRow.model_validate({"tweet_id": "1"})
+            SearchMediaRow.model_validate({"id": 1, "tweet_id": "1"})
 
 
 if __name__ == "__main__":

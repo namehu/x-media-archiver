@@ -9,6 +9,7 @@ export type Summary = {
 };
 
 export type MediaRow = {
+  id: number;
   tweet_id: string;
   tweet_url?: string | null;
   author_username?: string | null;
@@ -84,6 +85,15 @@ export type ActionResponse = {
   action: string;
   status: string;
   result: Record<string, unknown>;
+};
+
+export type MediaDeleteResult = {
+  operation_id: string;
+  deleted_media_count: number;
+  deleted_file_count: number;
+  deleted_bytes: number;
+  missing_file_count: number;
+  tweet_ids: string[];
 };
 
 export type ArchiveRunTasks = {

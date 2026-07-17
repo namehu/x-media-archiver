@@ -9,6 +9,9 @@ type LibraryResultsToolbarProps = {
   loadedCount: number;
   totalCount: number;
   onReset: () => void;
+  selectedCount: number;
+  onSelectLoaded: () => void;
+  onClearSelection: () => void;
 };
 
 export function LibraryResultsToolbar({
@@ -16,6 +19,9 @@ export function LibraryResultsToolbar({
   loadedCount,
   totalCount,
   onReset,
+  selectedCount,
+  onSelectLoaded,
+  onClearSelection,
 }: LibraryResultsToolbarProps) {
   const chips = buildFilterChips(filters);
 
@@ -47,6 +53,16 @@ export function LibraryResultsToolbar({
               </Button>
             ) : null}
           </div>
+        </div>
+        <div className="flex shrink-0 items-center gap-2">
+          <Button type="button" variant="outline" size="sm" onClick={onSelectLoaded}>
+            全选已加载
+          </Button>
+          {selectedCount ? (
+            <Button type="button" variant="ghost" size="sm" onClick={onClearSelection}>
+              清除选择
+            </Button>
+          ) : null}
         </div>
       </div>
     </div>

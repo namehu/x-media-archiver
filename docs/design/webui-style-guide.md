@@ -165,7 +165,7 @@ English may be concise, but keys must exist. Avoid relying on fallback keys for 
 - One-off hardcoded brand colors.
 - Marketing landing-page sections.
 - UI cards nested inside other UI cards.
-- Media deletion actions in WebUI.
+- Media deletion outside the Library's explicit, audited batch-delete flow.
 - Implicit full archive scans without explicit confirmation.
 
 ## Verification Checklist

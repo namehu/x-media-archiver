@@ -1,5 +1,7 @@
 from __future__ import annotations
 
+from uuid import UUID
+
 from pydantic import BaseModel, Field
 
 
@@ -25,6 +27,12 @@ class RecoverInterruptedRequest(BaseModel):
 class ExportRequest(BaseModel):
     kind: str = Field(default="media", pattern="^(media|failures|duplicates)$")
     status: str | None = "verified"
+
+
+class MediaDeleteRequest(BaseModel):
+    operation_id: UUID
+    media_ids: list[int] = Field(min_length=1, max_length=200)
+    confirm_physical_delete: bool = False
 
 
 class ArchiveRecord(BaseModel):

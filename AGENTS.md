@@ -90,7 +90,7 @@ npm run zip
 
 - API 请求集中在 `webui/src/lib/api.ts`，页面保持以展示、筛选和用户交互为主。
 - 复用 `webui/src/components/ui/` 的已有组件和 `AppLayout`，保持后台界面的信息密度与交互风格一致。
-- 用户触发 full backfill 或 full verify 时必须保留显式确认语义；WebUI 不提供媒体文件删除能力。
+- 用户触发 full backfill、full verify 或媒体物理删除时必须保留显式确认语义。媒体删除必须按 `media_assets.id` 精确执行，限制在 `archive/media` 内，保留 Tweet 与任务历史并记录删除审计；禁止目录通配或隐式递归删除。
 - **WebUI 不使用国际化机制**：当前界面仅维护中文文案，用户可见文案直接写在对应页面或组件中。
 - 禁止新增或恢复 `locales`、翻译 key、`I18nProvider`、`useI18n` 等 WebUI 国际化基础设施；除非用户明确提出重新引入国际化并单独确认技术方案。
 - **组件文件命名规范**：所有 React 组件文件（`.tsx`）必须采用 kebab-case 小写横杠命名格式，仅包含小写英文字母、数字与横杠（`-`），禁止使用 PascalCase 大写驼峰、下划线或混合命名。组件内导出的具名导出（如 `export function`）仍使用 PascalCase，文件路径使用 kebab-case，两者独立。

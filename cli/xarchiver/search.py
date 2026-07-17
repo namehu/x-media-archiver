@@ -58,6 +58,7 @@ def build_search_query(
 ) -> tuple[str, dict[str, object]]:
     statement = (
         select(
+            media_assets.c.id,
             tweets.c.tweet_id,
             tweets.c.url.label("tweet_url"),
             tweets.c.author_username,

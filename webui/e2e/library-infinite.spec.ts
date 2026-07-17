@@ -81,6 +81,51 @@ test.describe("Library infinite loading", () => {
     await expect.poll(() => appScrollTop(page)).toBe(0);
     expect(await page.evaluate(() => window.scrollY)).toBe(0);
   });
+
+  test("selects and permanently deletes a media item after confirmation", async ({ page }) => {
+    await page.setViewportSize({ width: 390, height: 844 });
+    let deleteBody: Record<string, unknown> | null = null;
+    await page.route("**/api/v1/library/media?**", (route) =>
+      route.fulfill({
+        json: {
+          rows: createMediaRows(0, 2),
+          count: 2,
+          total_count: 2,
+          limit: PAGE_SIZE,
+          offset: 0,
+        },
+      }),
+    );
+    await page.route("**/api/v1/library/media", async (route) => {
+      if (route.request().method() !== "DELETE") return route.fallback();
+      deleteBody = route.request().postDataJSON() as Record<string, unknown>;
+      await route.fulfill({
+        json: {
+          action: "delete-library-media",
+          status: "completed",
+          result: {
+            operation_id: deleteBody.operation_id,
+            deleted_media_count: 1,
+            deleted_file_count: 2,
+            deleted_bytes: 1024,
+            missing_file_count: 0,
+            tweet_ids: ["tweet-0"],
+          },
+        },
+      });
+    });
+
+    await page.goto("/library");
+    await page.getByRole("checkbox", { name: "选择媒体 1" }).click();
+    await expect(page.getByText("已选 1 项")).toBeVisible();
+    await page.getByRole("button", { name: "删除" }).click();
+    await expect(page.getByRole("alertdialog")).toContainText("元数据和标准缩略图");
+    await page.getByRole("button", { name: "确认永久删除" }).click();
+
+    await expect(page.getByText("已删除 1 项媒体，释放 1.0 KB")).toBeVisible();
+    expect(deleteBody).toMatchObject({ media_ids: [1], confirm_physical_delete: true });
+    expect(typeof deleteBody?.operation_id).toBe("string");
+  });
 });
 
 async function mockShellApis(page: Page) {
@@ -153,6 +198,7 @@ function createMediaRows(offset: number, count: number) {
 
 function createMediaRow(index: number) {
   return {
+    id: index + 1,
     tweet_id: `tweet-${index}`,
     tweet_url: `https://x.com/example/status/tweet-${index}`,
     author_username: "example",

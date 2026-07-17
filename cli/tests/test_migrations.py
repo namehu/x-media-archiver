@@ -32,6 +32,7 @@ class MigrationTests(unittest.TestCase):
                 "008_single_admin_auth.py",
                 "009_add_cookie_validation.py",
                 "010_add_source_pinning.py",
+                "011_add_media_delete_audit.py",
             ],
         )
         upgrade.assert_called_once()
@@ -43,7 +44,7 @@ class MigrationTests(unittest.TestCase):
 
         with (
             patch("xarchiver.migrations.get_settings", return_value=settings),
-            patch("xarchiver.migrations.current_alembic_revision", return_value="010_add_source_pinning"),
+            patch("xarchiver.migrations.current_alembic_revision", return_value="011_add_media_delete_audit"),
             patch("xarchiver.migrations.command.upgrade") as upgrade,
         ):
             self.assertEqual(migrate(), [])
@@ -77,6 +78,7 @@ class MigrationTests(unittest.TestCase):
                 "008_single_admin_auth.py",
                 "009_add_cookie_validation.py",
                 "010_add_source_pinning.py",
+                "011_add_media_delete_audit.py",
             ],
         )
 
@@ -199,6 +201,18 @@ class MigrationTests(unittest.TestCase):
         sql = captured_sql[0]
         self.assertIn("add column if not exists is_pinned boolean not null default false", sql)
         self.assertIn("idx_archive_sources_pinned_updated", sql)
+
+    def test_media_delete_audit_revision_creates_audit_table(self) -> None:
+        module = importlib.import_module("xarchiver.alembic.versions.011_add_media_delete_audit")
+        captured_sql: list[str] = []
+
+        with patch.object(module.op, "execute", side_effect=captured_sql.append):
+            module.upgrade()
+
+        sql = captured_sql[0]
+        self.assertIn("create table if not exists media_delete_operations", sql)
+        self.assertIn("requested_media_ids jsonb not null", sql)
+        self.assertIn("idx_media_delete_operations_created_at", sql)
 
 
 if __name__ == "__main__":

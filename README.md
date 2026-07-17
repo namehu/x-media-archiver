@@ -178,6 +178,7 @@ VS Code 可通过一个调试入口构建 API 镜像、启动 API 容器、附�
 GET /health
 GET /api/v1/library/summary
 GET /api/v1/library/media
+DELETE /api/v1/library/media
 GET /api/v1/library/tweets/{tweet_id}
 GET /api/v1/library/failures
 GET /api/v1/library/duplicates
@@ -245,7 +246,7 @@ Archive Queue
 Sources
 ```
 
-Archive Queue 支持粘贴 URL 或选择本地 TXT/JSONL 文件（浏览器侧解析后提交）来创建结构化的数据库任务。Operations 可触发 requeue、recover-interrupted 与数据库快照 export。完整 backfill 与完整 verify 被隔离在 Maintenance 下，并要求显式确认磁盘扫描。WebUI 不提供破坏性的文件删除能力。
+Archive Queue 支持粘贴 URL 或选择本地 TXT/JSONL 文件（浏览器侧解析后提交）来创建结构化的数据库任务。Operations 可触发 requeue、recover-interrupted 与数据库快照 export。完整 backfill 与完整 verify 被隔离在 Maintenance 下，并要求显式确认磁盘扫描。媒体库支持显式勾选并批量永久删除最多 200 个媒体项；删除会清理主文件、对应元数据和标准缩略图，保留 Tweet、来源和下载历史，将 Tweet 标记为 `missing`，并写入幂等删除审计。
 
 Sources 记录长期存在的 X/Twitter 来源，例如个人页、媒体页、likes、bookmarks、搜索页或手工集合。一个 source 可向同一 Archive Queue 提交发现的 tweet URL，同时保留 source-to-tweet 的可追溯关系。当前实现提供了可恢复的 source 模型、手动 discovered-URL 提交，以及用于 profile timeline 和用户媒体页的小批量 `gallery-dl` 扫描。source 扫描只记录 discovered tweets，不会自动提交到下载队列。准备下载受控批次时，需使用显式的 submit 动作。每次受控扫描会在 `archive_sources.cursor_state` 中记录其逻辑 batch window、重复/新增数量以及 cursor 诊断信息。
 

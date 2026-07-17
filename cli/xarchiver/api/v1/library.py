@@ -2,14 +2,18 @@ from __future__ import annotations
 
 from fastapi import APIRouter, HTTPException, Query
 
+from xarchiver.api.deps import execute_write_action, raise_api_error
 from xarchiver.api.schemas import (
     DuplicatesPageResponse,
     FailurePageResponse,
     MediaPageResponse,
+    MediaDeleteRequest,
     SummaryResponse,
     TweetDetailResponse,
+    WriteActionResponse,
 )
 from xarchiver.config import get_settings
+from xarchiver.core.errors import ArchiverError
 from xarchiver.services.failures import list_failures
 from xarchiver.services.library import (
     get_summary,
@@ -17,6 +21,7 @@ from xarchiver.services.library import (
     list_duplicates_page,
     list_media_page,
 )
+from xarchiver.services.media_deletion import delete_media_assets
 
 router = APIRouter(prefix="/library", tags=["library"])
 
@@ -46,6 +51,20 @@ def media(
         limit=limit,
         offset=offset,
     )
+
+
+@router.delete("/media", response_model=WriteActionResponse)
+def delete_media(request: MediaDeleteRequest) -> dict[str, object]:
+    if not request.confirm_physical_delete:
+        raise HTTPException(status_code=400, detail="physical_delete_confirmation_required")
+    settings = get_settings()
+    try:
+        return execute_write_action(
+            "delete-library-media",
+            lambda: delete_media_assets(settings, request.operation_id, request.media_ids),
+        )
+    except (ArchiverError, ValueError) as exc:
+        raise_api_error(exc)
 
 
 @router.get("/tweets/{tweet_id}", response_model=TweetDetailResponse)

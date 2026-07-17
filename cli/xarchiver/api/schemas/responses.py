@@ -288,6 +288,7 @@ class TweetResponse(FlexibleResponse):
 
 
 class MediaRowResponse(FlexibleResponse):
+    id: int
     tweet_id: str
     tweet_url: str
     author_username: str | None = None

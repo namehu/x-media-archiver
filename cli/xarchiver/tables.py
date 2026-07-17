@@ -13,6 +13,7 @@ from sqlalchemy import (
     Text,
 )
 from sqlalchemy.dialects.postgresql import JSONB
+from sqlalchemy.dialects.postgresql import UUID
 
 metadata = MetaData()
 
@@ -91,6 +92,19 @@ media_assets = Table(
     Column("height", Integer),
     Column("duration_ms", Integer),
     Column("updated_at", DateTime(timezone=True)),
+)
+
+media_delete_operations = Table(
+    "media_delete_operations",
+    metadata,
+    Column("operation_id", UUID(as_uuid=True), primary_key=True),
+    Column("requested_media_ids", JSONB, nullable=False),
+    Column("tweet_ids", JSONB, nullable=False),
+    Column("status", Text, nullable=False),
+    Column("result", JSONB),
+    Column("error_message", Text),
+    Column("created_at", DateTime(timezone=True), nullable=False),
+    Column("completed_at", DateTime(timezone=True)),
 )
 
 archive_runs = Table(

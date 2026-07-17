@@ -1,9 +1,19 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { Grid2X2, ListFilter, SlidersHorizontal } from "lucide-react";
-import { useInfiniteQuery, useQueryClient } from "@tanstack/react-query";
+import { toast } from "sonner";
+import { useInfiniteQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import { useLocation, useNavigationType } from "react-router-dom";
 import type { GridStateSnapshot } from "react-virtuoso";
-import { apiGet, mediaQueryString, type MediaRow, type PageResponse } from "../../lib/api";
+import {
+  ApiError,
+  apiDelete,
+  apiGet,
+  mediaQueryString,
+  type ActionResponse,
+  type MediaDeleteResult,
+  type MediaRow,
+  type PageResponse,
+} from "../../lib/api";
 import { Card, CardDescription, CardHeader, CardTitle } from "../../components/ui/card";
 import { EmptyState } from "../../components/ui/empty-state";
 import { ErrorState } from "../../components/ui/error-state";
@@ -15,11 +25,16 @@ import {
 } from "./components/library-filter-panel";
 import { LibraryResultsToolbar } from "./components/library-results-toolbar";
 import { MediaGrid } from "./components/media-grid";
+import { MediaDeleteDialog } from "./components/media-delete-dialog";
+import { MediaSelectionBar } from "./components/media-selection-bar";
 import { Collapsible, CollapsibleContent, CollapsibleTrigger } from "../../components/ui/collapsible";
 import { Button } from "../../components/ui/button";
 import { getLibraryBrowseState, saveLibraryBrowseState } from "./library-browse-state";
 
 const PAGE_SIZE = 60;
+const MAX_DELETE_SELECTION = 200;
+
+type MediaDeleteResponse = Omit<ActionResponse, "result"> & { result: MediaDeleteResult };
 
 export function LibraryPage() {
   const location = useLocation();
@@ -39,6 +54,9 @@ export function LibraryPage() {
   );
   const [gridVersion, setGridVersion] = useState(0);
   const [mobileFiltersOpen, setMobileFiltersOpen] = useState(false);
+  const [selectedIds, setSelectedIds] = useState<Set<number>>(() => new Set());
+  const [deleteDialogOpen, setDeleteDialogOpen] = useState(false);
+  const [deleteOperationId, setDeleteOperationId] = useState<string | null>(null);
   const filtersRef = useRef(filters);
   const submittedRef = useRef(submitted);
   const gridStateRef = useRef<GridStateSnapshot | null>(restoreGridState);
@@ -66,6 +84,40 @@ export function LibraryPage() {
   });
   const rows = useMemo(() => mediaQuery.data?.pages.flatMap((page) => page.rows) ?? [], [mediaQuery.data]);
   const totalCount = mediaQuery.data?.pages[0]?.total_count ?? 0;
+  const selectedRows = useMemo(() => rows.filter((row) => selectedIds.has(row.id)), [rows, selectedIds]);
+  const selectedBytes = useMemo(
+    () => selectedRows.reduce((total, row) => total + (row.file_size ?? 0), 0),
+    [selectedRows],
+  );
+  const deleteMutation = useMutation({
+    mutationFn: (operationId: string) =>
+      apiDelete<MediaDeleteResponse>("/api/v1/library/media", {
+        body: {
+          operation_id: operationId,
+          media_ids: Array.from(selectedIds),
+          confirm_physical_delete: true,
+        },
+      }),
+    onSuccess: async (response) => {
+      setDeleteDialogOpen(false);
+      setDeleteOperationId(null);
+      setSelectedIds(new Set());
+      gridStateRef.current = null;
+      setRestoreGridState(null);
+      setGridVersion((version) => version + 1);
+      await Promise.all([
+        queryClient.resetQueries({ queryKey: ["media"] }),
+        queryClient.invalidateQueries({ queryKey: ["tweet"] }),
+        queryClient.invalidateQueries({ queryKey: ["summary"] }),
+        queryClient.invalidateQueries({ queryKey: ["failures"] }),
+        queryClient.invalidateQueries({ queryKey: ["duplicates"] }),
+        queryClient.invalidateQueries({ queryKey: ["source-discovered"] }),
+      ]);
+      toast.success(
+        `已删除 ${response.result.deleted_media_count} 项媒体，释放 ${formatDeleteBytes(response.result.deleted_bytes)}`,
+      );
+    },
+  });
 
   useEffect(
     () => () => {
@@ -91,15 +143,43 @@ export function LibraryPage() {
 
   const applyFilters = () => {
     const nextFilters = { ...filters };
+    setSelectedIds(new Set());
     resetGridAndQuery(nextFilters);
     setSubmitted(nextFilters);
   };
 
   const resetFilters = () => {
     const nextFilters = { ...DEFAULT_LIBRARY_FILTERS };
+    setSelectedIds(new Set());
     resetGridAndQuery(nextFilters);
     setFilters(nextFilters);
     setSubmitted(nextFilters);
+  };
+
+  const toggleSelected = useCallback((row: MediaRow) => {
+    setSelectedIds((current) => {
+      const next = new Set(current);
+      if (next.has(row.id)) {
+        next.delete(row.id);
+      } else if (next.size >= MAX_DELETE_SELECTION) {
+        toast.error("单次最多选择 200 个媒体项。");
+      } else {
+        next.add(row.id);
+      }
+      return next;
+    });
+  }, []);
+
+  const selectLoaded = () => {
+    const ids = rows.slice(0, MAX_DELETE_SELECTION).map((row) => row.id);
+    setSelectedIds(new Set(ids));
+    if (rows.length > MAX_DELETE_SELECTION) toast.info("已选择前 200 个已加载媒体项。");
+  };
+
+  const openDeleteDialog = () => {
+    deleteMutation.reset();
+    setDeleteOperationId(crypto.randomUUID());
+    setDeleteDialogOpen(true);
   };
 
   const handleGridStateChanged = useCallback(
@@ -169,6 +249,9 @@ export function LibraryPage() {
                 loadedCount={rows.length}
                 totalCount={totalCount}
                 onReset={resetFilters}
+                selectedCount={selectedIds.size}
+                onSelectLoaded={selectLoaded}
+                onClearSelection={() => setSelectedIds(new Set())}
               />
               {rows.length ? (
                 <MediaGrid
@@ -181,6 +264,8 @@ export function LibraryPage() {
                   onLoadMore={() => void mediaQuery.fetchNextPage()}
                   onRetryLoadMore={() => void mediaQuery.fetchNextPage()}
                   onStateChanged={handleGridStateChanged}
+                  selectedIds={selectedIds}
+                  onToggleSelected={toggleSelected}
                 />
               ) : (
                 <EmptyState icon={<ListFilter className="h-5 w-5" />} title="当前筛选条件下没有媒体。" />
@@ -189,8 +274,46 @@ export function LibraryPage() {
           ) : null}
         </main>
       </section>
+      <MediaSelectionBar
+        count={selectedIds.size}
+        estimatedBytes={selectedBytes}
+        onClear={() => setSelectedIds(new Set())}
+        onDelete={openDeleteDialog}
+      />
+      <MediaDeleteDialog
+        open={deleteDialogOpen}
+        count={selectedIds.size}
+        estimatedBytes={selectedBytes}
+        pending={deleteMutation.isPending}
+        error={deleteMutation.error ? deleteErrorMessage(deleteMutation.error) : null}
+        onOpenChange={(open) => {
+          setDeleteDialogOpen(open);
+          if (!open) setDeleteOperationId(null);
+        }}
+        onConfirm={() => {
+          if (deleteOperationId) deleteMutation.mutate(deleteOperationId);
+        }}
+      />
     </div>
   );
+}
+
+function formatDeleteBytes(bytes: number) {
+  if (bytes < 1024) return `${bytes} B`;
+  if (bytes < 1024 * 1024) return `${(bytes / 1024).toFixed(1)} KB`;
+  if (bytes < 1024 * 1024 * 1024) return `${(bytes / 1024 / 1024).toFixed(1)} MB`;
+  return `${(bytes / 1024 / 1024 / 1024).toFixed(1)} GB`;
+}
+
+function deleteErrorMessage(error: unknown) {
+  if (error instanceof ApiError) {
+    if (error.status === 409) return "所选 Tweet 仍有下载任务或其他写操作，请先停止任务后重试。";
+    if (error.status === 404) return "部分媒体已不存在，请刷新媒体库后重新选择。";
+    if (error.code === "invalid_media_delete_path" || error.message.includes("invalid_media_delete_path")) {
+      return "检测到不安全的媒体路径，未执行删除。";
+    }
+  }
+  return error instanceof Error ? error.message : "删除媒体失败，请重试。";
 }
 
 function countActiveFilters(filters: LibraryFilters) {

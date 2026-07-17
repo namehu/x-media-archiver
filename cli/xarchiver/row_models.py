@@ -30,6 +30,7 @@ class AuthSessionRow(RowModel):
 
 
 class SearchMediaRow(RowModel):
+    id: int
     tweet_id: str
     tweet_url: str
     author_username: str | None = None

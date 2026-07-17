@@ -134,7 +134,8 @@ export interface paths {
         get: operations["media_api_v1_library_media_get"];
         put?: never;
         post?: never;
-        delete?: never;
+        /** Delete Media */
+        delete: operations["delete_media_api_v1_library_media_delete"];
         options?: never;
         head?: never;
         patch?: never;
@@ -443,6 +444,23 @@ export interface paths {
         put?: never;
         /** Update Archive Source Status */
         post: operations["update_archive_source_status_api_v1_sources__source_id__status_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/sources/{source_id}/pin": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /** Update Archive Source Pin */
+        post: operations["update_archive_source_pin_api_v1_sources__source_id__pin_post"];
         delete?: never;
         options?: never;
         head?: never;
@@ -1052,6 +1070,11 @@ export interface components {
             source_url?: string | null;
             /** Status */
             status: string;
+            /**
+             * Is Pinned
+             * @default false
+             */
+            is_pinned: boolean;
             /** Label */
             label?: string | null;
             /** Author Username */
@@ -1122,6 +1145,11 @@ export interface components {
             source_url?: string | null;
             /** Status */
             status: string;
+            /**
+             * Is Pinned
+             * @default false
+             */
+            is_pinned: boolean;
             /** Label */
             label?: string | null;
             /** Author Username */
@@ -1190,6 +1218,11 @@ export interface components {
             source_url?: string | null;
             /** Status */
             status: string;
+            /**
+             * Is Pinned
+             * @default false
+             */
+            is_pinned: boolean;
             /** Label */
             label?: string | null;
             /** Author Username */
@@ -1676,6 +1709,21 @@ export interface components {
         } & {
             [key: string]: unknown;
         };
+        /** MediaDeleteRequest */
+        MediaDeleteRequest: {
+            /**
+             * Operation Id
+             * Format: uuid
+             */
+            operation_id: string;
+            /** Media Ids */
+            media_ids: number[];
+            /**
+             * Confirm Physical Delete
+             * @default false
+             */
+            confirm_physical_delete: boolean;
+        };
         /** MediaPageResponse */
         MediaPageResponse: {
             /** Count */
@@ -1693,6 +1741,8 @@ export interface components {
         };
         /** MediaRowResponse */
         MediaRowResponse: {
+            /** Id */
+            id: number;
             /** Tweet Id */
             tweet_id: string;
             /** Tweet Url */
@@ -2126,6 +2176,11 @@ export interface components {
              * @default false
              */
             restart: boolean;
+        };
+        /** SourcePinRequest */
+        SourcePinRequest: {
+            /** Is Pinned */
+            is_pinned: boolean;
         };
         /** SourceRecordsRequest */
         SourceRecordsRequest: {
@@ -2604,6 +2659,39 @@ export interface operations {
             };
         };
     };
+    delete_media_api_v1_library_media_delete: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["MediaDeleteRequest"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["WriteActionResponse"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
     tweet_detail_api_v1_library_tweets__tweet_id__get: {
         parameters: {
             query?: never;
@@ -2965,6 +3053,8 @@ export interface operations {
                 offset?: number;
                 source_status?: string | null;
                 source_type?: string | null;
+                sort_by?: string;
+                sort_direction?: string;
             };
             header?: never;
             path?: never;
@@ -3282,6 +3372,41 @@ export interface operations {
                 };
                 content: {
                     "application/json": components["schemas"]["ArchiveSourceResponse"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    update_archive_source_pin_api_v1_sources__source_id__pin_post: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                source_id: number;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["SourcePinRequest"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ArchiveSourceDetailResponse"];
                 };
             };
             /** @description Validation Error */

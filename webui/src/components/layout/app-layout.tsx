@@ -60,7 +60,7 @@ export function AppLayout() {
   const [commandOpen, setCommandOpen] = useState(false);
   const [mobileNavigationOpen, setMobileNavigationOpen] = useState(false);
   const [scrollContainer, setScrollContainer] = useState<HTMLElement | null>(null);
-  const events = useServerEvents(["archive_runs", "sources", "source_scans", "worker", "logs"]);
+  const events = useServerEvents(["archive_runs", "sources", "source_scans", "worker", "logs", "library"]);
   const healthQuery = useQuery({
     queryKey: ["health-detail"],
     queryFn: () => apiGet<HealthDetail>("/api/v1/health/detail"),

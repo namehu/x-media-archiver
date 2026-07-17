@@ -50,6 +50,7 @@ const SERVER_EVENT_TYPES = [
   "source.discovered.submitted",
   "source.download.submitted",
   "operation.log.appended",
+  "library.media_deleted",
 ];
 
 const TOPIC_ALIASES: Record<string, string[]> = {
@@ -161,6 +162,15 @@ function invalidateForEvent(queryClient: QueryClient, event: ServerEvent) {
     void queryClient.invalidateQueries({ queryKey: ["sources"] });
     void queryClient.invalidateQueries({ queryKey: ["summary"] });
     void queryClient.invalidateQueries({ queryKey: ["health-detail"] });
+  }
+
+  if (topic === "library" || eventType.startsWith("library.")) {
+    void queryClient.invalidateQueries({ queryKey: ["media"] });
+    void queryClient.invalidateQueries({ queryKey: ["tweet"] });
+    void queryClient.invalidateQueries({ queryKey: ["summary"] });
+    void queryClient.invalidateQueries({ queryKey: ["failures"] });
+    void queryClient.invalidateQueries({ queryKey: ["duplicates"] });
+    void queryClient.invalidateQueries({ queryKey: ["source-discovered"] });
   }
 
   if (topic === "logs" || eventType.startsWith("operation.log.")) {

@@ -4,12 +4,13 @@ import { useNavigate } from "react-router-dom";
 import { VirtuosoGrid, type GridComponents, type GridStateSnapshot } from "react-virtuoso";
 import { Badge } from "../../../components/ui/badge";
 import { Button } from "../../../components/ui/button";
+import { Checkbox } from "../../../components/ui/checkbox";
 import { Card, CardContent } from "../../../components/ui/card";
 import { MediaThumbnail } from "../../../components/ui/media-thumbnail";
 import { useAppScrollContainer } from "../../../components/layout/app-scroll-container";
 import type { MediaRow } from "../../../lib/api";
 import { mediaTypeLabel, statusLabel } from "../../../lib/formatters";
-import { formatBytes, formatDateTime } from "../../../lib/utils";
+import { cn, formatBytes, formatDateTime } from "../../../lib/utils";
 
 type MediaGridProps = {
   rows: MediaRow[];
@@ -20,6 +21,8 @@ type MediaGridProps = {
   onLoadMore: () => void;
   onRetryLoadMore: () => void;
   onStateChanged: (state: GridStateSnapshot) => void;
+  selectedIds: Set<number>;
+  onToggleSelected: (row: MediaRow) => void;
 };
 
 type MediaGridContext = Pick<
@@ -36,6 +39,8 @@ export function MediaGrid({
   onLoadMore,
   onRetryLoadMore,
   onStateChanged,
+  selectedIds,
+  onToggleSelected,
 }: MediaGridProps) {
   const scrollParent = useAppScrollContainer();
   const loadMorePendingRef = useRef(false);
@@ -67,7 +72,9 @@ export function MediaGrid({
       components={gridComponents}
       computeItemKey={mediaItemKey}
       endReached={requestLoadMore}
-      itemContent={(_, row) => <MediaCard row={row} />}
+      itemContent={(_, row) => (
+        <MediaCard row={row} selected={selectedIds.has(row.id)} onToggleSelected={onToggleSelected} />
+      )}
       restoreStateFrom={restoreStateFrom}
       stateChanged={onStateChanged}
     />
@@ -152,7 +159,15 @@ function mediaItemKey(index: number, row: MediaRow) {
   return [row.tweet_id, row.media_index ?? "none", row.local_path || row.media_url || index].join(":");
 }
 
-function MediaCard({ row }: { row: MediaRow }) {
+function MediaCard({
+  row,
+  selected,
+  onToggleSelected,
+}: {
+  row: MediaRow;
+  selected: boolean;
+  onToggleSelected: (row: MediaRow) => void;
+}) {
   const navigate = useNavigate();
   const title = row.author_display_name || row.author_username || "未知作者";
   const statusTone = row.media_status === "verified" || row.media_status === "downloaded" ? "success" : "warning";
@@ -160,9 +175,22 @@ function MediaCard({ row }: { row: MediaRow }) {
 
   return (
     <Card
-      className="group overflow-hidden hover:border-border-strong hover:shadow-2 cursor-pointer"
+      className={cn(
+        "group relative cursor-pointer overflow-hidden hover:border-border-strong hover:shadow-2",
+        selected && "border-brand ring-2 ring-brand/20",
+      )}
       onClick={openTweet}
     >
+      <div
+        className="absolute left-2 top-2 z-10 rounded-md bg-bg-elevated/90 p-1 shadow-1"
+        onClick={(event) => event.stopPropagation()}
+      >
+        <Checkbox
+          aria-label={`选择媒体 ${row.id}`}
+          checked={selected}
+          onCheckedChange={() => onToggleSelected(row)}
+        />
+      </div>
       <MediaThumbnail
         src={row.media_url}
         mediaType={row.media_type}

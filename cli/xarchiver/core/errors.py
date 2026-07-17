@@ -46,6 +46,9 @@ ERROR_HTTP_STATUS_BY_CODE = {
     "source_not_found": 404,
     "source_paused": 409,
     "write_action_in_progress": 409,
+    "media_delete_active_work": 409,
+    "media_delete_operation_in_progress": 409,
+    "media_assets_not_found": 404,
 }
 
 
