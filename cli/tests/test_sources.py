@@ -43,6 +43,7 @@ from xarchiver.services.sources import (
     stop_source_scan_session,
     submit_source_downloads,
     update_session_progress_state,
+    update_source_pin,
 )
 
 
@@ -639,6 +640,32 @@ class SourceDiscoveryIntegrationTests(unittest.TestCase):
         self.assertEqual(page["limit"], 1)
         self.assertEqual(page["offset"], 1)
         self.assertEqual([row["id"] for row in page["rows"]], [first["id"]])
+
+    def test_sources_sorting_keeps_pinned_items_first_and_is_stable(self) -> None:
+        first = create_source("user_media", self.source_urls[0])
+        second = create_source("user_media", self.source_urls[1])
+        third = create_source("user_media", self.source_urls[2])
+        with connect() as conn:
+            with conn.cursor() as cur:
+                cur.execute("update archive_sources set created_at = '2099-01-01 00:00:00+00' where id = %s", (first["id"],))
+                cur.execute("update archive_sources set created_at = '2099-01-02 00:00:00+00' where id = %s", (second["id"],))
+                cur.execute("update archive_sources set created_at = '2099-01-03 00:00:00+00' where id = %s", (third["id"],))
+            conn.commit()
+
+        update_source_pin(int(first["id"]), True)
+        descending = list_sources_page(sort_by="created_at", sort_direction="desc", limit=10)
+        ascending = list_sources_page(sort_by="created_at", sort_direction="asc", limit=10)
+
+        source_ids = {first["id"], second["id"], third["id"]}
+        descending_ids = [row["id"] for row in descending["rows"] if row["id"] in source_ids]
+        ascending_ids = [row["id"] for row in ascending["rows"] if row["id"] in source_ids]
+        self.assertEqual(descending_ids, [first["id"], third["id"], second["id"]])
+        self.assertEqual(ascending_ids, [first["id"], second["id"], third["id"]])
+
+        updated = update_source_pin(int(first["id"]), False)
+        self.assertFalse(updated["is_pinned"])
+        with self.assertRaisesRegex(ValueError, "source_not_found"):
+            update_source_pin(999999999, True)
 
     def test_source_detail_is_slim_and_exposes_active_scan_run(self) -> None:
         source = create_source("profile", self.source_urls[2])

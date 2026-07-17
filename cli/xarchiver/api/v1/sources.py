@@ -12,6 +12,7 @@ from xarchiver.api.schemas import (
     SourceDownloadRequest,
     SourceDownloadSummaryResponse,
     SourceHistoryScanRequest,
+    SourcePinRequest,
     SourceRecordsRequest,
     SourceScanRequest,
     SourceScanRunsPageResponse,
@@ -38,6 +39,7 @@ from xarchiver.services.sources import (
     submit_discovered_tweets,
     submit_source_downloads,
     submit_source_records,
+    update_source_pin,
     update_source_status,
 )
 
@@ -63,9 +65,18 @@ def archive_sources(
     offset: int = Query(0, ge=0),
     source_status: str | None = None,
     source_type: str | None = None,
+    sort_by: str = Query("updated_at", pattern="^(updated_at|created_at)$"),
+    sort_direction: str = Query("desc", pattern="^(asc|desc)$"),
 ) -> dict[str, object]:
     try:
-        page = list_sources_page(status=source_status, source_type=source_type, limit=limit, offset=offset)
+        page = list_sources_page(
+            status=source_status,
+            source_type=source_type,
+            sort_by=sort_by,
+            sort_direction=sort_direction,
+            limit=limit,
+            offset=offset,
+        )
         return {**page, "rows": [dict(row) for row in page.get("rows", [])]}
     except ValueError as exc:
         raise_api_error(exc)
@@ -153,6 +164,14 @@ def update_archive_source_status(source_id: int, request: SourceStatusRequest) -
         return update_source_status(source_id, request.status)
     except ValueError as exc:
         raise_api_error(exc)
+
+
+@router.post("/{source_id}/pin", response_model=ArchiveSourceDetailResponse)
+def update_archive_source_pin(source_id: int, request: SourcePinRequest) -> dict[str, object]:
+    try:
+        return update_source_pin(source_id, request.is_pinned)
+    except ValueError as exc:
+        raise_api_error(exc, default_status=404)
 
 
 @router.post("/{source_id}/scan", status_code=status.HTTP_202_ACCEPTED, response_model=WriteActionResponse)

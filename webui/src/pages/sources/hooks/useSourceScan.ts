@@ -30,6 +30,12 @@ export function useSourceActions({
     onSuccess: async (source) => onRefresh(source.id),
   });
 
+  const pinMutation = useMutation({
+    mutationFn: ({ sourceId, isPinned }: { sourceId: number; isPinned: boolean }) =>
+      apiPost<ArchiveSourceListItem>(`/api/v1/sources/${sourceId}/pin`, { is_pinned: isPinned }),
+    onSuccess: async (source) => onRefresh(source.id),
+  });
+
   const scanMutation = useMutation({
     mutationFn: ({ sourceId, limit, restart }: { sourceId: number; limit: number; restart?: boolean }) =>
       apiPost<Record<string, unknown>>(`/api/v1/sources/${sourceId}/scan`, { limit, restart }),
@@ -109,6 +115,7 @@ export function useSourceActions({
   return {
     submitMutation,
     statusMutation,
+    pinMutation,
     scanMutation,
     submitDiscoveredMutation,
     sourceDownloadMutation,

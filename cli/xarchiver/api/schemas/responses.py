@@ -391,6 +391,7 @@ class ArchiveSourceResponse(FlexibleResponse):
     source_type: str
     source_url: str | None = None
     status: str
+    is_pinned: bool = False
     label: str | None = None
     author_username: str | None = None
 

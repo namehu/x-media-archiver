@@ -63,6 +63,10 @@ class SourceStatusRequest(BaseModel):
     status: str = Field(pattern="^(active|paused|completed|failed)$")
 
 
+class SourcePinRequest(BaseModel):
+    is_pinned: bool
+
+
 class SourceScanRequest(BaseModel):
     limit: int = Field(default=20, ge=5, le=200)
     restart: bool = False

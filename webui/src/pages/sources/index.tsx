@@ -16,6 +16,8 @@ export function SourcesPage() {
   const [selectedSourceId, setSelectedSourceId] = useState<number | null>(null);
   const [sourceStatusFilter, setSourceStatusFilter] = useState("");
   const [sourceTypeFilter, setSourceTypeFilter] = useState("");
+  const [sortBy, setSortBy] = useState<"updated_at" | "created_at">("updated_at");
+  const [sortDirection, setSortDirection] = useState<"asc" | "desc">("desc");
   const [offset, setOffset] = useState(0);
   const [feedback, setFeedback] = useState<ArchiveSubmission | null>(null);
   const [scanFeedback, setScanFeedback] = useState<Record<string, unknown> | null>(null);
@@ -24,7 +26,7 @@ export function SourcesPage() {
   const [createDialogOpen, setCreateDialogOpen] = useState(false);
   const [detailSheetOpen, setDetailSheetOpen] = useState(false);
 
-  const sourcesQuery = useSourcesQuery(sourceStatusFilter, sourceTypeFilter, offset);
+  const sourcesQuery = useSourcesQuery(sourceStatusFilter, sourceTypeFilter, sortBy, sortDirection, offset);
   const detailQuery = useSourceDetail(selectedSourceId);
   const policyQuery = useDownloadPolicy();
   const selected = detailQuery.data;
@@ -91,12 +93,21 @@ export function SourcesPage() {
         selectedSourceId={selectedSourceId}
         statusFilter={sourceStatusFilter}
         typeFilter={sourceTypeFilter}
+        sortBy={sortBy}
+        sortDirection={sortDirection}
         offset={offset}
         onStatusFilterChange={setSourceStatusFilter}
         onTypeFilterChange={setSourceTypeFilter}
+        onSortChange={(nextSortBy, nextSortDirection) => {
+          setOffset(0);
+          setSortBy(nextSortBy);
+          setSortDirection(nextSortDirection);
+        }}
         onOffsetChange={setOffset}
         onSelectSource={selectSource}
         onAddClick={() => setCreateDialogOpen(true)}
+        onPin={(sourceId, isPinned) => actions.pinMutation.mutate({ sourceId, isPinned })}
+        pinPendingSourceId={actions.pinMutation.isPending ? actions.pinMutation.variables?.sourceId : undefined}
       />
 
       {/* 新增来源弹窗 */}

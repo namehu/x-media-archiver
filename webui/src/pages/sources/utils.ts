@@ -23,10 +23,19 @@ export function parseRecordUrls(value: string) {
     .map((url) => ({ url }));
 }
 
-export function sourceQueryString(status: string, type: string, limit: number, offset: number) {
+export function sourceQueryString(
+  status: string,
+  type: string,
+  sortBy: "updated_at" | "created_at",
+  sortDirection: "asc" | "desc",
+  limit: number,
+  offset: number,
+) {
   const search = new URLSearchParams({ limit: String(limit), offset: String(offset) });
   if (status) search.set("source_status", status);
   if (type) search.set("source_type", type);
+  search.set("sort_by", sortBy);
+  search.set("sort_direction", sortDirection);
   return search.toString();
 }
 

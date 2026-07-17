@@ -133,6 +133,7 @@ archive_sources = Table(
     Column("label", Text),
     Column("author_username", Text),
     Column("status", Text),
+    Column("is_pinned", Boolean),
     Column("cursor_state", JSONB),
     Column("last_seen_tweet_id", Text),
     Column("newest_seen_tweet_id", Text),

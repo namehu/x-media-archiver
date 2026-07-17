@@ -19,6 +19,7 @@ from sqlalchemy import (
     bindparam,
     func,
     select,
+    update,
 )
 from sqlalchemy.sql import ColumnElement, Select
 
@@ -64,6 +65,8 @@ from xarchiver.tables import (
 
 VALID_SOURCE_TYPES = {"profile", "user_media", "likes", "bookmarks", "search", "manual"}
 VALID_SOURCE_STATUSES = {"active", "paused", "completed", "failed"}
+VALID_SOURCE_SORT_FIELDS = {"updated_at", "created_at"}
+VALID_SORT_DIRECTIONS = {"asc", "desc"}
 VALID_SCAN_TRIGGERS = {"history_worker", "manual_next", "latest_refresh", "from_start_repair"}
 VALID_SCAN_SESSION_MODES = {"history", "latest_refresh", "from_start"}
 SCAN_MODE_TO_TRIGGER = {
@@ -144,12 +147,16 @@ def create_source(
 def list_sources(
     status: str | None = None,
     source_type: str | None = None,
+    sort_by: str = "updated_at",
+    sort_direction: str = "desc",
     limit: int = 50,
     offset: int = 0,
 ) -> list[ArchiveSourceListRow]:
     sql, params = build_sources_query(
         status=status,
         source_type=source_type,
+        sort_by=sort_by,
+        sort_direction=sort_direction,
         limit=limit,
         offset=offset,
     )
@@ -162,10 +169,19 @@ def list_sources(
 def list_sources_page(
     status: str | None = None,
     source_type: str | None = None,
+    sort_by: str = "updated_at",
+    sort_direction: str = "desc",
     limit: int = 50,
     offset: int = 0,
 ) -> dict[str, object]:
-    rows = list_sources(status=status, source_type=source_type, limit=limit, offset=offset)
+    rows = list_sources(
+        status=status,
+        source_type=source_type,
+        sort_by=sort_by,
+        sort_direction=sort_direction,
+        limit=limit,
+        offset=offset,
+    )
     total_count = count_sources(status=status, source_type=source_type)
     return {
         "rows": [dict(row) for row in rows],
@@ -190,6 +206,8 @@ def count_sources(
 def build_sources_query(
     status: str | None = None,
     source_type: str | None = None,
+    sort_by: str = "updated_at",
+    sort_direction: str = "desc",
     limit: int = 50,
     offset: int = 0,
 ) -> tuple[str, dict[str, object]]:
@@ -219,6 +237,11 @@ def build_sources_query(
         .scalar_subquery()
     )
 
+    sort_column = archive_sources.c[normalize_source_sort_field(sort_by)]
+    normalized_direction = normalize_sort_direction(sort_direction)
+    sort_expression = sort_column.asc() if normalized_direction == "asc" else sort_column.desc()
+    id_expression = archive_sources.c.id.asc() if normalized_direction == "asc" else archive_sources.c.id.desc()
+
     statement = (
         select(
             archive_sources,
@@ -235,7 +258,7 @@ def build_sources_query(
             )
         )
         .group_by(archive_sources.c.id)
-        .order_by(archive_sources.c.updated_at.desc(), archive_sources.c.id.desc())
+        .order_by(archive_sources.c.is_pinned.desc(), sort_expression, id_expression)
         .limit(bindparam("limit", limit))
         .offset(bindparam("offset", offset))
     )
@@ -283,6 +306,39 @@ def build_source_filters(
             )
         )
     return filters
+
+
+def normalize_source_sort_field(value: str) -> str:
+    if value not in VALID_SOURCE_SORT_FIELDS:
+        raise ValueError("invalid_source_sort_field")
+    return value
+
+
+def normalize_sort_direction(value: str) -> str:
+    if value not in VALID_SORT_DIRECTIONS:
+        raise ValueError("invalid_sort_direction")
+    return value
+
+
+def update_source_pin(source_id: int, is_pinned: bool) -> dict[str, object]:
+    statement = (
+        update(archive_sources)
+        .where(archive_sources.c.id == bindparam("source_id"))
+        .values(is_pinned=bindparam("is_pinned"))
+        .returning(archive_sources)
+    )
+    sql, params = compile_query(statement)
+    params.update({"source_id": source_id, "is_pinned": is_pinned})
+    with connect() as conn:
+        with conn.cursor() as cur:
+            cur.execute(sql, params)
+            result = cur.fetchone()
+            if result is None:
+                raise ValueError("source_not_found")
+            ArchiveSourceRow.model_validate(dict(result))
+        conn.commit()
+    publish_event("sources", "source.pin_changed", {"source_id": source_id, "is_pinned": is_pinned})
+    return get_source(source_id) or dict(result)
 
 
 def get_source(source_id: int) -> dict[str, object] | None:

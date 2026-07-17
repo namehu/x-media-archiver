@@ -12,6 +12,7 @@ from xarchiver.api.schemas import (
     BackfillRequest,
     SourceCreateRequest,
     SourceDiscoveryPageResponse,
+    SourcePinRequest,
     SourceScanRunsPageResponse,
     SourcesPageResponse,
     SourceStatusRequest,
@@ -75,6 +76,7 @@ class V1RouterSmokeTests(unittest.TestCase):
             "/api/v1/sources/{source_id}/records",
             "/api/v1/sources/{source_id}/submit-discovered",
             "/api/v1/sources/{source_id}/status",
+            "/api/v1/sources/{source_id}/pin",
             "/api/v1/sources/{source_id}/scan",
             "/api/v1/sources/{source_id}/history-scan",
             "/api/v1/sources/{source_id}/scan-sessions",
@@ -163,10 +165,28 @@ class V1RouterSmokeTests(unittest.TestCase):
         page = {"rows": [], "count": 0, "total_count": 0, "limit": 5, "offset": 0}
         with patch("xarchiver.api.v1.sources.list_sources_page", return_value=page) as mock:
             result = self.get_paths["/api/v1/sources"](
-                limit=5, offset=0, source_status="active", source_type="profile"
+                limit=5,
+                offset=0,
+                source_status="active",
+                source_type="profile",
+                sort_by="created_at",
+                sort_direction="asc",
             )
         self.assertEqual(result, page)
-        mock.assert_called_once_with(status="active", source_type="profile", limit=5, offset=0)
+        mock.assert_called_once_with(
+            status="active",
+            source_type="profile",
+            sort_by="created_at",
+            sort_direction="asc",
+            limit=5,
+            offset=0,
+        )
+
+    def test_v1_source_pin_maps_not_found_to_404(self):
+        with patch("xarchiver.api.v1.sources.update_source_pin", side_effect=ValueError("source_not_found")):
+            with self.assertRaises(HTTPException) as ctx:
+                self.post_paths["/api/v1/sources/{source_id}/pin"](999, SourcePinRequest(is_pinned=True))
+        self.assertEqual(ctx.exception.status_code, 404)
 
     def test_v1_sources_response_serializes_row_models(self):
         row = ArchiveSourceListRow.model_validate(
