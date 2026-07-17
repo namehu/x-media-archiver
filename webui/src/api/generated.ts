@@ -1965,20 +1965,6 @@ export interface components {
         } & {
             [key: string]: unknown;
         };
-        /** SourceDownloadRequest */
-        SourceDownloadRequest: {
-            /** Scope */
-            scope: string;
-            /** Tweet Ids */
-            tweet_ids?: string[] | null;
-            /**
-             * Confirm All
-             * @default false
-             */
-            confirm_all: boolean;
-            /** Limit */
-            limit?: number | null;
-        };
         /** SourceDownloadCountsResponse */
         SourceDownloadCountsResponse: {
             /**
@@ -2038,6 +2024,20 @@ export interface components {
             cancelled_count: number;
         } & {
             [key: string]: unknown;
+        };
+        /** SourceDownloadRequest */
+        SourceDownloadRequest: {
+            /** Scope */
+            scope: string;
+            /** Tweet Ids */
+            tweet_ids?: string[] | null;
+            /**
+             * Confirm All
+             * @default false
+             */
+            confirm_all: boolean;
+            /** Limit */
+            limit?: number | null;
         };
         /** SourceDownloadSummaryResponse */
         SourceDownloadSummaryResponse: {
