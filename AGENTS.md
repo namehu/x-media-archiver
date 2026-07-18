@@ -107,6 +107,7 @@ npm run zip
 默认验证策略：
 
 - 代理完成代码改动后，默认只运行轻量检查，例如 `git diff --check`、局部 `typecheck` 或非常小的定向测试；不要静默执行全量验证。
+- 修改 `cli/xarchiver/` 或 `cli/tests/` 中的 Python 文件后，轻量检查必须包含 Ruff；至少对本次改动文件运行 `ruff check`，避免仅运行单元测试而遗漏导入排序、未使用导入等静态检查问题。需要验证全部后端 Python 文件时运行 `bash scripts/lint_python.sh`，其配置应与 CI 保持一致。
 - 下表中的后端完整单测、WebUI build 与 API/WebUI 真实联调属于完整交付验证，默认由代理按需执行，不要求用户本地先默认跑一遍。
 - 如果用户判断某次改动风险较高、希望自己先验证，会明确说明原因；未明确说明前，不假设用户需要先跑全量检查。
 
@@ -114,7 +115,7 @@ npm run zip
 
 | 改动范围 | 最低验证 |
 | --- | --- |
-| `cli/xarchiver/`、`cli/tests/` | `docker-compose run --rm --entrypoint python xarchiver -m unittest discover -s /app/tests` |
+| `cli/xarchiver/`、`cli/tests/` | 先运行 `bash scripts/lint_python.sh`，再运行 `docker-compose run --rm --entrypoint python xarchiver -m unittest discover -s /app/tests` |
 | `webui/` | 在 `webui/` 运行 `npm run build` |
 | `extension/` | 在 `extension/` 运行 `npm run typecheck` 与 `npm run build` |
 | API 与 WebUI 联动 | 启动 API 与 WebUI，检查涉及页面及对应 API 流程 |
