@@ -5,12 +5,12 @@ from unittest.mock import patch
 
 from xarchiver.core.errors import ArchiverError
 from xarchiver.services.media_deletion import (
+    DeleteFile,
+    MediaFileDeleteError,
     _collect_delete_files,
     _delete_files,
     _remove_empty_media_dirs,
     _safe_media_path,
-    DeleteFile,
-    MediaFileDeleteError,
 )
 
 
