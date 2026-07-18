@@ -22,9 +22,11 @@ class MediaDeletionIntegrationTests(unittest.TestCase):
         self.media_path = self.tweet_dir / f"{self.tweet_id}--p1.jpg"
         self.metadata_path = self.tweet_dir / f"{self.tweet_id}--p1.jpg.json"
         self.thumbnail_path = self.tweet_dir / f"{self.tweet_id}--p1.thumb.jpg"
+        self.preview_path = self.tweet_dir / f"{self.tweet_id}--p1.preview.jpg"
         self.media_path.write_bytes(b"media-content")
         self.metadata_path.write_bytes(b"{}")
         self.thumbnail_path.write_bytes(b"thumb")
+        self.preview_path.write_bytes(b"preview")
         with connect() as conn:
             with conn.cursor() as cur:
                 cur.execute(
@@ -82,7 +84,7 @@ class MediaDeletionIntegrationTests(unittest.TestCase):
 
         self.assertEqual(repeated, result)
         self.assertEqual(result["deleted_media_count"], 1)
-        self.assertEqual(result["deleted_file_count"], 3)
+        self.assertEqual(result["deleted_file_count"], 4)
         self.assertFalse(self.tweet_dir.exists())
         with connect() as conn:
             with conn.cursor() as cur:

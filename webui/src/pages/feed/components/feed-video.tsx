@@ -61,9 +61,14 @@ export function FeedVideo({
     const video = videoRef.current;
     if (!video) return;
     video.muted = muted;
-    if (active) void video.play().catch(() => undefined);
-    else video.pause();
-  }, [active, muted]);
+    if (active && media.media_url) {
+      void video.play().catch(() => undefined);
+      return;
+    }
+    video.pause();
+    video.removeAttribute("src");
+    video.load();
+  }, [active, media.media_url, muted]);
 
   const togglePlayback = () => {
     manuallyPausedRef.current = active;
@@ -78,16 +83,22 @@ export function FeedVideo({
       {media.media_url ? (
         <video
           ref={videoRef}
-          src={media.media_url}
+          src={active ? media.media_url : undefined}
+          poster={media.preview_url || undefined}
           muted={muted}
           playsInline
-          preload="metadata"
+          preload="none"
           className="size-full cursor-zoom-in object-cover"
           onClick={onPreview}
         />
       ) : (
         <div className="flex size-full items-center justify-center text-sm text-white/70">视频不可用</div>
       )}
+      {!media.preview_url && !active ? (
+        <div className="pointer-events-none absolute inset-0 flex items-center justify-center text-sm text-white/70">
+          预览图不可用
+        </div>
+      ) : null}
       <div className="absolute inset-x-0 bottom-0 flex items-end justify-between gap-2 bg-gradient-to-t from-black/65 via-black/20 to-transparent px-2 pb-2 pt-8">
         <div className="flex items-center gap-0.5">
           <Button

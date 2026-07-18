@@ -307,6 +307,8 @@ class MediaRowResponse(FlexibleResponse):
     duration_ms: int | None = None
     media_relative_path: str
     media_url: str | None = None
+    preview_relative_path: str | None = None
+    preview_url: str | None = None
 
 
 class AuthorOptionResponse(FlexibleResponse):
@@ -334,6 +336,8 @@ class PostFeedMediaResponse(FlexibleResponse):
     duration_ms: int | None = None
     media_relative_path: str
     media_url: str | None = None
+    preview_relative_path: str | None = None
+    preview_url: str | None = None
 
 
 class PostFeedRowResponse(FlexibleResponse):
@@ -370,6 +374,8 @@ class MediaAssetResponse(FlexibleResponse):
     updated_at: datetime
     media_relative_path: str
     media_url: str | None = None
+    preview_relative_path: str | None = None
+    preview_url: str | None = None
 
 
 class TweetDetailResponse(FlexibleResponse):

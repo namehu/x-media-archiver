@@ -90,7 +90,7 @@ export function MaintenanceTab({
       <Card className="xl:col-span-2">
         <CardHeader>
           <CardTitle>全量维护</CardTitle>
-          <CardDescription>上方 CSV 导出读取数据库快照，不扫描媒体文件内容。</CardDescription>
+          <CardDescription>上方 CSV 导出读取数据库快照；媒体回填还会补齐视频预览图。</CardDescription>
         </CardHeader>
         <CardContent className="space-y-4">
           <div className="rounded-lg border border-danger/20 bg-danger/10 p-3 text-sm text-danger">这些操作会扫描整个归档目录，资料库较大时可能产生较高磁盘 IO。</div>

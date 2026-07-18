@@ -23,7 +23,13 @@ class MediaDeletionFileTests(unittest.TestCase):
             media = tweet_dir / "tweet--p1.mp4"
             metadata = tweet_dir / "tweet--p1.info.json"
             thumbnail = tweet_dir / "tweet--p1.thumb.jpg"
-            for path, content in ((media, b"media"), (metadata, b"{}"), (thumbnail, b"thumb")):
+            preview = tweet_dir / "tweet--p1.preview.jpg"
+            for path, content in (
+                (media, b"media"),
+                (metadata, b"{}"),
+                (thumbnail, b"thumb"),
+                (preview, b"preview"),
+            ):
                 path.write_bytes(content)
 
             files = _collect_delete_files(
@@ -33,8 +39,8 @@ class MediaDeletionFileTests(unittest.TestCase):
             result = _delete_files(files)
             _remove_empty_media_dirs(archive_dir, files)
 
-            self.assertEqual(result["deleted_file_count"], 3)
-            self.assertEqual(result["deleted_bytes"], 12)
+            self.assertEqual(result["deleted_file_count"], 4)
+            self.assertEqual(result["deleted_bytes"], 19)
             self.assertEqual(result["missing_file_count"], 0)
             self.assertFalse(tweet_dir.exists())
 

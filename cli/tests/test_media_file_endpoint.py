@@ -98,6 +98,14 @@ class MediaFileEndpointTests(TestCase):
 
         self.assertEqual(ctx.exception.status_code, 400)
 
+    def test_generated_preview_has_long_lived_private_cache(self) -> None:
+        preview_path = self.media_path.with_name("1.preview.jpg")
+        preview_path.write_bytes(b"preview")
+
+        response = self._response(relative_path="media/alice/1.preview.jpg")
+
+        self.assertEqual(response.headers["cache-control"], "private, max-age=31536000, immutable")
+
 
 if __name__ == "__main__":
     unittest.main()

@@ -24,6 +24,8 @@ export type MediaRow = {
   local_path?: string | null;
   media_relative_path?: string | null;
   media_url?: string | null;
+  preview_relative_path?: string | null;
+  preview_url?: string | null;
   file_size?: number | null;
   width?: number | null;
   height?: number | null;
@@ -55,6 +57,8 @@ export type PostFeedMedia = {
   local_path?: string | null;
   media_relative_path: string;
   media_url?: string | null;
+  preview_relative_path?: string | null;
+  preview_url?: string | null;
   file_size?: number | null;
   width?: number | null;
   height?: number | null;

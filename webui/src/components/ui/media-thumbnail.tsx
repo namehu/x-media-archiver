@@ -1,4 +1,4 @@
-import { useState } from "react";
+import { useEffect, useState } from "react";
 import { Film, ImageOff, Image as ImageIcon } from "lucide-react";
 import { Badge } from "./badge";
 import { cn } from "@/lib/utils";
@@ -20,6 +20,11 @@ export function MediaThumbnail({
   const [failed, setFailed] = useState(false);
   const isVideo = mediaType === "video" || Boolean(src?.match(/\.(mp4|mov|m4v|webm)(\?|$)/i));
 
+  useEffect(() => {
+    setLoaded(false);
+    setFailed(false);
+  }, [src]);
+
   return (
     <button
       type="button"
@@ -31,29 +36,22 @@ export function MediaThumbnail({
       )}
     >
       {src && !failed ? (
-        isVideo ? (
-          <video
-            className={cn("h-full w-full object-cover transition duration-base", loaded ? "opacity-100" : "opacity-0")}
-            src={src}
-            muted
-            preload="metadata"
-            onLoadedData={() => setLoaded(true)}
-            onError={() => setFailed(true)}
-          />
-        ) : (
-          <img
-            className={cn("h-full w-full object-cover transition duration-base group-hover:scale-[1.02]", loaded ? "opacity-100" : "opacity-0")}
-            src={src}
-            loading="lazy"
-            alt={alt}
-            onLoad={() => setLoaded(true)}
-            onError={() => setFailed(true)}
-          />
-        )
+        <img
+          className={cn("h-full w-full object-cover transition duration-base group-hover:scale-[1.02]", loaded ? "opacity-100" : "opacity-0")}
+          src={src}
+          loading="lazy"
+          alt={alt}
+          onLoad={() => setLoaded(true)}
+          onError={() => setFailed(true)}
+        />
       ) : null}
       {(!src || failed || !loaded) && (
         <div className="absolute inset-0 flex items-center justify-center bg-[linear-gradient(135deg,hsl(var(--bg-muted)),hsl(var(--border-subtle)))] text-fg-tertiary">
-          {failed || !src ? <ImageOff className="h-6 w-6" /> : <ImageIcon className="h-6 w-6 animate-breathe" />}
+          {failed || !src ? (
+            isVideo ? <Film className="h-6 w-6" /> : <ImageOff className="h-6 w-6" />
+          ) : (
+            <ImageIcon className="h-6 w-6 animate-breathe" />
+          )}
         </div>
       )}
       {src && !failed ? (

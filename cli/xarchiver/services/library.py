@@ -17,6 +17,8 @@ from xarchiver.row_models import DownloadAttemptRow, RowModel, TweetDetailRow, T
 from xarchiver.search import count_search_media, list_author_options, search_media, search_post_feed
 from xarchiver.status import get_media_count, get_media_status_counts, get_status_counts
 
+VIDEO_EXTENSIONS = {".mp4", ".mov", ".m4v", ".webm"}
+
 
 def get_summary(settings: Settings) -> dict[str, object]:
     ensure_archive_dirs(settings.archive_dir)
@@ -293,7 +295,32 @@ def attach_media_url(row: dict[str, object] | RowModel, archive_dir: Path) -> di
     relative_path = archive_relative_path(local_path, archive_dir)
     values["media_relative_path"] = relative_path
     values["media_url"] = f"/api/v1/media-file/{relative_path}" if relative_path else None
+    preview_relative_path = media_preview_relative_path(values, archive_dir, relative_path)
+    values["preview_relative_path"] = preview_relative_path or None
+    values["preview_url"] = versioned_media_url(archive_dir, preview_relative_path) if preview_relative_path else None
     return values
+
+
+def media_preview_relative_path(values: dict[str, object], archive_dir: Path, relative_path: str) -> str:
+    if not relative_path:
+        return ""
+    is_video = values.get("media_type") == "video" or Path(relative_path).suffix.lower() in VIDEO_EXTENSIONS
+    if not is_video:
+        return relative_path
+    media_path = archive_dir / relative_path
+    preview_path = media_path.with_name(f"{media_path.stem}.preview.jpg")
+    if not preview_path.is_file():
+        return ""
+    return archive_relative_path(preview_path, archive_dir)
+
+
+def versioned_media_url(archive_dir: Path, relative_path: str) -> str:
+    url = f"/api/v1/media-file/{relative_path}"
+    try:
+        stat = (archive_dir / relative_path).stat()
+    except OSError:
+        return url
+    return f"{url}?v={stat.st_mtime_ns:x}-{stat.st_size:x}"
 
 
 def archive_relative_path(value: object, archive_dir: Path) -> str:

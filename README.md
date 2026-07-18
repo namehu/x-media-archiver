@@ -144,7 +144,7 @@ docker-compose run --rm xarchiver backfill-media --full
 docker-compose run --rm xarchiver verify --full
 ```
 
-这些维护命令会遍历归档文件，对大库可能产生显著磁盘 I/O。CSV export 仅读取数据库快照，不会进行媒体文件 hash 扫描。
+这些维护命令会遍历归档文件，对大库可能产生显著磁盘 I/O。`backfill-media` 还会为缺失预览图的视频生成最大宽度 640px 的轻量 JPEG；CSV export 仅读取数据库快照，不会进行媒体文件 hash 扫描。
 
 ## 本地 API 与 WebUI
 
@@ -248,7 +248,7 @@ Archive Queue
 Sources
 ```
 
-Archive Queue 支持粘贴 URL 或选择本地 TXT/JSONL 文件（浏览器侧解析后提交）来创建结构化的数据库任务。Operations 可触发 requeue、recover-interrupted 与数据库快照 export。完整 backfill 与完整 verify 被隔离在 Maintenance 下，并要求显式确认磁盘扫描。媒体库和重复媒体页均支持显式勾选并批量永久删除最多 200 个媒体项；重复媒体页按完整 SHA-256 组分页，可为每组保留建议项并选择其余副本。删除会清理主文件、对应元数据和标准缩略图，保留 Tweet、来源和下载历史，将 Tweet 标记为 `missing`，并写入幂等删除审计。
+Archive Queue 支持粘贴 URL 或选择本地 TXT/JSONL 文件（浏览器侧解析后提交）来创建结构化的数据库任务。Operations 可触发 requeue、recover-interrupted 与数据库快照 export。完整 backfill 与完整 verify 被隔离在 Maintenance 下，并要求显式确认磁盘扫描。媒体库和重复媒体页均支持显式勾选并批量永久删除最多 200 个媒体项；重复媒体页按完整 SHA-256 组分页，可为每组保留建议项并选择其余副本。删除会清理主文件、对应元数据、标准缩略图和派生视频预览图，保留 Tweet、来源和下载历史，将 Tweet 标记为 `missing`，并写入幂等删除审计。
 
 Sources 记录长期存在的 X/Twitter 来源，例如个人页、媒体页、likes、bookmarks、搜索页或手工集合。一个 source 可向同一 Archive Queue 提交发现的 tweet URL，同时保留 source-to-tweet 的可追溯关系。当前实现提供了可恢复的 source 模型、手动 discovered-URL 提交，以及用于 profile timeline 和用户媒体页的小批量 `gallery-dl` 扫描。source 扫描只记录 discovered tweets，不会自动提交到下载队列。准备下载受控批次时，需使用显式的 submit 动作。每次受控扫描会在 `archive_sources.cursor_state` 中记录其逻辑 batch window、重复/新增数量以及 cursor 诊断信息。
 
@@ -265,7 +265,7 @@ Sources 列表支持按最近更新或创建时间正/倒序排序；置顶来�
 docker-compose run --rm xarchiver download --engine gallery-dl --dry-run
 ```
 
-从 `archive/media` 下已有文件重建 `media_assets`（显式全盘维护）：
+从 `archive/media` 下已有文件重建 `media_assets`，并补齐历史视频的 `.preview.jpg`（显式全盘维护）：
 
 ```bash
 docker-compose run --rm xarchiver backfill-media --full

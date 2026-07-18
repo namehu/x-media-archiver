@@ -1,7 +1,11 @@
 from __future__ import annotations
 
 import hashlib
+import logging
+import os
 import shutil
+import subprocess
+import uuid
 from dataclasses import dataclass
 from datetime import UTC, datetime
 from pathlib import Path
@@ -16,6 +20,12 @@ from xarchiver.row_models import IdRow
 
 MEDIA_EXTENSIONS = {".jpg", ".jpeg", ".png", ".gif", ".webp", ".mp4", ".mov", ".m4v"}
 VIDEO_EXTENSIONS = {".mp4", ".mov", ".m4v"}
+VIDEO_PREVIEW_SUFFIX = ".preview.jpg"
+VIDEO_THUMBNAIL_SUFFIX = ".thumb.jpg"
+VIDEO_PREVIEW_MAX_WIDTH = 640
+VIDEO_PREVIEW_TIMEOUT_SECONDS = 30
+
+logger = logging.getLogger(__name__)
 
 
 @dataclass(frozen=True)
@@ -47,7 +57,16 @@ def backfill_media_assets(
 ) -> dict[str, object]:
     media_dir = archive_dir / "media"
     if not media_dir.exists():
-        return {"scanned": 0, "upserted": 0, "skipped": 0, "media_ids": [], "tweet_ids": []}
+        return {
+            "scanned": 0,
+            "upserted": 0,
+            "skipped": 0,
+            "media_ids": [],
+            "tweet_ids": [],
+            "preview_generated": 0,
+            "preview_existing": 0,
+            "preview_failed": 0,
+        }
 
     assets: list[MediaAsset] = []
     skipped = 0
@@ -61,13 +80,78 @@ def backfill_media_assets(
     media_ids = upsert_media_assets(assets)
     update_tweets_from_assets(assets)
     mark_tweets_with_assets_downloaded([asset.tweet_id for asset in assets])
+    preview_result = ensure_video_previews(assets)
     return {
         "scanned": len(assets) + skipped,
         "upserted": len(assets),
         "skipped": skipped,
         "media_ids": media_ids,
         "tweet_ids": list(dict.fromkeys(asset.tweet_id for asset in assets)),
+        **preview_result,
     }
+
+
+def ensure_video_previews(assets: list[MediaAsset]) -> dict[str, int]:
+    result = {
+        "preview_generated": 0,
+        "preview_existing": 0,
+        "preview_failed": 0,
+    }
+    for asset in assets:
+        if asset.media_type != "video" and asset.local_path.suffix.lower() not in VIDEO_EXTENSIONS:
+            continue
+        status = ensure_video_preview(asset.local_path)
+        result[f"preview_{status}"] += 1
+    return result
+
+
+def ensure_video_preview(media_path: Path) -> str:
+    preview_path = video_preview_path(media_path)
+    thumbnail_path = media_path.with_name(f"{media_path.stem}{VIDEO_THUMBNAIL_SUFFIX}")
+    source_path = thumbnail_path if thumbnail_path.exists() else media_path
+    if preview_path.exists() and preview_path.stat().st_mtime_ns >= source_path.stat().st_mtime_ns:
+        return "existing"
+
+    attempts = [None] if source_path == thumbnail_path else ["0.5", None]
+    for seek in attempts:
+        temp_path = preview_path.with_name(f".{preview_path.stem}.{uuid.uuid4().hex}.tmp.jpg")
+        try:
+            command = ["ffmpeg", "-nostdin", "-hide_banner", "-loglevel", "error", "-y"]
+            if seek is not None:
+                command.extend(["-ss", seek])
+            command.extend(
+                [
+                    "-i",
+                    str(source_path),
+                    "-frames:v",
+                    "1",
+                    "-vf",
+                    f"scale=min({VIDEO_PREVIEW_MAX_WIDTH}\\,iw):-2",
+                    "-q:v",
+                    "4",
+                    str(temp_path),
+                ]
+            )
+            completed = subprocess.run(
+                command,
+                check=False,
+                capture_output=True,
+                timeout=VIDEO_PREVIEW_TIMEOUT_SECONDS,
+            )
+            if completed.returncode == 0 and temp_path.exists() and temp_path.stat().st_size > 0:
+                os.replace(temp_path, preview_path)
+                return "generated"
+        except (OSError, subprocess.SubprocessError):
+            logger.warning("Unable to generate video preview for %s", media_path, exc_info=True)
+        finally:
+            temp_path.unlink(missing_ok=True)
+
+    logger.warning("Video preview generation failed for %s", media_path)
+    return "failed"
+
+
+def video_preview_path(media_path: Path) -> Path:
+    return media_path.with_name(f"{media_path.stem}{VIDEO_PREVIEW_SUFFIX}")
 
 
 def iter_metadata_paths(media_dir: Path, tweet_ids: list[str] | None = None) -> list[Path]:

@@ -1773,6 +1773,10 @@ export interface components {
             media_relative_path: string;
             /** Media Url */
             media_url?: string | null;
+            /** Preview Relative Path */
+            preview_relative_path?: string | null;
+            /** Preview Url */
+            preview_url?: string | null;
         } & {
             [key: string]: unknown;
         };
@@ -1846,6 +1850,10 @@ export interface components {
             media_relative_path: string;
             /** Media Url */
             media_url?: string | null;
+            /** Preview Relative Path */
+            preview_relative_path?: string | null;
+            /** Preview Url */
+            preview_url?: string | null;
         } & {
             [key: string]: unknown;
         };
@@ -1969,6 +1977,10 @@ export interface components {
             media_relative_path: string;
             /** Media Url */
             media_url?: string | null;
+            /** Preview Relative Path */
+            preview_relative_path?: string | null;
+            /** Preview Url */
+            preview_url?: string | null;
         } & {
             [key: string]: unknown;
         };

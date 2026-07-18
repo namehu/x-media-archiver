@@ -59,7 +59,11 @@ export function PostPreviewDialog({
                 <div className="flex size-full items-center justify-center p-3 sm:p-8">
                   {item.media_url ? (
                     item.media_type === "video" ? (
-                      <PreviewVideo src={item.media_url} active={index === activeIndex} />
+                      <PreviewVideo
+                        src={item.media_url}
+                        previewUrl={item.preview_url}
+                        active={index === activeIndex}
+                      />
                     ) : (
                       <img src={item.media_url} alt="" className="max-h-full max-w-full select-none object-contain" />
                     )
@@ -112,15 +116,38 @@ function avatarInitials(value: string) {
   return Array.from(value.trim()).slice(0, 2).join("").toUpperCase() || "?";
 }
 
-function PreviewVideo({ src, active }: { src: string; active: boolean }) {
+function PreviewVideo({
+  src,
+  previewUrl,
+  active,
+}: {
+  src: string;
+  previewUrl?: string | null;
+  active: boolean;
+}) {
   const videoRef = useRef<HTMLVideoElement>(null);
 
   useEffect(() => {
     const video = videoRef.current;
     if (!video) return;
-    if (active) void video.play().catch(() => undefined);
-    else video.pause();
-  }, [active]);
+    if (active) {
+      void video.play().catch(() => undefined);
+      return;
+    }
+    video.pause();
+    video.removeAttribute("src");
+    video.load();
+  }, [active, src]);
 
-  return <video ref={videoRef} src={src} controls playsInline className="max-h-full max-w-full" />;
+  return (
+    <video
+      ref={videoRef}
+      src={active ? src : undefined}
+      poster={previewUrl || undefined}
+      preload="none"
+      controls={active}
+      playsInline
+      className="max-h-full max-w-full"
+    />
+  );
 }

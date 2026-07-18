@@ -249,11 +249,12 @@ def _collect_delete_files(archive_dir: Path, assets: list[dict[str, object]]) ->
             if path is not None:
                 files[str(path)] = DeleteFile(path, required=True)
         if local_path is not None:
-            thumbnail = local_path.with_name(f"{local_path.stem}.thumb.jpg")
-            safe_thumbnail = _safe_media_path(archive_dir, thumbnail)
-            assert safe_thumbnail is not None
-            if safe_thumbnail.exists():
-                files[str(safe_thumbnail)] = DeleteFile(safe_thumbnail, required=False)
+            for suffix in (".thumb.jpg", ".preview.jpg"):
+                derived_file = local_path.with_name(f"{local_path.stem}{suffix}")
+                safe_derived_file = _safe_media_path(archive_dir, derived_file)
+                assert safe_derived_file is not None
+                if safe_derived_file.exists():
+                    files[str(safe_derived_file)] = DeleteFile(safe_derived_file, required=False)
     return list(files.values())
 
 

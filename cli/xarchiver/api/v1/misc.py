@@ -145,6 +145,8 @@ def media_file(relative_path: str, range_header: str | None = Header(default=Non
         "Accept-Ranges": "bytes",
         "Content-Length": str(total_size),
     }
+    if target.name.endswith(".preview.jpg"):
+        headers["Cache-Control"] = "private, max-age=31536000, immutable"
 
     if range_header is None:
         return StreamingResponse(_iter_file_bytes(target), media_type=media_type, headers=headers)

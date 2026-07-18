@@ -1,14 +1,20 @@
 import tempfile
 import unittest
+from os import utime
 from pathlib import Path
+from types import SimpleNamespace
+from unittest.mock import patch
 
 import orjson
 
 from xarchiver.media import (
     asset_from_gallery_dl_metadata,
     asset_from_yt_dlp_metadata,
+    ensure_video_preview,
+    ensure_video_previews,
     iter_metadata_paths,
     safe_path_segment,
+    video_preview_path,
 )
 
 
@@ -97,6 +103,100 @@ class MediaMetadataTests(unittest.TestCase):
     def test_safe_path_segment_removes_path_unsafe_characters(self) -> None:
         self.assertEqual(safe_path_segment("user/name:with*chars"), "user_name_with_chars")
         self.assertEqual(safe_path_segment(""), "_unknown")
+
+    def test_video_preview_prefers_existing_thumbnail(self) -> None:
+        with tempfile.TemporaryDirectory() as tmp:
+            media_path = Path(tmp) / "video.mp4"
+            thumbnail_path = Path(tmp) / "video.thumb.jpg"
+            media_path.write_bytes(b"video")
+            thumbnail_path.write_bytes(b"thumbnail")
+
+            def create_preview(command: list[str], **_kwargs: object) -> SimpleNamespace:
+                Path(command[-1]).write_bytes(b"preview")
+                return SimpleNamespace(returncode=0)
+
+            with patch("xarchiver.media.subprocess.run", side_effect=create_preview) as run:
+                status = ensure_video_preview(media_path)
+
+            self.assertEqual(status, "generated")
+            self.assertEqual(video_preview_path(media_path).read_bytes(), b"preview")
+            self.assertIn(str(thumbnail_path), run.call_args.args[0])
+            self.assertNotIn("-ss", run.call_args.args[0])
+
+    def test_video_preview_retries_from_first_frame(self) -> None:
+        with tempfile.TemporaryDirectory() as tmp:
+            media_path = Path(tmp) / "short.mp4"
+            media_path.write_bytes(b"video")
+            calls = 0
+
+            def create_on_second_attempt(command: list[str], **_kwargs: object) -> SimpleNamespace:
+                nonlocal calls
+                calls += 1
+                if calls == 2:
+                    Path(command[-1]).write_bytes(b"preview")
+                    return SimpleNamespace(returncode=0)
+                return SimpleNamespace(returncode=1)
+
+            with patch("xarchiver.media.subprocess.run", side_effect=create_on_second_attempt) as run:
+                status = ensure_video_preview(media_path)
+
+            self.assertEqual(status, "generated")
+            self.assertEqual(run.call_count, 2)
+            self.assertIn("-ss", run.call_args_list[0].args[0])
+            self.assertNotIn("-ss", run.call_args_list[1].args[0])
+
+    def test_video_preview_is_idempotent_until_source_changes(self) -> None:
+        with tempfile.TemporaryDirectory() as tmp:
+            media_path = Path(tmp) / "video.mp4"
+            preview_path = video_preview_path(media_path)
+            media_path.write_bytes(b"video")
+            preview_path.write_bytes(b"preview")
+            utime(media_path, ns=(1, 1))
+            utime(preview_path, ns=(2, 2))
+
+            with patch("xarchiver.media.subprocess.run") as run:
+                status = ensure_video_preview(media_path)
+
+            self.assertEqual(status, "existing")
+            run.assert_not_called()
+
+            utime(media_path, ns=(3, 3))
+
+            def rebuild_preview(command: list[str], **_kwargs: object) -> SimpleNamespace:
+                Path(command[-1]).write_bytes(b"updated-preview")
+                return SimpleNamespace(returncode=0)
+
+            with patch("xarchiver.media.subprocess.run", side_effect=rebuild_preview):
+                status = ensure_video_preview(media_path)
+
+            self.assertEqual(status, "generated")
+            self.assertEqual(preview_path.read_bytes(), b"updated-preview")
+
+    def test_video_preview_batch_continues_after_individual_failure(self) -> None:
+        assets = [
+            SimpleNamespace(media_type="video", local_path=Path("first.mp4")),
+            SimpleNamespace(media_type="video", local_path=Path("second.mp4")),
+        ]
+        with patch("xarchiver.media.ensure_video_preview", side_effect=["failed", "generated"]):
+            result = ensure_video_previews(assets)
+
+        self.assertEqual(result["preview_failed"], 1)
+        self.assertEqual(result["preview_generated"], 1)
+        self.assertEqual(result["preview_existing"], 0)
+
+    def test_video_preview_failure_does_not_leave_temporary_file(self) -> None:
+        with tempfile.TemporaryDirectory() as tmp:
+            media_path = Path(tmp) / "video.mp4"
+            media_path.write_bytes(b"video")
+            with patch(
+                "xarchiver.media.subprocess.run",
+                return_value=SimpleNamespace(returncode=1),
+            ):
+                status = ensure_video_preview(media_path)
+
+            self.assertEqual(status, "failed")
+            self.assertFalse(video_preview_path(media_path).exists())
+            self.assertEqual(list(Path(tmp).glob("*.tmp.jpg")), [])
 
 
 if __name__ == "__main__":

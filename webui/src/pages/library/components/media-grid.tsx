@@ -192,7 +192,7 @@ function MediaCard({
         />
       </div>
       <MediaThumbnail
-        src={row.media_url}
+        src={row.preview_url}
         mediaType={row.media_type}
         alt={row.tweet_text || title}
         className="rounded-none"
