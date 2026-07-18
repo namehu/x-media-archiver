@@ -26,6 +26,7 @@ const navGroups = [
   {
     labelKey: "数据",
     items: [
+      { to: "/feed", label: "帖子浏览" },
       { to: "/library", label: "媒体库" },
       { to: "/failures", label: "失败项" },
       { to: "/duplicates", label: "重复媒体" },
@@ -95,6 +96,12 @@ export function AppLayout() {
         label: "仪表盘",
         description: "/",
         onSelect: () => navigate("/"),
+      },
+      {
+        id: "feed",
+        label: "帖子浏览",
+        description: "/feed",
+        onSelect: () => navigate("/feed"),
       },
       {
         id: "library",

@@ -158,6 +158,23 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/api/v1/library/posts": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** Posts */
+        get: operations["posts_api_v1_library_posts_get"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/api/v1/library/tweets/{tweet_id}": {
         parameters: {
             query?: never;
@@ -1924,6 +1941,73 @@ export interface components {
         } & {
             [key: string]: unknown;
         };
+        /** PostFeedMediaResponse */
+        PostFeedMediaResponse: {
+            /** Id */
+            id: number;
+            /** Tweet Id */
+            tweet_id: string;
+            /** Media Index */
+            media_index?: number | null;
+            /** Media Type */
+            media_type?: string | null;
+            /** Media Status */
+            media_status: string;
+            /** Source Engine */
+            source_engine?: string | null;
+            /** Local Path */
+            local_path?: string | null;
+            /** File Size */
+            file_size?: number | null;
+            /** Width */
+            width?: number | null;
+            /** Height */
+            height?: number | null;
+            /** Duration Ms */
+            duration_ms?: number | null;
+            /** Media Relative Path */
+            media_relative_path: string;
+            /** Media Url */
+            media_url?: string | null;
+        } & {
+            [key: string]: unknown;
+        };
+        /** PostFeedPageResponse */
+        PostFeedPageResponse: {
+            /** Count */
+            count: number;
+            /** Total Count */
+            total_count: number;
+            /** Limit */
+            limit: number;
+            /** Offset */
+            offset: number;
+            /** Rows */
+            rows: components["schemas"]["PostFeedRowResponse"][];
+        } & {
+            [key: string]: unknown;
+        };
+        /** PostFeedRowResponse */
+        PostFeedRowResponse: {
+            /** Tweet Id */
+            tweet_id: string;
+            /** Tweet Url */
+            tweet_url: string;
+            /** Author Username */
+            author_username?: string | null;
+            /** Author Display Name */
+            author_display_name?: string | null;
+            /** Published At */
+            published_at?: string | null;
+            /** Tweet Text */
+            tweet_text: string;
+            /** Tweet Status */
+            tweet_status: string;
+            /** Media */
+            media: components["schemas"]["PostFeedMediaResponse"][];
+        } & {
+            [key: string]: unknown;
+        };
         /** QueueHealthResponse */
         QueueHealthResponse: {
             /** Pending Items */
@@ -2762,6 +2846,43 @@ export interface operations {
                 };
                 content: {
                     "application/json": components["schemas"]["AuthorOptionsResponse"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    posts_api_v1_library_posts_get: {
+        parameters: {
+            query?: {
+                source_id?: number | null;
+                source_type?: string | null;
+                author_username?: string | null;
+                text?: string | null;
+                media_type?: string | null;
+                limit?: number;
+                offset?: number;
+            };
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["PostFeedPageResponse"];
                 };
             };
             /** @description Validation Error */

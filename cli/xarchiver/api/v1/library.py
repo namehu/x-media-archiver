@@ -9,6 +9,7 @@ from xarchiver.api.schemas import (
     FailurePageResponse,
     MediaDeleteRequest,
     MediaPageResponse,
+    PostFeedPageResponse,
     SummaryResponse,
     TweetDetailResponse,
     WriteActionResponse,
@@ -22,6 +23,7 @@ from xarchiver.services.library import (
     get_tweet_detail,
     list_duplicates_page,
     list_media_page,
+    list_posts_page,
 )
 from xarchiver.services.media_deletion import delete_media_assets
 
@@ -63,6 +65,31 @@ def authors(
     limit: int = Query(20, ge=1, le=50),
 ) -> dict[str, object]:
     return get_author_options(query=q, limit=limit)
+
+
+@router.get("/posts", response_model=PostFeedPageResponse)
+def posts(
+    source_id: int | None = Query(None, ge=1),
+    source_type: str | None = Query(
+        None,
+        pattern="^(profile|user_media|likes|bookmarks|search|manual)$",
+    ),
+    author_username: str | None = Query(None, max_length=100),
+    text: str | None = Query(None, max_length=500),
+    media_type: str | None = Query(None, pattern="^(photo|video)$"),
+    limit: int = Query(20, ge=1, le=50),
+    offset: int = Query(0, ge=0),
+) -> dict[str, object]:
+    return list_posts_page(
+        get_settings(),
+        source_id=source_id,
+        source_type=source_type,
+        author_username=author_username,
+        text=text,
+        media_type=media_type,
+        limit=limit,
+        offset=offset,
+    )
 
 
 @router.delete("/media", response_model=WriteActionResponse)

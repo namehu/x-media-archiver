@@ -4,7 +4,14 @@ from datetime import UTC, datetime
 from pydantic import ValidationError
 
 from xarchiver.row_models import SearchMediaRow
-from xarchiver.search import build_author_options_query, build_search_query, compact_text
+from xarchiver.search import (
+    build_author_options_query,
+    build_post_feed_count_query,
+    build_post_feed_media_query,
+    build_post_feed_query,
+    build_search_query,
+    compact_text,
+)
 
 
 class SearchUnitTests(unittest.TestCase):
@@ -70,6 +77,41 @@ class SearchUnitTests(unittest.TestCase):
             params,
             {"author_query_pattern": "%physics%", "limit": 15},
         )
+
+    def test_build_post_feed_query_filters_at_tweet_level(self) -> None:
+        sql, params = build_post_feed_query(
+            source_id=7,
+            source_type="likes",
+            author_username="@Alice",
+            text="chaos",
+            media_type="video",
+            limit=20,
+            offset=40,
+        )
+        normalized_sql = sql.lower()
+
+        self.assertIn("exists", normalized_sql)
+        self.assertIn("source_discovered_tweets", normalized_sql)
+        self.assertIn("archive_sources", normalized_sql)
+        self.assertIn("order by tweets.published_at desc nulls last", normalized_sql)
+        self.assertEqual(params["post_source_id"], 7)
+        self.assertEqual(params["post_source_type"], "likes")
+        self.assertEqual(params["post_author_username"], "alice")
+        self.assertEqual(params["post_text_pattern"], "%chaos%")
+        self.assertEqual(params["post_media_type"], "video")
+        self.assertEqual(params["limit"], 20)
+        self.assertEqual(params["offset"], 40)
+
+    def test_post_feed_count_and_media_queries_use_verified_media(self) -> None:
+        count_sql, count_params = build_post_feed_count_query()
+        media_sql, media_params = build_post_feed_media_query(["one", "two"])
+
+        self.assertNotIn(" limit ", count_sql.lower())
+        self.assertEqual(count_params["post_media_status"], "verified")
+        self.assertIn("media_assets.tweet_id in", media_sql.lower())
+        self.assertEqual(media_params["feed_media_status"], "verified")
+        self.assertIn("one", media_params.values())
+        self.assertIn("two", media_params.values())
 
     def test_compact_text_normalizes_whitespace_and_truncates(self) -> None:
         self.assertEqual(compact_text("a\n\nb\tc", 20), "a b c")

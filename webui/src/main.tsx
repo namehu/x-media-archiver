@@ -33,6 +33,9 @@ const ArchiveQueuePage = lazy(() =>
 const LibraryPage = lazy(() =>
   import("./pages/library").then((module) => ({ default: module.LibraryPage })),
 );
+const FeedPage = lazy(() =>
+  import("./pages/feed").then((module) => ({ default: module.FeedPage })),
+);
 const OperationsPage = lazy(() =>
   import("./pages/operations").then((module) => ({
     default: module.OperationsPage,
@@ -57,6 +60,7 @@ const router = createBrowserRouter([
     element: <AppLayout />,
     children: [
       { index: true, element: route(<DashboardPage />) },
+      { path: "feed", element: route(<FeedPage />) },
       { path: "library", element: route(<LibraryPage />) },
       { path: "tweets/:tweetId", element: route(<TweetDetailPage />) },
       { path: "failures", element: route(<FailuresPage />) },

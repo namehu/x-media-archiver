@@ -55,6 +55,30 @@ class AuthorOptionRow(RowModel):
     media_count: int
 
 
+class PostFeedRow(RowModel):
+    tweet_id: str
+    tweet_url: str
+    author_username: str | None = None
+    author_display_name: str | None = None
+    published_at: datetime | None = None
+    tweet_text: str
+    tweet_status: str
+
+
+class PostFeedMediaRow(RowModel):
+    id: int
+    tweet_id: str
+    media_index: int | None = None
+    media_type: str | None = None
+    media_status: str
+    source_engine: str | None = None
+    local_path: str | None = None
+    file_size: int | None = None
+    width: int | None = None
+    height: int | None = None
+    duration_ms: int | None = None
+
+
 class TweetDetailRow(RowModel):
     tweet_id: str
     tweet_url: str

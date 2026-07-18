@@ -14,7 +14,7 @@ from xarchiver.exporter import (
     fetch_export_rows,
 )
 from xarchiver.row_models import DownloadAttemptRow, RowModel, TweetDetailRow, TweetMediaAssetRow
-from xarchiver.search import count_search_media, list_author_options, search_media
+from xarchiver.search import count_search_media, list_author_options, search_media, search_post_feed
 from xarchiver.status import get_media_count, get_media_status_counts, get_status_counts
 
 
@@ -104,6 +104,46 @@ def list_media_page(
 def get_author_options(query: str | None = None, limit: int = 20) -> dict[str, object]:
     rows = [dict(row) for row in list_author_options(query=query, limit=limit)]
     return {"rows": rows, "count": len(rows)}
+
+
+def list_posts_page(
+    settings: Settings,
+    source_id: int | None = None,
+    source_type: str | None = None,
+    author_username: str | None = None,
+    text: str | None = None,
+    media_type: str | None = None,
+    limit: int = 20,
+    offset: int = 0,
+) -> dict[str, object]:
+    posts, media_rows, total_count = search_post_feed(
+        source_id=source_id,
+        source_type=source_type,
+        author_username=author_username,
+        text=text,
+        media_type=media_type,
+        limit=limit,
+        offset=offset,
+    )
+    media_by_tweet: dict[str, list[dict[str, object]]] = {}
+    for media_row in media_rows:
+        media_by_tweet.setdefault(media_row.tweet_id, []).append(
+            attach_media_url(media_row, settings.archive_dir)
+        )
+    rows = [
+        {
+            **dict(post),
+            "media": media_by_tweet.get(post.tweet_id, []),
+        }
+        for post in posts
+    ]
+    return {
+        "rows": rows,
+        "count": len(rows),
+        "total_count": total_count,
+        "limit": limit,
+        "offset": offset,
+    }
 
 
 def get_tweet_detail(settings: Settings, tweet_id: str) -> dict[str, object] | None:

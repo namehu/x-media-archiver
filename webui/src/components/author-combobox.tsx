@@ -1,8 +1,8 @@
 import { useEffect, useState } from "react";
 import { useQuery } from "@tanstack/react-query";
 import { Check, ChevronsUpDown, LoaderCircle, X } from "lucide-react";
-import { apiGet, mediaQueryString, type AuthorOption, type AuthorOptionsResponse } from "../../../lib/api";
-import { Button } from "../../../components/ui/button";
+import { apiGet, mediaQueryString, type AuthorOption, type AuthorOptionsResponse } from "@/lib/api";
+import { Button } from "@/components/ui/button";
 import {
   Command,
   CommandEmpty,
@@ -10,9 +10,9 @@ import {
   CommandInput,
   CommandItem,
   CommandList,
-} from "../../../components/ui/command";
-import { Popover, PopoverContent, PopoverTrigger } from "../../../components/ui/popover";
-import { cn } from "../../../lib/utils";
+} from "@/components/ui/command";
+import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover";
+import { cn } from "@/lib/utils";
 
 type AuthorComboboxProps = {
   id?: string;
@@ -32,9 +32,7 @@ export function AuthorCombobox({ id, value, onChange }: AuthorComboboxProps) {
   }, [search]);
 
   useEffect(() => {
-    if (!value || selectedOption?.author_username !== value) {
-      setSelectedOption(null);
-    }
+    if (!value || selectedOption?.author_username !== value) setSelectedOption(null);
   }, [selectedOption?.author_username, value]);
 
   const authorsQuery = useQuery({
@@ -83,11 +81,7 @@ export function AuthorCombobox({ id, value, onChange }: AuthorComboboxProps) {
         </PopoverTrigger>
         <PopoverContent align="start" className="w-[var(--radix-popover-trigger-width)] p-0">
           <Command shouldFilter={false}>
-            <CommandInput
-              value={search}
-              onValueChange={setSearch}
-              placeholder="搜索用户名或显示名"
-            />
+            <CommandInput value={search} onValueChange={setSearch} placeholder="搜索用户名或显示名" />
             <CommandList>
               <CommandEmpty>
                 {isSearchPending || authorsQuery.isFetching ? (

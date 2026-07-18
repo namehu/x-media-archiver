@@ -138,6 +138,7 @@ function invalidateForEvent(queryClient: QueryClient, event: ServerEvent) {
     void queryClient.invalidateQueries({ queryKey: ["summary"] });
     void queryClient.invalidateQueries({ queryKey: ["health-detail"] });
     void queryClient.invalidateQueries({ queryKey: ["media"] });
+    void queryClient.invalidateQueries({ queryKey: ["posts"] });
     void queryClient.invalidateQueries({ queryKey: ["failures"] });
     void queryClient.invalidateQueries({ queryKey: ["duplicates"] });
     return;
@@ -166,6 +167,7 @@ function invalidateForEvent(queryClient: QueryClient, event: ServerEvent) {
 
   if (topic === "library" || eventType.startsWith("library.")) {
     void queryClient.invalidateQueries({ queryKey: ["media"] });
+    void queryClient.invalidateQueries({ queryKey: ["posts"] });
     void queryClient.invalidateQueries({ queryKey: ["tweet"] });
     void queryClient.invalidateQueries({ queryKey: ["summary"] });
     void queryClient.invalidateQueries({ queryKey: ["failures"] });

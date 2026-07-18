@@ -179,6 +179,7 @@ GET /health
 GET /api/v1/library/summary
 GET /api/v1/library/media
 GET /api/v1/library/authors
+GET /api/v1/library/posts
 DELETE /api/v1/library/media
 GET /api/v1/library/tweets/{tweet_id}
 GET /api/v1/library/failures

@@ -45,6 +45,35 @@ export type AuthorOptionsResponse = {
   count: number;
 };
 
+export type PostFeedMedia = {
+  id: number;
+  tweet_id: string;
+  media_index?: number | null;
+  media_type?: string | null;
+  media_status: string;
+  source_engine?: string | null;
+  local_path?: string | null;
+  media_relative_path: string;
+  media_url?: string | null;
+  file_size?: number | null;
+  width?: number | null;
+  height?: number | null;
+  duration_ms?: number | null;
+};
+
+export type PostFeedRow = {
+  tweet_id: string;
+  tweet_url: string;
+  author_username?: string | null;
+  author_display_name?: string | null;
+  published_at?: string | null;
+  tweet_text: string;
+  tweet_status: string;
+  media: PostFeedMedia[];
+};
+
+export type PostFeedPageResponse = PageResponse<PostFeedRow>;
+
 export type FailureRow = {
   tweet_id: string;
   tweet_url?: string | null;

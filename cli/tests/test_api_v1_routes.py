@@ -14,6 +14,7 @@ from xarchiver.api.schemas import (
     BackfillRequest,
     DuplicatesPageResponse,
     MediaDeleteRequest,
+    PostFeedPageResponse,
     SourceCreateRequest,
     SourceDiscoveryPageResponse,
     SourcePinRequest,
@@ -54,6 +55,7 @@ class V1RouterSmokeTests(unittest.TestCase):
             "/api/v1/library/summary",
             "/api/v1/library/media",
             "/api/v1/library/authors",
+            "/api/v1/library/posts",
             "/api/v1/library/tweets/{tweet_id}",
             "/api/v1/library/failures",
             "/api/v1/library/duplicates",
@@ -134,6 +136,62 @@ class V1RouterSmokeTests(unittest.TestCase):
         payload = AuthorOptionsResponse.model_validate(result).model_dump(mode="json")
         self.assertEqual(payload["rows"][0]["author_username"], "alice")
         mock.assert_called_once_with(query="@ali", limit=10)
+
+    def test_v1_library_posts_delegates_grouped_filters(self):
+        response = {
+            "rows": [
+                {
+                    "tweet_id": "123",
+                    "tweet_url": "https://x.com/alice/status/123",
+                    "author_username": "alice",
+                    "author_display_name": "Alice",
+                    "published_at": datetime(2026, 1, 1, tzinfo=UTC),
+                    "tweet_text": "hello",
+                    "tweet_status": "verified",
+                    "media": [
+                        {
+                            "id": 9,
+                            "tweet_id": "123",
+                            "media_index": 1,
+                            "media_type": "photo",
+                            "media_status": "verified",
+                            "media_relative_path": "media/alice/123/photo.jpg",
+                            "media_url": "/api/v1/media-file/media/alice/123/photo.jpg",
+                        }
+                    ],
+                }
+            ],
+            "count": 1,
+            "total_count": 1,
+            "limit": 20,
+            "offset": 0,
+        }
+        with (
+            patch("xarchiver.api.v1.library.get_settings", return_value=object()),
+            patch("xarchiver.api.v1.library.list_posts_page", return_value=response) as mock,
+        ):
+            result = self.get_paths["/api/v1/library/posts"](
+                source_id=4,
+                source_type=None,
+                author_username="alice",
+                text="hello",
+                media_type="photo",
+                limit=20,
+                offset=0,
+            )
+
+        payload = PostFeedPageResponse.model_validate(result).model_dump(mode="json")
+        self.assertEqual(payload["rows"][0]["media"][0]["id"], 9)
+        mock.assert_called_once_with(
+            ANY,
+            source_id=4,
+            source_type=None,
+            author_username="alice",
+            text="hello",
+            media_type="photo",
+            limit=20,
+            offset=0,
+        )
 
     def test_v1_duplicates_response_uses_complete_groups_with_media_ids(self):
         page = {
@@ -341,6 +399,7 @@ class V1RouterSmokeTests(unittest.TestCase):
         self.assertIn("/api/v1/sources/{source_id}/scan-sessions", paths)
         self.assertIn("/api/v1/library/media", paths)
         self.assertIn("/api/v1/library/authors", paths)
+        self.assertIn("/api/v1/library/posts", paths)
         self.assertIn("/api/v1/actions/verify", paths)
         self.assertIn("/api/v1/health/detail", paths)
         self.assertIn("/api/v1/settings/cookies", paths)

@@ -6,7 +6,7 @@ import { Card, CardContent, CardHeader, CardTitle } from "../../../components/ui
 import { Field, FieldGroup, FieldLabel } from "../../../components/ui/field";
 import { Input } from "../../../components/ui/input";
 import { Separator } from "../../../components/ui/separator";
-import { AuthorCombobox } from "./author-combobox";
+import { AuthorCombobox } from "../../../components/author-combobox";
 
 export type LibraryFilters = {
   author: string;

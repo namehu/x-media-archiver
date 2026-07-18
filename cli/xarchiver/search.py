@@ -4,6 +4,7 @@ from sqlalchemy import (
     Integer,
     and_,
     bindparam,
+    exists,
     func,
     literal_column,
     or_,
@@ -12,9 +13,9 @@ from sqlalchemy import (
 from sqlalchemy.sql import ColumnElement, Select
 
 from xarchiver.db import connect
-from xarchiver.row_models import AuthorOptionRow, SearchMediaRow
+from xarchiver.row_models import AuthorOptionRow, PostFeedMediaRow, PostFeedRow, SearchMediaRow
 from xarchiver.sql_builder import compile_query
-from xarchiver.tables import media_assets, tweets
+from xarchiver.tables import archive_sources, media_assets, source_discovered_tweets, tweets
 
 
 def search_media(
@@ -234,6 +235,174 @@ def build_author_options_query(
             )
         )
     return compile_query(statement)
+
+
+def search_post_feed(
+    source_id: int | None = None,
+    source_type: str | None = None,
+    author_username: str | None = None,
+    text: str | None = None,
+    media_type: str | None = None,
+    limit: int = 20,
+    offset: int = 0,
+) -> tuple[list[PostFeedRow], list[PostFeedMediaRow], int]:
+    page_sql, page_params = build_post_feed_query(
+        source_id=source_id,
+        source_type=source_type,
+        author_username=author_username,
+        text=text,
+        media_type=media_type,
+        limit=limit,
+        offset=offset,
+    )
+    count_sql, count_params = build_post_feed_count_query(
+        source_id=source_id,
+        source_type=source_type,
+        author_username=author_username,
+        text=text,
+        media_type=media_type,
+    )
+    with connect() as conn:
+        with conn.cursor() as cur:
+            cur.execute(page_sql, page_params)
+            posts = [PostFeedRow.model_validate(dict(row)) for row in cur.fetchall()]
+            cur.execute(count_sql, count_params)
+            total_count = int(cur.fetchone()["count"])
+            if not posts:
+                return posts, [], total_count
+            media_sql, media_params = build_post_feed_media_query([row.tweet_id for row in posts])
+            cur.execute(media_sql, media_params)
+            media = [PostFeedMediaRow.model_validate(dict(row)) for row in cur.fetchall()]
+    return posts, media, total_count
+
+
+def build_post_feed_query(
+    source_id: int | None = None,
+    source_type: str | None = None,
+    author_username: str | None = None,
+    text: str | None = None,
+    media_type: str | None = None,
+    limit: int = 20,
+    offset: int = 0,
+) -> tuple[str, dict[str, object]]:
+    statement = (
+        select(
+            tweets.c.tweet_id,
+            tweets.c.url.label("tweet_url"),
+            tweets.c.author_username,
+            tweets.c.author_display_name,
+            tweets.c.published_at,
+            func.coalesce(tweets.c.text, literal_column("''")).label("tweet_text"),
+            tweets.c.download_status.label("tweet_status"),
+        )
+        .where(*build_post_feed_conditions(source_id, source_type, author_username, text, media_type))
+        .order_by(
+            tweets.c.published_at.desc().nulls_last(),
+            tweets.c.imported_at.desc(),
+            tweets.c.tweet_id.desc(),
+        )
+        .limit(bindparam("limit", limit))
+        .offset(bindparam("offset", offset))
+    )
+    return compile_query(statement)
+
+
+def build_post_feed_count_query(
+    source_id: int | None = None,
+    source_type: str | None = None,
+    author_username: str | None = None,
+    text: str | None = None,
+    media_type: str | None = None,
+) -> tuple[str, dict[str, object]]:
+    statement = select(func.count().cast(Integer).label("count")).select_from(tweets)
+    statement = statement.where(
+        *build_post_feed_conditions(source_id, source_type, author_username, text, media_type)
+    )
+    return compile_query(statement)
+
+
+def build_post_feed_media_query(tweet_ids: list[str]) -> tuple[str, dict[str, object]]:
+    statement = (
+        select(
+            media_assets.c.id,
+            media_assets.c.tweet_id,
+            media_assets.c.media_index,
+            media_assets.c.media_type,
+            media_assets.c.download_status.label("media_status"),
+            media_assets.c.source_engine,
+            media_assets.c.local_path,
+            media_assets.c.file_size,
+            media_assets.c.width,
+            media_assets.c.height,
+            media_assets.c.duration_ms,
+        )
+        .where(
+            media_assets.c.tweet_id.in_(tweet_ids),
+            media_assets.c.download_status == bindparam("feed_media_status", "verified"),
+        )
+        .order_by(
+            media_assets.c.tweet_id,
+            media_assets.c.media_index.asc().nulls_last(),
+            media_assets.c.id,
+        )
+    )
+    return compile_query(statement)
+
+
+def build_post_feed_conditions(
+    source_id: int | None,
+    source_type: str | None,
+    author_username: str | None,
+    text: str | None,
+    media_type: str | None,
+) -> list[ColumnElement[bool]]:
+    verified_media = select(media_assets.c.id).where(
+        media_assets.c.tweet_id == tweets.c.tweet_id,
+        media_assets.c.download_status == bindparam("post_media_status", "verified"),
+    )
+    conditions: list[ColumnElement[bool]] = [exists(verified_media)]
+
+    normalized_username = str(author_username or "").strip().lstrip("@").strip().lower()
+    if normalized_username:
+        conditions.append(
+            func.lower(tweets.c.author_username)
+            == bindparam("post_author_username", normalized_username)
+        )
+    normalized_text = str(text or "").strip()
+    if normalized_text:
+        conditions.append(tweets.c.text.ilike(bindparam("post_text_pattern", f"%{normalized_text}%")))
+    normalized_media_type = str(media_type or "").strip().lower()
+    if normalized_media_type:
+        matching_media = select(media_assets.c.id).where(
+            media_assets.c.tweet_id == tweets.c.tweet_id,
+            media_assets.c.download_status == bindparam("filter_media_status", "verified"),
+            media_assets.c.media_type == bindparam("post_media_type", normalized_media_type),
+        )
+        conditions.append(exists(matching_media))
+
+    normalized_source_type = str(source_type or "").strip().lower()
+    if source_id is not None or normalized_source_type:
+        membership = (
+            select(source_discovered_tweets.c.id)
+            .select_from(
+                source_discovered_tweets.join(
+                    archive_sources,
+                    archive_sources.c.id == source_discovered_tweets.c.source_id,
+                )
+            )
+            .where(source_discovered_tweets.c.tweet_id == tweets.c.tweet_id)
+        )
+        if source_id is not None:
+            membership = membership.where(
+                source_discovered_tweets.c.source_id == bindparam("post_source_id", source_id)
+            )
+        if normalized_source_type:
+            membership = membership.where(
+                archive_sources.c.source_type
+                == bindparam("post_source_type", normalized_source_type)
+            )
+        conditions.append(exists(membership))
+    return conditions
 
 
 def compact_text(value: object, max_length: int = 90) -> str:
