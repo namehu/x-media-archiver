@@ -34,6 +34,17 @@ export type MediaRow = {
   error_message?: string | null;
 };
 
+export type AuthorOption = {
+  author_username: string;
+  author_display_name?: string | null;
+  media_count: number;
+};
+
+export type AuthorOptionsResponse = {
+  rows: AuthorOption[];
+  count: number;
+};
+
 export type FailureRow = {
   tweet_id: string;
   tweet_url?: string | null;

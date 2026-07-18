@@ -141,6 +141,23 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/api/v1/library/authors": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** Authors */
+        get: operations["authors_api_v1_library_authors_get"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/api/v1/library/tweets/{tweet_id}": {
         parameters: {
             query?: never;
@@ -1362,6 +1379,26 @@ export interface components {
         AuthUserResponse: {
             /** Username */
             username: string;
+        } & {
+            [key: string]: unknown;
+        };
+        /** AuthorOptionResponse */
+        AuthorOptionResponse: {
+            /** Author Username */
+            author_username: string;
+            /** Author Display Name */
+            author_display_name?: string | null;
+            /** Media Count */
+            media_count: number;
+        } & {
+            [key: string]: unknown;
+        };
+        /** AuthorOptionsResponse */
+        AuthorOptionsResponse: {
+            /** Rows */
+            rows: components["schemas"]["AuthorOptionResponse"][];
+            /** Count */
+            count: number;
         } & {
             [key: string]: unknown;
         };
@@ -2639,6 +2676,7 @@ export interface operations {
         parameters: {
             query?: {
                 author?: string | null;
+                author_username?: string | null;
                 text?: string | null;
                 tweet_status?: string | null;
                 media_status?: string | null;
@@ -2692,6 +2730,38 @@ export interface operations {
                 };
                 content: {
                     "application/json": components["schemas"]["WriteActionResponse"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    authors_api_v1_library_authors_get: {
+        parameters: {
+            query?: {
+                q?: string | null;
+                limit?: number;
+            };
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["AuthorOptionsResponse"];
                 };
             };
             /** @description Validation Error */

@@ -4,10 +4,11 @@ from fastapi import APIRouter, HTTPException, Query
 
 from xarchiver.api.deps import execute_write_action, raise_api_error
 from xarchiver.api.schemas import (
+    AuthorOptionsResponse,
     DuplicatesPageResponse,
     FailurePageResponse,
-    MediaPageResponse,
     MediaDeleteRequest,
+    MediaPageResponse,
     SummaryResponse,
     TweetDetailResponse,
     WriteActionResponse,
@@ -16,6 +17,7 @@ from xarchiver.config import get_settings
 from xarchiver.core.errors import ArchiverError
 from xarchiver.services.failures import list_failures
 from xarchiver.services.library import (
+    get_author_options,
     get_summary,
     get_tweet_detail,
     list_duplicates_page,
@@ -34,6 +36,7 @@ def summary() -> dict[str, object]:
 @router.get("/media", response_model=MediaPageResponse)
 def media(
     author: str | None = None,
+    author_username: str | None = None,
     text: str | None = None,
     tweet_status: str | None = None,
     media_status: str | None = Query("verified"),
@@ -44,6 +47,7 @@ def media(
     return list_media_page(
         get_settings(),
         author=author,
+        author_username=author_username,
         text=text,
         tweet_status=tweet_status,
         media_status=media_status,
@@ -51,6 +55,14 @@ def media(
         limit=limit,
         offset=offset,
     )
+
+
+@router.get("/authors", response_model=AuthorOptionsResponse)
+def authors(
+    q: str | None = Query(None, max_length=100),
+    limit: int = Query(20, ge=1, le=50),
+) -> dict[str, object]:
+    return get_author_options(query=q, limit=limit)
 
 
 @router.delete("/media", response_model=WriteActionResponse)

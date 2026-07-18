@@ -71,7 +71,7 @@ export function LibraryResultsToolbar({
 
 function buildFilterChips(filters: LibraryFilters) {
   const chips: string[] = [];
-  if (filters.author.trim()) chips.push(`作者：${filters.author.trim()}`);
+  if (filters.author.trim()) chips.push(`作者：@${filters.author.trim()}`);
   if (filters.text.trim()) chips.push(`文本：${filters.text.trim()}`);
   chips.push(`状态：${filters.media_status === "all" ? "全部状态" : statusLabel(filters.media_status)}`);
   if (filters.media_type) chips.push(`类型：${mediaTypeLabel(filters.media_type)}`);

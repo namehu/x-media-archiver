@@ -63,12 +63,11 @@ export function LibraryPage() {
   filtersRef.current = filters;
   submittedRef.current = submitted;
   const draftFilterCount = useMemo(() => countActiveFilters(filters), [filters]);
-  const query = useMemo(() => mediaQueryString(submitted), [submitted]);
+  const query = useMemo(() => libraryMediaQueryString(submitted), [submitted]);
   const mediaQuery = useInfiniteQuery({
     queryKey: ["media", query],
     queryFn: ({ pageParam }) => {
-      const pageQuery = mediaQueryString({
-        ...submitted,
+      const pageQuery = libraryMediaQueryString(submitted, {
         limit: String(PAGE_SIZE),
         offset: String(pageParam),
       });
@@ -132,7 +131,7 @@ export function LibraryPage() {
 
   const resetGridAndQuery = useCallback(
     (nextFilters: LibraryFilters) => {
-      const nextQuery = mediaQueryString(nextFilters);
+      const nextQuery = libraryMediaQueryString(nextFilters);
       gridStateRef.current = null;
       setRestoreGridState(null);
       setGridVersion((version) => version + 1);
@@ -305,6 +304,16 @@ function countActiveFilters(filters: LibraryFilters) {
   if (filters.media_status !== DEFAULT_LIBRARY_FILTERS.media_status) count += 1;
   if (filters.media_type) count += 1;
   return count;
+}
+
+function libraryMediaQueryString(filters: LibraryFilters, pagination: Record<string, string> = {}) {
+  return mediaQueryString({
+    author_username: filters.author,
+    text: filters.text,
+    media_status: filters.media_status,
+    media_type: filters.media_type,
+    ...pagination,
+  });
 }
 
 function LibrarySkeleton() {

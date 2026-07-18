@@ -178,6 +178,7 @@ VS Code 可通过一个调试入口构建 API 镜像、启动 API 容器、附�
 GET /health
 GET /api/v1/library/summary
 GET /api/v1/library/media
+GET /api/v1/library/authors
 DELETE /api/v1/library/media
 GET /api/v1/library/tweets/{tweet_id}
 GET /api/v1/library/failures

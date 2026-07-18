@@ -309,6 +309,17 @@ class MediaRowResponse(FlexibleResponse):
     media_url: str | None = None
 
 
+class AuthorOptionResponse(FlexibleResponse):
+    author_username: str
+    author_display_name: str | None = None
+    media_count: int
+
+
+class AuthorOptionsResponse(FlexibleResponse):
+    rows: list[AuthorOptionResponse]
+    count: int
+
+
 class MediaAssetResponse(FlexibleResponse):
     id: int
     media_index: int | None = None

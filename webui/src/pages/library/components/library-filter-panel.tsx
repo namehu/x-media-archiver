@@ -1,9 +1,12 @@
+import { useId } from "react";
 import { Search, SlidersHorizontal, X } from "lucide-react";
 import { Badge } from "../../../components/ui/badge";
 import { Button } from "../../../components/ui/button";
 import { Card, CardContent, CardHeader, CardTitle } from "../../../components/ui/card";
+import { Field, FieldGroup, FieldLabel } from "../../../components/ui/field";
 import { Input } from "../../../components/ui/input";
 import { Separator } from "../../../components/ui/separator";
+import { AuthorCombobox } from "./author-combobox";
 
 export type LibraryFilters = {
   author: string;
@@ -28,6 +31,8 @@ type LibraryFilterPanelProps = {
 };
 
 export function LibraryFilterPanel({ filters, activeCount, onFiltersChange, onApply, onReset }: LibraryFilterPanelProps) {
+  const fieldId = useId();
+
   return (
     <Card className="lg:sticky lg:top-4">
       <CardHeader className="pb-3">
@@ -47,70 +52,78 @@ export function LibraryFilterPanel({ filters, activeCount, onFiltersChange, onAp
             onApply();
           }}
         >
-          <FilterField label="作者">
-            <Input
-              placeholder="@username 或显示名"
-              value={filters.author}
-              onChange={(event) => onFiltersChange({ ...filters, author: event.target.value })}
-            />
-          </FilterField>
+          <FieldGroup className="gap-4">
+            <Field className="gap-2">
+              <FieldLabel htmlFor={`${fieldId}-author`} className="text-xs text-fg-secondary">
+                作者
+              </FieldLabel>
+              <AuthorCombobox
+                id={`${fieldId}-author`}
+                value={filters.author}
+                onChange={(author) => onFiltersChange({ ...filters, author })}
+              />
+            </Field>
 
-          <FilterField label="Tweet 文本">
-            <Input
-              placeholder="关键词"
-              value={filters.text}
-              onChange={(event) => onFiltersChange({ ...filters, text: event.target.value })}
-            />
-          </FilterField>
+            <Field className="gap-2">
+              <FieldLabel htmlFor={`${fieldId}-text`} className="text-xs text-fg-secondary">
+                Tweet 文本
+              </FieldLabel>
+              <Input
+                id={`${fieldId}-text`}
+                placeholder="关键词"
+                value={filters.text}
+                onChange={(event) => onFiltersChange({ ...filters, text: event.target.value })}
+              />
+            </Field>
 
-          <Separator />
+            <Separator />
 
-          <FilterField label="文件状态">
-            <select
-              className="h-9 w-full rounded-md border border-border-strong bg-bg-elevated px-3 text-sm text-fg-primary outline-none focus-visible:ring-2 focus-visible:ring-brand/50"
-              value={filters.media_status}
-              onChange={(event) => onFiltersChange({ ...filters, media_status: event.target.value })}
-            >
-              <option value="verified">已校验</option>
-              <option value="all">全部状态</option>
-              <option value="downloaded">已下载</option>
-              <option value="missing">文件缺失</option>
-              <option value="corrupt">文件损坏</option>
-            </select>
-          </FilterField>
+            <Field className="gap-2">
+              <FieldLabel htmlFor={`${fieldId}-media-status`} className="text-xs text-fg-secondary">
+                文件状态
+              </FieldLabel>
+              <select
+                id={`${fieldId}-media-status`}
+                className="h-9 w-full rounded-md border border-border-strong bg-bg-elevated px-3 text-sm text-fg-primary outline-none focus-visible:ring-2 focus-visible:ring-brand/50"
+                value={filters.media_status}
+                onChange={(event) => onFiltersChange({ ...filters, media_status: event.target.value })}
+              >
+                <option value="verified">已校验</option>
+                <option value="all">全部状态</option>
+                <option value="downloaded">已下载</option>
+                <option value="missing">文件缺失</option>
+                <option value="corrupt">文件损坏</option>
+              </select>
+            </Field>
 
-          <FilterField label="媒体类型">
-            <select
-              className="h-9 w-full rounded-md border border-border-strong bg-bg-elevated px-3 text-sm text-fg-primary outline-none focus-visible:ring-2 focus-visible:ring-brand/50"
-              value={filters.media_type}
-              onChange={(event) => onFiltersChange({ ...filters, media_type: event.target.value })}
-            >
-              <option value="">全部媒体</option>
-              <option value="photo">图片</option>
-              <option value="video">视频</option>
-            </select>
-          </FilterField>
+            <Field className="gap-2">
+              <FieldLabel htmlFor={`${fieldId}-media-type`} className="text-xs text-fg-secondary">
+                媒体类型
+              </FieldLabel>
+              <select
+                id={`${fieldId}-media-type`}
+                className="h-9 w-full rounded-md border border-border-strong bg-bg-elevated px-3 text-sm text-fg-primary outline-none focus-visible:ring-2 focus-visible:ring-brand/50"
+                value={filters.media_type}
+                onChange={(event) => onFiltersChange({ ...filters, media_type: event.target.value })}
+              >
+                <option value="">全部媒体</option>
+                <option value="photo">图片</option>
+                <option value="video">视频</option>
+              </select>
+            </Field>
 
-          <div className="grid grid-cols-[1fr_auto] gap-2 pt-1">
-            <Button type="submit">
-              <Search className="h-4 w-4" />
-              应用筛选
-            </Button>
-            <Button type="button" variant="outline" size="icon" aria-label="重置筛选" onClick={onReset}>
-              <X className="h-4 w-4" />
-            </Button>
-          </div>
+            <div className="grid grid-cols-[1fr_auto] gap-2 pt-1">
+              <Button type="submit">
+                <Search className="h-4 w-4" />
+                应用筛选
+              </Button>
+              <Button type="button" variant="outline" size="icon" aria-label="重置筛选" onClick={onReset}>
+                <X className="h-4 w-4" />
+              </Button>
+            </div>
+          </FieldGroup>
         </form>
       </CardContent>
     </Card>
-  );
-}
-
-function FilterField({ label, children }: { label: string; children: React.ReactNode }) {
-  return (
-    <label className="flex flex-col gap-2">
-      <span className="text-xs font-medium text-fg-secondary">{label}</span>
-      {children}
-    </label>
   );
 }

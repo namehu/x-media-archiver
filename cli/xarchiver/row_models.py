@@ -49,6 +49,12 @@ class SearchMediaRow(RowModel):
     duration_ms: int | None = None
 
 
+class AuthorOptionRow(RowModel):
+    author_username: str
+    author_display_name: str | None = None
+    media_count: int
+
+
 class TweetDetailRow(RowModel):
     tweet_id: str
     tweet_url: str

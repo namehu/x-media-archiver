@@ -4,7 +4,7 @@ from datetime import UTC, datetime
 from pydantic import ValidationError
 
 from xarchiver.row_models import SearchMediaRow
-from xarchiver.search import build_search_query, compact_text
+from xarchiver.search import build_author_options_query, build_search_query, compact_text
 
 
 class SearchUnitTests(unittest.TestCase):
@@ -43,6 +43,33 @@ class SearchUnitTests(unittest.TestCase):
 
         self.assertNotIn("media_assets.download_status = %(media_status)s", sql)
         self.assertEqual(params, {"limit": 5, "offset": 0})
+
+    def test_build_search_query_supports_exact_author_username(self) -> None:
+        sql, params = build_search_query(
+            None,
+            None,
+            None,
+            "verified",
+            None,
+            10,
+            author_username="Alice",
+        )
+
+        self.assertIn("lower(tweets.author_username) = %(author_username)s", sql)
+        self.assertEqual(params["author_username"], "alice")
+        self.assertNotIn("author_pattern", params)
+
+    def test_build_author_options_query_groups_and_normalizes_at_prefix(self) -> None:
+        sql, params = build_author_options_query("  @physics  ", 15)
+        normalized_sql = sql.lower()
+
+        self.assertIn("group by lower(tweets.author_username)", normalized_sql)
+        self.assertIn("count(media_assets.id)", normalized_sql)
+        self.assertIn("tweets.author_display_name ilike", normalized_sql)
+        self.assertEqual(
+            params,
+            {"author_query_pattern": "%physics%", "limit": 15},
+        )
 
     def test_compact_text_normalizes_whitespace_and_truncates(self) -> None:
         self.assertEqual(compact_text("a\n\nb\tc", 20), "a b c")

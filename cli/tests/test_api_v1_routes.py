@@ -1,7 +1,7 @@
 import unittest
 from datetime import UTC, datetime
-from uuid import uuid4
 from unittest.mock import ANY, patch
+from uuid import uuid4
 
 from api_route_helpers import iter_app_routes
 from fastapi import HTTPException
@@ -10,6 +10,7 @@ from xarchiver.api.app import create_app
 from xarchiver.api.schemas import (
     ArchiveRunsPageResponse,
     ArchiveSourceDetailResponse,
+    AuthorOptionsResponse,
     BackfillRequest,
     DuplicatesPageResponse,
     MediaDeleteRequest,
@@ -52,6 +53,7 @@ class V1RouterSmokeTests(unittest.TestCase):
         expected = [
             "/api/v1/library/summary",
             "/api/v1/library/media",
+            "/api/v1/library/authors",
             "/api/v1/library/tweets/{tweet_id}",
             "/api/v1/library/failures",
             "/api/v1/library/duplicates",
@@ -114,6 +116,24 @@ class V1RouterSmokeTests(unittest.TestCase):
             )
         self.assertEqual(ctx.exception.status_code, 400)
         self.assertEqual(ctx.exception.detail, "physical_delete_confirmation_required")
+
+    def test_v1_library_authors_delegates_remote_search(self):
+        response = {
+            "rows": [
+                {
+                    "author_username": "alice",
+                    "author_display_name": "Alice",
+                    "media_count": 3,
+                }
+            ],
+            "count": 1,
+        }
+        with patch("xarchiver.api.v1.library.get_author_options", return_value=response) as mock:
+            result = self.get_paths["/api/v1/library/authors"](q="@ali", limit=10)
+
+        payload = AuthorOptionsResponse.model_validate(result).model_dump(mode="json")
+        self.assertEqual(payload["rows"][0]["author_username"], "alice")
+        mock.assert_called_once_with(query="@ali", limit=10)
 
     def test_v1_duplicates_response_uses_complete_groups_with_media_ids(self):
         page = {
@@ -320,6 +340,7 @@ class V1RouterSmokeTests(unittest.TestCase):
         self.assertIn("/api/v1/sources", paths)
         self.assertIn("/api/v1/sources/{source_id}/scan-sessions", paths)
         self.assertIn("/api/v1/library/media", paths)
+        self.assertIn("/api/v1/library/authors", paths)
         self.assertIn("/api/v1/actions/verify", paths)
         self.assertIn("/api/v1/health/detail", paths)
         self.assertIn("/api/v1/settings/cookies", paths)
