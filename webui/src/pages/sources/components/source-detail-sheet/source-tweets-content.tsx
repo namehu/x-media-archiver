@@ -63,10 +63,12 @@ export function SourceTweetsContent({
 }) {
   const [followRunId, setFollowRunId] = React.useState<number | null>(null);
   const [followMode, setFollowMode] = React.useState<DownloadFollowMode>("following");
+  const [frontierTweetId, setFrontierTweetId] = React.useState<string | null>(null);
 
   React.useEffect(() => {
     setFollowRunId(null);
     setFollowMode("following");
+    setFrontierTweetId(null);
   }, [source.id]);
 
   React.useEffect(() => {
@@ -75,6 +77,7 @@ export function SourceTweetsContent({
     if (trackedRun && !["queued", "running", "blocked", "paused"].includes(trackedRun.status)) {
       setFollowRunId(null);
       setFollowMode("following");
+      setFrontierTweetId(null);
     }
   }, [downloads, followRunId]);
 
@@ -86,6 +89,7 @@ export function SourceTweetsContent({
           if (result.run_id) {
             setFollowRunId(result.run_id);
             setFollowMode("following");
+            setFrontierTweetId(null);
           }
         })
         .catch(() => undefined);
@@ -100,6 +104,7 @@ export function SourceTweetsContent({
         .then(() => {
           setFollowRunId(runId);
           setFollowMode("following");
+          setFrontierTweetId(null);
         })
         .catch(() => undefined);
     },
@@ -146,11 +151,13 @@ export function SourceTweetsContent({
           statusLabel={statusLabel}
           followRunId={followRunId}
           followMode={followMode}
+          frontierTweetId={frontierTweetId}
           onFollowRun={(runId) => {
             setFollowRunId(runId);
             setFollowMode("following");
           }}
           onFollowModeChange={setFollowMode}
+          onFrontierTweetChange={setFrontierTweetId}
           onSubmitDownload={submitDownloadAndFollow}
         />
       </div>
@@ -177,7 +184,10 @@ function SourceDownloadPanel({
   const active = downloads?.active_run;
   const paused = downloads?.paused_runs ?? [];
   const blocked = downloads?.blocked_runs ?? [];
-  const runningItem = active?.items.find((item) => item.status === "processing");
+  const runningItem =
+    (downloads?.current_tweet_id
+      ? active?.items.find((item) => item.tweet_id === downloads.current_tweet_id)
+      : undefined) ?? active?.items.find((item) => item.status === "processing");
   const counts = downloads?.active_counts;
   const waitingCount = (counts?.pending_count ?? 0) + (counts?.blocked_count ?? 0);
   const hasUnsubmitted = (source.unsubmitted_tweet_count ?? 0) > 0;
@@ -210,7 +220,7 @@ function SourceDownloadPanel({
           {downloads?.downloaded_bytes ? <span>{formatBytes(downloads.downloaded_bytes)}</span> : null}
         </div>
         {runningItem ? (
-          <p className="mt-2 truncate text-xs text-fg-secondary">
+          <p data-testid="download-current-item" className="mt-2 truncate text-xs text-fg-secondary">
             <span className="font-mono">{runningItem.tweet_id}</span>: {runningItem.progress_message || "下载器处理中"}
           </p>
         ) : null}

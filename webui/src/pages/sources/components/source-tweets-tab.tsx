@@ -19,6 +19,20 @@ type DownloadSubmitInput = {
 
 type DownloadFollowMode = "following" | "paused";
 
+function usePrefersReducedMotion() {
+  const [prefersReducedMotion, setPrefersReducedMotion] = React.useState(false);
+
+  React.useEffect(() => {
+    const mediaQuery = window.matchMedia("(prefers-reduced-motion: reduce)");
+    const updatePreference = () => setPrefersReducedMotion(mediaQuery.matches);
+    updatePreference();
+    mediaQuery.addEventListener("change", updatePreference);
+    return () => mediaQuery.removeEventListener("change", updatePreference);
+  }, []);
+
+  return prefersReducedMotion;
+}
+
 export function SourceTweetsTab({
   pages,
   downloads,
@@ -32,8 +46,10 @@ export function SourceTweetsTab({
   statusLabel,
   followRunId,
   followMode,
+  frontierTweetId,
   onFollowRun,
   onFollowModeChange,
+  onFrontierTweetChange,
   onSubmitDownload,
 }: {
   pages: SourceDiscoveryPageResponse[];
@@ -48,12 +64,21 @@ export function SourceTweetsTab({
   statusLabel: (status?: string | null) => string;
   followRunId: number | null;
   followMode: DownloadFollowMode;
+  frontierTweetId: string | null;
   onFollowRun: (runId: number) => void;
   onFollowModeChange: (mode: DownloadFollowMode) => void;
+  onFrontierTweetChange: (tweetId: string | null) => void;
   onSubmitDownload: (input: DownloadSubmitInput) => void;
 }) {
   const virtuosoRef = React.useRef<VirtuosoHandle>(null);
   const loadMoreRequestedRef = React.useRef(false);
+  const pendingAutoScrollRef = React.useRef<{ tweetId: string; index: number } | null>(null);
+  const autoScrollInFlightRef = React.useRef(false);
+  const scrollGenerationRef = React.useRef(0);
+  const flushAutoScrollRef = React.useRef<() => void>(() => undefined);
+  const pendingExplicitLocateRef = React.useRef<string | null>(null);
+  const skipNextAutoScrollRef = React.useRef(false);
+  const prefersReducedMotion = usePrefersReducedMotion();
   const activeItemsByTweet = React.useMemo(
     () => new Map((downloads?.active_run?.items ?? []).map((item) => [item.tweet_id, item])),
     [downloads?.active_run?.items],
@@ -99,20 +124,136 @@ export function SourceTweetsTab({
 
   React.useEffect(() => {
     loadMoreRequestedRef.current = false;
-  }, [currentTweetId]);
+  }, [currentTweetId, frontierTweetId]);
 
   React.useEffect(() => {
-    if (followMode !== "following" || !currentTweetId) return;
-    const index = tweets.findIndex((tweet) => tweet.tweet_id === currentTweetId);
-    if (index >= 0) {
-      virtuosoRef.current?.scrollToIndex({ index, align: "center", behavior: "smooth" });
+    if (!currentTweetId) return;
+    const currentIndex = tweets.findIndex((tweet) => tweet.tweet_id === currentTweetId);
+    if (currentIndex < 0) {
+      if (followMode === "following" && hasNextPage && !isFetchingNextPage && !loadMoreRequestedRef.current) {
+        loadMoreRequestedRef.current = true;
+        onLoadMore();
+      }
       return;
     }
-    if (hasNextPage && !isFetchingNextPage && !loadMoreRequestedRef.current) {
-      loadMoreRequestedRef.current = true;
-      onLoadMore();
+
+    const frontierIndex = frontierTweetId
+      ? tweets.findIndex((tweet) => tweet.tweet_id === frontierTweetId)
+      : -1;
+    if (!frontierTweetId || (frontierIndex >= 0 && currentIndex > frontierIndex)) {
+      onFrontierTweetChange(currentTweetId);
     }
-  }, [currentTweetId, followMode, hasNextPage, isFetchingNextPage, onLoadMore, tweets]);
+  }, [
+    currentTweetId,
+    followMode,
+    frontierTweetId,
+    hasNextPage,
+    isFetchingNextPage,
+    onFrontierTweetChange,
+    onLoadMore,
+    tweets,
+  ]);
+
+  const flushAutoScroll = React.useCallback(() => {
+    if (followMode !== "following" || autoScrollInFlightRef.current) return;
+    const target = pendingAutoScrollRef.current;
+    const handle = virtuosoRef.current;
+    if (!target || !handle) return;
+
+    pendingAutoScrollRef.current = null;
+    autoScrollInFlightRef.current = true;
+    const generation = scrollGenerationRef.current;
+    handle.scrollIntoView({
+      index: target.index,
+      behavior: prefersReducedMotion ? "auto" : "smooth",
+      calculateViewLocation: ({ itemBottom, viewportBottom, locationParams }) =>
+        itemBottom > viewportBottom ? { ...locationParams, align: "end" } : null,
+      done: () => {
+        if (generation !== scrollGenerationRef.current) return;
+        autoScrollInFlightRef.current = false;
+        if (pendingAutoScrollRef.current) {
+          window.requestAnimationFrame(() => flushAutoScrollRef.current());
+        }
+      },
+    });
+  }, [followMode, prefersReducedMotion]);
+
+  flushAutoScrollRef.current = flushAutoScroll;
+
+  React.useEffect(() => {
+    if (followMode !== "following" || !frontierTweetId) return;
+    if (skipNextAutoScrollRef.current) {
+      skipNextAutoScrollRef.current = false;
+      return;
+    }
+    const index = tweets.findIndex((tweet) => tweet.tweet_id === frontierTweetId);
+    if (index < 0) return;
+    pendingAutoScrollRef.current = { tweetId: frontierTweetId, index };
+    flushAutoScroll();
+  }, [flushAutoScroll, followMode, frontierTweetId, tweets]);
+
+  React.useEffect(() => {
+    if (followMode === "following") return;
+    pendingAutoScrollRef.current = null;
+    scrollGenerationRef.current += 1;
+    autoScrollInFlightRef.current = false;
+  }, [followMode]);
+
+  const scrollToTweet = React.useCallback(
+    (tweetId: string) => {
+      const index = tweets.findIndex((tweet) => tweet.tweet_id === tweetId);
+      if (index < 0) return false;
+      pendingAutoScrollRef.current = null;
+      scrollGenerationRef.current += 1;
+      autoScrollInFlightRef.current = false;
+      virtuosoRef.current?.scrollToIndex({
+        index,
+        align: "center",
+        behavior: prefersReducedMotion ? "auto" : "smooth",
+      });
+      return true;
+    },
+    [prefersReducedMotion, tweets],
+  );
+
+  React.useEffect(() => {
+    const tweetId = pendingExplicitLocateRef.current;
+    if (!tweetId || !scrollToTweet(tweetId)) return;
+    pendingExplicitLocateRef.current = null;
+  }, [scrollToTweet, tweets]);
+
+  const handleLocateCurrent = React.useCallback(() => {
+    const tweetId = downloads?.current_tweet_id;
+    if (!activeRunId || !tweetId) return;
+    skipNextAutoScrollRef.current = frontierTweetId !== tweetId;
+    onFollowRun(activeRunId);
+    onFrontierTweetChange(tweetId);
+    if (!scrollToTweet(tweetId)) {
+      pendingExplicitLocateRef.current = tweetId;
+      if (hasNextPage && !isFetchingNextPage && !loadMoreRequestedRef.current) {
+        loadMoreRequestedRef.current = true;
+        onLoadMore();
+      }
+    }
+  }, [
+    activeRunId,
+    downloads?.current_tweet_id,
+    frontierTweetId,
+    hasNextPage,
+    isFetchingNextPage,
+    onFollowRun,
+    onFrontierTweetChange,
+    onLoadMore,
+    scrollToTweet,
+  ]);
+
+  const handleResumeFollowing = React.useCallback(() => {
+    if (frontierTweetId) {
+      skipNextAutoScrollRef.current = true;
+      scrollToTweet(frontierTweetId);
+    }
+    onFollowModeChange("following");
+  }, [frontierTweetId, onFollowModeChange, scrollToTweet]);
 
   const pauseFollowingForUserNavigation = React.useCallback(() => {
     if (followRunId && followMode === "following") onFollowModeChange("paused");
@@ -143,7 +284,7 @@ export function SourceTweetsTab({
 
   return (
     <div className="flex h-full min-h-0 flex-col gap-3">
-      <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
+      <div className="flex shrink-0 flex-col gap-2">
         <div
           className={cn(
             "flex flex-1 flex-wrap items-center justify-between gap-3 rounded-lg px-3 py-2 text-sm transition-colors",
@@ -187,13 +328,19 @@ export function SourceTweetsTab({
               </Button>
             </div>
           )}
+        </div>
+        <div
+          data-testid="download-follow-controls"
+          className="flex h-8 shrink-0 items-center justify-end gap-2 overflow-x-auto px-3 text-sm whitespace-nowrap"
+        >
           <DownloadFollowControls
             activeRunId={activeRunId}
             currentTweetId={downloads?.current_tweet_id ?? null}
             followRunId={followRunId}
             followMode={followMode}
-            onFollowRun={onFollowRun}
-            onFollowModeChange={onFollowModeChange}
+            onPause={() => onFollowModeChange("paused")}
+            onResume={handleResumeFollowing}
+            onLocateCurrent={handleLocateCurrent}
           />
         </div>
       </div>
@@ -227,6 +374,7 @@ export function SourceTweetsTab({
               }}
               actions={actions}
               statusLabel={statusLabel}
+              onUserInspect={pauseFollowingForUserNavigation}
               onSubmitDownload={onSubmitDownload}
             />
           )}
@@ -280,15 +428,17 @@ function DownloadFollowControls({
   currentTweetId,
   followRunId,
   followMode,
-  onFollowRun,
-  onFollowModeChange,
+  onPause,
+  onResume,
+  onLocateCurrent,
 }: {
   activeRunId: number | null;
   currentTweetId: string | null;
   followRunId: number | null;
   followMode: DownloadFollowMode;
-  onFollowRun: (runId: number) => void;
-  onFollowModeChange: (mode: DownloadFollowMode) => void;
+  onPause: () => void;
+  onResume: () => void;
+  onLocateCurrent: () => void;
 }) {
   if (followRunId && followRunId !== activeRunId) {
     return <Badge tone="secondary">等待 Run #{followRunId} 开始</Badge>;
@@ -303,7 +453,7 @@ function DownloadFollowControls({
           type="button"
           size="sm"
           variant="ghost"
-          onClick={() => onFollowModeChange(followMode === "following" ? "paused" : "following")}
+          onClick={followMode === "following" ? onPause : onResume}
         >
           {followMode === "following" ? (
             <Pause data-icon="inline-start" />
@@ -312,12 +462,18 @@ function DownloadFollowControls({
           )}
           {followMode === "following" ? "暂停跟随" : "继续跟随"}
         </Button>
+        {currentTweetId ? (
+          <Button type="button" size="sm" variant="ghost" onClick={onLocateCurrent}>
+            <LocateFixed data-icon="inline-start" />
+            定位当前项
+          </Button>
+        ) : null}
       </div>
     );
   }
   if (activeRunId && currentTweetId) {
     return (
-      <Button type="button" size="sm" variant="ghost" onClick={() => onFollowRun(activeRunId)}>
+      <Button type="button" size="sm" variant="ghost" onClick={onLocateCurrent}>
         <LocateFixed data-icon="inline-start" />
         定位当前项
       </Button>
@@ -345,30 +501,37 @@ function TweetDownloadProgress({ tweet }: { tweet: TweetRow }) {
   const message = tweet.progress_message || defaultProgressMessage(tweet);
 
   return (
-    <div className="flex flex-col gap-1.5 pt-1">
-      <div className="flex flex-wrap items-center justify-between gap-2 text-xs">
-        <div className="flex min-w-0 flex-wrap items-center gap-2">
+    <div data-download-progress className="flex h-[3.875rem] flex-col gap-1.5 pt-1 text-xs">
+      <div className="flex h-4 min-w-0 items-center gap-2">
+        <div className="flex min-w-0 flex-1 items-center gap-2">
           {tweet.cancel_requested ? <Badge tone="warning">取消请求中</Badge> : null}
-          <span className="min-w-0 break-words text-fg-secondary">{message}</span>
-        </div>
-        {(total > 0 || downloaded > 0 || isActive || percent !== null) && (
-          <div className="flex items-center gap-3 text-fg-secondary tabular-nums">
-            {downloaded > 0 || total > 0 ? (
-              <span>
-                {formatBytes(downloaded)} {total > 0 ? `/ ${formatBytes(total)}` : ""}
+          <Tooltip>
+            <TooltipTrigger asChild>
+              <span tabIndex={0} className="min-w-0 flex-1 truncate text-fg-secondary">
+                {message}
               </span>
-            ) : null}
-            {Boolean(tweet.speed_bps) && <span>{formatBytes(tweet.speed_bps)}/s</span>}
-            <span>{percent == null ? "估算中" : `${percent}%`}</span>
-          </div>
-        )}
+            </TooltipTrigger>
+            <TooltipContent className="max-w-sm">{message}</TooltipContent>
+          </Tooltip>
+        </div>
       </div>
-      {(isActive || percent !== null) && (
-        <Progress
-          value={percent ?? (isActive ? 8 : 0)}
-          className={`h-1.5 ${isActive && percent == null ? "opacity-70" : ""}`}
-        />
-      )}
+      <div className="grid h-4 grid-cols-3 items-center gap-2 text-fg-secondary tabular-nums">
+        <span className="truncate" title="已下载 / 总大小">
+          {downloaded > 0 || total > 0
+            ? `${formatBytes(downloaded)}${total > 0 ? ` / ${formatBytes(total)}` : ""}`
+            : "—"}
+        </span>
+        <span className="truncate text-center" title="当前速度">
+          {tweet.speed_bps ? `${formatBytes(tweet.speed_bps)}/s` : "—"}
+        </span>
+        <span className="text-right" title="下载进度">
+          {percent == null ? (isActive ? "估算中" : "—") : `${percent}%`}
+        </span>
+      </div>
+      <Progress
+        value={percent ?? (isActive ? 8 : 0)}
+        className={cn("h-1.5", !isActive && percent === null && "opacity-0", isActive && percent === null && "opacity-70")}
+      />
     </div>
   );
 }
@@ -456,7 +619,7 @@ function TweetMediaInfo({ payload }: { payload: any }) {
   );
 }
 
-function TweetText({ text }: { text?: string | null }) {
+function TweetText({ text, onUserInspect }: { text?: string | null; onUserInspect: () => void }) {
   const [expanded, setExpanded] = React.useState(false);
 
   if (!text) {
@@ -466,16 +629,22 @@ function TweetText({ text }: { text?: string | null }) {
   const isLong = text.length > 100 || (text.match(/\n/g) || []).length > 1;
 
   return (
-    <div className="space-y-1">
+    <div className="flex flex-col gap-1">
       <div
-        className={`break-words text-sm leading-6 text-fg-primary ${expanded ? "whitespace-pre-wrap" : "line-clamp-2"}`}
+        className={cn(
+          "break-words text-sm leading-6 text-fg-primary",
+          expanded ? "whitespace-pre-wrap" : "line-clamp-2",
+        )}
       >
         {text}
       </div>
       {isLong && (
         <button
           type="button"
-          onClick={() => setExpanded(!expanded)}
+          onClick={() => {
+            onUserInspect();
+            setExpanded(!expanded);
+          }}
           className="flex items-center gap-0.5 text-xs text-brand hover:underline"
         >
           {expanded ? (
@@ -501,6 +670,7 @@ function TweetListItem({
   onSelectionChange,
   actions,
   statusLabel,
+  onUserInspect,
   onSubmitDownload,
 }: {
   tweet: TweetRow;
@@ -510,12 +680,14 @@ function TweetListItem({
   onSelectionChange: (checked: boolean) => void;
   actions: DetailActions;
   statusLabel: (status?: string | null) => string;
+  onUserInspect: () => void;
   onSubmitDownload: (input: DownloadSubmitInput) => void;
 }) {
   return (
     <div className="pb-2">
       <div
         aria-current={isCurrentDownload ? "true" : undefined}
+        data-tweet-id={tweet.tweet_id}
         className={cn(
           "rounded-lg border bg-bg-surface p-3 transition-colors",
           isCurrentDownload
@@ -531,8 +703,8 @@ function TweetListItem({
               disabled={!canQueue(tweet) && !canCancel(tweet.active_item_status)}
               onCheckedChange={onSelectionChange}
             />
-            <div className="min-w-0 flex-1 space-y-3">
-              <TweetText text={tweet.text} />
+            <div className="flex min-w-0 flex-1 flex-col gap-3">
+              <TweetText text={tweet.text} onUserInspect={onUserInspect} />
               <div className="flex flex-wrap items-center gap-x-3 gap-y-2 text-xs text-fg-secondary">
                 <TweetMediaInfo payload={tweet.raw_payload} />
                 <span className="h-3 w-px bg-border-strong" />
@@ -560,10 +732,11 @@ function TweetListItem({
             </div>
           </div>
           <div className="flex shrink-0 flex-col items-end gap-2 whitespace-nowrap text-center">
-            <SourceTweetStatusBadge status={tweet.download_status} statusLabel={statusLabel} />
-            {tweet.active_item_status ? (
-              <SourceTweetStatusBadge status={tweet.active_item_status} statusLabel={statusLabel} tone="secondary" />
-            ) : null}
+            <SourceTweetStatusBadge
+              status={tweet.active_item_status || tweet.download_status}
+              statusLabel={statusLabel}
+              tone={tweet.active_item_status ? "secondary" : undefined}
+            />
             {canQueue(tweet) ? (
               <Button
                 type="button"
