@@ -11,7 +11,7 @@ import { Sheet, SheetContent, SheetHeader, SheetTitle } from "@/components/ui/sh
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { useSourceDiscovered, useSourceDownloads, useSourceScanRuns } from "../../hooks/useSourceDetail";
 import { SourceScanHistoryTab } from "../source-scan-history-tab";
-import { preferredScanLimit, sourceStatusTone } from "../../utils";
+import { preferredScanLimit, sourceScanStatus } from "../../utils";
 import { SourceDetailContent } from "./source-detail-content";
 import { SourceTweetsContent } from "./source-tweets-content";
 import { DownloadActions } from "./download-actions";
@@ -92,6 +92,7 @@ export function SourceDetailPanel({
     source?.active_scan_run?.status === "running",
   );
   const scanRuns = scanRunsQuery.data?.pages.flatMap((page) => page.rows) ?? [];
+  const scanStatus = source ? sourceScanStatus(source) : null;
 
   React.useEffect(() => {
     setActiveTab("tweets");
@@ -110,7 +111,7 @@ export function SourceDetailPanel({
 
                 <div className="flex flex-col gap-4 sm:flex-row sm:items-center sm:justify-between">
                   <div className="flex min-w-0 flex-wrap items-center gap-3">
-                    <Badge tone={sourceStatusTone(source.status)}>{statusLabel(source.status)}</Badge>
+                    {scanStatus ? <Badge tone={scanStatus.tone}>{scanStatus.label}</Badge> : null}
                     <h2 className="truncate text-xl font-semibold text-fg-primary">
                       {source.label || source.author_username || "未知来源"}
                     </h2>

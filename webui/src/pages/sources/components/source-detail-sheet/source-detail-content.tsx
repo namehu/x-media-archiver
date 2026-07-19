@@ -26,7 +26,7 @@ export function SourceDetailContent({
         <DetailRow label="更新时间" value={formatDateTime(source.updated_at)} />
         <DetailRow label="下一批范围" value={formatNextRange(source.cursor_state, scanLimit)} />
         <DetailRow label="扫描状态" value={formatScanState(source.cursor_state)} />
-        <DetailRow label="历史扫描任务" value={formatHistoryState(source)} />
+        <DetailRow label="任务状态" value={formatHistoryState(source)} />
         {historyEnabled && source.next_scan_at ? (
           <DetailRow label="下次自动扫描" value={formatDateTime(source.next_scan_at)} />
         ) : null}

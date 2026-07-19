@@ -13,7 +13,7 @@ import {
 } from "@/components/ui/alert-dialog";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
-import { scanModeLabel, getActiveScanMode } from "../../utils";
+import { getActiveScanMode, scanModeLabel, sourceScanStatus } from "../../utils";
 import { ActionBlock } from "./action-block";
 import { ErrorLine } from "./error-line";
 
@@ -80,6 +80,7 @@ export function ScanActions({
   const hasDiscovered = Number(source.discovered_tweet_count || source.discovered_count || 0) > 0;
   const modeLabel = scanModeLabel(activeMode);
   const canStart = !actions.pending.history && !isRunning && !isPaused;
+  const scanStatus = sourceScanStatus(source);
   const start = (mode: ScanMode, limit: number, restart = false) =>
     actions.startSession({ sourceId: source.id, mode, limit, restart });
   const confirm = () => {
@@ -103,7 +104,7 @@ export function ScanActions({
           <span className="text-fg-secondary">每批 <span className="font-semibold text-fg-primary">{scanLimit}</span> 条</span>
           {isRunning ? <Badge tone="secondary">正在{modeLabel}</Badge> : null}
           {isPaused ? <Badge tone="warning">已暂停：{modeLabel}</Badge> : null}
-          {!isRunning && !isPaused ? <Badge tone="secondary">待命</Badge> : null}
+          {!isRunning && !isPaused ? <Badge tone={scanStatus.tone}>{scanStatus.label}</Badge> : null}
         </div>
         <p className="mt-3 text-xs text-fg-secondary">仅发现并记录 Tweet；不会自动提交下载。</p>
         {activeRun ? (

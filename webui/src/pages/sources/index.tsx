@@ -14,7 +14,6 @@ export function SourcesPage() {
   const queryClient = useQueryClient();
   const [searchParams, setSearchParams] = useSearchParams();
   const [selectedSourceId, setSelectedSourceId] = useState<number | null>(null);
-  const [sourceStatusFilter, setSourceStatusFilter] = useState("");
   const [sourceTypeFilter, setSourceTypeFilter] = useState("");
   const [sortBy, setSortBy] = useState<"updated_at" | "created_at">("updated_at");
   const [sortDirection, setSortDirection] = useState<"asc" | "desc">("desc");
@@ -26,7 +25,7 @@ export function SourcesPage() {
   const [createDialogOpen, setCreateDialogOpen] = useState(false);
   const [detailSheetOpen, setDetailSheetOpen] = useState(false);
 
-  const sourcesQuery = useSourcesQuery(sourceStatusFilter, sourceTypeFilter, sortBy, sortDirection, offset);
+  const sourcesQuery = useSourcesQuery(sourceTypeFilter, sortBy, sortDirection, offset);
   const detailQuery = useSourceDetail(selectedSourceId);
   const policyQuery = useDownloadPolicy();
   const selected = detailQuery.data;
@@ -88,15 +87,12 @@ export function SourcesPage() {
   return (
     <div className="space-y-5">
       <SourcesList
-        statusLabel={statusLabel}
         data={sourcesQuery.data}
         selectedSourceId={selectedSourceId}
-        statusFilter={sourceStatusFilter}
         typeFilter={sourceTypeFilter}
         sortBy={sortBy}
         sortDirection={sortDirection}
         offset={offset}
-        onStatusFilterChange={setSourceStatusFilter}
         onTypeFilterChange={setSourceTypeFilter}
         onSortChange={(nextSortBy, nextSortDirection) => {
           setOffset(0);

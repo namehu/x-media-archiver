@@ -1,4 +1,4 @@
-import type { ArchiveSourceDetail, SourceDiscovery } from "@/lib/api";
+import type { ArchiveSourceDetail, ArchiveSourceListItem, SourceDiscovery } from "@/lib/api";
 import { scanStatusLabel, scanTriggerLabel, sourceTypeLabel } from "@/lib/formatters";
 
 export function unwrapActionResult(response: Record<string, unknown>) {
@@ -24,7 +24,6 @@ export function parseRecordUrls(value: string) {
 }
 
 export function sourceQueryString(
-  status: string,
   type: string,
   sortBy: "updated_at" | "created_at",
   sortDirection: "asc" | "desc",
@@ -32,7 +31,6 @@ export function sourceQueryString(
   offset: number,
 ) {
   const search = new URLSearchParams({ limit: String(limit), offset: String(offset) });
-  if (status) search.set("source_status", status);
   if (type) search.set("source_type", type);
   search.set("sort_by", sortBy);
   search.set("sort_direction", sortDirection);
@@ -55,21 +53,30 @@ export function formatScanState(cursorState: ArchiveSourceDetail["cursor_state"]
 }
 
 export function formatHistoryState(source: ArchiveSourceDetail) {
+  return sourceScanStatus(source).label;
+}
+
+export function sourceScanStatus(source: ArchiveSourceListItem) {
   const state = source.cursor_state?.automation_state;
-  const mode = source.cursor_state?.active_scan_mode;
-  const modeLabel =
-    mode === "latest_refresh" ? "补充最新推文" : mode === "from_start" ? "从头扫描/补断层" : "历史扫描";
-  if (state === "completed") return `${modeLabel}已完成`;
-  if (source.status === "completed") return "历史扫描已完成";
-  if (state === "stopped") return `${modeLabel}已停止`;
-  if (!source.cursor_state?.automation_enabled) return "未启动";
-  if (source.status === "paused" || state === "paused") return `${modeLabel}已暂停`;
-  if (state === "waiting_downloads") return `${modeLabel}等待下载队列清空`;
-  if (state === "retry_wait") return `${modeLabel}错误后等待重试`;
-  if (state === "rate_limited") return `${modeLabel}限流后已暂停`;
-  if (state === "auth_required") return `${modeLabel}需认证，已暂停`;
-  if (state === "running" && source.next_scan_at) return `${modeLabel}等待随机间隔后扫描`;
-  return `${modeLabel}后台扫描中`;
+  const automationEnabled = Boolean(source.cursor_state?.automation_enabled);
+
+  if (source.status === "failed") return { key: "failed", label: "扫描失败", tone: "danger" as const };
+  if (source.status === "paused" || ["paused", "rate_limited", "auth_required"].includes(state || "")) {
+    return { key: "paused", label: "已暂停", tone: "warning" as const };
+  }
+  if (state === "stopped") return { key: "stopped", label: "已停止", tone: "secondary" as const };
+  if (automationEnabled || ["running", "waiting_downloads", "retry_wait"].includes(state || "")) {
+    return { key: "running", label: "扫描中", tone: "success" as const };
+  }
+  if (
+    source.status === "completed" ||
+    state === "completed" ||
+    Boolean(source.cursor_state?.last_completed) ||
+    Number(source.scan_batch_count || 0) > 0
+  ) {
+    return { key: "completed", label: "扫描完成", tone: "default" as const };
+  }
+  return { key: "pending", label: "待扫描", tone: "secondary" as const };
 }
 
 function activeScanSession(cursorState: ArchiveSourceDetail["cursor_state"]) {
@@ -99,13 +106,6 @@ export function scanStatusTone(status: string) {
   if (status === "succeeded" || status === "completed_empty_batch" || status === "completed_end_of_source")
     return "default" as const;
   if (status === "waiting_downloads") return "warning" as const;
-  return "secondary" as const;
-}
-
-export function sourceStatusTone(status: string) {
-  if (status === "active") return "success" as const;
-  if (status === "paused") return "warning" as const;
-  if (status === "failed") return "danger" as const;
   return "secondary" as const;
 }
 

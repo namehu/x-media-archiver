@@ -7,23 +7,19 @@ import { Pagination } from "@/components/ui/pagination";
 import { Select, SelectContent, SelectGroup, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { Tooltip, TooltipContent, TooltipTrigger } from "@/components/ui/tooltip";
 import { sourceTypeLabel } from "@/lib/formatters";
-import { SOURCE_TYPES, sourceStatusTone } from "../utils";
+import { SOURCE_TYPES, sourceScanStatus } from "../utils";
 import { SOURCES_PAGE_SIZE } from "../hooks/useSourcesQuery";
 
-const ALL_STATUS_VALUE = "__all_status__";
 const ALL_TYPE_VALUE = "__all_type__";
 const SOURCE_SORT_VALUES = ["updated_at:desc", "updated_at:asc", "created_at:desc", "created_at:asc"] as const;
 
 export function SourcesList({
-  statusLabel,
   data,
   selectedSourceId,
-  statusFilter,
   typeFilter,
   sortBy,
   sortDirection,
   offset,
-  onStatusFilterChange,
   onTypeFilterChange,
   onSortChange,
   onOffsetChange,
@@ -32,15 +28,12 @@ export function SourcesList({
   onPin,
   pinPendingSourceId,
 }: {
-  statusLabel: (status?: string | null) => string;
   data?: SourcePageResponse;
   selectedSourceId: number | null;
-  statusFilter: string;
   typeFilter: string;
   sortBy: "updated_at" | "created_at";
   sortDirection: "asc" | "desc";
   offset: number;
-  onStatusFilterChange: (value: string) => void;
   onTypeFilterChange: (value: string) => void;
   onSortChange: (sortBy: "updated_at" | "created_at", sortDirection: "asc" | "desc") => void;
   onOffsetChange: (offset: number) => void;
@@ -64,27 +57,7 @@ export function SourcesList({
         </div>
       </CardHeader>
       <CardContent className="space-y-3">
-        <div className="grid gap-2 sm:grid-cols-3">
-          <Select
-            value={statusFilter || ALL_STATUS_VALUE}
-            onValueChange={(value) => {
-              onOffsetChange(0);
-              onStatusFilterChange(value === ALL_STATUS_VALUE ? "" : value);
-            }}
-          >
-            <SelectTrigger>
-              <SelectValue />
-            </SelectTrigger>
-            <SelectContent>
-              <SelectGroup>
-                <SelectItem value={ALL_STATUS_VALUE}>全部状态</SelectItem>
-                <SelectItem value="active">{statusLabel("active")}</SelectItem>
-                <SelectItem value="paused">{statusLabel("paused")}</SelectItem>
-                <SelectItem value="completed">{statusLabel("completed")}</SelectItem>
-                <SelectItem value="failed">{statusLabel("failed")}</SelectItem>
-              </SelectGroup>
-            </SelectContent>
-          </Select>
+        <div className="grid gap-2 sm:grid-cols-2">
           <Select
             value={typeFilter || ALL_TYPE_VALUE}
             onValueChange={(value) => {
@@ -143,7 +116,6 @@ export function SourcesList({
               key={source.id}
               source={source}
               selected={source.id === selectedSourceId}
-              statusLabel={statusLabel}
               onSelectSource={onSelectSource}
               onPin={onPin}
               pinPending={pinPendingSourceId === source.id}
@@ -169,18 +141,18 @@ export function SourcesList({
 function SourceListItem({
   source,
   selected,
-  statusLabel,
   onSelectSource,
   onPin,
   pinPending,
 }: {
   source: ArchiveSourceListItem;
   selected: boolean;
-  statusLabel: (status?: string | null) => string;
   onSelectSource: (sourceId: number) => void;
   onPin: (sourceId: number, isPinned: boolean) => void;
   pinPending: boolean;
 }) {
+  const scanStatus = sourceScanStatus(source);
+
   return (
     <div
       role="button"
@@ -216,7 +188,7 @@ function SourceListItem({
           <ListMetric label="未入队发现" value={source.unsubmitted_tweet_count ?? 0} warning={(source.unsubmitted_tweet_count ?? 0) > 0} />
           <ListMetric label="累计扫描批次" value={source.scan_batch_count ?? 0} />
         </div>
-        <Badge tone={sourceStatusTone(source.status)}>{statusLabel(source.status)}</Badge>
+        <Badge tone={scanStatus.tone}>{scanStatus.label}</Badge>
         <Tooltip>
           <TooltipTrigger asChild>
             <Button

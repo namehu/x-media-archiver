@@ -5,17 +5,16 @@ import { sourceQueryString } from "../utils";
 export const SOURCES_PAGE_SIZE = 50;
 
 export function useSourcesQuery(
-  statusFilter: string,
   typeFilter: string,
   sortBy: "updated_at" | "created_at",
   sortDirection: "asc" | "desc",
   offset: number,
 ) {
   return useQuery({
-    queryKey: ["sources", statusFilter, typeFilter, sortBy, sortDirection, offset],
+    queryKey: ["sources", typeFilter, sortBy, sortDirection, offset],
     queryFn: () =>
       apiGet<SourcePageResponse>(
-        `/api/v1/sources?${sourceQueryString(statusFilter, typeFilter, sortBy, sortDirection, SOURCES_PAGE_SIZE, offset)}`,
+        `/api/v1/sources?${sourceQueryString(typeFilter, sortBy, sortDirection, SOURCES_PAGE_SIZE, offset)}`,
       ),
   });
 }
