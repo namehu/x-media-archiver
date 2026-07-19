@@ -2239,6 +2239,8 @@ export interface components {
         SourceDownloadSummaryResponse: {
             /** Source Id */
             source_id: number;
+            /** Current Tweet Id */
+            current_tweet_id?: string | null;
             active_run?: components["schemas"]["ArchiveRunDetailResponse"] | null;
             active_counts?: components["schemas"]["SourceDownloadCountsResponse"];
             /** Paused Runs */

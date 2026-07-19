@@ -1,6 +1,6 @@
-import { Virtuoso } from "react-virtuoso";
+import { Virtuoso, type VirtuosoHandle } from "react-virtuoso";
 import * as React from "react";
-import type { SourceDiscoveryPageResponse } from "@/lib/api";
+import type { ArchiveRunItem, SourceDiscoveryPageResponse, SourceDownloadSummary } from "@/lib/api";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Checkbox } from "@/components/ui/checkbox";
@@ -8,10 +8,20 @@ import { Progress } from "@/components/ui/progress";
 import { Tooltip, TooltipContent, TooltipTrigger } from "@/components/ui/tooltip";
 import { cn, formatDateTime } from "@/lib/utils";
 import type { DetailActions } from "./source-detail-sheet/scan-actions";
-import { ChevronDown, ChevronUp, FileQuestion, Film, Image, Images } from "lucide-react";
+import { ChevronDown, ChevronUp, FileQuestion, Film, Image, Images, LocateFixed, Pause, Play } from "lucide-react";
+
+type DownloadSubmitInput = {
+  sourceId: number;
+  scope: "selected" | "all_unsubmitted" | "failed";
+  tweetIds?: string[];
+  limit?: number;
+};
+
+type DownloadFollowMode = "following" | "paused";
 
 export function SourceTweetsTab({
   pages,
+  downloads,
   sourceId,
   actions,
   isLoading,
@@ -20,8 +30,14 @@ export function SourceTweetsTab({
   hasNextPage,
   onLoadMore,
   statusLabel,
+  followRunId,
+  followMode,
+  onFollowRun,
+  onFollowModeChange,
+  onSubmitDownload,
 }: {
   pages: SourceDiscoveryPageResponse[];
+  downloads?: SourceDownloadSummary;
   sourceId: number;
   actions: DetailActions;
   isLoading: boolean;
@@ -30,13 +46,25 @@ export function SourceTweetsTab({
   hasNextPage: boolean | undefined;
   onLoadMore: () => void;
   statusLabel: (status?: string | null) => string;
+  followRunId: number | null;
+  followMode: DownloadFollowMode;
+  onFollowRun: (runId: number) => void;
+  onFollowModeChange: (mode: DownloadFollowMode) => void;
+  onSubmitDownload: (input: DownloadSubmitInput) => void;
 }) {
+  const virtuosoRef = React.useRef<VirtuosoHandle>(null);
+  const loadMoreRequestedRef = React.useRef(false);
+  const activeItemsByTweet = React.useMemo(
+    () => new Map((downloads?.active_run?.items ?? []).map((item) => [item.tweet_id, item])),
+    [downloads?.active_run?.items],
+  );
   const tweets = React.useMemo(
     () =>
       pages
         .flatMap((page) => page.rows)
-        .filter((tweet, index, rows) => rows.findIndex((row) => row.tweet_id === tweet.tweet_id) === index),
-    [pages],
+        .filter((tweet, index, rows) => rows.findIndex((row) => row.tweet_id === tweet.tweet_id) === index)
+        .map((tweet) => mergeActiveRunItem(tweet, downloads, activeItemsByTweet.get(tweet.tweet_id))),
+    [activeItemsByTweet, downloads, pages],
   );
   const totalCount = pages[0]?.total_count ?? 0;
   const [selected, setSelected] = React.useState<Set<string>>(new Set());
@@ -61,6 +89,43 @@ export function SourceTweetsTab({
   React.useEffect(() => {
     setSelected(new Set());
   }, [sourceId]);
+
+  const activeRunId = downloads?.active_run?.id ?? null;
+  const currentTweetId = followRunId === activeRunId ? downloads?.current_tweet_id ?? null : null;
+
+  React.useEffect(() => {
+    if (!isFetchingNextPage) loadMoreRequestedRef.current = false;
+  }, [isFetchingNextPage]);
+
+  React.useEffect(() => {
+    loadMoreRequestedRef.current = false;
+  }, [currentTweetId]);
+
+  React.useEffect(() => {
+    if (followMode !== "following" || !currentTweetId) return;
+    const index = tweets.findIndex((tweet) => tweet.tweet_id === currentTweetId);
+    if (index >= 0) {
+      virtuosoRef.current?.scrollToIndex({ index, align: "center", behavior: "smooth" });
+      return;
+    }
+    if (hasNextPage && !isFetchingNextPage && !loadMoreRequestedRef.current) {
+      loadMoreRequestedRef.current = true;
+      onLoadMore();
+    }
+  }, [currentTweetId, followMode, hasNextPage, isFetchingNextPage, onLoadMore, tweets]);
+
+  const pauseFollowingForUserNavigation = React.useCallback(() => {
+    if (followRunId && followMode === "following") onFollowModeChange("paused");
+  }, [followMode, followRunId, onFollowModeChange]);
+
+  const handleNavigationKey = React.useCallback(
+    (event: React.KeyboardEvent<HTMLDivElement>) => {
+      if (["ArrowUp", "ArrowDown", "PageUp", "PageDown", "Home", "End"].includes(event.key)) {
+        pauseFollowingForUserNavigation();
+      }
+    },
+    [pauseFollowingForUserNavigation],
+  );
 
   if (isLoading) {
     return <p className="py-4 text-sm text-fg-secondary">加载中...</p>;
@@ -102,7 +167,7 @@ export function SourceTweetsTab({
                 type="button"
                 size="sm"
                 disabled={!selectedQueueIds.length || actions.pending.download}
-                onClick={() => actions.submitDownload({ sourceId, scope: "selected", tweetIds: selectedQueueIds })}
+                onClick={() => onSubmitDownload({ sourceId, scope: "selected", tweetIds: selectedQueueIds })}
               >
                 下载选中 ({selectedQueueIds.length})
               </Button>
@@ -122,53 +187,144 @@ export function SourceTweetsTab({
               </Button>
             </div>
           )}
+          <DownloadFollowControls
+            activeRunId={activeRunId}
+            currentTweetId={downloads?.current_tweet_id ?? null}
+            followRunId={followRunId}
+            followMode={followMode}
+            onFollowRun={onFollowRun}
+            onFollowModeChange={onFollowModeChange}
+          />
         </div>
       </div>
-      <Virtuoso
+      <div
         className="min-h-0 flex-1"
-        style={{ height: "100%" }}
-        data={tweets}
-        endReached={() => {
-          if (hasNextPage && !isFetchingNextPage) onLoadMore();
-        }}
-        itemContent={(_, tweet) => (
-          <TweetListItem
-            tweet={tweet}
-            sourceId={sourceId}
-            selected={selected.has(tweet.tweet_id)}
-            onSelectionChange={(checked) => {
-              setSelected((current) => {
-                const next = new Set(current);
-                if (checked) next.add(tweet.tweet_id);
-                else next.delete(tweet.tweet_id);
-                return next;
-              });
-            }}
-            actions={actions}
-            statusLabel={statusLabel}
-          />
-        )}
-        components={{
-          Footer: () => (
-            <div className="py-3 text-center text-xs text-fg-secondary">
-              {isFetchingNextPage
-                ? "正在加载更多..."
-                : hasNextPage
-                  ? (
-                    <button type="button" className="text-brand hover:underline" onClick={onLoadMore}>
-                      加载更多
-                    </button>
-                  )
-                  : `已加载全部 ${totalCount} 条记录`}
-            </div>
-          ),
-        }}
-      />
+        onWheelCapture={pauseFollowingForUserNavigation}
+        onTouchMoveCapture={pauseFollowingForUserNavigation}
+        onKeyDownCapture={handleNavigationKey}
+      >
+        <Virtuoso
+          ref={virtuosoRef}
+          className="h-full"
+          data={tweets}
+          computeItemKey={(_, tweet) => tweet.tweet_id}
+          endReached={() => {
+            if (hasNextPage && !isFetchingNextPage) onLoadMore();
+          }}
+          itemContent={(_, tweet) => (
+            <TweetListItem
+              tweet={tweet}
+              sourceId={sourceId}
+              selected={selected.has(tweet.tweet_id)}
+              isCurrentDownload={tweet.tweet_id === downloads?.current_tweet_id && activeRunId !== null}
+              onSelectionChange={(checked) => {
+                setSelected((current) => {
+                  const next = new Set(current);
+                  if (checked) next.add(tweet.tweet_id);
+                  else next.delete(tweet.tweet_id);
+                  return next;
+                });
+              }}
+              actions={actions}
+              statusLabel={statusLabel}
+              onSubmitDownload={onSubmitDownload}
+            />
+          )}
+          components={{
+            Footer: () => (
+              <div className="py-3 text-center text-xs text-fg-secondary">
+                {isFetchingNextPage
+                  ? "正在加载更多..."
+                  : hasNextPage
+                    ? (
+                      <button type="button" className="text-brand hover:underline" onClick={onLoadMore}>
+                        加载更多
+                      </button>
+                    )
+                    : `已加载全部 ${totalCount} 条记录`}
+              </div>
+            ),
+          }}
+        />
+      </div>
     </div>
   );
 }
 
 type TweetRow = SourceDiscoveryPageResponse["rows"][number];
+
+function mergeActiveRunItem(
+  tweet: TweetRow,
+  downloads?: SourceDownloadSummary,
+  item?: ArchiveRunItem,
+): TweetRow {
+  const activeRun = downloads?.active_run;
+  if (!activeRun || !item) return tweet;
+  return {
+    ...tweet,
+    active_run_id: activeRun.id,
+    active_item_id: item.id,
+    active_item_status: item.status,
+    active_run_status: activeRun.status,
+    cancel_requested: item.cancel_requested,
+    downloaded_bytes: item.downloaded_bytes,
+    total_bytes: item.total_bytes,
+    speed_bps: item.speed_bps,
+    progress_message: item.progress_message,
+    last_progress_at: item.last_progress_at,
+  };
+}
+
+function DownloadFollowControls({
+  activeRunId,
+  currentTweetId,
+  followRunId,
+  followMode,
+  onFollowRun,
+  onFollowModeChange,
+}: {
+  activeRunId: number | null;
+  currentTweetId: string | null;
+  followRunId: number | null;
+  followMode: DownloadFollowMode;
+  onFollowRun: (runId: number) => void;
+  onFollowModeChange: (mode: DownloadFollowMode) => void;
+}) {
+  if (followRunId && followRunId !== activeRunId) {
+    return <Badge tone="secondary">等待 Run #{followRunId} 开始</Badge>;
+  }
+  if (followRunId && followRunId === activeRunId) {
+    return (
+      <div className="flex items-center gap-2">
+        <Badge tone={followMode === "following" ? "default" : "warning"}>
+          {followMode === "following" ? (currentTweetId ? "正在跟随" : "等待当前下载项") : "跟随已暂停"}
+        </Badge>
+        <Button
+          type="button"
+          size="sm"
+          variant="ghost"
+          onClick={() => onFollowModeChange(followMode === "following" ? "paused" : "following")}
+        >
+          {followMode === "following" ? (
+            <Pause data-icon="inline-start" />
+          ) : (
+            <Play data-icon="inline-start" />
+          )}
+          {followMode === "following" ? "暂停跟随" : "继续跟随"}
+        </Button>
+      </div>
+    );
+  }
+  if (activeRunId && currentTweetId) {
+    return (
+      <Button type="button" size="sm" variant="ghost" onClick={() => onFollowRun(activeRunId)}>
+        <LocateFixed data-icon="inline-start" />
+        定位当前项
+      </Button>
+    );
+  }
+  return null;
+}
 
 function canQueue(tweet: TweetRow) {
   if (tweet.active_item_status) return false;
@@ -341,20 +497,32 @@ function TweetListItem({
   tweet,
   sourceId,
   selected,
+  isCurrentDownload,
   onSelectionChange,
   actions,
   statusLabel,
+  onSubmitDownload,
 }: {
   tweet: TweetRow;
   sourceId: number;
   selected: boolean;
+  isCurrentDownload: boolean;
   onSelectionChange: (checked: boolean) => void;
   actions: DetailActions;
   statusLabel: (status?: string | null) => string;
+  onSubmitDownload: (input: DownloadSubmitInput) => void;
 }) {
   return (
     <div className="pb-2">
-      <div className="rounded-lg border border-border-subtle bg-bg-surface p-3 transition-colors hover:border-border-strong">
+      <div
+        aria-current={isCurrentDownload ? "true" : undefined}
+        className={cn(
+          "rounded-lg border bg-bg-surface p-3 transition-colors",
+          isCurrentDownload
+            ? "border-brand ring-1 ring-brand/20"
+            : "border-border-subtle hover:border-border-strong",
+        )}
+      >
         <div className="flex items-start justify-between gap-3">
           <div className="flex min-w-0 flex-1 gap-3">
             <Checkbox
@@ -402,7 +570,7 @@ function TweetListItem({
                 size="sm"
                 variant="secondary"
                 disabled={actions.pending.download}
-                onClick={() => actions.submitDownload({ sourceId, scope: "selected", tweetIds: [tweet.tweet_id] })}
+                onClick={() => onSubmitDownload({ sourceId, scope: "selected", tweetIds: [tweet.tweet_id] })}
               >
                 下载
               </Button>

@@ -1,5 +1,5 @@
 import * as React from "react";
-import type { ArchiveSourceDetail, SourceScanRun } from "@/lib/api";
+import type { ArchiveRunControl, ArchiveSourceDetail, ArchiveSubmission, SourceScanRun } from "@/lib/api";
 import { Badge } from "@/components/ui/badge";
 import {
   AlertDialog,
@@ -32,9 +32,9 @@ export type DetailActions = {
     scope: "selected" | "all_unsubmitted" | "failed";
     tweetIds?: string[];
     limit?: number;
-  }) => void;
+  }) => Promise<ArchiveSubmission>;
   pauseDownload: (runId: number) => void;
-  resumeDownload: (runId: number) => void;
+  resumeDownload: (runId: number) => Promise<ArchiveRunControl>;
   stopDownload: (runId: number) => void;
   cancelDownloadItems: (input: { runId: number; tweetIds: string[] }) => void;
   stopHistory: (sourceId: number) => void;

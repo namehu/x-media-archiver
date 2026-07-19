@@ -9,6 +9,7 @@ from xarchiver.downloader import (
     mark_run_items_progress,
     mark_run_items_tweet_progress,
 )
+from xarchiver.services.queue import claim_next_items
 from xarchiver.services.sources import (
     build_active_scan_range,
     build_gallery_dl_scan_url,
@@ -759,6 +760,50 @@ class SourceDiscoveryIntegrationTests(unittest.TestCase):
         self.assertEqual(page["offset"], 1)
         self.assertEqual(page["rows"][0]["tweet_id"], self.tweet_ids[0])
 
+    def test_source_download_queues_and_claims_tweets_in_visible_order(self) -> None:
+        source = create_source("user_media", self.source_urls[0])
+        record_source_discoveries(
+            int(source["id"]),
+            [
+                {
+                    "tweet_id": tweet_id,
+                    "url": f"https://x.com/sourcefixture/status/{tweet_id}",
+                    "author_username": "sourcefixture",
+                    "author_display_name": None,
+                    "text": None,
+                    "published_at": None,
+                    "collected_at": None,
+                    "raw_import": {"media_count": 1},
+                }
+                for tweet_id in self.tweet_ids
+            ],
+        )
+        with connect() as conn:
+            with conn.cursor() as cur:
+                cur.execute(
+                    "update source_discovered_tweets set discovered_at = %s where source_id = %s and tweet_id = %s",
+                    ("2026-01-01T00:00:00+00:00", int(source["id"]), self.tweet_ids[0]),
+                )
+                cur.execute(
+                    "update source_discovered_tweets set discovered_at = %s where source_id = %s and tweet_id = %s",
+                    ("2026-01-02T00:00:00+00:00", int(source["id"]), self.tweet_ids[1]),
+                )
+            conn.commit()
+
+        submitted = submit_source_downloads(int(source["id"]), "all_unsubmitted")
+        with connect() as conn:
+            with conn.cursor() as cur:
+                cur.execute(
+                    "select tweet_id from archive_run_items where archive_run_id = %s order by id",
+                    (submitted["run_id"],),
+                )
+                queued_tweet_ids = [str(row["tweet_id"]) for row in cur.fetchall()]
+
+        claimed = claim_next_items(3, batch_size=1, worker_id="source-order-test")
+
+        self.assertEqual(queued_tweet_ids, [self.tweet_ids[1], self.tweet_ids[0]])
+        self.assertEqual([str(item["tweet_id"]) for item in claimed], [self.tweet_ids[1]])
+
     def test_list_source_scan_runs_page_supports_pagination(self) -> None:
         source = create_source("profile", self.source_urls[2])
         first_id = start_source_scan_run(
@@ -904,11 +949,20 @@ class SourceDiscoveryIntegrationTests(unittest.TestCase):
                     (second["run_id"],),
                 )
                 cur.execute("update archive_runs set status = 'running' where id = %s", (second["run_id"],))
+                cur.execute(
+                    """
+                    insert into download_jobs (
+                        job_type, status, total_count, archive_run_id, current_tweet_id, last_progress_at
+                    ) values ('download', 'running', 1, %s, %s, now())
+                    """,
+                    (second["run_id"], self.tweet_ids[1]),
+                )
             conn.commit()
 
         summary = get_source_downloads(int(source["id"]))
 
         self.assertEqual(summary["active_run"]["id"], second["run_id"])
+        self.assertEqual(summary["current_tweet_id"], self.tweet_ids[1])
         self.assertEqual(
             summary["active_counts"],
             {

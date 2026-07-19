@@ -546,6 +546,7 @@ class SourceDownloadCountsResponse(FlexibleResponse):
 
 class SourceDownloadSummaryResponse(FlexibleResponse):
     source_id: int
+    current_tweet_id: str | None = None
     active_run: ArchiveRunDetailResponse | None = None
     active_counts: SourceDownloadCountsResponse = Field(default_factory=SourceDownloadCountsResponse)
     paused_runs: list[ArchiveRunRowResponse] = Field(default_factory=list)

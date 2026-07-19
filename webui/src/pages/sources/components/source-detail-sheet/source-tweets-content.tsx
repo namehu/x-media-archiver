@@ -21,6 +21,15 @@ import { SourceTweetsTab } from "../source-tweets-tab";
 import { ScanActions, type DetailActions } from "./scan-actions";
 import { ActionBlock } from "./action-block";
 
+type DownloadSubmitInput = {
+  sourceId: number;
+  scope: "selected" | "all_unsubmitted" | "failed";
+  tweetIds?: string[];
+  limit?: number;
+};
+
+type DownloadFollowMode = "following" | "paused";
+
 export function SourceTweetsContent({
   source,
   actions,
@@ -52,6 +61,51 @@ export function SourceTweetsContent({
   statusLabel: (status?: string | null) => string;
   now: number;
 }) {
+  const [followRunId, setFollowRunId] = React.useState<number | null>(null);
+  const [followMode, setFollowMode] = React.useState<DownloadFollowMode>("following");
+
+  React.useEffect(() => {
+    setFollowRunId(null);
+    setFollowMode("following");
+  }, [source.id]);
+
+  React.useEffect(() => {
+    if (!followRunId || !downloads) return;
+    const trackedRun = downloads.recent_runs.find((run) => run.id === followRunId);
+    if (trackedRun && !["queued", "running", "blocked", "paused"].includes(trackedRun.status)) {
+      setFollowRunId(null);
+      setFollowMode("following");
+    }
+  }, [downloads, followRunId]);
+
+  const submitDownloadAndFollow = React.useCallback(
+    (input: DownloadSubmitInput) => {
+      void actions
+        .submitDownload(input)
+        .then((result) => {
+          if (result.run_id) {
+            setFollowRunId(result.run_id);
+            setFollowMode("following");
+          }
+        })
+        .catch(() => undefined);
+    },
+    [actions],
+  );
+
+  const resumeDownloadAndFollow = React.useCallback(
+    (runId: number) => {
+      void actions
+        .resumeDownload(runId)
+        .then(() => {
+          setFollowRunId(runId);
+          setFollowMode("following");
+        })
+        .catch(() => undefined);
+    },
+    [actions],
+  );
+
   return (
     <div className="flex min-h-0 flex-1 flex-col gap-4">
       <div className="shrink-0">
@@ -63,7 +117,14 @@ export function SourceTweetsContent({
             scanLimit={scanLimit}
             onOpenLog={onOpenLog}
           />
-          <SourceDownloadPanel source={source} downloads={downloads} actions={actions} statusLabel={statusLabel} />
+          <SourceDownloadPanel
+            source={source}
+            downloads={downloads}
+            actions={actions}
+            statusLabel={statusLabel}
+            onSubmitDownload={submitDownloadAndFollow}
+            onResumeDownload={resumeDownloadAndFollow}
+          />
         </div>
         {source.active_scan_run ? (
           <div className="mt-4">
@@ -74,6 +135,7 @@ export function SourceTweetsContent({
       <div className="min-h-0 flex-1">
         <SourceTweetsTab
           pages={pages}
+          downloads={downloads}
           sourceId={source.id}
           actions={actions}
           isLoading={isLoading}
@@ -82,6 +144,14 @@ export function SourceTweetsContent({
           hasNextPage={hasNextPage}
           onLoadMore={onLoadMore}
           statusLabel={statusLabel}
+          followRunId={followRunId}
+          followMode={followMode}
+          onFollowRun={(runId) => {
+            setFollowRunId(runId);
+            setFollowMode("following");
+          }}
+          onFollowModeChange={setFollowMode}
+          onSubmitDownload={submitDownloadAndFollow}
         />
       </div>
     </div>
@@ -93,11 +163,15 @@ function SourceDownloadPanel({
   downloads,
   actions,
   statusLabel,
+  onSubmitDownload,
+  onResumeDownload,
 }: {
   source: ArchiveSourceDetail;
   downloads?: SourceDownloadSummary;
   actions: DetailActions;
   statusLabel: (status?: string | null) => string;
+  onSubmitDownload: (input: DownloadSubmitInput) => void;
+  onResumeDownload: (runId: number) => void;
 }) {
   const [confirmAllUnsubmitted, setConfirmAllUnsubmitted] = React.useState(false);
   const active = downloads?.active_run;
@@ -162,7 +236,7 @@ function SourceDownloadPanel({
             size="sm"
             variant="secondary"
             disabled={actions.pending.download}
-            onClick={() => actions.resumeDownload(paused[0].id)}
+            onClick={() => onResumeDownload(paused[0].id)}
           >
             继续下载
           </Button>
@@ -191,7 +265,7 @@ function SourceDownloadPanel({
           size="sm"
           variant="secondary"
           disabled={actions.pending.download}
-          onClick={() => actions.submitDownload({ sourceId: source.id, scope: "failed" })}
+          onClick={() => onSubmitDownload({ sourceId: source.id, scope: "failed" })}
         >
           重试失败
         </Button>
@@ -209,7 +283,7 @@ function SourceDownloadPanel({
             <AlertDialogCancel disabled={actions.pending.download}>取消</AlertDialogCancel>
             <AlertDialogAction
               disabled={actions.pending.download}
-              onClick={() => actions.submitDownload({ sourceId: source.id, scope: "all_unsubmitted" })}
+              onClick={() => onSubmitDownload({ sourceId: source.id, scope: "all_unsubmitted" })}
             >
               确认下载
             </AlertDialogAction>

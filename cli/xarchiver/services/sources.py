@@ -58,6 +58,7 @@ from xarchiver.services.queue import (
 from xarchiver.sql_builder import compile_query
 from xarchiver.tables import (
     archive_sources,
+    download_jobs,
     source_discovered_tweets,
     source_scan_runs,
     tweets,
@@ -2251,8 +2252,22 @@ def get_source_downloads(source_id: int) -> dict[str, object]:
     )
     paused_runs = [dict(run) for run in runs if run.status == "paused"]
     blocked_runs = [dict(run) for run in runs if run.status == "blocked"]
+    current_tweet_id = None
     with connect() as conn:
         with conn.cursor() as cur:
+            if active:
+                current_tweet_sql, current_tweet_params = compile_query(
+                    select(download_jobs.c.current_tweet_id)
+                    .where(
+                        download_jobs.c.archive_run_id == bindparam("active_run_id", int(active.id)),
+                        download_jobs.c.current_tweet_id.is_not(None),
+                    )
+                    .order_by(download_jobs.c.last_progress_at.desc().nulls_last(), download_jobs.c.id.desc())
+                    .limit(1)
+                )
+                cur.execute(current_tweet_sql, current_tweet_params)
+                current_tweet_row = cur.fetchone()
+                current_tweet_id = str(current_tweet_row["current_tweet_id"]) if current_tweet_row else None
             cur.execute(
                 """
                 select i.status, count(*)::int as count
@@ -2277,6 +2292,7 @@ def get_source_downloads(source_id: int) -> dict[str, object]:
             progress = dict(cur.fetchone())
     return {
         "source_id": source_id,
+        "current_tweet_id": current_tweet_id,
         "active_run": active_detail,
         "active_counts": active_counts,
         "paused_runs": paused_runs,
@@ -2361,7 +2377,7 @@ def build_source_download_candidates_query(
             )
         )
         .where(source_discovered_tweets.c.source_id == bindparam("source_id", source_id))
-        .order_by(source_discovered_tweets.c.discovered_at.asc(), source_discovered_tweets.c.id.asc())
+        .order_by(source_discovered_tweets.c.discovered_at.desc(), source_discovered_tweets.c.id.desc())
     )
     if scope == "all_unsubmitted":
         statement = statement.where(source_discovered_tweets.c.archive_run_id.is_(None))

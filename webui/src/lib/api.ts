@@ -405,6 +405,7 @@ export type SourceScanRunsPageResponse = PageResponse<SourceScanRun>;
 
 export type SourceDownloadSummary = {
   source_id: number;
+  current_tweet_id?: string | null;
   active_run?: ArchiveRunDetail | null;
   active_counts: {
     total_count: number;

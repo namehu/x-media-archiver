@@ -201,6 +201,17 @@ source_scan_runs = Table(
     Column("created_at", DateTime(timezone=True)),
 )
 
+download_jobs = Table(
+    "download_jobs",
+    metadata,
+    Column("id", BigInteger),
+    Column("archive_run_id", BigInteger),
+    Column("status", Text),
+    Column("current_tweet_id", Text),
+    Column("last_progress_at", DateTime(timezone=True)),
+    Column("created_at", DateTime(timezone=True)),
+)
+
 download_attempts = Table(
     "download_attempts",
     metadata,

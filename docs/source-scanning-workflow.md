@@ -231,6 +231,8 @@ stateDiagram-v2
 
 下载 run 的成员不可变。暂停后新扫描到的 Tweet 只进入发现池；恢复下载只恢复暂停 run，不会自动包含新发现。再次点击“下载新发现”或“下载选中”会创建新的 run。若前序来源 run 仍处于 `queued`、`running` 或 `paused`，新 run 必须进入 `blocked`。
 
+新创建的来源下载 run 按发现列表的可见顺序入队，即 `discovered_at desc, id desc`，worker 在 run 内按 item 入队顺序从上到下领取。已有 run 和失败重试继续保留原始 item 顺序，避免改变历史任务的审计语义。
+
 ## 6. 后台调度设计
 
 ```mermaid
@@ -337,7 +339,7 @@ sequenceDiagram
 | `GET /api/v1/sources/{source_id}` | 获取来源详情、汇总、active run | `ArchiveSourceDetailResponse` |
 | `GET /api/v1/sources/{source_id}/scan-runs` | 分页查看扫描批次审计 | `SourceScanRunsPageResponse` |
 | `GET /api/v1/log-streams/{stream_id}` | 查看扫描日志 | `OperationLogEntriesResponse` |
-| `GET /api/v1/sources/{source_id}/downloads` | 查看来源下载工作台汇总、active/paused/blocked runs | `SourceDownloadSummaryResponse` |
+| `GET /api/v1/sources/{source_id}/downloads` | 查看来源下载工作台汇总、active/paused/blocked runs，并通过 `current_tweet_id` 标识下载器当前处理项 | `SourceDownloadSummaryResponse` |
 | `POST /api/v1/sources/{source_id}/downloads` | 下载选中、新发现或失败项 | `ArchiveSubmissionResponse` |
 | `POST /api/v1/sources/{source_id}/submit-discovered` | 兼容旧入口，等价于提交未入队发现项 | `ArchiveSubmissionResponse` |
 | `POST /api/v1/archive-runs/{run_id}/pause` | 暂停下载 run，不强杀当前子进程 | `ArchiveRunControlResponse` |
@@ -353,6 +355,7 @@ sequenceDiagram
 - 所有错误响应不得暴露 cookie、生产连接串或其他凭据。
 - 下载提交必须按 Tweet 加锁并保持幂等，不能为同一 Tweet 创建多个 active item。
 - 同一来源只能有一个 runnable 下载 run；后续来源 run 使用 `blocked` 等待释放。
+- WebUI 仅在用户本次触发下载或恢复时自动跟随目标 run；手动滚动会暂停跟随，已有运行任务只提供显式定位入口。
 
 ## 9. 错误处理与恢复
 
