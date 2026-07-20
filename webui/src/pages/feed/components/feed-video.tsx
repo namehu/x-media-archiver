@@ -1,5 +1,5 @@
-import { useEffect, useRef, useState } from "react";
-import { Maximize2, Pause, Play, Volume2, VolumeX } from "lucide-react";
+import { useEffect, useRef } from "react";
+import { Pause, Play } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import type { PostFeedMedia } from "@/lib/api";
 
@@ -21,9 +21,6 @@ export function FeedVideo({
   const containerRef = useRef<HTMLDivElement>(null);
   const videoRef = useRef<HTMLVideoElement>(null);
   const activeVideoIdRef = useRef(activeVideoId);
-  const manuallyPausedRef = useRef(false);
-  const [muted, setMuted] = useState(true);
-  const [reducedMotion, setReducedMotion] = useState(false);
   const active = activeVideoId === videoId && !previewOpen;
 
   useEffect(() => {
@@ -31,48 +28,42 @@ export function FeedVideo({
   }, [activeVideoId]);
 
   useEffect(() => {
-    const mediaQuery = window.matchMedia("(prefers-reduced-motion: reduce)");
-    const update = () => setReducedMotion(mediaQuery.matches);
-    update();
-    mediaQuery.addEventListener("change", update);
-    return () => mediaQuery.removeEventListener("change", update);
-  }, []);
-
-  useEffect(() => {
     const container = containerRef.current;
-    if (!container || reducedMotion || previewOpen) return undefined;
+    if (!container || previewOpen) return undefined;
     const observer = new IntersectionObserver(
       ([entry]) => {
-        if (entry.isIntersecting && entry.intersectionRatio >= 0.65) {
-          if (!manuallyPausedRef.current) onActivate(videoId);
-          return;
-        }
-
-        manuallyPausedRef.current = false;
-        if (activeVideoIdRef.current === videoId) onActivate(null);
+        if (entry.intersectionRatio < 0.35 && activeVideoIdRef.current === videoId) onActivate(null);
       },
-      { threshold: [0, 0.65, 1] },
+      { threshold: [0, 0.35, 1] },
     );
     observer.observe(container);
     return () => observer.disconnect();
-  }, [onActivate, previewOpen, reducedMotion, videoId]);
+  }, [onActivate, previewOpen, videoId]);
 
   useEffect(() => {
     const video = videoRef.current;
     if (!video) return;
-    video.muted = muted;
+    video.muted = false;
     if (active && media.media_url) {
       void video.play().catch(() => undefined);
       return;
     }
     video.pause();
-    video.removeAttribute("src");
-    video.load();
-  }, [active, media.media_url, muted]);
+  }, [active, media.media_url]);
 
   const togglePlayback = () => {
-    manuallyPausedRef.current = active;
-    onActivate(active ? null : videoId);
+    const video = videoRef.current;
+    if (!video || !media.media_url) return;
+
+    if (active) {
+      video.pause();
+      onActivate(null);
+      return;
+    }
+
+    video.muted = false;
+    onActivate(videoId);
+    void video.play().catch(() => undefined);
   };
 
   const controlClassName =
@@ -83,13 +74,14 @@ export function FeedVideo({
       {media.media_url ? (
         <video
           ref={videoRef}
-          src={active ? media.media_url : undefined}
+          src={media.media_url}
           poster={media.preview_url || undefined}
-          muted={muted}
+          muted={false}
           playsInline
           preload="none"
           className="size-full cursor-zoom-in object-cover"
           onClick={onPreview}
+          onEnded={() => onActivate(null)}
         />
       ) : (
         <div className="flex size-full items-center justify-center text-sm text-white/70">视频不可用</div>
@@ -99,38 +91,16 @@ export function FeedVideo({
           预览图不可用
         </div>
       ) : null}
-      <div className="absolute inset-x-0 bottom-0 flex items-end justify-between gap-2 bg-gradient-to-t from-black/65 via-black/20 to-transparent px-2 pb-2 pt-8">
-        <div className="flex items-center gap-0.5">
-          <Button
-            type="button"
-            size="icon"
-            variant="ghost"
-            className={controlClassName}
-            aria-label={active ? "暂停视频" : "播放视频"}
-            onClick={togglePlayback}
-          >
-            {active ? <Pause fill="currentColor" strokeWidth={1.5} /> : <Play fill="currentColor" strokeWidth={1.5} />}
-          </Button>
-          <Button
-            type="button"
-            size="icon"
-            variant="ghost"
-            className={controlClassName}
-            aria-label={muted ? "打开声音" : "静音"}
-            onClick={() => setMuted((current) => !current)}
-          >
-            {muted ? <VolumeX strokeWidth={1.75} /> : <Volume2 strokeWidth={1.75} />}
-          </Button>
-        </div>
+      <div className="absolute inset-x-0 bottom-0 flex items-end justify-start bg-gradient-to-t from-black/65 via-black/20 to-transparent px-2 pb-2 pt-8">
         <Button
           type="button"
           size="icon"
           variant="ghost"
           className={controlClassName}
-          aria-label="放大视频"
-          onClick={onPreview}
+          aria-label={active ? "暂停视频" : "播放视频"}
+          onClick={togglePlayback}
         >
-          <Maximize2 strokeWidth={1.75} />
+          {active ? <Pause fill="currentColor" strokeWidth={1.5} /> : <Play fill="currentColor" strokeWidth={1.5} />}
         </Button>
       </div>
     </div>
