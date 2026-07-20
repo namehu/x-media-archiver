@@ -1,5 +1,11 @@
 from __future__ import annotations
 
+"""杂项只读路由与流式输出路由。
+
+这里主要放事件流、下载策略、健康详情，以及本地媒体文件读取等不方便归类
+到单一资源对象下的接口。
+"""
+
 import asyncio
 import mimetypes
 from collections.abc import Iterator
@@ -22,11 +28,15 @@ MEDIA_CHUNK_SIZE = 64 * 1024
 
 
 class ByteRange(NamedTuple):
+    """HTTP Range 头解析后的字节区间。"""
+
     start: int
     end: int
 
 
 def _iter_file_bytes(path: Path, start: int = 0, end: int | None = None) -> Iterator[bytes]:
+    """按块迭代读取文件字节，支持部分区间读取。"""
+
     remaining = None if end is None else end - start + 1
     with path.open("rb") as file:
         file.seek(start)
@@ -41,6 +51,8 @@ def _iter_file_bytes(path: Path, start: int = 0, end: int | None = None) -> Iter
 
 
 def _parse_range_header(range_header: str, total_size: int) -> ByteRange:
+    """解析标准 `Range: bytes=...` 请求头。"""
+
     if not range_header.startswith("bytes="):
         raise ValueError("invalid_range")
 
@@ -72,6 +84,8 @@ def _parse_range_header(range_header: str, total_size: int) -> ByteRange:
 
 
 def _range_not_satisfiable_headers(total_size: int) -> dict[str, str]:
+    """构造 416 Range Not Satisfiable 所需响应头。"""
+
     return {
         "Accept-Ranges": "bytes",
         "Content-Range": f"bytes */{total_size}",
@@ -80,12 +94,16 @@ def _range_not_satisfiable_headers(total_size: int) -> dict[str, str]:
 
 
 def _media_type_for(path: Path) -> str:
+    """根据文件名推断响应的媒体类型。"""
+
     media_type, _ = mimetypes.guess_type(path.name)
     return media_type or "application/octet-stream"
 
 
 @router.get("/events")
 async def events(request: Request, topics: str | None = None) -> StreamingResponse:
+    """建立 SSE 长连接，持续推送归档事件。"""
+
     subscription = event_broker.subscribe(parse_event_topics(topics))
 
     async def event_stream():
@@ -110,6 +128,8 @@ async def events(request: Request, topics: str | None = None) -> StreamingRespon
 
 @router.get("/settings/download-policy", response_model=DownloadPolicyResponse)
 def download_policy() -> dict[str, object]:
+    """返回前端展示用的下载与扫描策略配置。"""
+
     settings = get_settings()
     return {
         "queue_batch_size": settings.queue_batch_size,
@@ -129,11 +149,15 @@ def download_policy() -> dict[str, object]:
 
 @router.get("/health/detail", response_model=HealthDetailResponse)
 def health_detail() -> dict[str, object]:
+    """返回比 `/health` 更详细的诊断信息。"""
+
     return get_health_detail()
 
 
 @router.get("/media-file/{relative_path:path}")
 def media_file(relative_path: str, range_header: str | None = Header(default=None, alias="Range")) -> StreamingResponse:
+    """读取 archive 内的媒体文件，并支持 HTTP Range 分段响应。"""
+
     settings = get_settings()
     target = resolve_archive_file(settings.archive_dir, relative_path)
     if not target.exists() or not target.is_file():

@@ -1,5 +1,11 @@
 from __future__ import annotations
 
+"""媒体库相关路由。
+
+面向 WebUI 提供媒体库概览、媒体列表、推文详情、失败记录、重复项以及
+物理删除媒体等接口。
+"""
+
 from fastapi import APIRouter, HTTPException, Query
 
 from xarchiver.api.deps import execute_write_action, raise_api_error
@@ -32,6 +38,8 @@ router = APIRouter(prefix="/library", tags=["library"])
 
 @router.get("/summary", response_model=SummaryResponse)
 def summary() -> dict[str, object]:
+    """返回媒体库首页摘要数据。"""
+
     return get_summary(get_settings())
 
 
@@ -46,6 +54,8 @@ def media(
     limit: int = Query(50, ge=1, le=200),
     offset: int = Query(0, ge=0),
 ) -> dict[str, object]:
+    """按筛选条件分页查询媒体列表。"""
+
     return list_media_page(
         get_settings(),
         author=author,
@@ -64,6 +74,8 @@ def authors(
     q: str | None = Query(None, max_length=100),
     limit: int = Query(20, ge=1, le=50),
 ) -> dict[str, object]:
+    """返回作者筛选下拉使用的候选列表。"""
+
     return get_author_options(query=q, limit=limit)
 
 
@@ -80,6 +92,8 @@ def posts(
     limit: int = Query(20, ge=1, le=50),
     offset: int = Query(0, ge=0),
 ) -> dict[str, object]:
+    """按来源、作者和媒体类型等条件分页查询帖子流。"""
+
     return list_posts_page(
         get_settings(),
         source_id=source_id,
@@ -94,6 +108,8 @@ def posts(
 
 @router.delete("/media", response_model=WriteActionResponse)
 def delete_media(request: MediaDeleteRequest) -> dict[str, object]:
+    """按媒体 ID 执行受确认保护的物理删除。"""
+
     if not request.confirm_physical_delete:
         raise HTTPException(status_code=400, detail="physical_delete_confirmation_required")
     settings = get_settings()
@@ -108,6 +124,8 @@ def delete_media(request: MediaDeleteRequest) -> dict[str, object]:
 
 @router.get("/tweets/{tweet_id}", response_model=TweetDetailResponse)
 def tweet_detail(tweet_id: str) -> dict[str, object]:
+    """查询单条推文的详情、媒体和下载尝试记录。"""
+
     detail = get_tweet_detail(get_settings(), tweet_id)
     if detail is None:
         raise HTTPException(status_code=404, detail="tweet_not_found")
@@ -119,6 +137,8 @@ def failures(
     limit: int = Query(100, ge=1, le=500),
     offset: int = Query(0, ge=0),
 ) -> dict[str, object]:
+    """分页返回失败记录列表。"""
+
     return list_failures(limit=limit, offset=offset)
 
 
@@ -127,4 +147,6 @@ def duplicates(
     limit: int = Query(20, ge=1, le=100),
     offset: int = Query(0, ge=0),
 ) -> dict[str, object]:
+    """分页返回重复媒体分组。"""
+
     return list_duplicates_page(get_settings(), limit=limit, offset=offset)

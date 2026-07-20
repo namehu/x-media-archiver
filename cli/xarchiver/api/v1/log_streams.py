@@ -1,5 +1,10 @@
 from __future__ import annotations
 
+"""操作日志流路由。
+
+负责列出日志流元信息，以及按游标读取某条日志流中的增量日志。
+"""
+
 from fastapi import APIRouter, HTTPException, Query
 
 from xarchiver.api.deps import raise_api_error
@@ -20,6 +25,8 @@ def operation_log_streams(
     limit: int = Query(50, ge=1, le=200),
     offset: int = Query(0, ge=0),
 ) -> dict[str, object]:
+    """按作用域和关键字等条件分页查询日志流。"""
+
     try:
         return list_operation_log_streams(
             scope_type=scope_type,
@@ -42,6 +49,8 @@ def operation_log_entries(
     limit: int = Query(200, ge=1, le=1000),
     level: list[str] | None = Query(default=None),
 ) -> dict[str, object]:
+    """按游标读取指定日志流中的日志条目。"""
+
     try:
         return read_operation_log_entries(
             stream_id,

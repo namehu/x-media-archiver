@@ -1,10 +1,17 @@
 from __future__ import annotations
 
+"""API 请求体模型。
+
+这个文件主要描述 WebUI 提交到后端的写操作载荷，重点是约束输入格式、
+长度范围和允许的枚举值。
+"""
+
 from uuid import UUID
 
 from pydantic import BaseModel, Field
 
 
+# 维护动作请求
 class VerifyRequest(BaseModel):
     limit: int | None = Field(default=None, ge=1)
     confirm_full_scan: bool = False
@@ -35,6 +42,7 @@ class MediaDeleteRequest(BaseModel):
     confirm_physical_delete: bool = False
 
 
+# 归档队列请求
 class ArchiveRecord(BaseModel):
     url: str
     author_username: str | None = None
@@ -56,6 +64,7 @@ class ArchiveRunCancelItemsRequest(BaseModel):
     tweet_ids: list[str] | None = None
 
 
+# 来源管理与扫描请求
 class SourceCreateRequest(BaseModel):
     source_type: str = Field(pattern="^(profile|user_media|likes|bookmarks|search|manual)$")
     source_url: str
@@ -102,6 +111,7 @@ class SourceScanSessionRequest(BaseModel):
     restart: bool = False
 
 
+# 配置与认证请求
 class UpdateCookiesRequest(BaseModel):
     content: str = Field(max_length=1024 * 1024)
     label: str | None = None

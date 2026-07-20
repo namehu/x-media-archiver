@@ -1,5 +1,10 @@
 from __future__ import annotations
 
+"""认证与会话路由。
+
+负责初始化管理员、登录登出、会话查询，以及密码修改等认证相关入口。
+"""
+
 import time
 from collections import defaultdict
 from threading import Lock
@@ -31,6 +36,8 @@ _MAX_TRACKED_CLIENTS = 2048
 
 @router.get("/session", response_model=AuthSessionResponse)
 def session(request: Request) -> dict[str, object]:
+    """返回当前请求对应的认证会话状态。"""
+
     settings = get_settings()
     if settings.auth_mode == "disabled":
         return {"status": "authenticated", "auth_mode": "disabled", "user": {"username": "local"}}
@@ -44,6 +51,8 @@ def session(request: Request) -> dict[str, object]:
 
 @router.post("/setup", response_model=AuthSessionResponse)
 def setup(response: Response, payload: AuthSetupRequest) -> dict[str, object]:
+    """使用一次性 setup token 初始化管理员账号。"""
+
     if _db_call(get_admin) is not None:
         raise HTTPException(status_code=status.HTTP_409_CONFLICT, detail="admin_already_initialized")
     try:
@@ -60,6 +69,8 @@ def setup(response: Response, payload: AuthSetupRequest) -> dict[str, object]:
 
 @router.post("/login", response_model=AuthSessionResponse)
 def login(request: Request, response: Response, payload: AuthLoginRequest) -> dict[str, object]:
+    """执行管理员登录，并在成功后写入会话 Cookie。"""
+
     key = _login_key(request)
     if _is_rate_limited(key):
         raise HTTPException(status_code=status.HTTP_429_TOO_MANY_REQUESTS, detail="login_rate_limited")
@@ -75,6 +86,8 @@ def login(request: Request, response: Response, payload: AuthLoginRequest) -> di
 
 @router.post("/logout", status_code=status.HTTP_204_NO_CONTENT)
 def logout(request: Request, response: Response) -> None:
+    """注销当前会话，并删除浏览器端 Cookie。"""
+
     token = request.cookies.get(SESSION_COOKIE)
     if token:
         _db_call(revoke_session, token)
@@ -88,6 +101,8 @@ def logout(request: Request, response: Response) -> None:
 
 @router.post("/password", response_model=AuthSessionResponse)
 def update_password(response: Response, payload: AuthPasswordRequest) -> dict[str, object]:
+    """校验旧密码后更新管理员密码。"""
+
     try:
         _db_call(change_password, payload.current_password, payload.new_password)
     except AuthError as exc:
@@ -98,6 +113,8 @@ def update_password(response: Response, payload: AuthPasswordRequest) -> dict[st
 
 
 def _set_session_cookie(response: Response, token: str) -> None:
+    """把认证会话写入浏览器 Cookie。"""
+
     settings = get_settings()
     response.set_cookie(
         SESSION_COOKIE,
@@ -111,6 +128,8 @@ def _set_session_cookie(response: Response, token: str) -> None:
 
 
 def _db_call(function, *args):
+    """包装数据库调用，把数据库不可用转换成统一 HTTP 错误。"""
+
     try:
         return function(*args)
     except psycopg.Error as exc:
@@ -121,16 +140,22 @@ def _db_call(function, *args):
 
 
 def _login_key(request: Request) -> str:
+    """提取登录限流使用的客户端标识。"""
+
     client = request.client.host if request.client else "unknown"
     return client
 
 
 def _active_failures(key: str) -> list[float]:
+    """返回限流时间窗内仍然有效的失败记录。"""
+
     cutoff = time.monotonic() - _FAILURE_WINDOW_SECONDS
     return [value for value in _failed_logins.get(key, []) if value >= cutoff]
 
 
 def _is_rate_limited(key: str) -> bool:
+    """判断某个客户端是否已达到登录失败限流阈值。"""
+
     with _failed_login_lock:
         active = _active_failures(key)
         if active:
@@ -141,6 +166,8 @@ def _is_rate_limited(key: str) -> bool:
 
 
 def _record_failure(key: str) -> None:
+    """记录一次登录失败，并顺带清理过期失败条目。"""
+
     with _failed_login_lock:
         now = time.monotonic()
         cutoff = now - _FAILURE_WINDOW_SECONDS
@@ -160,5 +187,7 @@ def _record_failure(key: str) -> None:
 
 
 def _clear_failures(key: str) -> None:
+    """清空某个客户端累计的登录失败记录。"""
+
     with _failed_login_lock:
         _failed_logins.pop(key, None)

@@ -1,5 +1,11 @@
 from __future__ import annotations
 
+"""API 响应模型。
+
+这里按页面和接口语义定义响应结构，尽量保持与 service 层返回的数据形状
+一致，同时用 Pydantic 为 FastAPI 提供稳定的 schema。
+"""
+
 from datetime import datetime
 from typing import Any
 
@@ -7,16 +13,21 @@ from pydantic import BaseModel, ConfigDict, Field
 
 
 class FlexibleResponse(BaseModel):
+    """允许附加字段透传的宽松响应基类。"""
+
     model_config = ConfigDict(extra="allow")
 
 
 class PageMetaResponse(FlexibleResponse):
+    """分页接口共用的元信息。"""
+
     count: int
     total_count: int
     limit: int
     offset: int
 
 
+# 仪表盘与健康检查相关响应
 class SummaryResponse(FlexibleResponse):
     tweet_status_counts: dict[str, int]
     media_count: int
@@ -151,6 +162,7 @@ class WriteActionResponse(FlexibleResponse):
     result: dict[str, Any]
 
 
+# 归档运行相关响应
 class ArchiveInputSummaryResponse(FlexibleResponse):
     input_record_count: int = 0
     unique_tweet_count: int = 0
@@ -273,6 +285,7 @@ class ArchiveRunDetailResponse(FlexibleResponse):
     items: list[ArchiveRunItemResponse]
 
 
+# 媒体库与推文视图响应
 class TweetResponse(FlexibleResponse):
     tweet_id: str
     tweet_url: str
@@ -442,6 +455,7 @@ class DuplicatesPageResponse(PageMetaResponse):
     total_media_count: int
 
 
+# 来源管理与来源扫描相关响应
 class ArchiveSourceResponse(FlexibleResponse):
     id: int
     source_type: str
@@ -573,6 +587,7 @@ class ArchiveSourceDetailResponse(ArchiveSourceListResponse):
     active_scan_run: SourceScanRunResponse | None = None
 
 
+# 操作日志相关响应
 class OperationLogStreamResponse(FlexibleResponse):
     id: int
     scope_type: str

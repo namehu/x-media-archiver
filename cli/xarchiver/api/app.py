@@ -1,5 +1,11 @@
 from __future__ import annotations
 
+"""FastAPI 应用装配入口。
+
+负责应用生命周期、后台 worker 启停、中间件挂载、统一异常处理，以及
+在存在构建产物时把 WebUI 作为同源静态站点挂到同一个进程上。
+"""
+
 import logging
 import os
 import socket
@@ -48,6 +54,8 @@ logger = logging.getLogger(__name__)
 
 @asynccontextmanager
 async def app_lifespan(_: FastAPI):
+    """管理数据库连接池、后台 worker 与启动时恢复逻辑。"""
+
     stop_worker.clear()
     open_pool()
     settings = get_settings()
@@ -84,6 +92,8 @@ async def app_lifespan(_: FastAPI):
 
 
 def create_app() -> FastAPI:
+    """创建并配置 FastAPI 应用实例。"""
+
     configure_api_logging()
     app = FastAPI(title="x-media-archiver local API", version="0.2.0", lifespan=app_lifespan)
     app.add_middleware(AuthMiddleware)
@@ -136,11 +146,11 @@ def create_app() -> FastAPI:
 
 
 def mount_webui(app: FastAPI) -> None:
-    """Serve the built WebUI from the same origin when its dist directory is present.
+    """当存在 WebUI 构建产物时，以同源方式挂载静态站点。
 
-    The catch-all is registered after the API routers so /api/v1/* and /health keep
-    priority. When the dist directory is absent (local dev, backend tests) nothing is
-    mounted and the API behaves exactly as before.
+    这个兜底路由会放在 API 路由之后注册，因此 `/api/v1/*` 和 `/health`
+    仍然优先命中后端接口。若 dist 目录不存在，则不挂载任何静态资源，
+    API 行为保持不变。
     """
     dist = Path(os.environ.get("WEBUI_DIST", "/app/webui"))
     index_file = dist / "index.html"
@@ -153,8 +163,8 @@ def mount_webui(app: FastAPI) -> None:
 
     @app.get("/{full_path:path}", include_in_schema=False)
     def spa_fallback(full_path: str) -> FileResponse:
-        # API and health routes are matched earlier; anything reaching here that
-        # still looks like an API path must 404 as JSON, not fall back to index.html.
+        # API 和 health 会更早命中；如果还能走到这里但路径仍像 API，
+        # 就必须返回 JSON 404，而不是错误地回退到 index.html。
         if full_path == "health" or full_path == "api" or full_path.startswith("api/"):
             raise HTTPException(status_code=404, detail="not_found")
         candidate = (dist / full_path).resolve()
@@ -164,10 +174,14 @@ def mount_webui(app: FastAPI) -> None:
 
 
 def make_worker_id() -> str:
+    """生成一个进程内唯一的 worker 标识。"""
+
     return f"{socket.gethostname()}-{os.getpid()}-{uuid.uuid4().hex[:8]}"
 
 
 def queue_worker_loop(worker_id: str | None = None) -> None:
+    """后台归档队列 worker 的主循环。"""
+
     worker_id = worker_id or make_worker_id()
     while not stop_worker.wait(2):
         try:
@@ -179,6 +193,8 @@ def queue_worker_loop(worker_id: str | None = None) -> None:
 
 
 def source_worker_loop(worker_id: str | None = None) -> None:
+    """后台来源扫描 worker 的主循环。"""
+
     worker_id = worker_id or make_worker_id()
     while not stop_worker.wait(2):
         try:

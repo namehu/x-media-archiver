@@ -1,9 +1,13 @@
 from __future__ import annotations
 
+"""核心错误类型与错误分类辅助函数。"""
+
 from enum import StrEnum
 
 
 class ErrorCategory(StrEnum):
+    """应用内统一使用的错误类别枚举。"""
+
     AUTH_REQUIRED = "auth_required"
     COMMAND_NOT_FOUND = "command_not_found"
     DOWNLOAD_NO_OUTPUT = "download_no_output"
@@ -25,6 +29,8 @@ PERMANENT_DOWNLOAD_CATEGORIES = {
 
 
 class ArchiverError(Exception):
+    """带错误码、类别和 HTTP 状态的业务异常。"""
+
     def __init__(
         self,
         code: str,
@@ -56,6 +62,8 @@ ERROR_CATEGORY_VALUES = {category.value for category in ErrorCategory}
 
 
 def category_value(category: ErrorCategory | str | None) -> str | None:
+    """把错误类别统一转换成可序列化的字符串值。"""
+
     if category is None:
         return None
     if isinstance(category, ErrorCategory):
@@ -69,6 +77,8 @@ def error_response_payload(
     message: str | None = None,
     category: ErrorCategory | str | None = None,
 ) -> dict[str, str | None]:
+    """构造 API 层统一使用的错误响应载荷。"""
+
     category_text = category_value(category)
     if category_text is None and code in ERROR_CATEGORY_VALUES:
         category_text = code
@@ -81,10 +91,14 @@ def error_response_payload(
 
 
 def http_status_for_error_code(code: str, default: int = 400) -> int:
+    """按错误码返回约定的 HTTP 状态码。"""
+
     return ERROR_HTTP_STATUS_BY_CODE.get(code, default)
 
 
 def classify_x_error(stderr: str | None, *, no_output_hint: bool = True) -> ErrorCategory:
+    """根据 X 相关工具输出粗略归类错误类型。"""
+
     text = (stderr or "").lower()
     if "cookies" in text and any(
         pattern in text for pattern in ("not found", "could not", "invalid", "empty")

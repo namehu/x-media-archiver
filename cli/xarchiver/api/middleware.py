@@ -1,5 +1,11 @@
 from __future__ import annotations
 
+"""API 中间件与日志配置。
+
+这里集中处理鉴权门禁、请求 ID 透传、访问日志结构化输出，以及本地开发
+场景下允许的前端来源校验。
+"""
+
 import json
 import logging
 import time
@@ -24,6 +30,8 @@ LOCAL_DEV_ORIGINS = frozenset({"http://127.0.0.1:5173", "http://localhost:5173"}
 
 
 class AuthMiddleware(BaseHTTPMiddleware):
+    """为 API 请求执行鉴权和 CSRF 来源校验。"""
+
     async def dispatch(self, request: Request, call_next: RequestResponseEndpoint) -> Response:
         settings = get_settings()
         request.state.auth_admin = None
@@ -53,12 +61,16 @@ class AuthMiddleware(BaseHTTPMiddleware):
 
 
 def _is_public_path(path: str, method: str) -> bool:
+    """判断当前路径是否属于无需登录的公开接口。"""
+
     if path == "/health" or method == "OPTIONS":
         return True
     return path in {"/api/v1/auth/session", "/api/v1/auth/setup", "/api/v1/auth/login"}
 
 
 def _is_protected_path(path: str) -> bool:
+    """判断当前路径是否属于需要鉴权保护的 API 区域。"""
+
     return (
         path == "/api"
         or path.startswith("/api/")
@@ -69,6 +81,8 @@ def _is_protected_path(path: str) -> bool:
 
 
 def _valid_origin(request: Request) -> bool:
+    """校验写请求的 Origin 是否与当前后端同源或位于本地开发白名单。"""
+
     origin = request.headers.get("origin")
     if not origin:
         return False
@@ -81,6 +95,8 @@ def _valid_origin(request: Request) -> bool:
 
 
 def _auth_error(status_code: int, code: str) -> JSONResponse:
+    """构造统一格式的认证错误响应。"""
+
     return JSONResponse(
         status_code=status_code,
         content={"detail": code, "code": code, "message": code, "category": "auth"},
@@ -88,12 +104,16 @@ def _auth_error(status_code: int, code: str) -> JSONResponse:
 
 
 class RequestIdFilter(logging.Filter):
+    """把请求级 request_id 注入到日志记录中。"""
+
     def filter(self, record: logging.LogRecord) -> bool:
         record.request_id = request_id_var.get()
         return True
 
 
 class JsonLogFormatter(logging.Formatter):
+    """把标准 logging 记录格式化成 JSON 日志。"""
+
     def format(self, record: logging.LogRecord) -> str:
         payload: dict[str, Any] = {
             "timestamp": datetime.now(UTC).isoformat(),
@@ -123,6 +143,8 @@ class JsonLogFormatter(logging.Formatter):
 
 
 def configure_api_logging() -> None:
+    """为 API 进程配置统一的结构化日志格式。"""
+
     logging.getLogger("xarchiver").setLevel(logging.INFO)
     logging.getLogger("xarchiver.api.access").setLevel(logging.INFO)
     root = logging.getLogger()
@@ -136,6 +158,8 @@ def configure_api_logging() -> None:
 
 
 class RequestIdMiddleware(BaseHTTPMiddleware):
+    """为每个请求分配 request_id，并记录访问结果日志。"""
+
     async def dispatch(self, request: Request, call_next: RequestResponseEndpoint) -> Response:
         request_id = request.headers.get("x-request-id") or uuid4().hex
         token = request_id_var.set(request_id)
