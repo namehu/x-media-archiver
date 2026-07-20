@@ -1,5 +1,7 @@
 from __future__ import annotations
 
+"""媒体回填、规范化与预览图生成辅助函数。"""
+
 import hashlib
 import logging
 import os
@@ -30,6 +32,8 @@ logger = logging.getLogger(__name__)
 
 @dataclass(frozen=True)
 class MediaAsset:
+    """从磁盘与元数据解析出的标准媒体资产对象。"""
+
     tweet_id: str
     author_username: str | None
     author_display_name: str | None
@@ -55,6 +59,8 @@ def backfill_media_assets(
     normalize_files: bool = True,
     tweet_ids: list[str] | None = None,
 ) -> dict[str, object]:
+    """扫描归档目录中的媒体元数据并回填 media_assets 表。"""
+
     media_dir = archive_dir / "media"
     if not media_dir.exists():
         return {
@@ -92,6 +98,8 @@ def backfill_media_assets(
 
 
 def ensure_video_previews(assets: list[MediaAsset]) -> dict[str, int]:
+    """为视频媒体批量补齐预览图。"""
+
     result = {
         "preview_generated": 0,
         "preview_existing": 0,
@@ -106,6 +114,8 @@ def ensure_video_previews(assets: list[MediaAsset]) -> dict[str, int]:
 
 
 def ensure_video_preview(media_path: Path) -> str:
+    """为单个视频生成或复用预览图。"""
+
     preview_path = video_preview_path(media_path)
     thumbnail_path = media_path.with_name(f"{media_path.stem}{VIDEO_THUMBNAIL_SUFFIX}")
     source_path = thumbnail_path if thumbnail_path.exists() else media_path
@@ -151,10 +161,14 @@ def ensure_video_preview(media_path: Path) -> str:
 
 
 def video_preview_path(media_path: Path) -> Path:
+    """返回视频预览图路径。"""
+
     return media_path.with_name(f"{media_path.stem}{VIDEO_PREVIEW_SUFFIX}")
 
 
 def iter_metadata_paths(media_dir: Path, tweet_ids: list[str] | None = None) -> list[Path]:
+    """遍历指定 tweet 范围内的媒体元数据文件路径。"""
+
     if tweet_ids is not None:
         paths: set[Path] = set()
         for tweet_id in tweet_ids:
@@ -164,6 +178,8 @@ def iter_metadata_paths(media_dir: Path, tweet_ids: list[str] | None = None) -> 
 
 
 def asset_from_metadata(media_dir: Path, metadata_path: Path, normalize_files: bool) -> MediaAsset | None:
+    """按元数据类型分发到 gallery-dl 或 yt-dlp 解析逻辑。"""
+
     try:
         metadata = orjson.loads(metadata_path.read_bytes())
     except orjson.JSONDecodeError:
@@ -175,6 +191,8 @@ def asset_from_metadata(media_dir: Path, metadata_path: Path, normalize_files: b
 
 
 def asset_from_gallery_dl_metadata(metadata_path: Path, metadata: dict[str, Any]) -> MediaAsset | None:
+    """从 gallery-dl 元数据构造媒体资产。"""
+
     media_path = Path(str(metadata_path)[: -len(".json")])
     if not media_path.exists() or media_path.suffix.lower() not in MEDIA_EXTENSIONS:
         return None
@@ -214,6 +232,8 @@ def asset_from_yt_dlp_metadata(
     metadata: dict[str, Any],
     normalize_files: bool,
 ) -> MediaAsset | None:
+    """从 yt-dlp 元数据构造媒体资产，并按需归一化文件位置。"""
+
     source_media_path = find_yt_dlp_media_file(metadata_path)
     if source_media_path is None:
         return None
@@ -263,6 +283,8 @@ def asset_from_yt_dlp_metadata(
 
 
 def find_yt_dlp_media_file(metadata_path: Path) -> Path | None:
+    """根据 `.info.json` 找到对应的媒体文件。"""
+
     base_name = metadata_path.name[: -len(".info.json")]
     candidates = [
         path
@@ -281,6 +303,8 @@ def normalize_yt_dlp_files(
     tweet_id: str,
     media_index: int,
 ) -> tuple[Path, Path]:
+    """把 yt-dlp 产物移动到项目约定的作者/tweet 目录结构。"""
+
     target_dir = media_dir / author_storage_id / safe_path_segment(tweet_id)
     target_dir.mkdir(parents=True, exist_ok=True)
 
@@ -299,6 +323,8 @@ def normalize_yt_dlp_files(
 
 
 def safe_path_segment(value: str | None) -> str:
+    """把任意文本收敛成适合作为路径片段的安全名字。"""
+
     text = (value or "").strip()
     safe = "".join(char if char.isalnum() or char in {"_", "-"} else "_" for char in text)
     safe = safe.strip("._-")
@@ -306,6 +332,8 @@ def safe_path_segment(value: str | None) -> str:
 
 
 def move_if_needed(source: Path, target: Path) -> None:
+    """仅在目标不存在时移动文件。"""
+
     if source == target:
         return
     if target.exists():
@@ -330,6 +358,8 @@ def build_asset(
     metadata_path: Path,
     raw_metadata: dict[str, Any],
 ) -> MediaAsset:
+    """把解析字段整理成标准 MediaAsset 对象。"""
+
     return MediaAsset(
         tweet_id=tweet_id,
         author_username=author_username,
@@ -353,6 +383,8 @@ def build_asset(
 
 
 def upsert_media_assets(assets: list[MediaAsset]) -> list[int]:
+    """把媒体资产 upsert 到 media_assets 表。"""
+
     if not assets:
         return []
     media_ids: list[int] = []
@@ -425,6 +457,8 @@ def upsert_media_assets(assets: list[MediaAsset]) -> list[int]:
 
 
 def update_tweets_from_assets(assets: list[MediaAsset]) -> None:
+    """用媒体元数据反向补齐 tweets 表中的作者与文本字段。"""
+
     if not assets:
         return
     with connect() as conn:
@@ -452,6 +486,8 @@ def update_tweets_from_assets(assets: list[MediaAsset]) -> None:
 
 
 def mark_tweets_with_assets_downloaded(tweet_ids: list[str]) -> None:
+    """把已成功回填出媒体的 tweet 标记为 downloaded。"""
+
     if not tweet_ids:
         return
     with connect() as conn:
@@ -471,6 +507,8 @@ def mark_tweets_with_assets_downloaded(tweet_ids: list[str]) -> None:
 
 
 def sha256_file(path: Path) -> str:
+    """计算文件的 SHA256。"""
+
     digest = hashlib.sha256()
     with path.open("rb") as file:
         for chunk in iter(lambda: file.read(1024 * 1024), b""):
@@ -479,6 +517,8 @@ def sha256_file(path: Path) -> str:
 
 
 def duration_ms(value: object) -> int | None:
+    """把秒数或浮点时长转换成毫秒。"""
+
     if value is None:
         return None
     try:
@@ -488,6 +528,8 @@ def duration_ms(value: object) -> int | None:
 
 
 def value_as_int(value: object) -> int | None:
+    """尽量把值解析成整数。"""
+
     if value is None:
         return None
     try:
@@ -497,6 +539,8 @@ def value_as_int(value: object) -> int | None:
 
 
 def value_as_str(value: object) -> str | None:
+    """尽量把值解析成非空字符串。"""
+
     if value is None:
         return None
     text = str(value).strip()
@@ -504,6 +548,8 @@ def value_as_str(value: object) -> str | None:
 
 
 def parse_gallery_dl_datetime(value: object) -> str | None:
+    """解析 gallery-dl 的日期时间文本。"""
+
     text = value_as_str(value)
     if not text:
         return None
@@ -515,6 +561,8 @@ def parse_gallery_dl_datetime(value: object) -> str | None:
 
 
 def parse_yt_dlp_datetime(metadata: dict[str, Any]) -> str | None:
+    """解析 yt-dlp 元数据中的时间字段。"""
+
     timestamp = metadata.get("timestamp")
     if timestamp is not None:
         try:
@@ -532,6 +580,8 @@ def parse_yt_dlp_datetime(metadata: dict[str, Any]) -> str | None:
 
 
 def tweet_id_from_url(url: str | None) -> str | None:
+    """从 URL 中提取 tweet_id，提取失败则返回空。"""
+
     if not url:
         return None
     parts = [part for part in url.rstrip("/").split("/") if part]
@@ -542,6 +592,8 @@ def tweet_id_from_url(url: str | None) -> str | None:
 
 
 def infer_media_type(path: Path) -> str:
+    """根据文件扩展名推断媒体类型。"""
+
     if path.suffix.lower() in VIDEO_EXTENSIONS:
         return "video"
     return "photo"

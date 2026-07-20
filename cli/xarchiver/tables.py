@@ -1,5 +1,10 @@
 from __future__ import annotations
 
+"""共享的 SQLAlchemy Core 表定义。
+
+这里集中声明后端各模块共用的数据库表结构，供查询构造和 DML 语句复用。
+"""
+
 from sqlalchemy import (
     BigInteger,
     Boolean,
@@ -16,6 +21,7 @@ from sqlalchemy.dialects.postgresql import JSONB, UUID
 
 metadata = MetaData()
 
+# 认证与 Cookie 配置
 auth_admin = Table(
     "auth_admin",
     metadata,
@@ -106,6 +112,7 @@ media_delete_operations = Table(
     Column("completed_at", DateTime(timezone=True)),
 )
 
+# 归档运行与来源扫描
 archive_runs = Table(
     "archive_runs",
     metadata,

@@ -1,5 +1,7 @@
 from pathlib import Path
 
+"""Alembic 迁移辅助函数。"""
+
 from alembic import command
 from alembic.config import Config
 from alembic.script import ScriptDirectory
@@ -9,7 +11,8 @@ from xarchiver.config import get_settings
 
 
 def migrate() -> list[Path]:
-    """Upgrade the database to the latest Alembic revision."""
+    """把数据库升级到最新 Alembic 版本。"""
+
     settings = get_settings()
     config = alembic_config(settings.database_url)
     pending = pending_upgrade_paths(config, settings.database_url)
@@ -18,11 +21,15 @@ def migrate() -> list[Path]:
 
 
 def downgrade(revision: str = "-1") -> None:
+    """把数据库回退到指定 Alembic 版本。"""
+
     settings = get_settings()
     command.downgrade(alembic_config(settings.database_url), revision)
 
 
 def alembic_config(database_url: str) -> Config:
+    """构造运行 Alembic 命令所需配置对象。"""
+
     config = Config()
     config.set_main_option("script_location", str(Path(__file__).with_name("alembic")))
     config.set_main_option("sqlalchemy.url", sqlalchemy_url(database_url))
@@ -30,6 +37,8 @@ def alembic_config(database_url: str) -> Config:
 
 
 def pending_upgrade_paths(config: Config, database_url: str) -> list[Path]:
+    """返回当前数据库到 head 之间尚未执行的迁移文件。"""
+
     script = ScriptDirectory.from_config(config)
     head_revision = script.get_current_head()
     current_revision = current_alembic_revision(database_url)
@@ -43,6 +52,8 @@ def pending_upgrade_paths(config: Config, database_url: str) -> list[Path]:
 
 
 def current_alembic_revision(database_url: str) -> str | None:
+    """读取数据库当前记录的 Alembic revision。"""
+
     engine = create_engine(sqlalchemy_url(database_url), pool_pre_ping=True)
     try:
         with engine.connect() as conn:
@@ -63,6 +74,8 @@ def current_alembic_revision(database_url: str) -> str | None:
 
 
 def sqlalchemy_url(database_url: str) -> str:
+    """把通用 PostgreSQL 连接串转换成 SQLAlchemy/psycopg 形式。"""
+
     if database_url.startswith("postgresql://"):
         return database_url.replace("postgresql://", "postgresql+psycopg://", 1)
     return database_url

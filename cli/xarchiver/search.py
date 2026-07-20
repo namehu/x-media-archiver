@@ -1,5 +1,7 @@
 from __future__ import annotations
 
+"""媒体检索与帖子流查询辅助函数。"""
+
 from sqlalchemy import (
     Integer,
     and_,
@@ -28,6 +30,8 @@ def search_media(
     offset: int = 0,
     author_username: str | None = None,
 ) -> list[SearchMediaRow]:
+    """按作者、文本和状态等条件查询媒体列表。"""
+
     sql, params = build_search_query(
         author,
         text,
@@ -52,6 +56,8 @@ def count_search_media(
     media_type: str | None = None,
     author_username: str | None = None,
 ) -> int:
+    """统计媒体检索结果总数。"""
+
     sql, params = build_count_query(
         author,
         text,
@@ -76,6 +82,8 @@ def build_search_query(
     offset: int = 0,
     author_username: str | None = None,
 ) -> tuple[str, dict[str, object]]:
+    """构造媒体检索分页查询。"""
+
     statement = (
         select(
             media_assets.c.id,
@@ -126,6 +134,8 @@ def build_count_query(
     media_type: str | None,
     author_username: str | None = None,
 ) -> tuple[str, dict[str, object]]:
+    """构造媒体检索数量查询。"""
+
     statement = select(func.count().cast(Integer).label("count")).select_from(
         media_assets.join(tweets, tweets.c.tweet_id == media_assets.c.tweet_id)
     )
@@ -150,6 +160,8 @@ def apply_search_filters(
     media_type: str | None,
     author_username: str | None = None,
 ) -> Select:
+    """把检索过滤条件应用到 SQLAlchemy 语句上。"""
+
     conditions = build_search_conditions(
         author,
         text,
@@ -171,6 +183,8 @@ def build_search_conditions(
     media_type: str | None,
     author_username: str | None = None,
 ) -> list[ColumnElement[bool]]:
+    """构造媒体检索过滤条件。"""
+
     conditions: list[ColumnElement[bool]] = []
 
     if author:
@@ -200,6 +214,8 @@ def build_search_conditions(
 
 
 def list_author_options(query: str | None = None, limit: int = 20) -> list[AuthorOptionRow]:
+    """查询作者筛选项候选列表。"""
+
     sql, params = build_author_options_query(query, limit)
     with connect() as conn:
         with conn.cursor() as cur:
@@ -211,6 +227,8 @@ def build_author_options_query(
     query: str | None,
     limit: int,
 ) -> tuple[str, dict[str, object]]:
+    """构造作者候选列表查询。"""
+
     normalized_query = str(query or "").strip().lstrip("@").strip()
     username = func.min(tweets.c.author_username).label("author_username")
     display_name = func.min(tweets.c.author_display_name).label("author_display_name")
@@ -246,6 +264,8 @@ def search_post_feed(
     limit: int = 20,
     offset: int = 0,
 ) -> tuple[list[PostFeedRow], list[PostFeedMediaRow], int]:
+    """查询帖子流，并同时取回已验证媒体与总数。"""
+
     page_sql, page_params = build_post_feed_query(
         source_id=source_id,
         source_type=source_type,
@@ -285,6 +305,8 @@ def build_post_feed_query(
     limit: int = 20,
     offset: int = 0,
 ) -> tuple[str, dict[str, object]]:
+    """构造帖子流分页查询。"""
+
     statement = (
         select(
             tweets.c.tweet_id,
@@ -314,6 +336,8 @@ def build_post_feed_count_query(
     text: str | None = None,
     media_type: str | None = None,
 ) -> tuple[str, dict[str, object]]:
+    """构造帖子流数量查询。"""
+
     statement = select(func.count().cast(Integer).label("count")).select_from(tweets)
     statement = statement.where(
         *build_post_feed_conditions(source_id, source_type, author_username, text, media_type)
@@ -322,6 +346,8 @@ def build_post_feed_count_query(
 
 
 def build_post_feed_media_query(tweet_ids: list[str]) -> tuple[str, dict[str, object]]:
+    """构造帖子流所需媒体列表查询。"""
+
     statement = (
         select(
             media_assets.c.id,
@@ -356,6 +382,8 @@ def build_post_feed_conditions(
     text: str | None,
     media_type: str | None,
 ) -> list[ColumnElement[bool]]:
+    """构造帖子流过滤条件。"""
+
     verified_media = select(media_assets.c.id).where(
         media_assets.c.tweet_id == tweets.c.tweet_id,
         media_assets.c.download_status == bindparam("post_media_status", "verified"),
@@ -406,6 +434,8 @@ def build_post_feed_conditions(
 
 
 def compact_text(value: object, max_length: int = 90) -> str:
+    """把长文本压成单行摘要，供命令行展示。"""
+
     text = " ".join(str(value or "").split())
     if len(text) <= max_length:
         return text

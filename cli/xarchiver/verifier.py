@@ -1,5 +1,7 @@
 from __future__ import annotations
 
+"""媒体文件校验辅助函数。"""
+
 from dataclasses import dataclass
 from pathlib import Path
 
@@ -16,6 +18,8 @@ VERIFY_MEDIA_STATUSES = ("downloaded", "verified", "missing", "corrupt")
 
 @dataclass(frozen=True)
 class VerificationResult:
+    """单个媒体资产的校验结果。"""
+
     media_id: int
     tweet_id: str
     status: str
@@ -25,6 +29,8 @@ class VerificationResult:
 
 
 def verify_media_assets(limit: int | None = None, media_ids: list[int] | None = None) -> dict[str, int]:
+    """校验指定媒体资产，并回写媒体和 tweet 状态。"""
+
     assets = fetch_verifiable_assets(limit, media_ids)
     results = [verify_asset(asset) for asset in assets]
     update_media_results(results)
@@ -40,6 +46,8 @@ def fetch_verifiable_assets(
     limit: int | None,
     media_ids: list[int] | None = None,
 ) -> list[VerifiableAssetRow]:
+    """读取待校验媒体资产。"""
+
     sql, params = build_verifiable_assets_query(limit=limit, media_ids=media_ids)
 
     with connect() as conn:
@@ -52,6 +60,8 @@ def build_verifiable_assets_query(
     limit: int | None,
     media_ids: list[int] | None = None,
 ) -> tuple[str, dict[str, object]]:
+    """构造媒体校验候选查询。"""
+
     statement = (
         select(
             media_assets.c.id,
@@ -71,6 +81,8 @@ def build_verifiable_assets_query(
 
 
 def verify_asset(asset: VerifiableAssetRow) -> VerificationResult:
+    """校验单个媒体文件是否存在且哈希匹配。"""
+
     media_id = int(asset["id"])
     tweet_id = str(asset["tweet_id"])
     local_path = Path(str(asset["local_path"] or ""))
@@ -109,6 +121,8 @@ def verify_asset(asset: VerifiableAssetRow) -> VerificationResult:
 
 
 def update_media_results(results: list[VerificationResult]) -> None:
+    """把媒体校验结果写回 media_assets。"""
+
     if not results:
         return
     with connect() as conn:
@@ -136,6 +150,8 @@ def update_media_results(results: list[VerificationResult]) -> None:
 
 
 def update_tweet_statuses(tweet_ids: list[str]) -> None:
+    """根据关联媒体校验结果重新汇总 tweet 状态。"""
+
     if not tweet_ids:
         return
     with connect() as conn:
@@ -176,6 +192,8 @@ def update_tweet_statuses(tweet_ids: list[str]) -> None:
 
 
 def aggregate_tweet_status(status_counts: dict[str, int]) -> str:
+    """把多条媒体状态聚合成单条 tweet 状态。"""
+
     total = sum(status_counts.values())
     if total == 0:
         return "missing"

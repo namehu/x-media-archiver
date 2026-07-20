@@ -1,5 +1,7 @@
 from __future__ import annotations
 
+"""导出 CSV 与 HTML 画廊的辅助函数。"""
+
 import csv
 import os
 from datetime import UTC, datetime
@@ -78,6 +80,8 @@ def export_media_csv(
     output_path: Path | None = None,
     status: str | None = "verified",
 ) -> dict[str, object]:
+    """导出媒体记录 CSV。"""
+
     ensure_archive_dirs(archive_dir)
     target_path = output_path or default_export_path(archive_dir)
     target_path.parent.mkdir(parents=True, exist_ok=True)
@@ -93,6 +97,8 @@ def export_media_csv(
 
 
 def default_export_path(archive_dir: Path) -> Path:
+    """生成媒体 CSV 的默认导出路径。"""
+
     timestamp = datetime.now(UTC).strftime("%Y%m%dT%H%M%SZ")
     return archive_dir / "exports" / f"media-{timestamp}.csv"
 
@@ -102,6 +108,8 @@ def export_media_gallery(
     output_path: Path | None = None,
     status: str | None = "verified",
 ) -> dict[str, object]:
+    """导出可本地打开的 HTML 媒体画廊。"""
+
     ensure_archive_dirs(archive_dir)
     target_path = output_path or default_gallery_export_path(archive_dir)
     target_path.parent.mkdir(parents=True, exist_ok=True)
@@ -114,11 +122,15 @@ def export_media_gallery(
 
 
 def default_gallery_export_path(archive_dir: Path) -> Path:
+    """生成 HTML 画廊的默认导出路径。"""
+
     timestamp = datetime.now(UTC).strftime("%Y%m%dT%H%M%SZ")
     return archive_dir / "exports" / f"gallery-{timestamp}.html"
 
 
 def export_failures_csv(archive_dir: Path, output_path: Path | None = None) -> dict[str, object]:
+    """导出失败记录 CSV。"""
+
     ensure_archive_dirs(archive_dir)
     target_path = output_path or default_failures_export_path(archive_dir)
     target_path.parent.mkdir(parents=True, exist_ok=True)
@@ -134,11 +146,15 @@ def export_failures_csv(archive_dir: Path, output_path: Path | None = None) -> d
 
 
 def default_failures_export_path(archive_dir: Path) -> Path:
+    """生成失败记录 CSV 的默认导出路径。"""
+
     timestamp = datetime.now(UTC).strftime("%Y%m%dT%H%M%SZ")
     return archive_dir / "exports" / f"failures-{timestamp}.csv"
 
 
 def export_duplicates_csv(archive_dir: Path, output_path: Path | None = None) -> dict[str, object]:
+    """导出重复媒体 CSV。"""
+
     ensure_archive_dirs(archive_dir)
     target_path = output_path or default_duplicates_export_path(archive_dir)
     target_path.parent.mkdir(parents=True, exist_ok=True)
@@ -156,11 +172,15 @@ def export_duplicates_csv(archive_dir: Path, output_path: Path | None = None) ->
 
 
 def default_duplicates_export_path(archive_dir: Path) -> Path:
+    """生成重复媒体 CSV 的默认导出路径。"""
+
     timestamp = datetime.now(UTC).strftime("%Y%m%dT%H%M%SZ")
     return archive_dir / "exports" / f"duplicates-{timestamp}.csv"
 
 
 def fetch_export_rows(status: str | None) -> list[ExportMediaRow]:
+    """读取导出媒体记录。"""
+
     sql, params = build_export_rows_query(status)
 
     with connect() as conn:
@@ -170,6 +190,8 @@ def fetch_export_rows(status: str | None) -> list[ExportMediaRow]:
 
 
 def build_export_rows_query(status: str | None) -> tuple[str, dict[str, object]]:
+    """构造媒体导出查询。"""
+
     statement = (
         select(
             tweets.c.tweet_id,
@@ -207,6 +229,8 @@ def build_export_rows_query(status: str | None) -> tuple[str, dict[str, object]]
 
 
 def fetch_failure_rows(limit: int | None = None, offset: int = 0) -> list[FailureRow]:
+    """读取失败记录列表。"""
+
     sql, params = build_failure_rows_query(limit=limit, offset=offset)
     with connect() as conn:
         with conn.cursor() as cur:
@@ -215,6 +239,8 @@ def fetch_failure_rows(limit: int | None = None, offset: int = 0) -> list[Failur
 
 
 def build_failure_rows_query(limit: int | None = None, offset: int = 0) -> tuple[str, dict[str, object]]:
+    """构造失败记录查询。"""
+
     latest_attempt = lateral(
         select(
             download_attempts.c.engine,
@@ -254,6 +280,8 @@ def build_failure_rows_query(limit: int | None = None, offset: int = 0) -> tuple
 
 
 def count_failure_rows() -> int:
+    """统计失败记录总数。"""
+
     with connect() as conn:
         with conn.cursor() as cur:
             cur.execute(
@@ -267,6 +295,8 @@ def count_failure_rows() -> int:
 
 
 def fetch_duplicate_rows(limit: int | None = None, offset: int = 0) -> list[DuplicateRow]:
+    """读取重复媒体明细行。"""
+
     sql, params = build_duplicate_rows_query(limit=limit, offset=offset)
     with connect() as conn:
         with conn.cursor() as cur:
@@ -275,6 +305,8 @@ def fetch_duplicate_rows(limit: int | None = None, offset: int = 0) -> list[Dupl
 
 
 def fetch_duplicate_group_rows(limit: int = 20, offset: int = 0) -> list[DuplicateRow]:
+    """按分页范围读取重复媒体分组明细。"""
+
     sql, params = build_duplicate_group_rows_query(limit=limit, offset=offset)
     with connect() as conn:
         with conn.cursor() as cur:
@@ -283,6 +315,8 @@ def fetch_duplicate_group_rows(limit: int = 20, offset: int = 0) -> list[Duplica
 
 
 def build_duplicate_rows_query(limit: int | None = None, offset: int = 0) -> tuple[str, dict[str, object]]:
+    """构造重复媒体明细查询。"""
+
     duplicate_hashes = _duplicate_hashes_cte()
     statement = _duplicate_rows_statement(duplicate_hashes)
     if limit is not None:
@@ -291,6 +325,8 @@ def build_duplicate_rows_query(limit: int | None = None, offset: int = 0) -> tup
 
 
 def build_duplicate_group_rows_query(limit: int = 20, offset: int = 0) -> tuple[str, dict[str, object]]:
+    """构造重复媒体分组分页查询。"""
+
     duplicate_hashes = _duplicate_hashes_cte()
     paged_duplicate_hashes = (
         select(
@@ -307,6 +343,8 @@ def build_duplicate_group_rows_query(limit: int = 20, offset: int = 0) -> tuple[
 
 
 def _duplicate_hashes_cte():
+    """构造重复哈希分组 CTE。"""
+
     duplicate_count = func.count().label("duplicate_count")
     return (
         select(
@@ -326,6 +364,8 @@ def _duplicate_hashes_cte():
 
 
 def _duplicate_rows_statement(duplicate_hashes):
+    """构造重复媒体公共明细查询主体。"""
+
     statement = (
         select(
             duplicate_hashes.c.sha256,
@@ -358,6 +398,8 @@ def _duplicate_rows_statement(duplicate_hashes):
 
 
 def count_duplicate_rows() -> int:
+    """统计重复媒体明细总行数。"""
+
     with connect() as conn:
         with conn.cursor() as cur:
             cur.execute(
@@ -379,6 +421,8 @@ def count_duplicate_rows() -> int:
 
 
 def count_all_duplicate_groups() -> int:
+    """统计全部重复哈希分组数量。"""
+
     with connect() as conn:
         with conn.cursor() as cur:
             cur.execute(
@@ -398,10 +442,14 @@ def count_all_duplicate_groups() -> int:
 
 
 def count_duplicate_groups(rows: list[dict[str, object]]) -> int:
+    """统计结果集中的重复分组数。"""
+
     return len({row.get("sha256") for row in rows if row.get("sha256")})
 
 
 def normalize_csv_value(value: object) -> object:
+    """把导出值规范为适合写入 CSV 的形式。"""
+
     if value is None:
         return ""
     if isinstance(value, datetime):
@@ -410,6 +458,8 @@ def normalize_csv_value(value: object) -> object:
 
 
 def format_export_row(row: dict[str, object], archive_dir: Path) -> dict[str, object]:
+    """把导出行补齐 archive 相对路径字段。"""
+
     values = {field: normalize_csv_value(row.get(field)) for field in CSV_FIELDS}
     values["media_relative_path"] = relative_archive_path(row.get("local_path"), archive_dir)
     values["metadata_relative_path"] = relative_archive_path(row.get("metadata_path"), archive_dir)
@@ -422,6 +472,8 @@ def render_gallery_html(
     target_path: Path,
     status: str | None,
 ) -> str:
+    """渲染完整 HTML 画廊文档。"""
+
     cards = "\n".join(render_gallery_card(row, archive_dir, target_path) for row in rows)
     selection = html_text(status or "all")
     return f"""<!doctype html>
@@ -462,6 +514,8 @@ def render_gallery_html(
 
 
 def render_gallery_card(row: dict[str, object], archive_dir: Path, target_path: Path) -> str:
+    """渲染单个媒体卡片 HTML。"""
+
     media_href = gallery_media_href(row.get("local_path"), archive_dir, target_path)
     escaped_href = html_attr(media_href)
     media_type = str(row.get("media_type") or "").lower()
@@ -506,6 +560,8 @@ def render_gallery_card(row: dict[str, object], archive_dir: Path, target_path: 
 
 
 def gallery_media_href(value: object, archive_dir: Path, target_path: Path) -> str:
+    """把本地媒体路径转换成相对 HTML 文件可访问的 href。"""
+
     relative_path = relative_archive_path(value, archive_dir)
     if not relative_path:
         return ""
@@ -515,6 +571,8 @@ def gallery_media_href(value: object, archive_dir: Path, target_path: Path) -> s
 
 
 def html_text(value: object) -> str:
+    """转义普通 HTML 文本。"""
+
     if value is None:
         return ""
     if isinstance(value, datetime):
@@ -523,10 +581,14 @@ def html_text(value: object) -> str:
 
 
 def html_attr(value: object) -> str:
+    """转义 HTML 属性值。"""
+
     return escape(str(value or ""), quote=True)
 
 
 def relative_archive_path(value: object, archive_dir: Path) -> str:
+    """把存储路径规范成 archive 相对路径。"""
+
     if not value:
         return ""
     path_text = str(value)

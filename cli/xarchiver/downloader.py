@@ -1,5 +1,11 @@
 from __future__ import annotations
 
+"""下载器编排与进度采集辅助函数。
+
+这个模块负责挑选待下载 tweet、构造 gallery-dl / yt-dlp 命令、采集
+运行进度、记录 download_jobs / download_attempts，并在结束后触发媒体回填。
+"""
+
 import json
 import logging
 import re
@@ -59,6 +65,8 @@ GALLERY_DL_OUTPUT_MODE = {
 
 @dataclass
 class DownloadProgressState:
+    """下载过程中的瞬时进度状态。"""
+
     native_progress_seen: bool = False
     last_native_progress_at: float | None = None
     current_tweet_id: str | None = None
@@ -79,6 +87,8 @@ def download(
     archive_run_id: int | None = None,
     run_item_ids: dict[str, int] | None = None,
 ) -> dict[str, object]:
+    """执行一次下载任务，并把结果回写到数据库。"""
+
     if engine not in SUPPORTED_ENGINES:
         raise ValueError(f"Unsupported engine: {engine}")
 
@@ -157,6 +167,7 @@ def download(
             "exit_code": 0,
         }
 
+    # 先准备好下载器命令；如果命令不存在，则在真正启动前快速失败。
     command = build_command(engine, settings, input_path, cookie_path)
     executable = command[0]
     if shutil.which(executable) is None:
@@ -197,6 +208,7 @@ def download(
         tweet_count=len(tweets),
     )
     mark_run_items_progress(job_id, tweets, run_item_ids, f"{engine} 下载中")
+    # 运行下载器并持续采集进度；成功后再做媒体回填。
     result = run_command_with_progress(command, settings, job_id, tweets, run_item_ids, engine)
     stderr_excerpt = result.stderr[-4000:] if result.stderr else None
 
@@ -317,6 +329,8 @@ def fetch_download_candidates(
     retry_backoff_minutes: int = 0,
     tweet_ids: list[str] | None = None,
 ) -> list[DownloadCandidateRow]:
+    """读取待下载 tweet 候选列表。"""
+
     sql, params = build_download_candidates_query(
         limit=limit,
         retry_limit=retry_limit,
@@ -336,6 +350,8 @@ def build_download_candidates_query(
     retry_backoff_minutes: int = 0,
     tweet_ids: list[str] | None = None,
 ) -> tuple[str, dict[str, object]]:
+    """构造待下载候选 tweet 查询。"""
+
     statement = (
         select(tweets.c.tweet_id, tweets.c.url)
         .select_from(tweets)
@@ -352,6 +368,8 @@ def build_download_candidate_conditions(
     retry_backoff_minutes: int = 0,
     tweet_ids: list[str] | None = None,
 ) -> list[ColumnElement[bool]]:
+    """构造下载候选过滤条件。"""
+
     conditions: list[ColumnElement[bool]] = [
         tweets.c.download_status.in_(("pending", "failed_retryable", "missing", "corrupt"))
     ]
@@ -377,12 +395,16 @@ def build_download_candidate_conditions(
 
 
 def write_input_file(archive_dir: Path, engine: str, urls: list[str]) -> Path:
+    """把待下载 URL 列表写成下载器输入文件。"""
+
     path = archive_dir / "raw" / "downloader_inputs" / f"{engine}-input.txt"
     path.write_text("\n".join(urls) + ("\n" if urls else ""), encoding="utf-8")
     return path
 
 
 def prepare_cookies(settings: Settings) -> Path | None:
+    """把当前 cookie 内容写成下载器运行时文件。"""
+
     cookie = resolve_cookie_content(settings)
     if cookie is None:
         return None
@@ -395,6 +417,8 @@ def prepare_cookies(settings: Settings) -> Path | None:
 
 
 def build_command(engine: str, settings: Settings, input_path: Path, cookie_path: Path | None) -> list[str]:
+    """构造 gallery-dl 或 yt-dlp 命令行参数。"""
+
     sleep_min = format_sleep_seconds(getattr(settings, "downloader_sleep_min_seconds", 2.0))
     sleep_max = format_sleep_seconds(getattr(settings, "downloader_sleep_max_seconds", 6.0))
     sleep_range = format_sleep_range(
@@ -460,16 +484,22 @@ def build_command(engine: str, settings: Settings, input_path: Path, cookie_path
 
 
 def format_sleep_range(min_seconds: float, max_seconds: float) -> str:
+    """格式化下载器接受的睡眠区间字符串。"""
+
     minimum = max(0.0, float(min_seconds))
     maximum = max(minimum, float(max_seconds))
     return f"{minimum:g}-{maximum:g}" if maximum > minimum else f"{minimum:g}"
 
 
 def format_sleep_seconds(seconds: float) -> str:
+    """格式化单个睡眠秒数字符串。"""
+
     return f"{max(0.0, float(seconds)):g}"
 
 
 def validate_cookie_file(engine: str, cookie_file: Path | None) -> str | None:
+    """校验下载器所需 cookie 文件是否存在且非空。"""
+
     if engine not in SUPPORTED_ENGINES:
         return None
     if cookie_file is None or not cookie_file.exists():
@@ -486,6 +516,8 @@ def create_job(
     status: str,
     archive_run_id: int | None = None,
 ) -> int:
+    """创建一条 download_jobs 记录。"""
+
     with connect() as conn:
         with conn.cursor() as cur:
             cur.execute(
@@ -505,6 +537,8 @@ def create_job(
 
 
 def finish_job(job_id: int, status: str, success_count: int, failed_count: int, error: str | None) -> None:
+    """收敛 download_jobs 状态与统计。"""
+
     with connect() as conn:
         with conn.cursor() as cur:
             cur.execute(
@@ -541,6 +575,8 @@ def mark_run_items_progress(
     total_bytes: int | None = None,
     speed_bps: int | None = None,
 ) -> None:
+    """把批量进度摘要回写到 archive_run_items 与 download_jobs。"""
+
     if not candidate_tweets:
         return
     tweet_ids = [tweet["tweet_id"] for tweet in candidate_tweets]
@@ -621,6 +657,8 @@ def mark_run_items_finished(
     media_sizes: dict[str, int],
     message: str,
 ) -> None:
+    """把成功下载并完成回填的条目标记为已完成。"""
+
     if not candidate_tweets or not run_item_ids:
         return
     with connect() as conn:
@@ -655,7 +693,7 @@ def mark_run_items_tweet_progress(
     progress_by_tweet: dict[str, dict[str, int]],
     current_tweet_id: str | None = None,
 ) -> None:
-    """Persist one progress sample per tweet and publish one event for the whole batch."""
+    """按 tweet 粒度回写一次进度采样，并发布整批进度事件。"""
     if not candidate_tweets or not progress_by_tweet:
         return
     tweet_ids = [tweet["tweet_id"] for tweet in candidate_tweets]
@@ -757,6 +795,8 @@ def run_command_with_progress(
     run_item_ids: dict[str, int] | None,
     engine: str,
 ) -> subprocess.CompletedProcess[str]:
+    """运行下载器命令，并在运行期间持续解析进度输出。"""
+
     process = subprocess.Popen(
         command,
         stdout=subprocess.PIPE,
@@ -771,6 +811,8 @@ def run_command_with_progress(
     tweet_id_set = set(tweet_ids)
 
     def read_stream(stream, chunks: list[str]) -> None:
+        """读取 stdout/stderr，并从中抽取下载进度信号。"""
+
         if stream is None:
             return
         for chunk in stream:
@@ -838,6 +880,7 @@ def run_command_with_progress(
             previous_sample_at = progress_state.previous_sample_at
             completed_bytes = progress_state.completed_bytes_by_tweet.get(current_tweet_id or "", 0)
             last_fallback_scan_at = progress_state.last_fallback_scan_at
+        # 当原生进度暂时不可用时，回退到采样当前下载文件大小。
         if current_tweet_id and current_path:
             if (
                 last_native_progress_at is not None
@@ -872,6 +915,7 @@ def run_command_with_progress(
                     current_tweet_id=current_tweet_id,
                 )
             continue
+        # 如果下载器从未输出原生进度，再退回到周期性扫描 archive 目录估算。
         if native_progress_seen:
             continue
         if not should_run_fallback_scan(
@@ -920,6 +964,8 @@ def run_command_with_progress(
 
 
 def parse_downloader_progress(line: str) -> dict[str, int | str] | None:
+    """解析 yt-dlp 注入的结构化进度行。"""
+
     match = YTDLP_PROGRESS_RE.search(line)
     if not match:
         return None
@@ -937,6 +983,8 @@ def parse_downloader_progress(line: str) -> dict[str, int | str] | None:
 
 
 def parse_gallery_dl_progress(line: str) -> dict[str, int | str] | None:
+    """解析 gallery-dl 的结构化进度行或文件事件。"""
+
     file_match = GALLERY_DL_FILE_RE.search(line.strip())
     if file_match:
         return {
@@ -956,6 +1004,8 @@ def parse_gallery_dl_progress(line: str) -> dict[str, int | str] | None:
 
 
 def parse_gallery_dl_size(value: str | None) -> int | None:
+    """把 gallery-dl 的体积文本解析成字节数。"""
+
     if value is None:
         return None
     match = GALLERY_DL_SIZE_RE.fullmatch(value.strip())
@@ -980,6 +1030,8 @@ def handle_gallery_dl_progress_event(
     candidate_tweets: list[dict[str, str]],
     run_item_ids: dict[str, int] | None,
 ) -> None:
+    """处理 gallery-dl 文件事件与进度事件。"""
+
     event_type = str(event["event"])
     if event_type in {"start", "success", "skip"}:
         resolved = resolve_gallery_dl_progress_path(
@@ -1064,6 +1116,8 @@ def resolve_gallery_dl_progress_path(
     archive_dir: Path,
     tweet_ids: set[str],
 ) -> tuple[str, Path] | None:
+    """把 gallery-dl 输出的文件名解析成 tweet_id 和真实路径。"""
+
     if not filename:
         return None
     media_dir = (archive_dir / "media").resolve()
@@ -1082,6 +1136,8 @@ def resolve_gallery_dl_progress_path(
 
 
 def sample_current_download_path(path: Path) -> int | None:
+    """采样当前下载中的 `.part` 文件或已落盘文件大小。"""
+
     part_path = Path(f"{path}.part")
     if part_path.is_file():
         return safe_file_size(part_path)
@@ -1095,12 +1151,16 @@ def should_run_fallback_scan(
     current_at: float,
     interval_seconds: float,
 ) -> bool:
+    """判断当前是否应该执行回退式目录扫描。"""
+
     if interval_seconds <= 0:
         return False
     return last_scan_at is None or current_at - last_scan_at >= interval_seconds
 
 
 def parse_progress_number(value: str | None) -> int | None:
+    """把进度文本解析成非负整数。"""
+
     if value is None:
         return None
     text = value.strip()
@@ -1113,10 +1173,14 @@ def parse_progress_number(value: str | None) -> int | None:
 
 
 def estimate_downloaded_bytes(archive_dir: Path, tweet_ids: list[str]) -> int:
+    """估算一组 tweet 当前已下载的总字节数。"""
+
     return sum(estimate_downloaded_bytes_by_tweet(archive_dir, tweet_ids).values())
 
 
 def estimate_downloaded_bytes_by_tweet(archive_dir: Path, tweet_ids: list[str]) -> dict[str, int]:
+    """扫描 archive 目录，按 tweet 估算已下载字节数。"""
+
     sizes = {tweet_id: 0 for tweet_id in tweet_ids}
     if not tweet_ids:
         return sizes
@@ -1139,6 +1203,8 @@ def estimate_downloaded_bytes_by_tweet(archive_dir: Path, tweet_ids: list[str]) 
 
 
 def safe_file_size(path: Path) -> int:
+    """安全读取文件大小；失败时返回 0。"""
+
     try:
         return path.stat().st_size
     except OSError:
@@ -1146,6 +1212,8 @@ def safe_file_size(path: Path) -> int:
 
 
 def set_tweets_downloading(tweet_ids: list[str]) -> None:
+    """把一批 tweet 标记为 downloading。"""
+
     if not tweet_ids:
         return
     with connect() as conn:
@@ -1164,6 +1232,8 @@ def set_tweets_downloading(tweet_ids: list[str]) -> None:
 
 
 def mark_tweets_downloaded(tweet_ids: list[str]) -> None:
+    """把一批 tweet 标记为 downloaded。"""
+
     if not tweet_ids:
         return
     with connect() as conn:
@@ -1182,6 +1252,8 @@ def mark_tweets_downloaded(tweet_ids: list[str]) -> None:
 
 
 def mark_tweets_failed(tweet_ids: list[str], status: str, error: str) -> None:
+    """把一批 tweet 标记为失败状态并递增重试次数。"""
+
     if not tweet_ids:
         return
     with connect() as conn:
@@ -1210,6 +1282,8 @@ def mark_attempts(
     stderr_excerpt: str | None,
     run_item_ids: dict[str, int] | None = None,
 ) -> None:
+    """为每个 tweet 写入一条 download_attempts 记录。"""
+
     if not tweets:
         return
     with connect() as conn:
@@ -1247,12 +1321,18 @@ def mark_attempts(
 
 
 def classify_error(exit_code: int, stderr: str | None) -> str:
+    """根据 stderr 内容把下载失败归类到统一错误类别。"""
+
     return category_value(classify_x_error(stderr)) or ErrorCategory.UNKNOWN.value
 
 
 def empty_backfill_result() -> dict[str, object]:
+    """返回空的媒体回填结果结构。"""
+
     return {"scanned": 0, "upserted": 0, "skipped": 0, "media_ids": [], "tweet_ids": []}
 
 
 def log_download_event(event: str, **details: object) -> None:
+    """输出结构化下载日志事件。"""
+
     logger.info("Download event: %s", event, extra={"event": event, "details": details})

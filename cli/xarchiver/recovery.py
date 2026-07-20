@@ -1,5 +1,7 @@
 from __future__ import annotations
 
+"""中断恢复与重新入队辅助函数。"""
+
 from sqlalchemy import bindparam, select
 
 from xarchiver.db import connect
@@ -11,6 +13,8 @@ DEFAULT_REQUEUE_STATUSES = ["failed_retryable", "missing", "corrupt"]
 
 
 def requeue_tweets(statuses: list[str] | None = None, limit: int | None = None) -> dict[str, object]:
+    """把指定状态的推文与媒体重新置回 pending。"""
+
     selected_statuses = statuses or DEFAULT_REQUEUE_STATUSES
     tweet_ids = fetch_requeue_candidates(selected_statuses, limit)
     if not tweet_ids:
@@ -45,6 +49,8 @@ def requeue_tweets(statuses: list[str] | None = None, limit: int | None = None) 
 
 
 def recover_interrupted_runs(stuck_timeout_minutes: int) -> dict[str, int]:
+    """把超时未完成的下载与运行恢复为可重试状态。"""
+
     with connect() as conn:
         with conn.cursor() as cur:
             cur.execute(
@@ -98,6 +104,8 @@ def recover_interrupted_runs(stuck_timeout_minutes: int) -> dict[str, int]:
 
 
 def fetch_requeue_candidates(statuses: list[str], limit: int | None) -> list[str]:
+    """读取符合重新入队条件的 tweet_id 列表。"""
+
     sql, params = build_requeue_candidates_query(statuses, limit)
 
     with connect() as conn:
@@ -107,6 +115,8 @@ def fetch_requeue_candidates(statuses: list[str], limit: int | None) -> list[str
 
 
 def build_requeue_candidates_query(statuses: list[str], limit: int | None) -> tuple[str, dict[str, object]]:
+    """构造重新入队候选推文查询。"""
+
     statement = (
         select(tweets.c.tweet_id)
         .select_from(tweets)

@@ -1,5 +1,10 @@
 from __future__ import annotations
 
+"""旧式归档工作流编排函数。
+
+负责把导入、下载、回填、校验串成一条增量流水线，主要供 CLI 场景复用。
+"""
+
 from pathlib import Path
 
 from xarchiver.config import Settings
@@ -11,12 +16,16 @@ from xarchiver.verifier import verify_media_assets
 
 
 def archive_urls(path: Path, settings: Settings, limit: int | None = None) -> dict[str, object]:
+    """导入 URL 文件后执行一轮完整归档流水线。"""
+
     recovery_result = recover_interrupted_runs(settings.stuck_timeout_minutes)
     import_result = import_urls_scoped(path)
     return archive_imported(path, "urls", import_result, recovery_result, settings, limit)
 
 
 def archive_jsonl(path: Path, settings: Settings, limit: int | None = None) -> dict[str, object]:
+    """导入 JSONL 文件后执行一轮完整归档流水线。"""
+
     recovery_result = recover_interrupted_runs(settings.stuck_timeout_minutes)
     import_result = import_jsonl_scoped(path)
     return archive_imported(path, "jsonl", import_result, recovery_result, settings, limit)
@@ -30,6 +39,8 @@ def archive_imported(
     settings: Settings,
     limit: int | None = None,
 ) -> dict[str, object]:
+    """把导入摘要与下载/校验流水线结果组装成统一输出。"""
+
     tweet_ids = list(import_result["tweet_ids"])
     pipeline = process_tweet_scope(tweet_ids, settings, limit)
     return {
@@ -50,6 +61,8 @@ def process_tweet_scope(
     archive_run_id: int | None = None,
     item_ids: dict[str, int] | None = None,
 ) -> dict[str, object]:
+    """对一批 tweet 执行 gallery-dl、yt-dlp、回填与校验。"""
+
     gallery_result = download(
         "gallery-dl",
         settings,
@@ -94,6 +107,8 @@ def process_tweet_scope(
 
 
 def summarize_download_result(result: dict[str, object]) -> dict[str, object]:
+    """提取下载结果中与上层展示相关的摘要字段。"""
+
     return {
         "job_id": result.get("job_id"),
         "count": result.get("count", 0),
@@ -103,6 +118,8 @@ def summarize_download_result(result: dict[str, object]) -> dict[str, object]:
 
 
 def download_media_ids(result: dict[str, object]) -> list[int]:
+    """从下载结果中提取回填得到的 media_id 列表。"""
+
     backfill = result.get("media_backfill")
     if not isinstance(backfill, dict):
         return []
@@ -110,6 +127,8 @@ def download_media_ids(result: dict[str, object]) -> list[int]:
 
 
 def download_tweet_ids(result: dict[str, object]) -> list[str]:
+    """从下载结果中提取回填得到的 tweet_id 列表。"""
+
     backfill = result.get("media_backfill")
     if not isinstance(backfill, dict):
         return []

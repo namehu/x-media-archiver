@@ -1,5 +1,7 @@
 from __future__ import annotations
 
+"""导入 TXT/JSONL 输入并写入 tweets 表的辅助函数。"""
+
 from pathlib import Path
 from typing import Any
 
@@ -11,6 +13,8 @@ from xarchiver.row_models import TweetStatusRow
 
 
 def import_urls(path: Path, source_type: str = "url_list", source_url: str | None = None) -> int:
+    """导入纯 URL 文本文件。"""
+
     rows = parse_url_rows(path, source_type, source_url)
     upsert_tweets(rows)
     return len(rows)
@@ -21,11 +25,15 @@ def import_urls_scoped(
     source_type: str = "url_list",
     source_url: str | None = None,
 ) -> dict[str, object]:
+    """导入 URL 文件，并返回带输入摘要的结果。"""
+
     rows = parse_url_rows(path, source_type, source_url)
     return import_scoped_rows(rows)
 
 
 def parse_url_rows(path: Path, source_type: str, source_url: str | None) -> list[dict[str, Any]]:
+    """把 URL 文本文件解析成标准 tweet 导入记录。"""
+
     rows: list[dict[str, Any]] = []
     for line in path.read_text(encoding="utf-8").splitlines():
         url = line.strip()
@@ -50,16 +58,22 @@ def parse_url_rows(path: Path, source_type: str, source_url: str | None) -> list
 
 
 def import_jsonl(path: Path) -> int:
+    """导入 JSONL 推文记录文件。"""
+
     rows = parse_jsonl_rows(path)
     upsert_tweets(rows)
     return len(rows)
 
 
 def import_jsonl_scoped(path: Path) -> dict[str, object]:
+    """导入 JSONL，并返回带输入摘要的结果。"""
+
     return import_scoped_rows(parse_jsonl_rows(path))
 
 
 def parse_jsonl_rows(path: Path) -> list[dict[str, Any]]:
+    """把 JSONL 文件解析成标准 tweet 导入记录。"""
+
     rows: list[dict[str, Any]] = []
     for index, line in enumerate(path.read_text(encoding="utf-8").splitlines(), start=1):
         line = line.strip()
@@ -89,6 +103,8 @@ def parse_jsonl_rows(path: Path) -> list[dict[str, Any]]:
 
 
 def import_scoped_rows(rows: list[dict[str, Any]]) -> dict[str, object]:
+    """执行导入，并返回新旧推文数量、重复输入数量等摘要。"""
+
     tweet_ids = list(dict.fromkeys(str(row["tweet_id"]) for row in rows))
     existing_statuses = fetch_existing_tweet_statuses(tweet_ids)
     existing_ids = set(existing_statuses)
@@ -105,6 +121,8 @@ def import_scoped_rows(rows: list[dict[str, Any]]) -> dict[str, object]:
 
 
 def fetch_existing_tweet_statuses(tweet_ids: list[str]) -> dict[str, str]:
+    """批量读取已存在 tweet 的当前下载状态。"""
+
     if not tweet_ids:
         return {}
     with connect() as conn:
@@ -120,6 +138,8 @@ def fetch_existing_tweet_statuses(tweet_ids: list[str]) -> dict[str, str]:
 
 
 def upsert_tweets(rows: list[dict[str, Any]], connection: Any | None = None) -> None:
+    """把导入记录 upsert 到 tweets 表。"""
+
     if not rows:
         return
 
@@ -171,6 +191,8 @@ def upsert_tweets(rows: list[dict[str, Any]], connection: Any | None = None) -> 
 
 
 def execute_tweet_upserts(connection: Any, sql: str, rows: list[dict[str, Any]]) -> None:
+    """在给定连接上逐条执行 tweet upsert。"""
+
     with connection.cursor() as cur:
         for row in rows:
             row = {**row, "raw_import": Jsonb(row["raw_import"])}
@@ -178,6 +200,8 @@ def execute_tweet_upserts(connection: Any, sql: str, rows: list[dict[str, Any]])
 
 
 def extract_tweet_id(url: str) -> str:
+    """从 X/Twitter URL 中提取 tweet_id。"""
+
     parts = [part for part in url.replace("?", "/?").split("/") if part]
     for index, part in enumerate(parts):
         if part == "status" and index + 1 < len(parts):

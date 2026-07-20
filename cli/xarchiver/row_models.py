@@ -1,5 +1,11 @@
 from __future__ import annotations
 
+"""service 与查询层共用的行模型定义。
+
+这些模型主要用于把数据库查询结果在 service 边界上规范化，避免各处直接
+操作松散的字典结构。
+"""
+
 from datetime import datetime
 from typing import Any
 
@@ -7,6 +13,8 @@ from pydantic import BaseModel, ConfigDict
 
 
 class RowModel(BaseModel):
+    """所有数据库行模型的基类。"""
+
     model_config = ConfigDict(extra="forbid")
 
     def __getitem__(self, key: str) -> Any:
@@ -16,6 +24,7 @@ class RowModel(BaseModel):
         return getattr(self, key, default)
 
 
+# 认证相关行模型
 class AuthAdminRow(RowModel):
     id: int
     username: str
@@ -29,6 +38,7 @@ class AuthSessionRow(RowModel):
     expires_at: datetime
 
 
+# 媒体检索与详情相关行模型
 class SearchMediaRow(RowModel):
     id: int
     tweet_id: str
@@ -124,6 +134,7 @@ class DownloadAttemptRow(RowModel):
     finished_at: datetime | None = None
 
 
+# 归档运行与队列相关行模型
 class ArchiveRunRow(RowModel):
     id: int
     trigger_type: str
@@ -231,6 +242,7 @@ class TweetRow(RowModel):
     updated_at: datetime
 
 
+# 来源、日志与导出相关行模型
 class ArchiveSourceRow(RowModel):
     id: int
     source_type: str
