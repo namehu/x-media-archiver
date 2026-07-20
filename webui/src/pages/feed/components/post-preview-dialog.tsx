@@ -5,7 +5,6 @@ import { Swiper, SwiperSlide } from "swiper/react";
 import type { Swiper as SwiperInstance } from "swiper/types";
 import type { PostFeedRow } from "@/lib/api";
 import { Avatar, AvatarFallback } from "@/components/ui/avatar";
-import { Button } from "@/components/ui/button";
 import { Dialog, DialogContent, DialogDescription, DialogHeader, DialogTitle } from "@/components/ui/dialog";
 import { formatDateTime } from "@/lib/utils";
 import "swiper/css";
@@ -56,14 +55,10 @@ export function PostPreviewDialog({
           >
             {post.media.map((item, index) => (
               <SwiperSlide key={item.id}>
-                <div className="flex size-full items-center justify-center p-3 sm:p-8">
+                <div className="flex size-full items-center justify-center">
                   {item.media_url ? (
                     item.media_type === "video" ? (
-                      <PreviewVideo
-                        src={item.media_url}
-                        previewUrl={item.preview_url}
-                        active={index === activeIndex}
-                      />
+                      <PreviewVideo src={item.media_url} previewUrl={item.preview_url} active={index === activeIndex} />
                     ) : (
                       <img src={item.media_url} alt="" className="max-h-full max-w-full select-none object-contain" />
                     )
@@ -75,37 +70,51 @@ export function PostPreviewDialog({
             ))}
           </Swiper>
         </div>
-        <aside className="max-h-[36dvh] overflow-y-auto border-t border-white/15 bg-bg-elevated p-4 md:max-h-none md:border-l md:border-t-0 md:p-5">
-          <div className="flex items-start gap-3">
-            <Avatar className="size-10 shrink-0">
-              <AvatarFallback>{avatarInitials(authorName)}</AvatarFallback>
-            </Avatar>
-            <div className="min-w-0 flex-1">
-              <p className="truncate font-semibold text-fg-primary">{authorName}</p>
-              <p className="truncate text-sm text-fg-secondary">
-                {post.author_username ? `@${post.author_username}` : "用户名未知"}
-              </p>
-            </div>
+        <aside className="max-h-[36dvh] overflow-y-auto border-t border-white/15 bg-black p-4 md:max-h-none md:border-l md:border-t-0 md:p-5">
+          <div className="flex items-start justify-between gap-4">
+            <a
+              href={post.author_username ? `https://x.com/${post.author_username}` : "#"}
+              target="_blank"
+              rel="noopener noreferrer"
+              className="flex min-w-0 flex-1 items-start gap-3 transition-opacity hover:opacity-80"
+              title="在 X 中查看主页"
+            >
+              <Avatar className="size-10 shrink-0 border border-white/10">
+                <AvatarFallback className="bg-white/20 text-white">{avatarInitials(authorName)}</AvatarFallback>
+              </Avatar>
+              <div className="min-w-0 flex-1">
+                <p className="truncate font-semibold text-white">{authorName}</p>
+                <p className="truncate text-sm text-white/60">
+                  {post.author_username ? `@${post.author_username}` : "用户名未知"}
+                </p>
+              </div>
+            </a>
+            <a
+              href={post.tweet_url}
+              target="_blank"
+              rel="noopener noreferrer"
+              className="shrink-0 rounded-full p-2 text-white/60 transition-colors hover:bg-white/10 hover:text-white"
+              title="在 X 中查看此贴"
+            >
+              <ExternalLink className="size-5" />
+            </a>
           </div>
           <button
             type="button"
-            className="mt-4 w-full text-left"
+            className="mt-4 w-full text-left outline-none"
             onClick={() => setContextExpanded((current) => !current)}
           >
-            <p className={contextExpanded ? "whitespace-pre-wrap text-sm leading-6" : "line-clamp-3 whitespace-pre-wrap text-sm leading-6"}>
+            <p
+              className={
+                contextExpanded
+                  ? "whitespace-pre-wrap text-[15px] leading-relaxed text-white/90"
+                  : "line-clamp-3 whitespace-pre-wrap text-[15px] leading-relaxed text-white/90"
+              }
+            >
               {post.tweet_text || "暂无帖子正文"}
             </p>
           </button>
-          <p className="mt-4 text-xs text-fg-tertiary">{formatDateTime(post.published_at)}</p>
-          <Button
-            type="button"
-            variant="outline"
-            className="mt-4 w-full"
-            onClick={() => window.open(post.tweet_url, "_blank", "noopener,noreferrer")}
-          >
-            <ExternalLink data-icon="inline-start" />
-            在 X 中查看
-          </Button>
+          <p className="mt-4 text-xs text-white/50">{formatDateTime(post.published_at)}</p>
         </aside>
       </DialogContent>
     </Dialog>
@@ -116,15 +125,7 @@ function avatarInitials(value: string) {
   return Array.from(value.trim()).slice(0, 2).join("").toUpperCase() || "?";
 }
 
-function PreviewVideo({
-  src,
-  previewUrl,
-  active,
-}: {
-  src: string;
-  previewUrl?: string | null;
-  active: boolean;
-}) {
+function PreviewVideo({ src, previewUrl, active }: { src: string; previewUrl?: string | null; active: boolean }) {
   const videoRef = useRef<HTMLVideoElement>(null);
 
   useEffect(() => {
