@@ -29,7 +29,10 @@
 | `cli/xarchiver/alembic/` | Alembic 数据库迁移 |
 | `webui/` | Vite + React + TypeScript + Tailwind 管理界面 |
 | `extension/` | WXT + React 浏览器采集扩展 |
-| `docs/` | 部署、备份、下载契约与设计文档 |
+| `docs/` | 文档根目录，包含 UI 开发规范 (`webui-style-guide.md`) 与路线图 (`ROADMAP.md`) |
+| `docs/architecture/` | 架构与核心机制设计（下载契约、来源扫描工作流） |
+| `docs/testing/` | 测试与验收规范（包含 `manual-acceptance.md` 手工验收清单） |
+| `docs/deploy/` | 部署与运维指南 |
 | `examples/` | 可导入的示例 TXT / JSONL |
 | `archive/` | 本地运行输出，不应放入源代码资产 |
 | `secrets/` | 本地凭证目录，实际凭证不得提交 |
@@ -88,6 +91,7 @@ npm run zip
 
 ### WebUI
 
+- **UI 开发规范**：进行 WebUI 开发或修改前，必须优先阅读 `docs/webui-style-guide.md`，严格遵循其中的色彩、排版、布局、组件复用与无障碍约束。
 - API 请求集中在 `webui/src/lib/api.ts`，页面保持以展示、筛选和用户交互为主。
 - 复用 `webui/src/components/ui/` 的已有组件和 `AppLayout`，保持后台界面的信息密度与交互风格一致。
 - 用户触发 full backfill、full verify 或媒体物理删除时必须保留显式确认语义。媒体删除必须按 `media_assets.id` 精确执行，限制在 `archive/media` 内，保留 Tweet 与任务历史并记录删除审计；禁止目录通配或隐式递归删除。
@@ -103,6 +107,8 @@ npm run zip
 - 修改内容脚本选择器或自动滚动行为时，优先考虑 X 页面 DOM 变化和重复采集的去重行为。
 
 ## 测试与交付检查
+
+> **手工验收参考**：在进行大规模重构或涉及核心链路的改动后，需参考 `docs/testing/manual-acceptance.md` 执行 API 与 WebUI 联动验收及来源扫描专项验收。
 
 默认验证策略：
 
