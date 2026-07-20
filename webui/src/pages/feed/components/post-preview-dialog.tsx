@@ -4,11 +4,12 @@ import { ExternalLink } from "lucide-react";
 import { Keyboard, Navigation, Pagination } from "swiper/modules";
 import { Swiper, SwiperSlide } from "swiper/react";
 import type { Swiper as SwiperInstance } from "swiper/types";
+import { useLocation } from "react-router-dom";
 import type { PostFeedRow } from "@/lib/api";
 import { Avatar, AvatarFallback } from "@/components/ui/avatar";
 import { Dialog, DialogContent, DialogDescription, DialogHeader, DialogTitle } from "@/components/ui/dialog";
 import { createArtplayerCleanup } from "@/lib/artplayer-lifecycle";
-import { bindDialogHistoryEntry, closeDialogHistoryEntry } from "@/lib/dialog-history";
+import { closeDialogHistoryEntry, isDialogHistoryEntry } from "@/lib/dialog-history";
 import {
   getDebugAuthorProfileHref,
   getDebugExternalHref,
@@ -42,6 +43,7 @@ export function PostPreviewDialog({
   onOpenChange: (open: boolean) => void;
 }) {
   const debugRedactionEnabled = useDebugRedactionEnabled();
+  const location = useLocation();
   const swiperRef = useRef<SwiperInstance | null>(null);
   const [contextExpanded, setContextExpanded] = useState(false);
 
@@ -60,8 +62,11 @@ export function PostPreviewDialog({
 
   useEffect(() => {
     if (!historyToken) return undefined;
-    return bindDialogHistoryEntry(historyToken, () => onOpenChange(false));
-  }, [historyToken, onOpenChange]);
+    if (!isDialogHistoryEntry(location.state, historyToken)) {
+      onOpenChange(false);
+    }
+    return undefined;
+  }, [historyToken, location.state, onOpenChange]);
 
   useEffect(() => {
     setContextExpanded(false);

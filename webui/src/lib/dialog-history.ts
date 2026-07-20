@@ -10,34 +10,21 @@ function asHistoryRecord(state: unknown): HistoryRecord {
   return {};
 }
 
-export function pushDialogHistoryEntry() {
+export function createDialogHistoryEntry(state: unknown) {
   const token = typeof crypto.randomUUID === "function" ? crypto.randomUUID() : `${Date.now()}-${Math.random()}`;
-  history.pushState({ ...asHistoryRecord(history.state), [DIALOG_HISTORY_KEY]: token }, "", window.location.href);
-  return token;
+  return {
+    token,
+    state: { ...asHistoryRecord(state), [DIALOG_HISTORY_KEY]: token },
+  };
 }
 
 export function isDialogHistoryEntry(state: unknown, token: string) {
   return asHistoryRecord(state)[DIALOG_HISTORY_KEY] === token;
 }
 
-export function bindDialogHistoryEntry(token: string, onExit: () => void) {
-  let disposed = false;
-
-  const handlePopState = (event: PopStateEvent) => {
-    if (disposed || isDialogHistoryEntry(event.state, token)) return;
-    onExit();
-  };
-
-  window.addEventListener("popstate", handlePopState);
-
-  return () => {
-    disposed = true;
-    window.removeEventListener("popstate", handlePopState);
-  };
-}
-
 export function closeDialogHistoryEntry(token: string, onExit: () => void) {
-  if (isDialogHistoryEntry(history.state, token)) {
+  const routerState = asHistoryRecord(history.state).usr;
+  if (isDialogHistoryEntry(routerState, token)) {
     history.back();
     return;
   }

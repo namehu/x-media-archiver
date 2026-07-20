@@ -1,7 +1,7 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { useInfiniteQuery, useQuery, useQueryClient } from "@tanstack/react-query";
 import { Heart, ListFilter, SlidersHorizontal } from "lucide-react";
-import { useLocation, useNavigationType } from "react-router-dom";
+import { useLocation, useNavigate, useNavigationType } from "react-router-dom";
 import type { StateSnapshot } from "react-virtuoso";
 import {
   apiGet,
@@ -16,7 +16,7 @@ import { ErrorState } from "@/components/ui/error-state";
 import { Sheet, SheetContent, SheetDescription, SheetHeader, SheetTitle } from "@/components/ui/sheet";
 import { Skeleton } from "@/components/ui/skeleton";
 import { ToggleGroup, ToggleGroupItem } from "@/components/ui/toggle-group";
-import { pushDialogHistoryEntry } from "@/lib/dialog-history";
+import { createDialogHistoryEntry } from "@/lib/dialog-history";
 import { DEFAULT_FEED_FILTERS, FeedFilterPanel, type FeedFilters } from "./components/feed-filter-panel";
 import { FeedList } from "./components/feed-list";
 import { PostPreviewDialog } from "./components/post-preview-dialog";
@@ -26,6 +26,7 @@ const PAGE_SIZE = 20;
 
 export function FeedPage() {
   const location = useLocation();
+  const navigate = useNavigate();
   const navigationType = useNavigationType();
   const queryClient = useQueryClient();
   const [restoredState] = useState(() => (navigationType === "POP" ? getFeedBrowseState(location.key) : undefined));
@@ -206,8 +207,13 @@ export function FeedPage() {
               onStateChanged={handleListStateChanged}
               onActivateVideo={setActiveVideoId}
               onPreview={(post, index) => {
+                const dialogEntry = createDialogHistoryEntry(location.state);
                 setActiveVideoId(null);
-                setPreview({ post, index, historyToken: pushDialogHistoryEntry() });
+                void navigate(
+                  { pathname: location.pathname, search: location.search, hash: location.hash },
+                  { state: dialogEntry.state },
+                );
+                setPreview({ post, index, historyToken: dialogEntry.token });
               }}
             />
           ) : null}
