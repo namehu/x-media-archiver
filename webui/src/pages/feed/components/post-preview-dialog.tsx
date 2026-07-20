@@ -1,4 +1,4 @@
-import { useEffect, useRef, useState } from "react";
+import { useCallback, useEffect, useRef, useState } from "react";
 import Artplayer from "artplayer";
 import { ExternalLink } from "lucide-react";
 import { Keyboard, Navigation, Pagination } from "swiper/modules";
@@ -8,6 +8,7 @@ import type { PostFeedRow } from "@/lib/api";
 import { Avatar, AvatarFallback } from "@/components/ui/avatar";
 import { Dialog, DialogContent, DialogDescription, DialogHeader, DialogTitle } from "@/components/ui/dialog";
 import { createArtplayerCleanup } from "@/lib/artplayer-lifecycle";
+import { bindDialogHistoryEntry, closeDialogHistoryEntry } from "@/lib/dialog-history";
 import {
   getDebugAuthorProfileHref,
   getDebugExternalHref,
@@ -30,11 +31,13 @@ const SEEK_WINDOW_MAX_SECONDS = 120;
 export function PostPreviewDialog({
   post,
   activeIndex,
+  historyToken,
   onActiveIndexChange,
   onOpenChange,
 }: {
   post: PostFeedRow | null;
   activeIndex: number;
+  historyToken: string | null;
   onActiveIndexChange: (index: number) => void;
   onOpenChange: (open: boolean) => void;
 }) {
@@ -42,9 +45,27 @@ export function PostPreviewDialog({
   const swiperRef = useRef<SwiperInstance | null>(null);
   const [contextExpanded, setContextExpanded] = useState(false);
 
+  const handleClose = useCallback(() => {
+    if (!historyToken) {
+      onOpenChange(false);
+      return;
+    }
+
+    closeDialogHistoryEntry(historyToken, () => onOpenChange(false));
+  }, [historyToken, onOpenChange]);
+
   useEffect(() => {
     swiperRef.current?.slideTo(activeIndex);
   }, [activeIndex]);
+
+  useEffect(() => {
+    if (!historyToken) return undefined;
+    return bindDialogHistoryEntry(historyToken, () => onOpenChange(false));
+  }, [historyToken, onOpenChange]);
+
+  useEffect(() => {
+    setContextExpanded(false);
+  }, [post?.tweet_id]);
 
   if (!post) return null;
   const authorName = post.author_display_name || post.author_username || "未知作者";
@@ -53,7 +74,12 @@ export function PostPreviewDialog({
   const tweetText = post.tweet_text || "暂无帖子正文";
 
   return (
-    <Dialog open onOpenChange={onOpenChange}>
+    <Dialog
+      open
+      onOpenChange={(open) => {
+        if (!open) handleClose();
+      }}
+    >
       <DialogContent className="left-0 top-0 grid h-[100dvh] w-screen max-w-none translate-x-0 translate-y-0 grid-rows-[minmax(0,1fr)_auto] overflow-hidden rounded-none border-0 bg-black p-0 md:grid-cols-[minmax(0,1fr)_360px] md:grid-rows-1 [&>button]:bg-black/60 [&>button]:text-white [&>button]:hover:bg-black/80">
         <DialogHeader className="sr-only">
           <DialogTitle>帖子媒体预览</DialogTitle>
@@ -103,7 +129,10 @@ export function PostPreviewDialog({
                 if (!authorProfileHref) event.preventDefault();
               }}
             >
-              <Avatar className="size-10 shrink-0 border border-white/10" {...getDebugRedactProps(debugRedactionEnabled)}>
+              <Avatar
+                className="size-10 shrink-0 border border-white/10"
+                {...getDebugRedactProps(debugRedactionEnabled)}
+              >
                 <AvatarFallback className="bg-white/20 text-white">{avatarInitials(authorName)}</AvatarFallback>
               </Avatar>
               <div className="min-w-0 flex-1" {...getDebugRedactProps(debugRedactionEnabled)}>

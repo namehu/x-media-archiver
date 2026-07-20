@@ -13,8 +13,26 @@ export function createArtplayerCleanup(player: Artplayer, container: HTMLElement
   const unbindFullscreenHistory = bindFullscreenWebHistory(player);
   let destroyed = false;
 
-  const exitWebFullscreen = () => {
+  const stopPlayback = () => {
     if (destroyed) return;
+
+    try {
+      player.pause();
+    } catch (error) {
+      console.warn("[ArtPlayer] Failed to pause player", error);
+    }
+  };
+
+  const exitFullscreen = () => {
+    if (destroyed) return;
+
+    try {
+      if (player.fullscreen) {
+        player.fullscreen = false;
+      }
+    } catch (error) {
+      console.warn("[ArtPlayer] Failed to exit fullscreen", error);
+    }
 
     try {
       if (player.fullscreenWeb) {
@@ -27,7 +45,8 @@ export function createArtplayerCleanup(player: Artplayer, container: HTMLElement
 
   const handlePageHide = () => {
     unbindFullscreenHistory();
-    exitWebFullscreen();
+    stopPlayback();
+    exitFullscreen();
   };
 
   window.addEventListener("pagehide", handlePageHide);
@@ -38,7 +57,8 @@ export function createArtplayerCleanup(player: Artplayer, container: HTMLElement
 
     if (destroyed) return;
 
-    exitWebFullscreen();
+    stopPlayback();
+    exitFullscreen();
     destroyed = true;
 
     try {

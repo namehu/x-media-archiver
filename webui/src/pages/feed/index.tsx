@@ -16,6 +16,7 @@ import { ErrorState } from "@/components/ui/error-state";
 import { Sheet, SheetContent, SheetDescription, SheetHeader, SheetTitle } from "@/components/ui/sheet";
 import { Skeleton } from "@/components/ui/skeleton";
 import { ToggleGroup, ToggleGroupItem } from "@/components/ui/toggle-group";
+import { pushDialogHistoryEntry } from "@/lib/dialog-history";
 import { DEFAULT_FEED_FILTERS, FeedFilterPanel, type FeedFilters } from "./components/feed-filter-panel";
 import { FeedList } from "./components/feed-list";
 import { PostPreviewDialog } from "./components/post-preview-dialog";
@@ -36,7 +37,7 @@ export function FeedPage() {
   const [listVersion, setListVersion] = useState(0);
   const [mobileFiltersOpen, setMobileFiltersOpen] = useState(false);
   const [activeVideoId, setActiveVideoId] = useState<string | null>(null);
-  const [preview, setPreview] = useState<{ post: PostFeedRow; index: number } | null>(null);
+  const [preview, setPreview] = useState<{ post: PostFeedRow; index: number; historyToken: string } | null>(null);
   const filtersRef = useRef(filters);
   const submittedRef = useRef(submitted);
   const listStateRef = useRef<StateSnapshot | null>(restoreListState);
@@ -206,7 +207,7 @@ export function FeedPage() {
               onActivateVideo={setActiveVideoId}
               onPreview={(post, index) => {
                 setActiveVideoId(null);
-                setPreview({ post, index });
+                setPreview({ post, index, historyToken: pushDialogHistoryEntry() });
               }}
             />
           ) : null}
@@ -257,6 +258,7 @@ export function FeedPage() {
       <PostPreviewDialog
         post={preview?.post ?? null}
         activeIndex={preview?.index ?? 0}
+        historyToken={preview?.historyToken ?? null}
         onActiveIndexChange={(index) => setPreview((current) => (current ? { ...current, index } : null))}
         onOpenChange={(open) => {
           if (!open) setPreview(null);
