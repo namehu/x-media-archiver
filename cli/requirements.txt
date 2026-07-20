@@ -1,3 +1,5 @@
+-r requirements-ffmpeg.txt
+
 typer
 rich
 pydantic
@@ -12,5 +14,3 @@ yt-dlp
 fastapi
 uvicorn[standard]
 pwdlib[argon2]
-debugpy
-ruff

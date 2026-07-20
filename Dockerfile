@@ -30,21 +30,20 @@ ENV PYTHONDONTWRITEBYTECODE=1 \
 
 WORKDIR /app
 
-RUN --mount=type=cache,target=/var/cache/apt,sharing=locked \
-    --mount=type=cache,target=/var/lib/apt/lists,sharing=locked \
-    rm -f /etc/apt/apt.conf.d/docker-clean \
-    && apt-get update \
-    && apt-get install -y --no-install-recommends \
-    ffmpeg \
-    ca-certificates \
-    curl \
-    git
+# imageio-ffmpeg ships one self-contained binary per supported platform.
+# Exposing it on PATH keeps gallery-dl/yt-dlp integration unchanged while
+# avoiding Debian ffmpeg's large shared-library dependency tree. Keep this in
+# its own stable layer so routine Python dependency updates can reuse it.
+COPY cli/requirements-ffmpeg.txt /app/requirements-ffmpeg.txt
+RUN --mount=type=cache,target=/root/.cache/pip,sharing=locked \
+    python -m pip install -r /app/requirements-ffmpeg.txt \
+    && ln -s "$(python -c 'import imageio_ffmpeg; print(imageio_ffmpeg.get_ffmpeg_exe())')" \
+        /usr/local/bin/ffmpeg
 
-# Python dependencies.
+# Python application dependencies.
 COPY cli/requirements.txt /app/requirements.txt
 RUN --mount=type=cache,target=/root/.cache/pip,sharing=locked \
-    python -m pip install --upgrade pip \
-    && python -m pip install -r /app/requirements.txt
+    python -m pip install -r /app/requirements.txt
 
 # Backend source (xarchiver package, Alembic migrations, gallery-dl.conf, entrypoint).
 COPY --chmod=755 cli/docker-entrypoint.sh /app/docker-entrypoint.sh
@@ -57,6 +56,6 @@ COPY --from=webui-builder /webui/dist /app/webui
 EXPOSE 18000
 
 HEALTHCHECK --interval=30s --timeout=5s --start-period=20s --retries=3 \
-    CMD curl -fsS "http://127.0.0.1:18000/health" || exit 1
+    CMD ["python", "-c", "import urllib.request; urllib.request.urlopen('http://127.0.0.1:18000/health', timeout=5).read()"]
 
 ENTRYPOINT ["/app/docker-entrypoint.sh"]

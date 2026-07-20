@@ -297,7 +297,7 @@ docker compose up -d postgres
 docker compose run --rm --service-ports xarchiver serve
 ```
 
-dev 镜像基于 `python:3.12-slim`，内置 `ffmpeg`、`gallery-dl`、`yt-dlp`（见 [`cli/Dockerfile`](../../cli/Dockerfile) 与 [`cli/requirements.txt`](../../cli/requirements.txt)）。这条路径下 WebUI 需单独构建并 serve（见第 7 节），不与后端同源。
+dev 镜像基于 `python:3.12-slim`，内置 `ffmpeg`、`gallery-dl`、`yt-dlp`（见 [`cli/Dockerfile`](../../cli/Dockerfile) 与 [`cli/requirements.txt`](../../cli/requirements.txt)）。其中 `ffmpeg` 由 `imageio-ffmpeg` 的多架构 wheel 提供，避免引入 Debian 完整多媒体依赖树；`debugpy` 与 `ruff` 等开发工具单独记录在 [`cli/requirements-dev.txt`](../../cli/requirements-dev.txt)，不会进入发布镜像。这条路径下 WebUI 需单独构建并 serve（见第 7 节），不与后端同源。
 
 一次性 CLI 操作（指向外部库时加 `--no-deps` 避免连带启动本地 Postgres）：
 

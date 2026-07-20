@@ -7,21 +7,17 @@ ENV PYTHONUNBUFFERED=1
 
 WORKDIR /app
 
-RUN --mount=type=cache,target=/var/cache/apt,sharing=locked \
-    --mount=type=cache,target=/var/lib/apt/lists,sharing=locked \
-    rm -f /etc/apt/apt.conf.d/docker-clean \
-    && apt-get update \
-    && apt-get install -y --no-install-recommends \
-    ffmpeg \
-    ca-certificates \
-    curl \
-    git
+COPY requirements-ffmpeg.txt /app/requirements-ffmpeg.txt
+RUN --mount=type=cache,target=/root/.cache/pip,sharing=locked \
+    python -m pip install -r /app/requirements-ffmpeg.txt \
+    && ln -s "$(python -c 'import imageio_ffmpeg; print(imageio_ffmpeg.get_ffmpeg_exe())')" \
+        /usr/local/bin/ffmpeg
 
 COPY requirements.txt /app/requirements.txt
+COPY requirements-dev.txt /app/requirements-dev.txt
 
 RUN --mount=type=cache,target=/root/.cache/pip,sharing=locked \
-    python -m pip install --upgrade pip \
-    && python -m pip install -r /app/requirements.txt
+    python -m pip install -r /app/requirements-dev.txt
 
 COPY . /app
 

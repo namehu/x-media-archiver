@@ -1,0 +1,3 @@
+# Kept separate so routine application dependency updates can reuse the large
+# platform-specific FFmpeg layer in published images.
+imageio-ffmpeg==0.6.0
