@@ -8,6 +8,13 @@ import type { PostFeedRow } from "@/lib/api";
 import { Avatar, AvatarFallback } from "@/components/ui/avatar";
 import { Dialog, DialogContent, DialogDescription, DialogHeader, DialogTitle } from "@/components/ui/dialog";
 import { createArtplayerCleanup } from "@/lib/artplayer-lifecycle";
+import {
+  getDebugAuthorProfileHref,
+  getDebugExternalHref,
+  getDebugLinkTitle,
+  getDebugRedactProps,
+  useDebugRedactionEnabled,
+} from "@/lib/debug-redaction";
 import { formatDateTime } from "@/lib/utils";
 import "swiper/css";
 import "swiper/css/navigation";
@@ -31,6 +38,7 @@ export function PostPreviewDialog({
   onActiveIndexChange: (index: number) => void;
   onOpenChange: (open: boolean) => void;
 }) {
+  const debugRedactionEnabled = useDebugRedactionEnabled();
   const swiperRef = useRef<SwiperInstance | null>(null);
   const [contextExpanded, setContextExpanded] = useState(false);
 
@@ -40,6 +48,9 @@ export function PostPreviewDialog({
 
   if (!post) return null;
   const authorName = post.author_display_name || post.author_username || "未知作者";
+  const authorProfileHref = getDebugAuthorProfileHref(debugRedactionEnabled, post.author_username);
+  const tweetHref = getDebugExternalHref(debugRedactionEnabled, post.tweet_url);
+  const tweetText = post.tweet_text || "暂无帖子正文";
 
   return (
     <Dialog open onOpenChange={onOpenChange}>
@@ -82,16 +93,20 @@ export function PostPreviewDialog({
         <aside className="max-h-[36dvh] overflow-y-auto border-t border-white/15 bg-black p-4 md:max-h-none md:border-l md:border-t-0 md:p-5">
           <div className="flex items-start justify-between gap-4">
             <a
-              href={post.author_username ? `https://x.com/${post.author_username}` : "#"}
-              target="_blank"
-              rel="noopener noreferrer"
+              href={authorProfileHref}
+              target={authorProfileHref ? "_blank" : undefined}
+              rel={authorProfileHref ? "noopener noreferrer" : undefined}
               className="flex min-w-0 flex-1 items-start gap-3 transition-opacity hover:opacity-80"
-              title="在 X 中查看主页"
+              title={getDebugLinkTitle(debugRedactionEnabled, "author", "在 X 中查看主页")}
+              aria-disabled={!authorProfileHref}
+              onClick={(event) => {
+                if (!authorProfileHref) event.preventDefault();
+              }}
             >
-              <Avatar className="size-10 shrink-0 border border-white/10">
+              <Avatar className="size-10 shrink-0 border border-white/10" {...getDebugRedactProps(debugRedactionEnabled)}>
                 <AvatarFallback className="bg-white/20 text-white">{avatarInitials(authorName)}</AvatarFallback>
               </Avatar>
-              <div className="min-w-0 flex-1">
+              <div className="min-w-0 flex-1" {...getDebugRedactProps(debugRedactionEnabled)}>
                 <p className="truncate font-semibold text-white">{authorName}</p>
                 <p className="truncate text-sm text-white/60">
                   {post.author_username ? `@${post.author_username}` : "用户名未知"}
@@ -99,11 +114,15 @@ export function PostPreviewDialog({
               </div>
             </a>
             <a
-              href={post.tweet_url}
-              target="_blank"
-              rel="noopener noreferrer"
+              href={tweetHref}
+              target={tweetHref ? "_blank" : undefined}
+              rel={tweetHref ? "noopener noreferrer" : undefined}
               className="shrink-0 rounded-full p-2 text-white/60 transition-colors hover:bg-white/10 hover:text-white"
-              title="在 X 中查看此贴"
+              title={getDebugLinkTitle(debugRedactionEnabled, "tweet", "在 X 中查看此贴")}
+              aria-disabled={!tweetHref}
+              onClick={(event) => {
+                if (!tweetHref) event.preventDefault();
+              }}
             >
               <ExternalLink className="size-5" />
             </a>
@@ -112,6 +131,7 @@ export function PostPreviewDialog({
             type="button"
             className="mt-4 w-full text-left outline-none"
             onClick={() => setContextExpanded((current) => !current)}
+            {...getDebugRedactProps(debugRedactionEnabled)}
           >
             <p
               className={
@@ -120,7 +140,7 @@ export function PostPreviewDialog({
                   : "line-clamp-3 whitespace-pre-wrap text-[15px] leading-relaxed text-white/90"
               }
             >
-              {post.tweet_text || "暂无帖子正文"}
+              {tweetText}
             </p>
           </button>
           <p className="mt-4 text-xs text-white/50">{formatDateTime(post.published_at)}</p>

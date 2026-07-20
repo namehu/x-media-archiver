@@ -14,6 +14,7 @@ import {
   AlertDialogHeader,
   AlertDialogTitle,
 } from "@/components/ui/alert-dialog";
+import { getDebugRedactProps, useDebugRedactionEnabled } from "@/lib/debug-redaction";
 import { scanStatusLabel, scanTriggerLabel } from "@/lib/formatters";
 import { cn, formatDateTime } from "@/lib/utils";
 import { formatElapsed, formatRunRange, scanStatusTone } from "../../utils";
@@ -180,6 +181,7 @@ function SourceDownloadPanel({
   onSubmitDownload: (input: DownloadSubmitInput) => void;
   onResumeDownload: (runId: number) => void;
 }) {
+  const debugRedactionEnabled = useDebugRedactionEnabled();
   const [confirmAllUnsubmitted, setConfirmAllUnsubmitted] = React.useState(false);
   const active = downloads?.active_run;
   const paused = downloads?.paused_runs ?? [];
@@ -220,8 +222,13 @@ function SourceDownloadPanel({
           {downloads?.downloaded_bytes ? <span>{formatBytes(downloads.downloaded_bytes)}</span> : null}
         </div>
         {runningItem ? (
-          <p data-testid="download-current-item" className="mt-2 truncate text-xs text-fg-secondary">
-            <span className="font-mono">{runningItem.tweet_id}</span>: {runningItem.progress_message || "下载器处理中"}
+          <p
+            data-testid="download-current-item"
+            className="mt-2 truncate text-xs text-fg-secondary"
+            {...getDebugRedactProps(debugRedactionEnabled)}
+          >
+            <span className="font-mono">{runningItem.tweet_id}</span>:{" "}
+            {runningItem.progress_message || "下载器处理中"}
           </p>
         ) : null}
         {paused.length ? (

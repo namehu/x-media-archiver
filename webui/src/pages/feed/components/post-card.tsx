@@ -11,6 +11,12 @@ import {
   DropdownMenuItem,
   DropdownMenuTrigger,
 } from "@/components/ui/dropdown-menu";
+import {
+  getDebugExternalHref,
+  getDebugLinkTitle,
+  getDebugRedactProps,
+  useDebugRedactionEnabled,
+} from "@/lib/debug-redaction";
 import { formatDateTime, cn } from "@/lib/utils";
 import { PostMediaGrid } from "./post-media-grid";
 
@@ -27,14 +33,22 @@ export function PostCard({
   onActivateVideo: (videoId: string | null) => void;
   onPreview: (index: number) => void;
 }) {
+  const debugRedactionEnabled = useDebugRedactionEnabled();
   const [expanded, setExpanded] = useState(false);
   const authorName = post.author_display_name || post.author_username || "未知作者";
-  const isLong = post.tweet_text.length > 280 || (post.tweet_text.match(/\n/g)?.length ?? 0) > 5;
+  const tweetText = post.tweet_text || "暂无帖子正文";
+  const tweetUrl = getDebugExternalHref(debugRedactionEnabled, post.tweet_url);
+  const isLong = tweetText.length > 280 || (tweetText.match(/\n/g)?.length ?? 0) > 5;
   const relativeTime = useMemo(() => formatRelativeTime(post.published_at), [post.published_at]);
 
   const copyLink = async () => {
+    if (!tweetUrl) {
+      toast.error("调试模式下已禁用外链");
+      return;
+    }
+
     try {
-      await navigator.clipboard.writeText(post.tweet_url);
+      await navigator.clipboard.writeText(tweetUrl);
       toast.success("帖子链接已复制");
     } catch (_error) {
       toast.error("复制链接失败");
@@ -44,12 +58,12 @@ export function PostCard({
   return (
     <article className="border-b border-border-subtle bg-bg-elevated px-4 py-3.5 sm:px-5 sm:py-4 transition-colors hover:bg-bg-subtle/50">
       <div className="flex items-start gap-3">
-        <Avatar className="size-10 shrink-0">
+        <Avatar className="size-10 shrink-0" {...getDebugRedactProps(debugRedactionEnabled)}>
           <AvatarFallback>{avatarInitials(authorName)}</AvatarFallback>
         </Avatar>
         <div className="min-w-0 flex-1">
           <header className="flex items-start justify-between gap-2">
-            <div className="min-w-0">
+            <div className="min-w-0" {...getDebugRedactProps(debugRedactionEnabled)}>
               <div className="flex min-w-0 flex-wrap items-baseline gap-x-1.5 gap-y-0.5">
                 <span className="max-w-full truncate font-semibold text-fg-primary">{authorName}</span>
                 {post.author_username ? (
@@ -83,7 +97,13 @@ export function PostCard({
                     <Copy data-icon="inline-start" />
                     复制链接
                   </DropdownMenuItem>
-                  <DropdownMenuItem onSelect={() => window.open(post.tweet_url, "_blank", "noopener,noreferrer")}>
+                  <DropdownMenuItem
+                    disabled={!tweetUrl}
+                    onSelect={() => {
+                      if (tweetUrl) window.open(tweetUrl, "_blank", "noopener,noreferrer");
+                    }}
+                    title={getDebugLinkTitle(debugRedactionEnabled, "tweet", "在 X 中查看")}
+                  >
                     <ExternalLink data-icon="inline-start" />在 X 中查看
                   </DropdownMenuItem>
                 </DropdownMenuGroup>
@@ -91,14 +111,14 @@ export function PostCard({
             </DropdownMenu>
           </header>
 
-          <div className="mt-1.5">
+          <div className="mt-1.5" {...getDebugRedactProps(debugRedactionEnabled)}>
             <p
               className={cn(
                 "break-words text-[15px] leading-6 text-fg-primary",
                 !expanded && isLong ? "whitespace-normal line-clamp-6" : "whitespace-pre-wrap",
               )}
             >
-              {post.tweet_text || "暂无帖子正文"}
+              {tweetText}
             </p>
             {isLong ? (
               <button

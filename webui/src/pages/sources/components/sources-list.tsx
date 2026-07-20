@@ -6,6 +6,7 @@ import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Pagination } from "@/components/ui/pagination";
 import { Select, SelectContent, SelectGroup, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { Tooltip, TooltipContent, TooltipTrigger } from "@/components/ui/tooltip";
+import { getDebugRedactProps, useDebugRedactionEnabled } from "@/lib/debug-redaction";
 import { sourceTypeLabel } from "@/lib/formatters";
 import { SOURCE_TYPES, sourceScanStatus } from "../utils";
 import { SOURCES_PAGE_SIZE } from "../hooks/useSourcesQuery";
@@ -151,6 +152,7 @@ function SourceListItem({
   onPin: (sourceId: number, isPinned: boolean) => void;
   pinPending: boolean;
 }) {
+  const debugRedactionEnabled = useDebugRedactionEnabled();
   const scanStatus = sourceScanStatus(source);
 
   return (
@@ -177,7 +179,7 @@ function SourceListItem({
           {source.is_pinned ? <Pin className="h-3.5 w-3.5 shrink-0 text-brand" aria-label="已置顶" /> : null}
           <div className="truncate text-sm font-semibold text-fg-primary">{source.label || source.source_url}</div>
         </div>
-        <div className="mt-0.5 text-xs text-fg-secondary">
+        <div className="mt-0.5 text-xs text-fg-secondary" {...getDebugRedactProps(debugRedactionEnabled)}>
           {sourceTypeLabel(source.source_type)} · @{source.author_username || "-"}
         </div>
       </div>

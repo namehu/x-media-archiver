@@ -13,6 +13,13 @@ import { ErrorState } from "../../components/ui/error-state";
 import { MediaThumbnail } from "../../components/ui/media-thumbnail";
 import { Skeleton } from "../../components/ui/skeleton";
 import { StatusDot } from "../../components/ui/status-dot";
+import {
+  getDebugExternalHref,
+  getDebugLinkTitle,
+  getDebugMediaAlt,
+  getDebugRedactProps,
+  useDebugRedactionEnabled,
+} from "../../lib/debug-redaction";
 import { ImagePreviewDialog } from "./components/image-preview-dialog";
 import { MediaDetails } from "./components/media-details";
 import { VideoMediaPlayer } from "./components/video-media-player";
@@ -22,6 +29,7 @@ type Tone = "default" | "secondary" | "success" | "warning" | "danger";
 type DotStatus = "running" | "success" | "warning" | "danger" | "idle";
 
 export function TweetDetailPage() {
+  const debugRedactionEnabled = useDebugRedactionEnabled();
   const { tweetId } = useParams();
   const { data, isLoading, error } = useQuery({
     queryKey: ["tweet", tweetId],
@@ -33,83 +41,92 @@ export function TweetDetailPage() {
   if (error || !data) return <ErrorState title="未找到 Tweet" detail={String(error || "未找到 Tweet")} />;
 
   const authorName = data.tweet.author_display_name || data.tweet.author_username || data.tweet.tweet_id;
+  const tweetText = data.tweet.tweet_text || "暂无 Tweet 文本";
+  const tweetHref = getDebugExternalHref(debugRedactionEnabled, data.tweet.tweet_url);
   const statusTone = toneForStatus(data.tweet.tweet_status);
 
   return (
     <div className="mx-auto max-w-[1480px] space-y-4 sm:space-y-6">
-        <Card className="relative overflow-hidden border-border-strong bg-bg-elevated shadow-2">
-          <div className="pointer-events-none absolute inset-x-0 top-0 h-1 bg-brand" />
-          <CardContent className="p-4 sm:p-6">
-            <div className="flex flex-col gap-5 sm:gap-6 lg:flex-row lg:items-start lg:justify-between">
-              <div className="min-w-0 max-w-4xl space-y-4">
-                <div className="flex flex-wrap items-center gap-2">
-                  <span className="text-xs font-semibold uppercase tracking-[0.16em] text-fg-tertiary">已归档 Tweet</span>
-                  <Badge tone={statusTone} className="gap-1">
-                    <StatusDot status={dotForStatus(data.tweet.tweet_status)} />
-                    {statusLabel(data.tweet.tweet_status)}
-                  </Badge>
-                </div>
-                <div>
-                  <h1 className="break-words text-2xl font-bold tracking-tight text-fg-primary sm:text-3xl">{authorName}</h1>
-                  {data.tweet.author_username ? <p className="mt-1 text-base text-fg-secondary">@{data.tweet.author_username}</p> : null}
-                </div>
-                <p className="whitespace-pre-wrap text-base leading-7 text-fg-primary">
-                  {data.tweet.tweet_text || "暂无 Tweet 文本"}
-                </p>
+      <Card className="relative overflow-hidden border-border-strong bg-bg-elevated shadow-2">
+        <div className="pointer-events-none absolute inset-x-0 top-0 h-1 bg-brand" />
+        <CardContent className="p-4 sm:p-6">
+          <div className="flex flex-col gap-5 sm:gap-6 lg:flex-row lg:items-start lg:justify-between">
+            <div className="min-w-0 max-w-4xl space-y-4">
+              <div className="flex flex-wrap items-center gap-2">
+                <span className="text-xs font-semibold uppercase tracking-[0.16em] text-fg-tertiary">已归档 Tweet</span>
+                <Badge tone={statusTone} className="gap-1">
+                  <StatusDot status={dotForStatus(data.tweet.tweet_status)} />
+                  {statusLabel(data.tweet.tweet_status)}
+                </Badge>
               </div>
-              {data.tweet.tweet_url ? (
-                <Button className="self-start" variant="secondary" size="sm" onClick={() => window.open(data.tweet.tweet_url || "", "_blank", "noopener,noreferrer")}>
-                  <ExternalLink className="h-4 w-4" />
-                  在 X 中查看
-                </Button>
-              ) : null}
+              <div {...getDebugRedactProps(debugRedactionEnabled)}>
+                <h1 className="break-words text-2xl font-bold tracking-tight text-fg-primary sm:text-3xl">
+                  {authorName}
+                </h1>
+                {data.tweet.author_username ? (
+                  <p className="mt-1 text-base text-fg-secondary">@{data.tweet.author_username}</p>
+                ) : null}
+              </div>
+              <p
+                className="whitespace-pre-wrap text-base leading-7 text-fg-primary"
+                {...getDebugRedactProps(debugRedactionEnabled)}
+              >
+                {tweetText}
+              </p>
             </div>
-            <div className="mt-5 flex flex-col gap-2 border-t border-border-subtle pt-4 text-sm text-fg-secondary sm:mt-6 sm:flex-row sm:flex-wrap sm:gap-x-6 sm:gap-y-3">
-              <span className="inline-flex items-center gap-2"><CalendarDays className="h-4 w-4 text-fg-tertiary" />{formatDateTime(data.tweet.published_at)}</span>
-              <span className="inline-flex items-center gap-2"><Images className="h-4 w-4 text-fg-tertiary" />{data.media.length} 个媒体文件</span>
-              <span className="break-all font-mono text-xs text-fg-tertiary">{data.tweet.tweet_id}</span>
-            </div>
-          </CardContent>
-        </Card>
+            {tweetHref ? (
+              <Button
+                className="self-start"
+                variant="secondary"
+                size="sm"
+                title={getDebugLinkTitle(debugRedactionEnabled, "tweet", "在 X 中查看")}
+                onClick={() => window.open(tweetHref, "_blank", "noopener,noreferrer")}
+              >
+                <ExternalLink className="h-4 w-4" />在 X 中查看
+              </Button>
+            ) : null}
+          </div>
+          <div className="mt-5 flex flex-col gap-2 border-t border-border-subtle pt-4 text-sm text-fg-secondary sm:mt-6 sm:flex-row sm:flex-wrap sm:gap-x-6 sm:gap-y-3">
+            <span className="inline-flex items-center gap-2">
+              <CalendarDays className="h-4 w-4 text-fg-tertiary" />
+              {formatDateTime(data.tweet.published_at)}
+            </span>
+            <span className="inline-flex items-center gap-2">
+              <Images className="h-4 w-4 text-fg-tertiary" />
+              {data.media.length} 个媒体文件
+            </span>
+            <span
+              className="break-all font-mono text-xs text-fg-tertiary"
+              {...getDebugRedactProps(debugRedactionEnabled)}
+            >
+              {data.tweet.tweet_id}
+            </span>
+          </div>
+        </CardContent>
+      </Card>
 
-        <div className="grid gap-6 xl:grid-cols-[minmax(0,1fr)_360px]">
-          <MediaGrid
-            media={data.media}
-            title="媒体"
-            emptyText="暂无预览"
+      <div className="grid gap-6 xl:grid-cols-[minmax(0,1fr)_360px]">
+        <MediaGrid media={data.media} title="媒体" emptyText="暂无预览" />
+        <aside className="space-y-4 xl:sticky xl:top-4 xl:self-start">
+          <MetadataCard
+            tweet={data.tweet}
+            labels={{
+              title: "Tweet",
+              published: "发布时间",
+              updated: "更新时间",
+              retries: "重试次数",
+              lastError: "最近错误",
+            }}
           />
-          <aside className="space-y-4 xl:sticky xl:top-4 xl:self-start">
-            <MetadataCard
-              tweet={data.tweet}
-              labels={{
-                title: "Tweet",
-                published: "发布时间",
-                updated: "更新时间",
-                retries: "重试次数",
-                lastError: "最近错误",
-              }}
-            />
-            <AttemptsTimeline
-              attempts={data.attempts}
-              title="最近尝试"
-              emptyText="没有记录下载尝试。"
-            />
-          </aside>
-        </div>
-
+          <AttemptsTimeline attempts={data.attempts} title="最近尝试" emptyText="没有记录下载尝试。" />
+        </aside>
+      </div>
     </div>
   );
 }
 
-function MediaGrid({
-  media,
-  title,
-  emptyText,
-}: {
-  media: MediaRow[];
-  title: string;
-  emptyText: string;
-}) {
+function MediaGrid({ media, title, emptyText }: { media: MediaRow[]; title: string; emptyText: string }) {
+  const debugRedactionEnabled = useDebugRedactionEnabled();
   const images = media.filter((item) => !isVideoMedia(item));
   const videos = media.filter(isVideoMedia);
   const [imagePreviewIndex, setImagePreviewIndex] = useState<number | null>(null);
@@ -136,7 +153,7 @@ function MediaGrid({
               >
                 <MediaThumbnail
                   src={item.media_url}
-                  alt={item.local_path || mediaTypeLabel(item.media_type)}
+                  alt={getDebugMediaAlt(debugRedactionEnabled, item.local_path || mediaTypeLabel(item.media_type))}
                   mediaType={item.media_type}
                   className="rounded-none"
                   onClick={item.media_url ? () => setImagePreviewIndex(index) : undefined}
@@ -186,7 +203,16 @@ function MetadataCard({
       { label: labels.retries, value: String(tweet.retry_count ?? 0) },
       { label: labels.lastError, value: errorLabel(tweet.last_error) },
     ],
-    [labels.lastError, labels.published, labels.retries, labels.updated, tweet.last_error, tweet.published_at, tweet.retry_count, tweet.updated_at],
+    [
+      labels.lastError,
+      labels.published,
+      labels.retries,
+      labels.updated,
+      tweet.last_error,
+      tweet.published_at,
+      tweet.retry_count,
+      tweet.updated_at,
+    ],
   );
 
   return (
@@ -196,7 +222,10 @@ function MetadataCard({
       </CardHeader>
       <CardContent className="space-y-3">
         {meta.map((item) => (
-          <div key={item.label} className="flex items-start justify-between gap-4 border-b border-border-subtle pb-2 last:border-0 last:pb-0">
+          <div
+            key={item.label}
+            className="flex items-start justify-between gap-4 border-b border-border-subtle pb-2 last:border-0 last:pb-0"
+          >
             <span className="text-sm text-fg-secondary">{item.label}</span>
             <span className="min-w-0 text-right text-sm font-medium text-fg-primary">{item.value}</span>
           </div>
@@ -206,15 +235,7 @@ function MetadataCard({
   );
 }
 
-function AttemptsTimeline({
-  attempts,
-  title,
-  emptyText,
-}: {
-  attempts: Attempt[];
-  title: string;
-  emptyText: string;
-}) {
+function AttemptsTimeline({ attempts, title, emptyText }: { attempts: Attempt[]; title: string; emptyText: string }) {
   return (
     <Card>
       <CardHeader>
@@ -246,7 +267,9 @@ function AttemptsTimeline({
                     {formatDateTime(attempt.finished_at)}
                   </div>
                   <p className="mt-2 break-words text-sm text-fg-secondary">
-                    {attempt.error_category || attempt.error_message ? errorLabel(attempt.error_category || attempt.error_message) : "ok"}
+                    {attempt.error_category || attempt.error_message
+                      ? errorLabel(attempt.error_category || attempt.error_message)
+                      : "ok"}
                   </p>
                 </div>
               </li>
@@ -292,16 +315,20 @@ function TweetDetailSkeleton() {
 
 function toneForStatus(status?: string | null): Tone {
   if (status === "verified" || status === "downloaded" || status === "completed") return "success";
-  if (status === "running" || status === "processing" || status === "downloading" || status === "queued") return "default";
-  if (status === "pending" || status === "missing" || status === "corrupt" || status === "completed_with_failures") return "warning";
+  if (status === "running" || status === "processing" || status === "downloading" || status === "queued")
+    return "default";
+  if (status === "pending" || status === "missing" || status === "corrupt" || status === "completed_with_failures")
+    return "warning";
   if (status?.startsWith("failed")) return "danger";
   return "secondary";
 }
 
 function dotForStatus(status?: string | null): DotStatus {
-  if (status === "running" || status === "processing" || status === "downloading" || status === "queued") return "running";
+  if (status === "running" || status === "processing" || status === "downloading" || status === "queued")
+    return "running";
   if (status === "verified" || status === "downloaded" || status === "completed") return "success";
-  if (status === "pending" || status === "missing" || status === "corrupt" || status === "completed_with_failures") return "warning";
+  if (status === "pending" || status === "missing" || status === "corrupt" || status === "completed_with_failures")
+    return "warning";
   if (status?.startsWith("failed")) return "danger";
   return "idle";
 }

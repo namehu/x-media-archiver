@@ -9,6 +9,15 @@ import { Card, CardContent } from "../../../components/ui/card";
 import { MediaThumbnail } from "../../../components/ui/media-thumbnail";
 import { useAppScrollContainer } from "../../../components/layout/app-scroll-container";
 import type { MediaRow } from "../../../lib/api";
+import {
+  getDebugDetailRoute,
+  getDebugExternalHref,
+  getDebugLinkTitle,
+  getDebugMediaAlt,
+  getDebugRedactProps,
+  getDebugSelectionLabel,
+  useDebugRedactionEnabled,
+} from "../../../lib/debug-redaction";
 import { mediaTypeLabel, statusLabel } from "../../../lib/formatters";
 import { cn, formatBytes, formatDateTime } from "../../../lib/utils";
 
@@ -169,9 +178,15 @@ function MediaCard({
   onToggleSelected: (row: MediaRow) => void;
 }) {
   const navigate = useNavigate();
+  const debugRedactionEnabled = useDebugRedactionEnabled();
   const title = row.author_display_name || row.author_username || "未知作者";
+  const tweetText = row.tweet_text || "暂无 Tweet 文本";
+  const tweetHref = getDebugExternalHref(debugRedactionEnabled, row.tweet_url);
   const statusTone = row.media_status === "verified" || row.media_status === "downloaded" ? "success" : "warning";
-  const openTweet = () => navigate(`/tweets/${row.tweet_id}`);
+  const detailRoute = getDebugDetailRoute(debugRedactionEnabled, row.tweet_id);
+  const openTweet = () => {
+    if (detailRoute) navigate(detailRoute);
+  };
 
   return (
     <Card
@@ -186,7 +201,7 @@ function MediaCard({
         onClick={(event) => event.stopPropagation()}
       >
         <Checkbox
-          aria-label={`选择媒体 ${row.id}`}
+          aria-label={getDebugSelectionLabel(debugRedactionEnabled, `选择媒体 ${row.id}`)}
           checked={selected}
           onCheckedChange={() => onToggleSelected(row)}
         />
@@ -194,12 +209,12 @@ function MediaCard({
       <MediaThumbnail
         src={row.preview_url}
         mediaType={row.media_type}
-        alt={row.tweet_text || title}
+        alt={getDebugMediaAlt(debugRedactionEnabled, row.tweet_text || title)}
         className="rounded-none"
-        onClick={openTweet}
+        onClick={detailRoute ? openTweet : undefined}
       />
       <CardContent className="flex flex-col gap-2.5 p-3">
-        <div className="flex items-start justify-between gap-3">
+        <div className="flex items-start justify-between gap-3" {...getDebugRedactProps(debugRedactionEnabled)}>
           <div className="min-w-0">
             <div className="truncate text-sm font-semibold text-fg-primary">{title}</div>
             <div className="mt-0.5 truncate text-xs text-fg-tertiary">@{row.author_username || "-"}</div>
@@ -207,8 +222,11 @@ function MediaCard({
           <Badge tone={statusTone}>{statusLabel(row.media_status)}</Badge>
         </div>
 
-        <p className="line-clamp-2 min-h-9 text-xs leading-relaxed text-fg-secondary">
-          {row.tweet_text || "暂无 Tweet 文本"}
+        <p
+          className="line-clamp-2 min-h-9 text-xs leading-relaxed text-fg-secondary"
+          {...getDebugRedactProps(debugRedactionEnabled)}
+        >
+          {tweetText}
         </p>
 
         <div className="grid grid-cols-2 gap-x-2 gap-y-1 text-xs text-fg-tertiary">
@@ -217,13 +235,14 @@ function MediaCard({
           <MetaItem label="发布" value={formatDateTime(row.published_at)} className="col-span-2" />
         </div>
 
-        {row.tweet_url ? (
+        {tweetHref ? (
           <div className="flex items-center justify-end gap-3 border-t border-border-subtle pt-2.5">
             <a
               className="inline-flex items-center gap-1 text-sm font-semibold text-brand hover:text-brand-hover"
-              href={row.tweet_url}
+              href={tweetHref}
               target="_blank"
               rel="noreferrer"
+              title={getDebugLinkTitle(debugRedactionEnabled, "tweet", "打开")}
               onClick={(e) => e.stopPropagation()}
             >
               打开

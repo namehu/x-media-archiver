@@ -8,7 +8,9 @@ import { Toaster } from "./components/ui/toaster";
 import { TooltipProvider } from "./components/ui/tooltip";
 import { applyTheme, getStoredTheme, ThemeProvider } from "./lib/theme";
 import { AuthGate } from "./lib/auth";
+import { isTweetDetailPath } from "./lib/debug-redaction";
 import {
+  buildDebuggerSearch,
   initializeDebuggerMode,
   persistDebuggerMode,
   resolveDebuggerMode,
@@ -86,13 +88,22 @@ function AppShell() {
       persistDebuggerMode(state.enabled);
     }
 
+    if (state.enabled && isTweetDetailPath(location.pathname)) {
+      navigate(
+        {
+          pathname: "/library",
+          search: buildDebuggerSearch(location.search, true),
+        },
+        { replace: true },
+      );
+      return;
+    }
+
     if (state.enabled && !state.hasUrlFlag) {
-      const params = new URLSearchParams(location.search);
-      params.set("debugger", "1");
       navigate(
         {
           pathname: location.pathname,
-          search: `?${params.toString()}`,
+          search: buildDebuggerSearch(location.search, true),
           hash: location.hash,
         },
         { replace: true },

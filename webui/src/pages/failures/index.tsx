@@ -22,11 +22,19 @@ import { ErrorState } from "../../components/ui/error-state";
 import { Pagination } from "../../components/ui/pagination";
 import { Skeleton } from "../../components/ui/skeleton";
 import { StatCard } from "../../components/ui/stat-card";
+import {
+  getDebugDetailLinkLabel,
+  getDebugDetailRoute,
+  getDebugRedactProps,
+  getDebugSelectionLabel,
+  useDebugRedactionEnabled,
+} from "../../lib/debug-redaction";
 
 const PAGE_SIZE = 100;
 const REQUEUE_STATUSES = ["failed_retryable", "missing", "corrupt", "failed_permanent"];
 
 export function FailuresPage() {
+  const debugRedactionEnabled = useDebugRedactionEnabled();
   const queryClient = useQueryClient();
   const [offset, setOffset] = useState(0);
   const [selectedIds, setSelectedIds] = useState<Set<string>>(() => new Set());
@@ -77,7 +85,7 @@ export function FailuresPage() {
         cell: ({ row }) => (
           <Checkbox
             checked={selectedIds.has(row.original.tweet_id)}
-            aria-label={row.original.tweet_id}
+            aria-label={getDebugSelectionLabel(debugRedactionEnabled, row.original.tweet_id)}
             onClick={(event) => event.stopPropagation()}
             onCheckedChange={(checked) => {
               setSelectedIds((current) => {
@@ -122,7 +130,7 @@ export function FailuresPage() {
         cell: ({ row }) => <FailureActions row={row.original} />,
       },
     ],
-    [allPageSelected, errorLabel, pageIds, selectedIds],
+    [allPageSelected, debugRedactionEnabled, errorLabel, pageIds, selectedIds],
   );
 
   if (isLoading) return <FailuresSkeleton />;
@@ -243,12 +251,20 @@ export function FailuresPage() {
 }
 
 function FailureTweetCell({ row }: { row: FailureRow }) {
+  const debugRedactionEnabled = useDebugRedactionEnabled();
+  const detailRoute = getDebugDetailRoute(debugRedactionEnabled, row.tweet_id);
   return (
     <div className="min-w-0">
-      <Link className="font-semibold text-brand hover:text-brand-hover" to={`/tweets/${row.tweet_id}`}>
-        {row.tweet_id}
-      </Link>
-      <div className="mt-1 truncate text-xs text-fg-secondary">@{row.author_username || "-"}</div>
+      {detailRoute ? (
+        <Link className="font-semibold text-brand hover:text-brand-hover" to={detailRoute} {...getDebugRedactProps(debugRedactionEnabled)}>
+          {row.tweet_id}
+        </Link>
+      ) : (
+        <span className="font-semibold text-fg-tertiary">{getDebugDetailLinkLabel(debugRedactionEnabled)}</span>
+      )}
+      <div className="mt-1 truncate text-xs text-fg-secondary" {...getDebugRedactProps(debugRedactionEnabled)}>
+        @{row.author_username || "-"}
+      </div>
       {row.latest_error_message || row.last_error ? (
         <div className="mt-2 line-clamp-2 max-w-xl rounded-md border border-danger/20 bg-danger/10 px-2 py-1 text-xs text-danger">
           {row.latest_error_message || row.last_error}
@@ -259,6 +275,8 @@ function FailureTweetCell({ row }: { row: FailureRow }) {
 }
 
 function FailureActions({ row }: { row: FailureRow }) {
+  const debugRedactionEnabled = useDebugRedactionEnabled();
+  const detailRoute = getDebugDetailRoute(debugRedactionEnabled, row.tweet_id);
   return (
     <DropdownMenu>
       <DropdownMenuTrigger asChild>
@@ -268,12 +286,19 @@ function FailureActions({ row }: { row: FailureRow }) {
         </Button>
       </DropdownMenuTrigger>
       <DropdownMenuContent align="end">
-        <DropdownMenuItem asChild>
-          <Link to={`/tweets/${row.tweet_id}`}>
+        {detailRoute ? (
+          <DropdownMenuItem asChild>
+            <Link to={detailRoute}>
+              <ExternalLink className="mr-2 h-4 w-4" />
+              Tweet 详情
+            </Link>
+          </DropdownMenuItem>
+        ) : (
+          <DropdownMenuItem disabled>
             <ExternalLink className="mr-2 h-4 w-4" />
-            Tweet 详情
-          </Link>
-        </DropdownMenuItem>
+            {getDebugDetailLinkLabel(debugRedactionEnabled)}
+          </DropdownMenuItem>
+        )}
       </DropdownMenuContent>
     </DropdownMenu>
   );

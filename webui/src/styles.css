@@ -160,6 +160,16 @@ body > .art-video-player.art-fullscreen-web.art-destroy {
   display: none !important;
 }
 
+:root[data-debugger-mode="on"] [data-debug-redact] {
+  filter: blur(8px);
+  transition: filter var(--dur-fast) var(--ease-out);
+  user-select: none;
+}
+
+:root[data-debugger-mode="on"] [data-debug-redact]::selection {
+  background: transparent;
+}
+
 @media (prefers-reduced-motion: reduce) {
   *,
   *::before,

@@ -1,10 +1,7 @@
 import type { ArchiveSourceDetail } from "@/lib/api";
+import { getDebugRedactProps, useDebugRedactionEnabled } from "@/lib/debug-redaction";
 import { formatDateTime } from "@/lib/utils";
-import {
-  formatHistoryState,
-  formatNextRange,
-  formatScanState,
-} from "../../utils";
+import { formatHistoryState, formatNextRange, formatScanState } from "../../utils";
 import { DetailRow } from "./detail-row";
 
 export function SourceDetailContent({
@@ -18,6 +15,7 @@ export function SourceDetailContent({
   detailUpdatedAt: number;
   scanLimit: number;
 }) {
+  const debugRedactionEnabled = useDebugRedactionEnabled();
   const historyEnabled = Boolean(source.cursor_state?.automation_enabled);
 
   return (
@@ -30,19 +28,22 @@ export function SourceDetailContent({
         {historyEnabled && source.next_scan_at ? (
           <DetailRow label="下次自动扫描" value={formatDateTime(source.next_scan_at)} />
         ) : null}
-        <DetailRow label="最近发现" value={source.last_seen_tweet_id || "-"} />
+        <div {...getDebugRedactProps(debugRedactionEnabled)}>
+          <DetailRow label="最近发现" value={source.last_seen_tweet_id || "-"} />
+        </div>
         {source.cursor_state?.last_range_start ? (
-          <DetailRow
-            label="上次扫描范围"
-            value={`${source.cursor_state.last_range_start}-${source.cursor_state.last_range_end}`}
-          />
+          <div {...getDebugRedactProps(debugRedactionEnabled)}>
+            <DetailRow
+              label="上次扫描范围"
+              value={`${source.cursor_state.last_range_start}-${source.cursor_state.last_range_end}`}
+            />
+          </div>
         ) : null}
         <DetailRow label="详情刷新" value={formatDateTime(new Date(detailUpdatedAt || now).toISOString())} />
         <DetailRow label="累计新增 Tweet" value={source.scan_summary?.added_tweet_count ?? 0} />
         <DetailRow label="最近成功扫描" value={formatDateTime(source.scan_summary?.last_success_at)} />
         <DetailRow label="最近扫描错误" value={formatDateTime(source.scan_summary?.last_error_at)} />
       </div>
-
     </div>
   );
 }

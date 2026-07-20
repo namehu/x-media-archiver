@@ -18,6 +18,7 @@ import { StatCard } from "../../components/ui/stat-card";
 import { StatusDot } from "../../components/ui/status-dot";
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "../../components/ui/table";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "../../components/ui/tabs";
+import { getDebugRedactProps, useDebugRedactionEnabled } from "../../lib/debug-redaction";
 
 type ParsedLine = {
   line: number;
@@ -494,6 +495,7 @@ function RunDetailPanel({
   onRetry: (runId: number) => void;
   onControl: (runId: number, action: "pause" | "resume" | "stop") => void;
 }) {
+  const debugRedactionEnabled = useDebugRedactionEnabled();
   return (
     <Card className="min-h-[520px]">
       <CardHeader>
@@ -539,7 +541,12 @@ function RunDetailPanel({
                 <div key={item.id} className="rounded-lg border border-border-subtle bg-bg-surface p-3 transition duration-fast hover:border-border-strong">
                   <div className="flex items-start justify-between gap-3">
                     <div className="min-w-0">
-                      <div className="break-all text-sm font-semibold text-fg-primary">{item.tweet_id}</div>
+                      <div
+                        className="break-all text-sm font-semibold text-fg-primary"
+                        {...getDebugRedactProps(debugRedactionEnabled)}
+                      >
+                        {item.tweet_id}
+                      </div>
                       <div className="mt-1 flex flex-wrap gap-x-3 gap-y-1 text-xs text-fg-secondary">
                         <span>
                           重试次数: <span className="tabular-nums">{item.retry_count}</span>

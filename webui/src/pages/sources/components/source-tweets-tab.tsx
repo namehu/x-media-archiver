@@ -6,6 +6,12 @@ import { Button } from "@/components/ui/button";
 import { Checkbox } from "@/components/ui/checkbox";
 import { Progress } from "@/components/ui/progress";
 import { Tooltip, TooltipContent, TooltipTrigger } from "@/components/ui/tooltip";
+import {
+  getDebugDataValue,
+  getDebugRedactProps,
+  getDebugSelectionLabel,
+  useDebugRedactionEnabled,
+} from "@/lib/debug-redaction";
 import { cn, formatDateTime } from "@/lib/utils";
 import type { DetailActions } from "./source-detail-sheet/scan-actions";
 import { ChevronDown, ChevronUp, FileQuestion, Film, Image, Images, LocateFixed, Pause, Play } from "lucide-react";
@@ -620,13 +626,15 @@ function TweetMediaInfo({ payload }: { payload: any }) {
 }
 
 function TweetText({ text, onUserInspect }: { text?: string | null; onUserInspect: () => void }) {
+  const debugRedactionEnabled = useDebugRedactionEnabled();
   const [expanded, setExpanded] = React.useState(false);
+  const displayText = text || "暂无 Tweet 文本";
 
-  if (!text) {
+  if (!text && !debugRedactionEnabled) {
     return <div className="text-sm leading-6 text-fg-secondary italic">暂无 Tweet 文本</div>;
   }
 
-  const isLong = text.length > 100 || (text.match(/\n/g) || []).length > 1;
+  const isLong = displayText.length > 100 || (displayText.match(/\n/g) || []).length > 1;
 
   return (
     <div className="flex flex-col gap-1">
@@ -635,8 +643,9 @@ function TweetText({ text, onUserInspect }: { text?: string | null; onUserInspec
           "break-words text-sm leading-6 text-fg-primary",
           expanded ? "whitespace-pre-wrap" : "line-clamp-2",
         )}
+        {...getDebugRedactProps(debugRedactionEnabled)}
       >
-        {text}
+        {displayText}
       </div>
       {isLong && (
         <button
@@ -683,11 +692,12 @@ function TweetListItem({
   onUserInspect: () => void;
   onSubmitDownload: (input: DownloadSubmitInput) => void;
 }) {
+  const debugRedactionEnabled = useDebugRedactionEnabled();
   return (
     <div className="pb-2">
       <div
         aria-current={isCurrentDownload ? "true" : undefined}
-        data-tweet-id={tweet.tweet_id}
+        data-tweet-id={getDebugDataValue(debugRedactionEnabled, tweet.tweet_id)}
         className={cn(
           "rounded-lg border bg-bg-surface p-3 transition-colors",
           isCurrentDownload
@@ -700,12 +710,16 @@ function TweetListItem({
             <Checkbox
               className="mt-1"
               checked={selected}
+              aria-label={getDebugSelectionLabel(debugRedactionEnabled, tweet.tweet_id)}
               disabled={!canQueue(tweet) && !canCancel(tweet.active_item_status)}
               onCheckedChange={onSelectionChange}
             />
             <div className="flex min-w-0 flex-1 flex-col gap-3">
               <TweetText text={tweet.text} onUserInspect={onUserInspect} />
-              <div className="flex flex-wrap items-center gap-x-3 gap-y-2 text-xs text-fg-secondary">
+              <div
+                className="flex flex-wrap items-center gap-x-3 gap-y-2 text-xs text-fg-secondary"
+                {...getDebugRedactProps(debugRedactionEnabled)}
+              >
                 <TweetMediaInfo payload={tweet.raw_payload} />
                 <span className="h-3 w-px bg-border-strong" />
                 <span className="font-mono">{tweet.tweet_id}</span>
