@@ -101,7 +101,7 @@ function FeedFooter({
 }) {
   if (error) {
     return (
-      <div className="flex flex-col items-center gap-2 px-4 py-6 text-center text-sm text-fg-secondary">
+      <div className="flex flex-col items-center gap-2 px-4 py-4 text-center text-sm text-fg-secondary">
         <span>加载更多帖子失败，已加载的内容会继续保留。</span>
         <Button type="button" variant="outline" size="sm" onClick={onRetry}>
           重试
@@ -109,7 +109,8 @@ function FeedFooter({
       </div>
     );
   }
-  if (isFetchingNextPage) return <p className="px-4 py-6 text-center text-sm text-fg-secondary">正在加载更多帖子…</p>;
-  if (hasNextPage) return <p className="px-4 py-6 text-center text-sm text-fg-tertiary">继续下拉加载更多</p>;
-  return <p className="px-4 py-6 text-center text-sm text-fg-tertiary">已经浏览完全部帖子</p>;
+  if (isFetchingNextPage)
+    return <p className="px-4 py-4 text-center text-[13px] text-fg-secondary">正在加载更多帖子…</p>;
+  if (hasNextPage) return <p className="px-4 py-4 text-center text-[13px] text-fg-tertiary">继续下拉加载更多</p>;
+  return <p className="px-4 py-4 text-center text-[13px] text-fg-tertiary">已经浏览完全部帖子</p>;
 }

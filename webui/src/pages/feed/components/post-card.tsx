@@ -42,7 +42,7 @@ export function PostCard({
   };
 
   return (
-    <article className="border-b border-border-subtle bg-bg-elevated px-4 py-4 sm:px-5">
+    <article className="border-b border-border-subtle bg-bg-elevated px-4 py-3.5 sm:px-5 sm:py-4 transition-colors hover:bg-bg-subtle/50">
       <div className="flex items-start gap-3">
         <Avatar className="size-10 shrink-0">
           <AvatarFallback>{avatarInitials(authorName)}</AvatarFallback>
@@ -56,14 +56,24 @@ export function PostCard({
                   <span className="truncate text-sm text-fg-secondary">@{post.author_username}</span>
                 ) : null}
                 <span className="text-sm text-fg-tertiary">·</span>
-                <time className="text-sm text-fg-tertiary" dateTime={post.published_at || undefined} title={formatDateTime(post.published_at)}>
+                <time
+                  className="text-sm text-fg-tertiary"
+                  dateTime={post.published_at || undefined}
+                  title={formatDateTime(post.published_at)}
+                >
                   {relativeTime}
                 </time>
               </div>
             </div>
             <DropdownMenu>
               <DropdownMenuTrigger asChild>
-                <Button type="button" variant="ghost" size="icon" aria-label="帖子操作" className="-mr-2 -mt-2 shrink-0">
+                <Button
+                  type="button"
+                  variant="ghost"
+                  size="icon"
+                  aria-label="帖子操作"
+                  className="-mr-2 -mt-2 shrink-0"
+                >
                   <MoreHorizontal />
                 </Button>
               </DropdownMenuTrigger>
@@ -74,20 +84,28 @@ export function PostCard({
                     复制链接
                   </DropdownMenuItem>
                   <DropdownMenuItem onSelect={() => window.open(post.tweet_url, "_blank", "noopener,noreferrer")}>
-                    <ExternalLink data-icon="inline-start" />
-                    在 X 中查看
+                    <ExternalLink data-icon="inline-start" />在 X 中查看
                   </DropdownMenuItem>
                 </DropdownMenuGroup>
               </DropdownMenuContent>
             </DropdownMenu>
           </header>
 
-          <div className="mt-2">
-            <p className={cn("whitespace-pre-wrap break-words text-[15px] leading-6 text-fg-primary", !expanded && isLong && "line-clamp-6")}>
+          <div className="mt-1.5">
+            <p
+              className={cn(
+                "break-words text-[15px] leading-6 text-fg-primary",
+                !expanded && isLong ? "whitespace-normal line-clamp-6" : "whitespace-pre-wrap",
+              )}
+            >
               {post.tweet_text || "暂无帖子正文"}
             </p>
             {isLong ? (
-              <button type="button" className="mt-1 text-sm text-brand hover:underline" onClick={() => setExpanded((current) => !current)}>
+              <button
+                type="button"
+                className="mt-1 text-[13px] font-medium text-brand hover:underline"
+                onClick={() => setExpanded((current) => !current)}
+              >
                 {expanded ? "收起" : "展开"}
               </button>
             ) : null}

@@ -16,11 +16,7 @@ import { ErrorState } from "@/components/ui/error-state";
 import { Sheet, SheetContent, SheetDescription, SheetHeader, SheetTitle } from "@/components/ui/sheet";
 import { Skeleton } from "@/components/ui/skeleton";
 import { ToggleGroup, ToggleGroupItem } from "@/components/ui/toggle-group";
-import {
-  DEFAULT_FEED_FILTERS,
-  FeedFilterPanel,
-  type FeedFilters,
-} from "./components/feed-filter-panel";
+import { DEFAULT_FEED_FILTERS, FeedFilterPanel, type FeedFilters } from "./components/feed-filter-panel";
 import { FeedList } from "./components/feed-list";
 import { PostPreviewDialog } from "./components/post-preview-dialog";
 import { getFeedBrowseState, saveFeedBrowseState } from "./feed-browse-state";
@@ -31,18 +27,12 @@ export function FeedPage() {
   const location = useLocation();
   const navigationType = useNavigationType();
   const queryClient = useQueryClient();
-  const [restoredState] = useState(() =>
-    navigationType === "POP" ? getFeedBrowseState(location.key) : undefined,
-  );
-  const [filters, setFilters] = useState<FeedFilters>(
-    () => restoredState?.filters ?? { ...DEFAULT_FEED_FILTERS },
-  );
+  const [restoredState] = useState(() => (navigationType === "POP" ? getFeedBrowseState(location.key) : undefined));
+  const [filters, setFilters] = useState<FeedFilters>(() => restoredState?.filters ?? { ...DEFAULT_FEED_FILTERS });
   const [submitted, setSubmitted] = useState<FeedFilters>(
     () => restoredState?.submittedFilters ?? { ...DEFAULT_FEED_FILTERS },
   );
-  const [restoreListState, setRestoreListState] = useState<StateSnapshot | null>(
-    restoredState?.listState ?? null,
-  );
+  const [restoreListState, setRestoreListState] = useState<StateSnapshot | null>(restoredState?.listState ?? null);
   const [listVersion, setListVersion] = useState(0);
   const [mobileFiltersOpen, setMobileFiltersOpen] = useState(false);
   const [activeVideoId, setActiveVideoId] = useState<string | null>(null);
@@ -147,15 +137,22 @@ export function FeedPage() {
     <div className="-m-4 sm:-m-6 lg:m-0">
       <div className="mx-auto grid max-w-[1020px] items-start lg:grid-cols-[minmax(0,680px)_280px] lg:gap-5">
         <main className="min-w-0 overflow-hidden border-x border-border-subtle bg-bg-elevated lg:rounded-xl lg:border">
-          <header className="sticky top-0 z-20 border-b border-border-subtle bg-bg-elevated/95 backdrop-blur">
-            <div className="flex items-center justify-between gap-3 px-4 py-3 sm:px-5">
+          <header className="sticky top-0 z-20 border-b border-border-subtle bg-bg-elevated/90 backdrop-blur">
+            <div className="flex items-center justify-between gap-3 px-4 py-2.5 sm:px-5">
               <div className="min-w-0">
                 <h1 className="text-xl font-bold tracking-tight text-fg-primary">帖子浏览</h1>
                 <p className="truncate text-xs text-fg-secondary">
                   {postsQuery.data ? `共 ${totalCount.toLocaleString()} 条本地帖子` : "像刷 X 一样浏览本地归档"}
                 </p>
               </div>
-              <Button type="button" variant="outline" size="icon" className="lg:hidden" aria-label="打开筛选" onClick={() => setMobileFiltersOpen(true)}>
+              <Button
+                type="button"
+                variant="outline"
+                size="icon"
+                className="lg:hidden"
+                aria-label="打开筛选"
+                onClick={() => setMobileFiltersOpen(true)}
+              >
                 <SlidersHorizontal />
               </Button>
             </div>
@@ -166,10 +163,16 @@ export function FeedPage() {
                 onValueChange={switchFeed}
                 className="grid grid-cols-2 gap-0 px-2"
               >
-                <ToggleGroupItem value="all" className="rounded-none border-b-2 border-transparent data-[state=on]:border-brand">
+                <ToggleGroupItem
+                  value="all"
+                  className="rounded-none border-b-2 border-transparent data-[state=on]:border-brand"
+                >
                   全部
                 </ToggleGroupItem>
-                <ToggleGroupItem value="likes" className="rounded-none border-b-2 border-transparent data-[state=on]:border-brand">
+                <ToggleGroupItem
+                  value="likes"
+                  className="rounded-none border-b-2 border-transparent data-[state=on]:border-brand"
+                >
                   <Heart data-icon="inline-start" />
                   我的喜欢
                 </ToggleGroupItem>
@@ -180,7 +183,11 @@ export function FeedPage() {
           {postsQuery.isLoading ? <FeedSkeleton /> : null}
           {postsQuery.error && !postsQuery.data ? (
             <div className="p-4">
-              <ErrorState title="帖子加载失败" detail={String(postsQuery.error)} onRetry={() => void postsQuery.refetch()} />
+              <ErrorState
+                title="帖子加载失败"
+                detail={String(postsQuery.error)}
+                onRetry={() => void postsQuery.refetch()}
+              />
             </div>
           ) : null}
           {postsQuery.data && rows.length ? (
@@ -271,14 +278,15 @@ function feedQueryString(filters: FeedFilters, pagination: Record<string, string
 }
 
 function countActiveFilters(filters: FeedFilters) {
-  return [filters.source_id || filters.source_type, filters.author, filters.text, filters.media_type].filter(Boolean).length;
+  return [filters.source_id || filters.source_type, filters.author, filters.text, filters.media_type].filter(Boolean)
+    .length;
 }
 
 function FeedSkeleton() {
   return (
     <div className="flex flex-col">
       {Array.from({ length: 3 }).map((_, index) => (
-        <div key={index} className="flex gap-3 border-b border-border-subtle p-4 sm:p-5">
+        <div key={index} className="flex gap-3 border-b border-border-subtle px-4 py-3.5 sm:px-5 sm:py-4">
           <Skeleton className="size-10 shrink-0 rounded-full" />
           <div className="flex min-w-0 flex-1 flex-col gap-3">
             <Skeleton className="h-4 w-48 max-w-full" />

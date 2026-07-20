@@ -1,10 +1,10 @@
-from __future__ import annotations
-
 """来源管理与来源扫描路由。
 
 负责来源的创建、列表/详情查询、发现结果查看、下载提交，以及扫描会话的
 启动、暂停、恢复和停止。
 """
+
+from __future__ import annotations
 
 from fastapi import APIRouter, HTTPException, Query, status
 
@@ -77,12 +77,6 @@ def archive_sources(
     sort_direction: str = Query("desc", pattern="^(asc|desc)$"),
 ) -> dict[str, object]:
     """分页查询来源列表。"""
-
-    try:
-
-    try:
-
-    try:
 
     try:
         page = list_sources_page(
