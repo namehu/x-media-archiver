@@ -1,9 +1,9 @@
-from __future__ import annotations
-
 """显式维护动作路由。
 
 这些动作通常会触发较重的扫描或校验，因此会额外要求调用方进行显式确认。
 """
+
+from __future__ import annotations
 
 from fastapi import APIRouter
 

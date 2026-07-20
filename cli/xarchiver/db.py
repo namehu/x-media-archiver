@@ -1,7 +1,7 @@
+"""数据库连接池与连接辅助函数。"""
+
 from collections.abc import Iterator
 from contextlib import contextmanager
-
-"""数据库连接池与连接辅助函数。"""
 
 import psycopg
 from psycopg.rows import dict_row

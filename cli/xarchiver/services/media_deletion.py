@@ -1,10 +1,10 @@
-from __future__ import annotations
-
 """带审计能力的媒体删除流程。
 
 删除逻辑刻意保持保守：先锁定相关记录，再限制文件路径只能落在
 ``archive/media`` 下，记录操作结果，最后才删除数据库引用。
 """
+
+from __future__ import annotations
 
 from collections.abc import Mapping
 from dataclasses import dataclass

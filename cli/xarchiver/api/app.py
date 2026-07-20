@@ -1,10 +1,10 @@
-from __future__ import annotations
-
 """FastAPI 应用装配入口。
 
 负责应用生命周期、后台 worker 启停、中间件挂载、统一异常处理，以及
 在存在构建产物时把 WebUI 作为同源静态站点挂到同一个进程上。
 """
+
+from __future__ import annotations
 
 import logging
 import os

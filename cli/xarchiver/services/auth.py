@@ -1,10 +1,10 @@
-from __future__ import annotations
-
 """认证相关的服务辅助函数。
 
 把认证策略集中放在这里，确保 API 层和 CLI 触发的流程都遵循同一套
 初始化令牌、密码校验和会话规则。
 """
+
+from __future__ import annotations
 
 import hashlib
 import re

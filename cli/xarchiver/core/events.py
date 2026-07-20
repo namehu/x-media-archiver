@@ -1,9 +1,9 @@
-from __future__ import annotations
-
 """进程内事件总线与 SSE 格式化辅助函数。
 
 主要用于把队列、扫描等内部状态变化广播给 WebUI 的事件流接口。
 """
+
+from __future__ import annotations
 
 import json
 import logging

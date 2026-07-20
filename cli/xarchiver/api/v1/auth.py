@@ -1,9 +1,9 @@
-from __future__ import annotations
-
 """认证与会话路由。
 
 负责初始化管理员、登录登出、会话查询，以及密码修改等认证相关入口。
 """
+
+from __future__ import annotations
 
 import time
 from collections import defaultdict

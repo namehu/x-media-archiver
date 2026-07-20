@@ -1,6 +1,6 @@
-from __future__ import annotations
-
 """SQLAlchemy Core 语句编译辅助函数。"""
+
+from __future__ import annotations
 
 from sqlalchemy.dialects import postgresql
 from sqlalchemy.sql import Executable

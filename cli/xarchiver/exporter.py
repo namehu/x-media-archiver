@@ -1,6 +1,6 @@
-from __future__ import annotations
-
 """导出 CSV 与 HTML 画廊的辅助函数。"""
+
+from __future__ import annotations
 
 import csv
 import os

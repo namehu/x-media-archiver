@@ -1,10 +1,10 @@
-from __future__ import annotations
-
 """service 与查询层共用的行模型定义。
 
 这些模型主要用于把数据库查询结果在 service 边界上规范化，避免各处直接
 操作松散的字典结构。
 """
+
+from __future__ import annotations
 
 from datetime import datetime
 from typing import Any

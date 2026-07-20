@@ -1,10 +1,10 @@
-from __future__ import annotations
-
 """归档运行路由。
 
 负责归档任务的提交、列表查询、详情查看，以及暂停、恢复、停止、重试、
 条目级取消等控制动作。
 """
+
+from __future__ import annotations
 
 from fastapi import APIRouter, HTTPException, Query, status
 

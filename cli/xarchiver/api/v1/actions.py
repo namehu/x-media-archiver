@@ -1,10 +1,10 @@
-from __future__ import annotations
-
 """通用动作类路由。
 
 这里承载不直接隶属于单个资源对象的维护/导出动作，例如校验、重新入队、
 恢复中断任务和生成导出文件。
 """
+
+from __future__ import annotations
 
 from fastapi import APIRouter
 

@@ -1,9 +1,9 @@
-from __future__ import annotations
-
 """共享的 SQLAlchemy Core 表定义。
 
 这里集中声明后端各模块共用的数据库表结构，供查询构造和 DML 语句复用。
 """
+
+from __future__ import annotations
 
 from sqlalchemy import (
     BigInteger,

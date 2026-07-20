@@ -1,6 +1,6 @@
-from __future__ import annotations
-
 """导入 TXT/JSONL 输入并写入 tweets 表的辅助函数。"""
+
+from __future__ import annotations
 
 from pathlib import Path
 from typing import Any

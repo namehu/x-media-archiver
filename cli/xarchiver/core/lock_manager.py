@@ -1,6 +1,6 @@
-from __future__ import annotations
-
 """进程内作用域锁管理器。"""
+
+from __future__ import annotations
 
 from collections import defaultdict
 from collections.abc import Iterator

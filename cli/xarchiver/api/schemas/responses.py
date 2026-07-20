@@ -1,10 +1,10 @@
-from __future__ import annotations
-
 """API 响应模型。
 
 这里按页面和接口语义定义响应结构，尽量保持与 service 层返回的数据形状
 一致，同时用 Pydantic 为 FastAPI 提供稳定的 schema。
 """
+
+from __future__ import annotations
 
 from datetime import datetime
 from typing import Any

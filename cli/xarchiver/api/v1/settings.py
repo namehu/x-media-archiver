@@ -1,9 +1,9 @@
-from __future__ import annotations
-
 """配置相关路由。
 
 当前主要负责 cookie 配置的读取、更新、主动校验和清理。
 """
+
+from __future__ import annotations
 
 from fastapi import APIRouter
 

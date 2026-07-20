@@ -1,6 +1,6 @@
-from __future__ import annotations
-
 """中断恢复与重新入队辅助函数。"""
+
+from __future__ import annotations
 
 from sqlalchemy import bindparam, select
 

@@ -1,10 +1,10 @@
-from __future__ import annotations
-
 """浏览器 Cookie 配置与校验服务。
 
 这里统一处理 cookie 的存储、本地结构检查以及主动连通性校验，
 让上层把 cookie 状态当成一个完整能力来使用。
 """
+
+from __future__ import annotations
 
 import hashlib
 import os

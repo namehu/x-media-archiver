@@ -1,6 +1,6 @@
-from __future__ import annotations
-
 """媒体检索与帖子流查询辅助函数。"""
+
+from __future__ import annotations
 
 from sqlalchemy import (
     Integer,

@@ -1,10 +1,10 @@
-from __future__ import annotations
-
 """API 中间件与日志配置。
 
 这里集中处理鉴权门禁、请求 ID 透传、访问日志结构化输出，以及本地开发
 场景下允许的前端来源校验。
 """
+
+from __future__ import annotations
 
 import json
 import logging

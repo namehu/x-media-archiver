@@ -1,6 +1,6 @@
-from __future__ import annotations
-
 """结构化操作日志的存储与读取服务。"""
+
+from __future__ import annotations
 
 import json
 import re

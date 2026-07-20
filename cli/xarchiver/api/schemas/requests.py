@@ -1,10 +1,10 @@
-from __future__ import annotations
-
 """API 请求体模型。
 
 这个文件主要描述 WebUI 提交到后端的写操作载荷，重点是约束输入格式、
 长度范围和允许的枚举值。
 """
+
+from __future__ import annotations
 
 from uuid import UUID
 

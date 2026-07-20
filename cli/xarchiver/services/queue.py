@@ -1,10 +1,10 @@
-from __future__ import annotations
-
 """归档队列服务。
 
 这个模块负责围绕 archive run / item 做编排，包括提交、抢占、重试退避、
 暂停恢复停止，以及 worker 租约管理。
 """
+
+from __future__ import annotations
 
 import logging
 from pathlib import Path

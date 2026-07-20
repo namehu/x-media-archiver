@@ -1,6 +1,6 @@
-from __future__ import annotations
-
 """顶层维护与导出命令的轻量服务封装。"""
+
+from __future__ import annotations
 
 from pathlib import Path
 

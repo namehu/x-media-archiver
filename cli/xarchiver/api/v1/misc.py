@@ -1,10 +1,10 @@
-from __future__ import annotations
-
 """杂项只读路由与流式输出路由。
 
 这里主要放事件流、下载策略、健康详情，以及本地媒体文件读取等不方便归类
 到单一资源对象下的接口。
 """
+
+from __future__ import annotations
 
 import asyncio
 import mimetypes

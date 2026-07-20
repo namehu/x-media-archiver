@@ -28,7 +28,10 @@ export interface paths {
             path?: never;
             cookie?: never;
         };
-        /** Session */
+        /**
+         * Session
+         * @description 返回当前请求对应的认证会话状态。
+         */
         get: operations["session_api_v1_auth_session_get"];
         put?: never;
         post?: never;
@@ -47,7 +50,10 @@ export interface paths {
         };
         get?: never;
         put?: never;
-        /** Setup */
+        /**
+         * Setup
+         * @description 使用一次性 setup token 初始化管理员账号。
+         */
         post: operations["setup_api_v1_auth_setup_post"];
         delete?: never;
         options?: never;
@@ -64,7 +70,10 @@ export interface paths {
         };
         get?: never;
         put?: never;
-        /** Login */
+        /**
+         * Login
+         * @description 执行管理员登录，并在成功后写入会话 Cookie。
+         */
         post: operations["login_api_v1_auth_login_post"];
         delete?: never;
         options?: never;
@@ -81,7 +90,10 @@ export interface paths {
         };
         get?: never;
         put?: never;
-        /** Logout */
+        /**
+         * Logout
+         * @description 注销当前会话，并删除浏览器端 Cookie。
+         */
         post: operations["logout_api_v1_auth_logout_post"];
         delete?: never;
         options?: never;
@@ -98,7 +110,10 @@ export interface paths {
         };
         get?: never;
         put?: never;
-        /** Update Password */
+        /**
+         * Update Password
+         * @description 校验旧密码后更新管理员密码。
+         */
         post: operations["update_password_api_v1_auth_password_post"];
         delete?: never;
         options?: never;
@@ -113,7 +128,10 @@ export interface paths {
             path?: never;
             cookie?: never;
         };
-        /** Summary */
+        /**
+         * Summary
+         * @description 返回媒体库首页摘要数据。
+         */
         get: operations["summary_api_v1_library_summary_get"];
         put?: never;
         post?: never;
@@ -130,11 +148,17 @@ export interface paths {
             path?: never;
             cookie?: never;
         };
-        /** Media */
+        /**
+         * Media
+         * @description 按筛选条件分页查询媒体列表。
+         */
         get: operations["media_api_v1_library_media_get"];
         put?: never;
         post?: never;
-        /** Delete Media */
+        /**
+         * Delete Media
+         * @description 按媒体 ID 执行受确认保护的物理删除。
+         */
         delete: operations["delete_media_api_v1_library_media_delete"];
         options?: never;
         head?: never;
@@ -148,7 +172,10 @@ export interface paths {
             path?: never;
             cookie?: never;
         };
-        /** Authors */
+        /**
+         * Authors
+         * @description 返回作者筛选下拉使用的候选列表。
+         */
         get: operations["authors_api_v1_library_authors_get"];
         put?: never;
         post?: never;
@@ -165,7 +192,10 @@ export interface paths {
             path?: never;
             cookie?: never;
         };
-        /** Posts */
+        /**
+         * Posts
+         * @description 按来源、作者和媒体类型等条件分页查询帖子流。
+         */
         get: operations["posts_api_v1_library_posts_get"];
         put?: never;
         post?: never;
@@ -182,7 +212,10 @@ export interface paths {
             path?: never;
             cookie?: never;
         };
-        /** Tweet Detail */
+        /**
+         * Tweet Detail
+         * @description 查询单条推文的详情、媒体和下载尝试记录。
+         */
         get: operations["tweet_detail_api_v1_library_tweets__tweet_id__get"];
         put?: never;
         post?: never;
@@ -199,7 +232,10 @@ export interface paths {
             path?: never;
             cookie?: never;
         };
-        /** Failures */
+        /**
+         * Failures
+         * @description 分页返回失败记录列表。
+         */
         get: operations["failures_api_v1_library_failures_get"];
         put?: never;
         post?: never;
@@ -216,7 +252,10 @@ export interface paths {
             path?: never;
             cookie?: never;
         };
-        /** Duplicates */
+        /**
+         * Duplicates
+         * @description 分页返回重复媒体分组。
+         */
         get: operations["duplicates_api_v1_library_duplicates_get"];
         put?: never;
         post?: never;
@@ -233,10 +272,16 @@ export interface paths {
             path?: never;
             cookie?: never;
         };
-        /** Archive Runs */
+        /**
+         * Archive Runs
+         * @description 分页查询归档运行列表。
+         */
         get: operations["archive_runs_api_v1_archive_runs_get"];
         put?: never;
-        /** Submit Run */
+        /**
+         * Submit Run
+         * @description 提交一批新的归档记录。
+         */
         post: operations["submit_run_api_v1_archive_runs_post"];
         delete?: never;
         options?: never;
@@ -251,7 +296,10 @@ export interface paths {
             path?: never;
             cookie?: never;
         };
-        /** Archive Run Detail */
+        /**
+         * Archive Run Detail
+         * @description 查询单个归档运行详情。
+         */
         get: operations["archive_run_detail_api_v1_archive_runs__run_id__get"];
         put?: never;
         post?: never;
@@ -270,7 +318,10 @@ export interface paths {
         };
         get?: never;
         put?: never;
-        /** Retry Archive Run */
+        /**
+         * Retry Archive Run
+         * @description 基于失败条目触发一次归档运行重试。
+         */
         post: operations["retry_archive_run_api_v1_archive_runs__run_id__retry_post"];
         delete?: never;
         options?: never;
@@ -287,7 +338,10 @@ export interface paths {
         };
         get?: never;
         put?: never;
-        /** Pause Archive Run */
+        /**
+         * Pause Archive Run
+         * @description 暂停指定归档运行。
+         */
         post: operations["pause_archive_run_api_v1_archive_runs__run_id__pause_post"];
         delete?: never;
         options?: never;
@@ -304,7 +358,10 @@ export interface paths {
         };
         get?: never;
         put?: never;
-        /** Resume Archive Run */
+        /**
+         * Resume Archive Run
+         * @description 恢复指定归档运行。
+         */
         post: operations["resume_archive_run_api_v1_archive_runs__run_id__resume_post"];
         delete?: never;
         options?: never;
@@ -321,7 +378,10 @@ export interface paths {
         };
         get?: never;
         put?: never;
-        /** Stop Archive Run */
+        /**
+         * Stop Archive Run
+         * @description 停止指定归档运行。
+         */
         post: operations["stop_archive_run_api_v1_archive_runs__run_id__stop_post"];
         delete?: never;
         options?: never;
@@ -338,7 +398,10 @@ export interface paths {
         };
         get?: never;
         put?: never;
-        /** Cancel Archive Run Items */
+        /**
+         * Cancel Archive Run Items
+         * @description 取消归档运行中的部分条目。
+         */
         post: operations["cancel_archive_run_items_api_v1_archive_runs__run_id__items_cancel_post"];
         delete?: never;
         options?: never;
@@ -353,10 +416,16 @@ export interface paths {
             path?: never;
             cookie?: never;
         };
-        /** Archive Sources */
+        /**
+         * Archive Sources
+         * @description 分页查询来源列表。
+         */
         get: operations["archive_sources_api_v1_sources_get"];
         put?: never;
-        /** Create Archive Source */
+        /**
+         * Create Archive Source
+         * @description 创建一个新的归档来源。
+         */
         post: operations["create_archive_source_api_v1_sources_post"];
         delete?: never;
         options?: never;
@@ -371,7 +440,10 @@ export interface paths {
             path?: never;
             cookie?: never;
         };
-        /** Archive Source Detail */
+        /**
+         * Archive Source Detail
+         * @description 查询单个来源的详情。
+         */
         get: operations["archive_source_detail_api_v1_sources__source_id__get"];
         put?: never;
         post?: never;
@@ -405,10 +477,16 @@ export interface paths {
             path?: never;
             cookie?: never;
         };
-        /** Archive Source Downloads */
+        /**
+         * Archive Source Downloads
+         * @description 查询某个来源当前下载状态摘要。
+         */
         get: operations["archive_source_downloads_api_v1_sources__source_id__downloads_get"];
         put?: never;
-        /** Submit Archive Source Downloads */
+        /**
+         * Submit Archive Source Downloads
+         * @description 把来源发现到的推文按指定范围提交到下载队列。
+         */
         post: operations["submit_archive_source_downloads_api_v1_sources__source_id__downloads_post"];
         delete?: never;
         options?: never;
@@ -442,7 +520,10 @@ export interface paths {
         };
         get?: never;
         put?: never;
-        /** Submit Archive Source Records */
+        /**
+         * Submit Archive Source Records
+         * @description 直接向某个来源补充记录并提交下载。
+         */
         post: operations["submit_archive_source_records_api_v1_sources__source_id__records_post"];
         delete?: never;
         options?: never;
@@ -476,7 +557,10 @@ export interface paths {
         };
         get?: never;
         put?: never;
-        /** Update Archive Source Status */
+        /**
+         * Update Archive Source Status
+         * @description 更新来源状态。
+         */
         post: operations["update_archive_source_status_api_v1_sources__source_id__status_post"];
         delete?: never;
         options?: never;
@@ -493,7 +577,10 @@ export interface paths {
         };
         get?: never;
         put?: never;
-        /** Update Archive Source Pin */
+        /**
+         * Update Archive Source Pin
+         * @description 更新来源是否置顶。
+         */
         post: operations["update_archive_source_pin_api_v1_sources__source_id__pin_post"];
         delete?: never;
         options?: never;
@@ -510,7 +597,10 @@ export interface paths {
         };
         get?: never;
         put?: never;
-        /** Scan Archive Source */
+        /**
+         * Scan Archive Source
+         * @description 立即触发某个来源的一次扫描。
+         */
         post: operations["scan_archive_source_api_v1_sources__source_id__scan_post"];
         delete?: never;
         options?: never;
@@ -527,7 +617,10 @@ export interface paths {
         };
         get?: never;
         put?: never;
-        /** Start Archive Source History Scan */
+        /**
+         * Start Archive Source History Scan
+         * @description 兼容旧入口：启动一次 history 扫描。
+         */
         post: operations["start_archive_source_history_scan_api_v1_sources__source_id__history_scan_post"];
         delete?: never;
         options?: never;
@@ -544,7 +637,10 @@ export interface paths {
         };
         get?: never;
         put?: never;
-        /** Start Archive Source Scan Session */
+        /**
+         * Start Archive Source Scan Session
+         * @description 启动一个具名扫描会话。
+         */
         post: operations["start_archive_source_scan_session_api_v1_sources__source_id__scan_sessions_post"];
         delete?: never;
         options?: never;
@@ -561,7 +657,10 @@ export interface paths {
         };
         get?: never;
         put?: never;
-        /** Pause Archive Source Scan Session */
+        /**
+         * Pause Archive Source Scan Session
+         * @description 暂停来源当前扫描会话。
+         */
         post: operations["pause_archive_source_scan_session_api_v1_sources__source_id__scan_sessions_pause_post"];
         delete?: never;
         options?: never;
@@ -578,7 +677,10 @@ export interface paths {
         };
         get?: never;
         put?: never;
-        /** Resume Archive Source Scan Session */
+        /**
+         * Resume Archive Source Scan Session
+         * @description 恢复来源当前扫描会话。
+         */
         post: operations["resume_archive_source_scan_session_api_v1_sources__source_id__scan_sessions_resume_post"];
         delete?: never;
         options?: never;
@@ -595,7 +697,10 @@ export interface paths {
         };
         get?: never;
         put?: never;
-        /** Stop Archive Source Scan Session */
+        /**
+         * Stop Archive Source Scan Session
+         * @description 停止来源当前扫描会话。
+         */
         post: operations["stop_archive_source_scan_session_api_v1_sources__source_id__scan_sessions_stop_post"];
         delete?: never;
         options?: never;
@@ -612,7 +717,10 @@ export interface paths {
         };
         get?: never;
         put?: never;
-        /** Stop Archive Source History Scan */
+        /**
+         * Stop Archive Source History Scan
+         * @description 兼容旧入口：停止 history 扫描。
+         */
         post: operations["stop_archive_source_history_scan_api_v1_sources__source_id__history_scan_stop_post"];
         delete?: never;
         options?: never;
@@ -627,7 +735,10 @@ export interface paths {
             path?: never;
             cookie?: never;
         };
-        /** Operation Log Streams */
+        /**
+         * Operation Log Streams
+         * @description 按作用域和关键字等条件分页查询日志流。
+         */
         get: operations["operation_log_streams_api_v1_log_streams_get"];
         put?: never;
         post?: never;
@@ -644,7 +755,10 @@ export interface paths {
             path?: never;
             cookie?: never;
         };
-        /** Operation Log Entries */
+        /**
+         * Operation Log Entries
+         * @description 按游标读取指定日志流中的日志条目。
+         */
         get: operations["operation_log_entries_api_v1_log_streams__stream_id__get"];
         put?: never;
         post?: never;
@@ -663,7 +777,10 @@ export interface paths {
         };
         get?: never;
         put?: never;
-        /** Verify Action */
+        /**
+         * Verify Action
+         * @description 触发媒体校验动作。
+         */
         post: operations["verify_action_api_v1_actions_verify_post"];
         delete?: never;
         options?: never;
@@ -680,7 +797,10 @@ export interface paths {
         };
         get?: never;
         put?: never;
-        /** Requeue Action */
+        /**
+         * Requeue Action
+         * @description 按状态批量重新入队推文。
+         */
         post: operations["requeue_action_api_v1_actions_requeue_post"];
         delete?: never;
         options?: never;
@@ -697,7 +817,10 @@ export interface paths {
         };
         get?: never;
         put?: never;
-        /** Recover Interrupted Action */
+        /**
+         * Recover Interrupted Action
+         * @description 恢复因中断遗留的运行状态。
+         */
         post: operations["recover_interrupted_action_api_v1_actions_recover_interrupted_post"];
         delete?: never;
         options?: never;
@@ -714,7 +837,10 @@ export interface paths {
         };
         get?: never;
         put?: never;
-        /** Export Action */
+        /**
+         * Export Action
+         * @description 按请求类型导出媒体、失败记录或重复项。
+         */
         post: operations["export_action_api_v1_actions_export_post"];
         delete?: never;
         options?: never;
@@ -731,7 +857,10 @@ export interface paths {
         };
         get?: never;
         put?: never;
-        /** Maintenance Backfill */
+        /**
+         * Maintenance Backfill
+         * @description 触发基于归档目录文件的媒体回填。
+         */
         post: operations["maintenance_backfill_api_v1_maintenance_backfill_post"];
         delete?: never;
         options?: never;
@@ -748,7 +877,10 @@ export interface paths {
         };
         get?: never;
         put?: never;
-        /** Maintenance Verify */
+        /**
+         * Maintenance Verify
+         * @description 触发媒体校验维护动作。
+         */
         post: operations["maintenance_verify_api_v1_maintenance_verify_post"];
         delete?: never;
         options?: never;
@@ -763,7 +895,10 @@ export interface paths {
             path?: never;
             cookie?: never;
         };
-        /** Events */
+        /**
+         * Events
+         * @description 建立 SSE 长连接，持续推送归档事件。
+         */
         get: operations["events_api_v1_events_get"];
         put?: never;
         post?: never;
@@ -780,7 +915,10 @@ export interface paths {
             path?: never;
             cookie?: never;
         };
-        /** Download Policy */
+        /**
+         * Download Policy
+         * @description 返回前端展示用的下载与扫描策略配置。
+         */
         get: operations["download_policy_api_v1_settings_download_policy_get"];
         put?: never;
         post?: never;
@@ -797,7 +935,10 @@ export interface paths {
             path?: never;
             cookie?: never;
         };
-        /** Health Detail */
+        /**
+         * Health Detail
+         * @description 返回比 `/health` 更详细的诊断信息。
+         */
         get: operations["health_detail_api_v1_health_detail_get"];
         put?: never;
         post?: never;
@@ -814,7 +955,10 @@ export interface paths {
             path?: never;
             cookie?: never;
         };
-        /** Media File */
+        /**
+         * Media File
+         * @description 读取 archive 内的媒体文件，并支持 HTTP Range 分段响应。
+         */
         get: operations["media_file_api_v1_media_file__relative_path__get"];
         put?: never;
         post?: never;
@@ -831,12 +975,21 @@ export interface paths {
             path?: never;
             cookie?: never;
         };
-        /** Cookies Config */
+        /**
+         * Cookies Config
+         * @description 读取当前 cookie 配置及校验状态。
+         */
         get: operations["cookies_config_api_v1_settings_cookies_get"];
         put?: never;
-        /** Update Cookies Config */
+        /**
+         * Update Cookies Config
+         * @description 更新数据库中的 cookie 内容与标签。
+         */
         post: operations["update_cookies_config_api_v1_settings_cookies_post"];
-        /** Delete Cookies Config */
+        /**
+         * Delete Cookies Config
+         * @description 清空当前保存的 cookie 配置。
+         */
         delete: operations["delete_cookies_config_api_v1_settings_cookies_delete"];
         options?: never;
         head?: never;
@@ -852,7 +1005,10 @@ export interface paths {
         };
         get?: never;
         put?: never;
-        /** Check Cookies Config */
+        /**
+         * Check Cookies Config
+         * @description 主动检查当前 cookie 是否仍然可用。
+         */
         post: operations["check_cookies_config_api_v1_settings_cookies_check_post"];
         delete?: never;
         options?: never;

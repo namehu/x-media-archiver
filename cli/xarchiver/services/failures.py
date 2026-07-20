@@ -1,6 +1,6 @@
-from __future__ import annotations
-
 """失败记录页面与导出视图使用的只读服务。"""
+
+from __future__ import annotations
 
 from xarchiver.exporter import count_failure_rows, fetch_failure_rows
 from xarchiver.row_models import FailureRow

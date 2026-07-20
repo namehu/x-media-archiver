@@ -1,10 +1,10 @@
-from __future__ import annotations
-
 """API 路由共用依赖与辅助函数。
 
 主要负责写操作串行化、统一错误转换、事件主题解析，以及媒体文件路径的
 安全解析。
 """
+
+from __future__ import annotations
 
 from collections.abc import Callable
 from pathlib import Path

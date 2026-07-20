@@ -1,6 +1,6 @@
-from __future__ import annotations
-
 """诊断接口使用的健康详情聚合服务。"""
+
+from __future__ import annotations
 
 from xarchiver.api.deps import stop_worker, write_lock_held
 from xarchiver.db import connect, get_pool_stats

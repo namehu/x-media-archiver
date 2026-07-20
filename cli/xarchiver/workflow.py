@@ -1,9 +1,9 @@
-from __future__ import annotations
-
 """旧式归档工作流编排函数。
 
 负责把导入、下载、回填、校验串成一条增量流水线，主要供 CLI 场景复用。
 """
+
+from __future__ import annotations
 
 from pathlib import Path
 

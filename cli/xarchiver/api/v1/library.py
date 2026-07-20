@@ -1,10 +1,10 @@
-from __future__ import annotations
-
 """媒体库相关路由。
 
 面向 WebUI 提供媒体库概览、媒体列表、推文详情、失败记录、重复项以及
 物理删除媒体等接口。
 """
+
+from __future__ import annotations
 
 from fastapi import APIRouter, HTTPException, Query
 

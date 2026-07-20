@@ -1,9 +1,9 @@
-from pathlib import Path
-
 """命令行入口。
 
 使用 Typer 暴露数据库维护、来源管理、下载、导出和本地 API 启动等命令。
 """
+
+from pathlib import Path
 
 import typer
 from rich.console import Console

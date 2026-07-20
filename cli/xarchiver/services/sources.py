@@ -1,10 +1,10 @@
-from __future__ import annotations
-
 """来源管理与扫描编排服务。
 
 这个模块负责 source 的增删改查、扫描会话状态、gallery-dl 发现任务，
 以及把发现到的推文继续移交给归档下载队列。
 """
+
+from __future__ import annotations
 
 import json
 import logging

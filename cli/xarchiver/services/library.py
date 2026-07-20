@@ -1,6 +1,6 @@
-from __future__ import annotations
-
 """面向媒体库视图的只读服务，覆盖推文、媒体、导出和重复项。"""
+
+from __future__ import annotations
 
 from pathlib import Path
 

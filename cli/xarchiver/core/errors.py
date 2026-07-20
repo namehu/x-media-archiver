@@ -1,6 +1,6 @@
-from __future__ import annotations
-
 """核心错误类型与错误分类辅助函数。"""
+
+from __future__ import annotations
 
 from enum import StrEnum
 

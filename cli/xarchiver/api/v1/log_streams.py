@@ -1,9 +1,9 @@
-from __future__ import annotations
-
 """操作日志流路由。
 
 负责列出日志流元信息，以及按游标读取某条日志流中的增量日志。
 """
+
+from __future__ import annotations
 
 from fastapi import APIRouter, HTTPException, Query
 

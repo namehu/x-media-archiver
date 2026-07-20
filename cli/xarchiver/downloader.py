@@ -1,10 +1,10 @@
-from __future__ import annotations
-
 """下载器编排与进度采集辅助函数。
 
 这个模块负责挑选待下载 tweet、构造 gallery-dl / yt-dlp 命令、采集
 运行进度、记录 download_jobs / download_attempts，并在结束后触发媒体回填。
 """
+
+from __future__ import annotations
 
 import json
 import logging

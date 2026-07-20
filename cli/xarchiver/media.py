@@ -1,6 +1,6 @@
-from __future__ import annotations
-
 """媒体回填、规范化与预览图生成辅助函数。"""
+
+from __future__ import annotations
 
 import hashlib
 import logging

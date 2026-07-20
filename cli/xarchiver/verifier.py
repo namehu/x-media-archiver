@@ -1,6 +1,6 @@
-from __future__ import annotations
-
 """媒体文件校验辅助函数。"""
+
+from __future__ import annotations
 
 from dataclasses import dataclass
 from pathlib import Path
