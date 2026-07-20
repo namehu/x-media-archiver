@@ -1,5 +1,11 @@
 from __future__ import annotations
 
+"""浏览器 Cookie 配置与校验服务。
+
+这里统一处理 cookie 的存储、本地结构检查以及主动连通性校验，
+让上层把 cookie 状态当成一个完整能力来使用。
+"""
+
 import hashlib
 import os
 import re
@@ -35,6 +41,8 @@ cookie_check_lock = Lock()
 
 @dataclass(frozen=True)
 class CookieContent:
+    """解析后的 cookie 内容以及其来源元数据。"""
+
     content: str
     source: str
     label: str | None = None
@@ -43,11 +51,15 @@ class CookieContent:
 
 @dataclass(frozen=True)
 class CookieInspection:
+    """从 Netscape cookie 文件中提取出的派生信息。"""
+
     content_sha256: str
     auth_token_expires_at: datetime | None
 
 
 def normalize_cookie_content(content: str | None) -> str | None:
+    """裁剪 cookie 文本；空内容统一归一为 ``None``。"""
+
     if content is None:
         return None
     normalized = content.strip()
@@ -55,6 +67,8 @@ def normalize_cookie_content(content: str | None) -> str | None:
 
 
 def normalize_label(label: str | None) -> str | None:
+    """裁剪可选标签，空白值统一丢弃。"""
+
     if label is None:
         return None
     normalized = label.strip()
@@ -66,6 +80,8 @@ def inspect_cookie_content(
     *,
     now: datetime | None = None,
 ) -> CookieInspection:
+    """在保存或主动检查前，先校验 Netscape 格式的 cookie 内容。"""
+
     normalized = normalize_cookie_content(content)
     if normalized is None:
         raise cookie_error("cookie_empty")
@@ -77,6 +93,8 @@ def inspect_cookie_content(
     required: dict[str, tuple[str, int]] = {}
 
     for line_number, raw_line in enumerate(normalized.splitlines(), start=1):
+        # 同时兼容标准 Netscape cookie 和浏览器导出的 ``#HttpOnly_`` 行，
+        # 纯注释行会被直接忽略。
         line = raw_line.strip()
         if not line:
             continue
@@ -122,6 +140,8 @@ def inspect_cookie_content(
 
 
 def get_cookie_config(settings: Settings | None = None) -> dict[str, object]:
+    """返回当前生效的 cookie 配置及其校验状态。"""
+
     row = fetch_cookie_row()
     cookie = resolve_cookie_content(settings, row=row) if settings is not None else resolve_db_cookie(row)
     if cookie is None:
@@ -135,6 +155,8 @@ def get_cookie_config(settings: Settings | None = None) -> dict[str, object]:
 
 
 def save_cookie_content(content: str, label: str | None = None) -> dict[str, object]:
+    """保存 cookie 内容，并把校验状态重置为待检查。"""
+
     normalized_content = normalize_cookie_content(content)
     if normalized_content is None:
         raise cookie_error("cookie_empty")
@@ -190,6 +212,8 @@ def save_cookie_content(content: str, label: str | None = None) -> dict[str, obj
 
 
 def clear_cookie_content(settings: Settings | None = None) -> dict[str, object]:
+    """清空数据库中的 cookie 内容，但保留配置行本身。"""
+
     statement = (
         update(cookie_config)
         .where(cookie_config.c.id == bindparam("cookie_config_id", COOKIE_CONFIG_ID))
@@ -214,6 +238,8 @@ def clear_cookie_content(settings: Settings | None = None) -> dict[str, object]:
 
 
 def check_cookie_config(settings: Settings) -> dict[str, object]:
+    """执行一次主动 cookie 检查，并持久化最新校验结果。"""
+
     if not cookie_check_lock.acquire(blocking=False):
         raise ArchiverError(
             "cookie_check_in_progress",
@@ -226,6 +252,8 @@ def check_cookie_config(settings: Settings) -> dict[str, object]:
         try:
             inspection = inspect_cookie_content(cookie.content)
         except ArchiverError as exc:
+            # 即使是结构错误或过期错误，也要落库，避免 UI 每次都重复触发
+            # gallery-dl 才能得出确定状态。
             inspection = CookieInspection(
                 content_sha256=cookie_content_sha256(cookie.content),
                 auth_token_expires_at=None,
@@ -256,6 +284,8 @@ def run_cookie_check(
     settings: Settings,
     content: str,
 ) -> tuple[str, str | None, str]:
+    """对一个轻量级 X 页面调用一次 ``gallery-dl``，测试认证是否有效。"""
+
     if shutil.which("gallery-dl") is None:
         return "error", ErrorCategory.COMMAND_NOT_FOUND.value, "cookie_check_command_not_found"
 
@@ -269,6 +299,8 @@ def run_cookie_check(
     )
     cookie_path = Path(cookie_path_text)
     try:
+        # 临时文件放在 ``archive/state`` 下，便于和其他本地状态一起管理，
+        # 也方便在流程结束后可靠清理。
         os.fchmod(file_descriptor, 0o600)
         with os.fdopen(file_descriptor, "w", encoding="utf-8") as cookie_file:
             cookie_file.write(content if content.endswith("\n") else f"{content}\n")
@@ -314,6 +346,8 @@ def run_cookie_check(
             return "error", ErrorCategory.NETWORK_ERROR.value, "cookie_check_timeout"
 
         stderr = redact_sensitive_text(result.stderr or "")
+        # gallery-dl 有可能在 HTTP 重试耗尽后依然返回 0，因此 stderr 的
+        # 分类结果也要当成一等信号处理。
         category = classify_cookie_check_error(stderr, result.returncode)
         if category == ErrorCategory.AUTH_REQUIRED.value:
             return "invalid", category, "cookie_check_auth_required"
@@ -330,6 +364,8 @@ def run_cookie_check(
 
 
 def classify_cookie_check_error(stderr: str, returncode: int) -> str | None:
+    """把 gallery-dl 的 stderr 映射到应用内统一的错误类别。"""
+
     if returncode != 0:
         return category_value(classify_x_error(stderr, no_output_hint=False))
 
@@ -357,6 +393,8 @@ def persist_cookie_validation(
     error_category: str | None,
     message: str,
 ) -> None:
+    """仅当本次检查对应的内容仍是当前内容时，才写入校验结果。"""
+
     if status not in COOKIE_VALIDATION_STATUSES:
         raise ValueError(f"invalid_cookie_validation_status: {status}")
     lock_statement = (
@@ -375,6 +413,7 @@ def persist_cookie_validation(
                 current_content is None
                 or cookie_content_sha256(current_content) != inspection.content_sha256
             ):
+                # 防止并发写入把旧 cookie 的检查结果覆盖到新内容上。
                 raise ArchiverError("cookie_config_changed", http_status=409)
 
             statement = (
@@ -399,6 +438,8 @@ def resolve_cookie_content(
     *,
     row: dict[str, object] | None = None,
 ) -> CookieContent | None:
+    """解析当前 cookie，优先使用数据库内容，其次回退到文件。"""
+
     row = fetch_cookie_row() if row is None else row
     db_cookie = resolve_db_cookie(row)
     if db_cookie is not None:
@@ -411,6 +452,8 @@ def resolve_cookie_content(
 
 
 def resolve_db_cookie(row: dict[str, object] | None) -> CookieContent | None:
+    """把 ``cookie_config`` 记录转换成内存中的规范结构。"""
+
     db_content = normalize_cookie_content(row.get("content") if row else None)
     if db_content is None:
         return None
@@ -423,6 +466,8 @@ def resolve_db_cookie(row: dict[str, object] | None) -> CookieContent | None:
 
 
 def fetch_cookie_row() -> dict[str, object] | None:
+    """读取应用使用的唯一一条 ``cookie_config`` 记录。"""
+
     statement = (
         select(
             cookie_config.c.content,
@@ -452,6 +497,8 @@ def cookie_config_payload(
     inspection: CookieInspection | None = None,
     local_error: ArchiverError | None = None,
 ) -> dict[str, object]:
+    """根据解析结果和校验状态构造 API 返回载荷。"""
+
     if cookie is None:
         return {
             "configured": False,
@@ -466,6 +513,8 @@ def cookie_config_payload(
         }
 
     if local_error is not None:
+        # 本地检查失败时，只有当持久化结果与当前内容哈希完全一致，才复用
+        # 之前的校验信息。
         expired = local_error.code in {"cookie_auth_token_expired", "cookie_ct0_expired"}
         content_sha256 = cookie_content_sha256(cookie.content)
         matches = bool(
@@ -515,17 +564,23 @@ def cookie_config_payload(
 
 
 def cookie_content_sha256(content: str) -> str:
+    """对规范化后的 cookie 文本求哈希，用于乐观并发校验。"""
+
     normalized = normalize_cookie_content(content) or ""
     return hashlib.sha256(normalized.encode("utf-8")).hexdigest()
 
 
 def read_cookie_file(path: Path) -> str | None:
+    """当配置文件存在且非空时，从磁盘读取 cookie 文本。"""
+
     if not has_cookie_file(path):
         return None
     return normalize_cookie_content(path.read_text(encoding="utf-8"))
 
 
 def has_cookie_file(path: Path) -> bool:
+    """判断 cookie 文件是否存在且至少包含一个字节。"""
+
     return path.exists() and path.is_file() and path.stat().st_size > 0
 
 
@@ -535,6 +590,8 @@ def cookie_error(
     *,
     http_status: int = 422,
 ) -> ArchiverError:
+    """为 cookie 校验失败创建一个认证域错误对象。"""
+
     message = f"{code}: {detail}" if detail else code
     return ArchiverError(
         code,

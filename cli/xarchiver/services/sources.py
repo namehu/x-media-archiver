@@ -1,5 +1,11 @@
 from __future__ import annotations
 
+"""来源管理与扫描编排服务。
+
+这个模块负责 source 的增删改查、扫描会话状态、gallery-dl 发现任务，
+以及把发现到的推文继续移交给归档下载队列。
+"""
+
 import json
 import logging
 import random
@@ -83,10 +89,14 @@ HEARTBEAT_SECONDS = 20
 
 
 class WorkerLeaseLost(RuntimeError):
+    """当来源扫描 worker 失去租约所有权时抛出。"""
+
     pass
 
 
 class SourceScanLeaseHeartbeat:
+    """后台心跳线程，用来维持某个来源扫描运行的租约。"""
+
     def __init__(self, scan_run_id: int, worker_id: str | None) -> None:
         self.scan_run_id = scan_run_id
         self.worker_id = worker_id
@@ -122,6 +132,8 @@ def create_source(
     label: str | None = None,
     author_username: str | None = None,
 ) -> dict[str, object]:
+    """规范化来源类型和 URL 后，创建新的归档来源。"""
+
     source_type = normalize_source_type(source_type)
     source_url = normalize_source_url(source_url)
     author_username = author_username or infer_author_username(source_type, source_url)
@@ -153,6 +165,8 @@ def list_sources(
     limit: int = 50,
     offset: int = 0,
 ) -> list[ArchiveSourceListRow]:
+    """列出来源，并附带发现量和扫描量聚合统计。"""
+
     sql, params = build_sources_query(
         status=status,
         source_type=source_type,
@@ -175,6 +189,8 @@ def list_sources_page(
     limit: int = 50,
     offset: int = 0,
 ) -> dict[str, object]:
+    """返回带总数信息的来源分页结果。"""
+
     rows = list_sources(
         status=status,
         source_type=source_type,
@@ -197,6 +213,8 @@ def count_sources(
     status: str | None = None,
     source_type: str | None = None,
 ) -> int:
+    """按与 ``list_sources`` 相同的过滤条件统计来源数量。"""
+
     sql, params = build_count_sources_query(status=status, source_type=source_type)
     with connect() as conn:
         with conn.cursor() as cur:
@@ -212,6 +230,8 @@ def build_sources_query(
     limit: int = 50,
     offset: int = 0,
 ) -> tuple[str, dict[str, object]]:
+    """构造带聚合列的来源分页查询。"""
+
     discovery_count = func.count(source_discovered_tweets.c.id).cast(Integer)
     unsubmitted_count = (
         func.count(source_discovered_tweets.c.id)
@@ -271,6 +291,8 @@ def build_count_sources_query(
     status: str | None = None,
     source_type: str | None = None,
 ) -> tuple[str, dict[str, object]]:
+    """构造与 ``build_sources_query`` 对应的数量查询。"""
+
     statement = select(func.count().cast(Integer).label("count")).select_from(archive_sources)
     statement = apply_source_filters(statement, status=status, source_type=source_type)
     return compile_query(statement)
@@ -281,6 +303,8 @@ def apply_source_filters(
     status: str | None = None,
     source_type: str | None = None,
 ) -> Select:
+    """把可选来源过滤条件应用到 SQLAlchemy 语句上。"""
+
     filters = build_source_filters(status=status, source_type=source_type)
     if not filters:
         return statement
@@ -291,6 +315,8 @@ def build_source_filters(
     status: str | None = None,
     source_type: str | None = None,
 ) -> list[ColumnElement[bool]]:
+    """构造可复用的来源过滤表达式。"""
+
     filters: list[ColumnElement[bool]] = []
     if status:
         filters.append(
@@ -310,18 +336,24 @@ def build_source_filters(
 
 
 def normalize_source_sort_field(value: str) -> str:
+    """校验允许使用的来源排序字段。"""
+
     if value not in VALID_SOURCE_SORT_FIELDS:
         raise ValueError("invalid_source_sort_field")
     return value
 
 
 def normalize_sort_direction(value: str) -> str:
+    """校验允许使用的排序方向。"""
+
     if value not in VALID_SORT_DIRECTIONS:
         raise ValueError("invalid_sort_direction")
     return value
 
 
 def update_source_pin(source_id: int, is_pinned: bool) -> dict[str, object]:
+    """切换来源的置顶标记，供列表排序使用。"""
+
     statement = (
         update(archive_sources)
         .where(archive_sources.c.id == bindparam("source_id"))
@@ -343,6 +375,8 @@ def update_source_pin(source_id: int, is_pinned: bool) -> dict[str, object]:
 
 
 def get_source(source_id: int) -> dict[str, object] | None:
+    """读取单个来源，并附带发现聚合和当前扫描元数据。"""
+
     with connect() as conn:
         with conn.cursor() as cur:
             cur.execute(
@@ -410,6 +444,8 @@ def get_source(source_id: int) -> dict[str, object] | None:
 
 
 def list_source_discovered_page(source_id: int, limit: int = 50, offset: int = 0) -> dict[str, object]:
+    """返回某个来源已发现的推文，并补上队列进度信息。"""
+
     with connect() as conn:
         with conn.cursor() as cur:
             cur.execute("select 1 from archive_sources where id = %s", (source_id,))
@@ -475,6 +511,8 @@ def list_source_discovered_page(source_id: int, limit: int = 50, offset: int = 0
 
 
 def list_source_scan_runs_page(source_id: int, limit: int = 20, offset: int = 0) -> dict[str, object]:
+    """返回某个来源的扫描运行历史。"""
+
     with connect() as conn:
         with conn.cursor() as cur:
             cur.execute("select 1 from archive_sources where id = %s", (source_id,))
@@ -511,6 +549,8 @@ def list_source_scan_runs_page(source_id: int, limit: int = 20, offset: int = 0)
 
 
 def update_source_status(source_id: int, status: str) -> dict[str, object]:
+    """更新来源状态，并同步维护扫描会话状态。"""
+
     status = normalize_source_status(status)
     source = get_source(source_id)
     if source is None:
@@ -553,12 +593,14 @@ def update_source_status(source_id: int, status: str) -> dict[str, object]:
             int(running_scan_run["id"]),
             "warning",
             "source-scan",
-            "Source was paused. The current gallery-dl batch will finish naturally; no next batch will be scheduled.",
+            "来源已暂停。当前 gallery-dl 批次会自然结束，但不会再调度下一批。",
         )
     return get_source(source_id) or dict(row)
 
 
 def start_source_history_scan(source_id: int, limit: int = 20, restart: bool = False) -> dict[str, object]:
+    """兼容旧入口：启动一次 history 扫描会话。"""
+
     return start_source_scan_session(source_id, "history", limit=limit, restart=restart)
 
 
@@ -568,6 +610,8 @@ def start_source_scan_session(
     limit: int = 20,
     restart: bool = False,
 ) -> dict[str, object]:
+    """为来源启动或重启一个自动扫描会话。"""
+
     mode = normalize_scan_session_mode(mode)
     limit = normalize_scan_limit(limit)
     source = get_source(source_id)
@@ -604,14 +648,20 @@ def start_source_scan_session(
 
 
 def stop_source_history_scan(source_id: int) -> dict[str, object]:
+    """兼容旧入口：停止一次 history 扫描会话。"""
+
     return stop_source_scan_session(source_id)
 
 
 def pause_source_scan_session(source_id: int) -> dict[str, object]:
+    """暂停来源当前活跃的扫描会话。"""
+
     return update_source_status(source_id, "paused")
 
 
 def resume_source_scan_session(source_id: int) -> dict[str, object]:
+    """恢复来源已暂停的扫描会话。"""
+
     source = get_source(source_id)
     if source is None:
         raise ValueError("source_not_found")
@@ -622,6 +672,8 @@ def resume_source_scan_session(source_id: int) -> dict[str, object]:
 
 
 def stop_source_scan_session(source_id: int) -> dict[str, object]:
+    """停止当前扫描会话，并清除下次调度时间。"""
+
     source = get_source(source_id)
     if source is None:
         raise ValueError("source_not_found")
@@ -646,6 +698,8 @@ def stop_source_scan_session(source_id: int) -> dict[str, object]:
 
 
 def process_next_source_history_scan(settings: Settings, worker_id: str | None = None) -> dict[str, object] | None:
+    """挑选下一个到期来源，并执行一批自动扫描。"""
+
     source = fetch_due_history_source()
     if source is None:
         return None
@@ -662,6 +716,7 @@ def process_next_source_history_scan(settings: Settings, worker_id: str | None =
         schedule_next_history_scan(source_id, settings, "retry_wait")
         raise
     if downloads_pending:
+        # 来源扫描要给下载队列让路，避免发现速度长期快于媒体处理速度。
         record_waiting_downloads_scan(source_id, cursor_state, limit, trigger_type=trigger_type)
         schedule_next_history_scan(source_id, settings, "waiting_downloads")
         return {"source_id": source_id, "deferred": "download_queue_active"}
@@ -695,6 +750,8 @@ def process_next_source_history_scan(settings: Settings, worker_id: str | None =
 
 
 def recover_interrupted_source_scan_runs() -> int:
+    """API 重启后，把仍处于 running 的扫描运行标记为失败。"""
+
     with connect() as conn:
         with conn.cursor() as cur:
             cur.execute(
@@ -702,7 +759,7 @@ def recover_interrupted_source_scan_runs() -> int:
                 update source_scan_runs
                 set status = 'failed',
                     error_category = 'interrupted',
-                    error_message = 'API stopped before this scan batch finished.',
+                    error_message = 'API 在当前扫描批次结束前已停止。',
                     finished_at = now()
                 where status = 'running'
                 """
@@ -713,6 +770,8 @@ def recover_interrupted_source_scan_runs() -> int:
 
 
 def recover_expired_source_scan_leases() -> int:
+    """把 worker 租约过期的扫描运行标记为失败。"""
+
     with connect() as conn:
         with conn.cursor() as cur:
             cur.execute(
@@ -720,7 +779,7 @@ def recover_expired_source_scan_leases() -> int:
                 update source_scan_runs
                 set status = 'failed',
                     error_category = 'worker_lease_expired',
-                    error_message = 'Worker lease expired before this scan batch finished.',
+                    error_message = 'Worker 租约在当前扫描批次结束前已过期。',
                     finished_at = now(),
                     worker_id = null,
                     lease_expires_at = null
@@ -737,6 +796,8 @@ def recover_expired_source_scan_leases() -> int:
 
 
 def count_expired_source_scan_leases() -> int:
+    """统计租约已过期的扫描运行数量。"""
+
     with connect() as conn:
         with conn.cursor() as cur:
             cur.execute(
@@ -754,6 +815,8 @@ def count_expired_source_scan_leases() -> int:
 
 
 def fetch_due_history_source() -> dict[str, object] | None:
+    """读取下一个到达扫描时间的活跃来源。"""
+
     with connect() as conn:
         with conn.cursor() as cur:
             cur.execute(
@@ -772,6 +835,8 @@ def fetch_due_history_source() -> dict[str, object] | None:
 
 
 def schedule_next_history_scan(source_id: int, settings: Settings, state: str) -> None:
+    """带随机抖动地安排下一次自动扫描。"""
+
     source = get_source(source_id)
     cursor_state = source.get("cursor_state") if source and isinstance(source.get("cursor_state"), dict) else {}
     if not source or source.get("status") != "active" or not cursor_state.get("automation_enabled"):
@@ -784,10 +849,14 @@ def schedule_next_history_scan(source_id: int, settings: Settings, state: str) -
 
 
 def pause_history_scan_for_error(source_id: int, error_category: str) -> None:
+    """因为外部持久性错误而暂停当前 history 扫描会话。"""
+
     update_history_scan_state(source_id, error_category, enabled=True, status="paused")
 
 
 def finish_history_scan(source_id: int) -> None:
+    """标记当前扫描会话完成，并更新来源状态。"""
+
     source = get_source(source_id)
     cursor_state = source.get("cursor_state") if source and isinstance(source.get("cursor_state"), dict) else {}
     mode = cursor_state.get("active_scan_mode") or "history"
@@ -803,6 +872,8 @@ def update_history_scan_state(
     enabled: bool | None = None,
     status: str | None = None,
 ) -> None:
+    """持久化扫描会话状态与下一次调度时间。"""
+
     source = get_source(source_id)
     if source is None:
         return
@@ -834,6 +905,8 @@ def start_source_scan_run(
     cursor_before: dict[str, Any],
     worker_id: str | None = None,
 ) -> int:
+    """创建一条运行中的 ``source_scan_runs`` 记录及其日志流。"""
+
     if trigger_type not in VALID_SCAN_TRIGGERS:
         raise ValueError("invalid_scan_trigger")
     with connect() as conn:
@@ -917,6 +990,8 @@ def finish_source_scan_run(
     error_message: str | None = None,
     worker_id: str | None = None,
 ) -> None:
+    """收敛扫描运行记录，并发送完成事件。"""
+
     with connect() as conn:
         with conn.cursor() as cur:
             cur.execute(
@@ -975,6 +1050,8 @@ def record_waiting_downloads_scan(
     limit: int,
     trigger_type: str = "history_worker",
 ) -> None:
+    """记录一次因下载积压而被延后的来源扫描。"""
+
     scan_range = build_active_scan_range(cursor_state, limit)
     with connect() as conn:
         with conn.cursor() as cur:
@@ -1011,6 +1088,8 @@ def record_source_scan_failure(
     trigger_type: str,
     error: Exception,
 ) -> None:
+    """为扫描前编排阶段的异常落一条合成失败扫描记录。"""
+
     run_id = start_source_scan_run(source_id, trigger_type, build_active_scan_range(cursor_state, limit), cursor_state)
     message = str(error) or error.__class__.__name__
     mark_source_scan_result(source_id, error_category="failed", error_message=message)
@@ -1032,6 +1111,8 @@ def scan_source(
     session_mode: str | None = None,
     worker_id: str | None = None,
 ) -> dict[str, object]:
+    """为某个来源执行一批 gallery-dl 发现扫描。"""
+
     settings = settings or get_settings()
     limit = normalize_scan_limit(limit)
     source = get_source(source_id)
@@ -1065,6 +1146,8 @@ def scan_source(
     )
     try:
         with SourceScanLeaseHeartbeat(scan_run_id, worker_id) as lease:
+            # 发现结果落库和游标推进前都会反复检查租约，避免失去所有权的
+            # worker 继续提交过期进度。
             records, scan_meta = discover_records_with_gallery_dl(
                 scan_url,
                 scan_range["start"],
@@ -1099,7 +1182,7 @@ def scan_source(
             scan_run_id,
             "error",
             "source-scan",
-            f"Source scan failed: {exc}",
+            f"来源扫描失败：{exc}",
             worker_id=worker_id,
             exception=exc,
         )
@@ -1134,6 +1217,8 @@ def finish_scan_source_result(
     worker_id: str | None,
     lease: SourceScanLeaseHeartbeat,
 ) -> dict[str, object]:
+    """持久化发现结果、推进游标状态，并结束本次扫描运行。"""
+
     if not records:
         lease.ensure_active()
         scan_succeeded = scan_meta.get("exit_code") == 0 and not scan_meta.get("error_category")
@@ -1154,7 +1239,7 @@ def finish_scan_source_result(
         )
         error_category = None if scan_succeeded else str(scan_meta.get("error_category") or "failed")
         error_message = (
-            None if scan_succeeded else str(scan_meta.get("error_message") or "No tweets discovered for source.")
+            None if scan_succeeded else str(scan_meta.get("error_message") or "当前来源未发现任何推文。")
         )
         ensure_source_scan_lease(scan_run_id, worker_id)
         mark_source_scan_result(source_id, error_category=error_category, error_message=error_message)
@@ -1263,6 +1348,8 @@ def discover_records_with_gallery_dl(
     scan_run_id: int | None = None,
     worker_id: str | None = None,
 ) -> tuple[list[dict[str, Any]], dict[str, object]]:
+    """执行 gallery-dl，并把其 JSON 输出转换成规范推文记录。"""
+
     if start < 1 or end < start:
         raise ValueError("scan_limit_required")
     if shutil.which("gallery-dl") is None:
@@ -1305,6 +1392,8 @@ def discover_records_with_gallery_dl(
             "error_category": classify_source_error(stderr_excerpt),
             "error_message": stderr_excerpt or f"gallery-dl exited with {result.returncode}",
         }
+    # gallery-dl 在 HTTP 重试耗尽后仍可能返回 0，因此在判定成功前，
+    # 仍需要检查 stderr。
     soft_error = detect_gallery_dl_exhausted_retry(result.stderr)
     if soft_error is not None:
         error_category, error_message = soft_error
@@ -1336,6 +1425,8 @@ def discover_records_with_gallery_dl(
 
 
 def detect_gallery_dl_exhausted_retry(stderr: str | None) -> tuple[str, str] | None:
+    """识别被 0 退出码掩盖的“重试已耗尽”场景。"""
+
     for line in reversed((stderr or "").splitlines()):
         match = re.search(r"\((\d+)/(\d+)\)\s*$", line)
         if match is None or match.group(1) != match.group(2):
@@ -1347,7 +1438,9 @@ def detect_gallery_dl_exhausted_retry(stderr: str | None) -> tuple[str, str] | N
 
 
 def run_gallery_dl_streaming(command: list[str], scan_run_id: int, worker_id: str | None) -> subprocess.CompletedProcess[str]:
-    append_source_scan_log(scan_run_id, "info", "gallery-dl", "Starting gallery-dl.", worker_id=worker_id)
+    """执行 gallery-dl，并把 stderr 持续流式写入操作日志。"""
+
+    append_source_scan_log(scan_run_id, "info", "gallery-dl", "开始执行 gallery-dl。", worker_id=worker_id)
     process = subprocess.Popen(
         command,
         stdout=subprocess.PIPE,
@@ -1382,7 +1475,7 @@ def run_gallery_dl_streaming(command: list[str], scan_run_id: int, worker_id: st
     return_code = process.wait()
     stdout_thread.join(timeout=5)
     stderr_thread.join(timeout=5)
-    append_source_scan_log(scan_run_id, "info", "gallery-dl", f"gallery-dl exited with {return_code}.", worker_id=worker_id)
+    append_source_scan_log(scan_run_id, "info", "gallery-dl", f"gallery-dl 已退出，退出码为 {return_code}。", worker_id=worker_id)
     return subprocess.CompletedProcess(
         args=command,
         returncode=return_code,
@@ -1400,6 +1493,8 @@ def append_source_scan_log(
     worker_id: str | None = None,
     exception: BaseException | None = None,
 ) -> None:
+    """追加扫描日志，并把末尾进度同步到 ``source_scan_runs``。"""
+
     text = redact_sensitive_text(message).strip()
     if not text:
         return
@@ -1437,10 +1532,14 @@ def append_source_scan_log(
 
 
 def source_scan_log_relative_path(source_id: int, scan_run_id: int) -> str:
+    """构造来源扫描日志对应的 archive 相对 JSONL 路径。"""
+
     return f"logs/source-scan-logs/source-{source_id}/scan-run-{scan_run_id}.jsonl"
 
 
 def fetch_source_scan_log_stream_id(scan_run_id: int) -> int | None:
+    """读取某次扫描运行关联的日志流 ID。"""
+
     with connect() as conn:
         with conn.cursor() as cur:
             cur.execute("select log_stream_id from source_scan_runs where id = %s", (scan_run_id,))
@@ -1449,12 +1548,16 @@ def fetch_source_scan_log_stream_id(scan_run_id: int) -> int | None:
 
 
 def close_source_scan_log_stream(scan_run_id: int) -> None:
+    """关闭某次扫描运行关联的日志流。"""
+
     log_stream_id = fetch_source_scan_log_stream_id(scan_run_id)
     if log_stream_id:
         close_operation_log_stream(log_stream_id)
 
 
 def format_sleep_range(min_seconds: float, max_seconds: float) -> str:
+    """格式化 gallery-dl 的休眠区间参数。"""
+
     start = min(min_seconds, max_seconds)
     end = max(min_seconds, max_seconds)
     start_text = f"{start:g}"
@@ -1463,6 +1566,8 @@ def format_sleep_range(min_seconds: float, max_seconds: float) -> str:
 
 
 def build_scan_range(cursor_state: dict[str, Any], limit: int, restart: bool = False) -> dict[str, int]:
+    """为下一批 gallery-dl 扫描构造明确的 [start, end] 区间。"""
+
     if limit < MIN_SOURCE_SCAN_LIMIT:
         raise ValueError("scan_limit_required")
     start = 1 if restart else parse_positive_int(cursor_state.get("next_start_index"), default=1)
@@ -1471,12 +1576,16 @@ def build_scan_range(cursor_state: dict[str, Any], limit: int, restart: bool = F
 
 
 def build_active_scan_range(cursor_state: dict[str, Any], limit: int, restart: bool = False) -> dict[str, int]:
+    """在构造扫描区间前，先解析当前活跃会话的状态。"""
+
     mode = cursor_state.get("active_scan_mode")
     range_state = get_scan_session(cursor_state, str(mode)) if mode in VALID_SCAN_SESSION_MODES else cursor_state
     return build_scan_range(range_state, limit, restart=restart)
 
 
 def is_source_scan_complete(scan_meta: dict[str, object], scan_range: dict[str, int], discovered_count: int) -> bool:
+    """判断 gallery-dl 是否表明该来源已经没有后续游标。"""
+
     if scan_meta.get("exit_code") != 0 or scan_meta.get("error_category"):
         return False
     return not scan_meta.get("continuation_cursor")
@@ -1489,6 +1598,8 @@ def is_scan_session_complete(
     discovered_count: int,
     duplicate_count: int,
 ) -> bool:
+    """按不同扫描模式的规则判断扫描会话是否结束。"""
+
     if mode is None:
         return False
     if scan_meta.get("exit_code") != 0 or scan_meta.get("error_category"):
@@ -1499,6 +1610,8 @@ def is_scan_session_complete(
 
 
 def extract_gallery_dl_cursor(stderr: str | None) -> str | None:
+    """从 gallery-dl 的 verbose 日志中提取 continuation cursor。"""
+
     matches = re.findall(r"Cursor:\s+(\S+)", stderr or "")
     if not matches:
         return None
@@ -1509,6 +1622,8 @@ def extract_gallery_dl_cursor(stderr: str | None) -> str | None:
 
 
 def scan_run_status(scan_meta: dict[str, object], completed: bool) -> str:
+    """把 gallery-dl 元数据映射成 ``source_scan_runs.status``。"""
+
     category = str(scan_meta.get("error_category") or "")
     if category in {"rate_limited", "auth_required", "network_error"}:
         return category
@@ -1520,10 +1635,14 @@ def scan_run_status(scan_meta: dict[str, object], completed: bool) -> str:
 
 
 def count_discovered_media(records: list[dict[str, Any]]) -> int:
+    """统计规范扫描记录中的媒体总数。"""
+
     return sum(parse_positive_int(record.get("media_count"), 0) for record in records)
 
 
 def parse_positive_int(value: object, default: int) -> int:
+    """解析正整数；不合法时回退到 ``default``。"""
+
     try:
         parsed = int(value)
     except (TypeError, ValueError):
@@ -1532,6 +1651,8 @@ def parse_positive_int(value: object, default: int) -> int:
 
 
 def normalize_scan_limit(limit: int) -> int:
+    """校验扫描批大小，并限制到支持的上限。"""
+
     parsed = int(limit)
     if parsed < MIN_SOURCE_SCAN_LIMIT:
         raise ValueError("scan_limit_required")
@@ -1539,6 +1660,8 @@ def normalize_scan_limit(limit: int) -> int:
 
 
 def normalize_scan_session_mode(mode: str) -> str:
+    """校验允许的扫描会话模式。"""
+
     value = str(mode or "").strip()
     if value not in VALID_SCAN_SESSION_MODES:
         raise ValueError("invalid_scan_session_mode")
@@ -1546,6 +1669,8 @@ def normalize_scan_session_mode(mode: str) -> str:
 
 
 def normalize_session_mode_for_trigger(trigger_type: str, session_mode: str | None) -> str | None:
+    """在必要时根据触发器推断逻辑扫描模式。"""
+
     if session_mode:
         return normalize_scan_session_mode(session_mode)
     if trigger_type == "history_worker":
@@ -1558,11 +1683,15 @@ def normalize_session_mode_for_trigger(trigger_type: str, session_mode: str | No
 
 
 def get_scan_sessions(cursor_state: dict[str, Any]) -> dict[str, Any]:
+    """从游标状态中取出嵌套的扫描会话映射。"""
+
     sessions = cursor_state.get("scan_sessions")
     return sessions if isinstance(sessions, dict) else {}
 
 
 def get_scan_session(cursor_state: dict[str, Any], mode: str) -> dict[str, Any]:
+    """返回单个会话快照，并兼容旧版 history 数据结构。"""
+
     sessions = get_scan_sessions(cursor_state)
     session = sessions.get(mode)
     if isinstance(session, dict):
@@ -1578,6 +1707,8 @@ def get_scan_session(cursor_state: dict[str, Any], mode: str) -> dict[str, Any]:
 
 
 def start_scan_session_state(cursor_state: dict[str, Any], mode: str, limit: int, restart: bool = False) -> dict[str, Any]:
+    """为新启动的扫描会话构造下一份 cursor_state 载荷。"""
+
     sessions = dict(get_scan_sessions(cursor_state))
     previous = {} if restart else get_scan_session(cursor_state, mode)
     session = {
@@ -1610,6 +1741,8 @@ def start_scan_session_state(cursor_state: dict[str, Any], mode: str, limit: int
 
 
 def ensure_legacy_active_scan_session(cursor_state: dict[str, Any]) -> dict[str, Any]:
+    """为旧来源补齐 ``scan_sessions`` 字段，兼容会话化之前的数据。"""
+
     sessions = dict(get_scan_sessions(cursor_state))
     if "history" not in sessions:
         sessions["history"] = {
@@ -1629,6 +1762,8 @@ def set_active_scan_session_state(
     *,
     enabled: bool | None = None,
 ) -> dict[str, Any]:
+    """更新当前活跃扫描会话的状态。"""
+
     mode = cursor_state.get("active_scan_mode")
     sessions = dict(get_scan_sessions(cursor_state))
     if mode in VALID_SCAN_SESSION_MODES:
@@ -1646,6 +1781,8 @@ def update_session_progress_state(
     progress_state: dict[str, Any],
     completed: bool,
 ) -> dict[str, Any]:
+    """写入会话级进度，同时保持共享游标字段一致。"""
+
     sessions = dict(get_scan_sessions(cursor_state))
     session = {
         **get_scan_session(cursor_state, mode),
@@ -1684,6 +1821,8 @@ def update_source_cursor(
     completed: bool,
     session_mode: str | None = None,
 ) -> dict[str, Any]:
+    """在单批扫描结束后持久化游标推进结果。"""
+
     duplicate_count = max(discovered_count - new_discovered_count, 0)
     has_continuation = bool(scan_meta.get("continuation_cursor"))
     next_start = scan_range["end"] + 1 if discovered_count > 0 or has_continuation else scan_range["start"]
@@ -1724,6 +1863,8 @@ def update_source_cursor(
 
 
 def parse_gallery_dl_records(stdout: str, source_url: str) -> list[dict[str, Any]]:
+    """把 gallery-dl 的事件流合并成“每条 tweet 一行”的规范记录。"""
+
     text = stdout.strip()
     if not text:
         return []
@@ -1751,6 +1892,8 @@ def parse_gallery_dl_records(stdout: str, source_url: str) -> list[dict[str, Any
         previous = rows.get(tweet_id)
         previous_media_items = list(previous.get("media_items", [])) if previous else []
         if is_media_event:
+            # gallery-dl 会为每个媒体资产单独产出事件，因此这里要逐步合并
+            # 回 tweet 级别的一条记录。
             previous_media_items.append(
                 {
                     "type": media_type or "media",
@@ -1798,10 +1941,14 @@ def parse_gallery_dl_records(stdout: str, source_url: str) -> list[dict[str, Any
 
 
 def is_media_scan_url(source_url: str) -> bool:
+    """判断来源 URL 是否指向专门的媒体时间线。"""
+
     return urlparse(source_url).path.rstrip("/").endswith("/media")
 
 
 def normalize_gallery_media_type(value: object) -> str | None:
+    """把 gallery-dl 的媒体类型规范到应用内部的 photo/video 词汇。"""
+
     media_type = str(value or "").strip().lower()
     if media_type in {"photo", "image"}:
         return "photo"
@@ -1811,6 +1958,8 @@ def normalize_gallery_media_type(value: object) -> str | None:
 
 
 def build_gallery_dl_scan_url(source_type: str, source_url: str) -> str:
+    """把来源类型映射成 gallery-dl 需要访问的目标 URL。"""
+
     parsed = urlparse(source_url)
     parts = [part for part in parsed.path.split("/") if part]
     if source_type == "profile" and len(parts) == 1:
@@ -1825,6 +1974,8 @@ def mark_source_scan_result(
     error_category: str | None = None,
     error_message: str | None = None,
 ) -> None:
+    """把最近一次扫描结果摘要写回来源记录。"""
+
     with connect() as conn:
         with conn.cursor() as cur:
             cur.execute(
@@ -1842,6 +1993,8 @@ def mark_source_scan_result(
 
 
 def heartbeat_source_scan_run(scan_run_id: int, worker_id: str) -> bool:
+    """为运行中的来源扫描续租。"""
+
     with connect() as conn:
         with conn.cursor() as cur:
             cur.execute(
@@ -1860,6 +2013,8 @@ def heartbeat_source_scan_run(scan_run_id: int, worker_id: str) -> bool:
 
 
 def ensure_source_scan_lease(scan_run_id: int, worker_id: str | None) -> None:
+    """如果当前 worker 已不再拥有该扫描租约，则抛出异常。"""
+
     if worker_id is not None and not heartbeat_source_scan_run(scan_run_id, worker_id):
         raise WorkerLeaseLost("source_scan_lease_lost")
 
@@ -1869,6 +2024,8 @@ def record_source_discoveries(
     records: list[dict[str, Any]],
     mark_scanned: bool = False,
 ) -> dict[str, int]:
+    """对来源发现结果做 upsert，并刷新来源级聚合统计。"""
+
     source = get_source(source_id)
     if source is None:
         raise ValueError("source_not_found")
@@ -1901,6 +2058,8 @@ def record_source_discoveries(
                     if existing_row
                     else None
                 )
+                # 重扫同一条 tweet 时，可能拿到更多媒体项或更完整元数据，
+                # 因此这里做合并而不是直接覆盖。
                 payload = merge_discovery_payload(existing.raw_payload if existing else None, record)
                 cur.execute(
                     """
@@ -1959,6 +2118,8 @@ def record_source_discoveries(
 
 
 def merge_discovery_payload(existing: dict[str, Any] | None, current: dict[str, Any]) -> dict[str, Any]:
+    """合并两份发现载荷，并按 type/url 去重媒体项。"""
+
     if not existing:
         return current
     items: list[dict[str, Any]] = []
@@ -1984,6 +2145,8 @@ def merge_discovery_payload(existing: dict[str, Any] | None, current: dict[str, 
 
 
 def submit_source_records(source_id: int, records: list[dict[str, Any]]) -> dict[str, object]:
+    """保存临时来源记录，并立刻提交到下载队列。"""
+
     record_source_discoveries(source_id, records)
     tweet_ids = [extract_tweet_id(str(record.get("url", ""))) for record in records]
     return submit_discovered_tweets(source_id, tweet_ids=list(dict.fromkeys(tweet_ids)))
@@ -1995,6 +2158,8 @@ def submit_source_downloads(
     tweet_ids: list[str] | None = None,
     limit: int | None = None,
 ) -> dict[str, object]:
+    """按指定范围把某个来源发现到的推文加入下载队列。"""
+
     source = get_source(source_id)
     if source is None:
         raise ValueError("source_not_found")
@@ -2072,6 +2237,8 @@ def retry_source_failed_items(
     tweet_ids: list[str] | None = None,
     limit: int | None = None,
 ) -> dict[str, object]:
+    """直接重开 failed_retryable 条目，而不是新建一个运行。"""
+
     source_url = str(source.get("source_url") or "")
     with connect() as conn:
         with conn.cursor() as cur:
@@ -2181,6 +2348,8 @@ def retry_source_failed_items(
 
 
 def find_source_retry_blocker(cur, source_id: int, run_id: int) -> int | None:
+    """返回阻塞当前重试恢复的同 source 其他活动运行。"""
+
     cur.execute(
         """
         select id
@@ -2203,6 +2372,8 @@ def build_empty_source_download_submission(
     scope: str,
     source: dict[str, object],
 ) -> dict[str, object]:
+    """构造“没有任何 tweet 命中当前范围”时的空响应结构。"""
+
     input_summary = {
         "scope": scope,
         "source_id": source_id,
@@ -2238,10 +2409,14 @@ def submit_discovered_tweets(
     limit: int | None = None,
     tweet_ids: list[str] | None = None,
 ) -> dict[str, object]:
+    """``submit_source_downloads`` 的便捷包装。"""
+
     return submit_source_downloads(source_id, "selected" if tweet_ids else "all_unsubmitted", tweet_ids=tweet_ids, limit=limit)
 
 
 def get_source_downloads(source_id: int) -> dict[str, object]:
+    """返回某个来源的 active、paused、blocked 与整体下载状态。"""
+
     if get_source(source_id) is None:
         raise ValueError("source_not_found")
     runs = list_runs(limit=20, source_id=source_id)
@@ -2312,6 +2487,8 @@ def get_source_downloads(source_id: int) -> dict[str, object]:
 
 
 def build_source_download_counts(task_counts: dict[str, int]) -> dict[str, int]:
+    """把运行任务计数转换成来源下载摘要结构。"""
+
     counts = {
         "pending_count": int(task_counts.get("pending_count", 0)),
         "blocked_count": int(task_counts.get("blocked_item_count", 0)),
@@ -2342,6 +2519,8 @@ def fetch_unsubmitted_discoveries(
     limit: int | None = None,
     tweet_ids: list[str] | None = None,
 ) -> list[TweetRow]:
+    """读取尚未关联到任何运行的已发现推文。"""
+
     sql, params = build_unsubmitted_discoveries_query(source_id, limit=limit, tweet_ids=tweet_ids)
     with connect() as conn:
         with conn.cursor() as cur:
@@ -2355,6 +2534,8 @@ def fetch_source_download_candidates(
     tweet_ids: list[str] | None = None,
     limit: int | None = None,
 ) -> list[TweetRow]:
+    """读取可用于来源驱动下载提交的推文记录。"""
+
     sql, params = build_source_download_candidates_query(source_id, scope, tweet_ids=tweet_ids, limit=limit)
     with connect() as conn:
         with conn.cursor() as cur:
@@ -2368,6 +2549,8 @@ def build_source_download_candidates_query(
     tweet_ids: list[str] | None = None,
     limit: int | None = None,
 ) -> tuple[str, dict[str, object]]:
+    """构造来源下载提交各类范围使用的查询。"""
+
     statement = (
         select(tweets)
         .select_from(
@@ -2397,6 +2580,8 @@ def build_unsubmitted_discoveries_query(
     limit: int | None = None,
     tweet_ids: list[str] | None = None,
 ) -> tuple[str, dict[str, object]]:
+    """构造读取来源待提交发现结果的查询。"""
+
     statement = (
         select(tweets)
         .select_from(
@@ -2422,10 +2607,14 @@ def build_unsubmitted_discoveries_query(
 
 
 def classify_source_error(stderr: str | None) -> str:
+    """把 gallery-dl 的 stderr 映射成共享的 X 错误类别。"""
+
     return category_value(classify_x_error(stderr, no_output_hint=False)) or ErrorCategory.UNKNOWN.value
 
 
 def normalize_source_type(source_type: str) -> str:
+    """校验并规范化来源类型输入。"""
+
     value = source_type.strip().lower()
     if value not in VALID_SOURCE_TYPES:
         raise ValueError(f"invalid_source_type: {source_type}")
@@ -2433,6 +2622,8 @@ def normalize_source_type(source_type: str) -> str:
 
 
 def normalize_source_status(status: str) -> str:
+    """校验并规范化来源状态输入。"""
+
     value = status.strip().lower()
     if value not in VALID_SOURCE_STATUSES:
         raise ValueError(f"invalid_source_status: {status}")
@@ -2440,6 +2631,8 @@ def normalize_source_status(status: str) -> str:
 
 
 def normalize_source_url(source_url: str) -> str:
+    """校验来源 URL 是否指向受支持的 X/Twitter 域名。"""
+
     value = source_url.strip()
     parsed = urlparse(value)
     if parsed.scheme not in {"https", "http"} or parsed.netloc.lower() not in {
@@ -2453,6 +2646,8 @@ def normalize_source_url(source_url: str) -> str:
 
 
 def infer_author_username(source_type: str, source_url: str) -> str | None:
+    """在可能的情况下，从 profile 类 URL 推断来源归属用户名。"""
+
     if source_type not in {"profile", "user_media", "likes"}:
         return None
     path_parts = [part for part in urlparse(source_url).path.split("/") if part]
@@ -2465,4 +2660,6 @@ def infer_author_username(source_type: str, source_url: str) -> str | None:
 
 
 def log_source_scan_event(event: str, **details: object) -> None:
-    logger.info("Source scan event: %s", event, extra={"event": event, "details": details})
+    """通过 Python logger 输出结构化来源扫描事件。"""
+
+    logger.info("来源扫描事件：%s", event, extra={"event": event, "details": details})

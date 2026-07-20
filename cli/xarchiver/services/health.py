@@ -1,5 +1,7 @@
 from __future__ import annotations
 
+"""诊断接口使用的健康详情聚合服务。"""
+
 from xarchiver.api.deps import stop_worker, write_lock_held
 from xarchiver.db import connect, get_pool_stats
 from xarchiver.row_models import (
@@ -149,6 +151,7 @@ def get_source_summary(cur) -> dict[str, object]:
 
 def get_recent_errors(cur, limit: int = 5) -> list[dict[str, object]]:
     """获取最近错误记录，合并 archive_run_items 和 source_scan_runs 两表的错误数据。"""
+
     # 使用 union all 合并两类错误来源，按发生时间倒序取最近若干条
     cur.execute(
         """

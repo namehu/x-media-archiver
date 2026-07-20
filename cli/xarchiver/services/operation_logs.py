@@ -1,5 +1,7 @@
 from __future__ import annotations
 
+"""结构化操作日志的存储与读取服务。"""
+
 import json
 import re
 import traceback
@@ -31,6 +33,8 @@ def create_operation_log_stream(
     log_path: str,
     metadata: dict[str, Any] | None = None,
 ) -> int:
+    """在真正写日志文件前，先创建一条逻辑日志流记录。"""
+
     with connect() as conn:
         with conn.cursor() as cur:
             cur.execute(
@@ -58,6 +62,8 @@ def append_operation_log_entry(
     context: dict[str, Any] | None = None,
     exception: BaseException | None = None,
 ) -> dict[str, Any] | None:
+    """追加一条结构化日志，并原子更新流级统计信息。"""
+
     level = normalize_log_level(level)
     message = redact_sensitive_text(message).strip()
     raw = redact_sensitive_text(raw).rstrip("\n\r") if raw is not None else None
@@ -87,10 +93,12 @@ def append_operation_log_entry(
             current_size = int(row["byte_size"] or 0)
             max_bytes = int(get_settings().operation_log_max_bytes)
             if current_size + len(encoded) > max_bytes:
+                # 达到体积上限后，只再补一条告警日志，并把流标记为已截断，
+                # 后续不再继续膨胀。
                 entry = build_log_entry(
                     "warning",
                     "xarchiver",
-                    f"Operation log truncated after reaching {max_bytes} bytes.",
+                    f"操作日志达到 {max_bytes} 字节后已截断。",
                     context=context,
                 )
                 encoded = (json.dumps(entry, ensure_ascii=False, default=str, separators=(",", ":")) + "\n").encode("utf-8")
@@ -145,6 +153,8 @@ def append_operation_log_entry(
 
 
 def close_operation_log_stream(stream_id: int) -> None:
+    """把日志流标记为已关闭；底层文件仍然可读。"""
+
     with connect() as conn:
         with conn.cursor() as cur:
             cur.execute(
@@ -169,6 +179,8 @@ def list_operation_log_streams(
     limit: int = 50,
     offset: int = 0,
 ) -> dict[str, object]:
+    """按作用域、级别和关键字过滤后返回日志流分页结果。"""
+
     limit = max(1, min(limit, 200))
     offset = max(0, offset)
     filters: list[str] = []
@@ -227,6 +239,8 @@ def read_operation_log_entries(
     limit: int = DEFAULT_LOG_READ_LIMIT,
     levels: set[str] | None = None,
 ) -> dict[str, object]:
+    """从日志流对应的 JSONL 文件中读取最近日志或增量日志。"""
+
     stream = get_operation_log_stream(stream_id)
     if stream is None:
         raise ValueError("log_stream_not_found")
@@ -256,6 +270,8 @@ def read_operation_log_entries(
 
 
 def get_operation_log_stream(stream_id: int) -> dict[str, Any] | None:
+    """按 ID 读取单条操作日志流记录。"""
+
     with connect() as conn:
         with conn.cursor() as cur:
             cur.execute(
@@ -273,6 +289,8 @@ def get_operation_log_stream(stream_id: int) -> dict[str, Any] | None:
 
 
 def read_recent_entries(path: Path, *, limit: int, levels: set[str] | None) -> tuple[list[dict[str, Any]], int]:
+    """从整个文件中读取最后 ``limit`` 条匹配日志。"""
+
     entries: list[dict[str, Any]] = []
     with path.open("rb") as handle:
         for raw_line in handle:
@@ -293,6 +311,8 @@ def read_entries_from_cursor(
     limit: int,
     levels: set[str] | None,
 ) -> tuple[list[dict[str, Any]], int]:
+    """从字节游标位置向后读取，供增量轮询场景使用。"""
+
     entries: list[dict[str, Any]] = []
     with path.open("rb") as handle:
         handle.seek(0, 2)
@@ -311,6 +331,8 @@ def read_entries_from_cursor(
 
 
 def decode_log_line(raw_line: bytes) -> dict[str, Any] | None:
+    """解码单行 JSONL，容忍损坏数据或非对象结构。"""
+
     try:
         value = json.loads(raw_line.decode("utf-8", errors="replace"))
     except json.JSONDecodeError:
@@ -327,6 +349,8 @@ def build_log_entry(
     context: dict[str, Any] | None = None,
     exception: BaseException | None = None,
 ) -> dict[str, Any]:
+    """构造写入日志文件的标准 JSON 结构。"""
+
     entry: dict[str, Any] = {
         "timestamp": datetime.now(UTC).isoformat(),
         "level": normalize_log_level(level),
@@ -347,6 +371,8 @@ def build_log_entry(
 
 
 def parse_gallery_dl_log_level(line: str) -> str:
+    """从 gallery-dl 的 stderr 文本中提取标准化日志级别。"""
+
     match = re.search(r"\[(debug|info|warning|warn|error|critical)\]", line, re.IGNORECASE)
     if not match:
         return "info"
@@ -355,6 +381,8 @@ def parse_gallery_dl_log_level(line: str) -> str:
 
 
 def normalize_log_level(level: str) -> str:
+    """把未知级别回退到 ``info``，保持存储一致性。"""
+
     value = str(level or "info").strip().lower()
     if value == "warn":
         value = "warning"
@@ -364,6 +392,8 @@ def normalize_log_level(level: str) -> str:
 
 
 def redact_sensitive_text(value: str | None) -> str:
+    """在日志落盘前对 cookie 和数据库凭据做脱敏。"""
+
     if value is None:
         return ""
     redacted = str(value)
@@ -373,6 +403,8 @@ def redact_sensitive_text(value: str | None) -> str:
 
 
 def json_safe_context(value: Any) -> Any:
+    """把常见 Python 值转换为可 JSON 序列化的结构。"""
+
     if isinstance(value, dict):
         return {str(key): json_safe_context(item) for key, item in value.items()}
     if isinstance(value, list):
@@ -385,6 +417,8 @@ def json_safe_context(value: Any) -> Any:
 
 
 def resolve_operation_log_path(log_path: str) -> Path:
+    """将日志路径解析为 archive 相对路径，并禁止目录逃逸。"""
+
     settings = get_settings()
     archive_dir = settings.archive_dir.resolve()
     path = (archive_dir / log_path).resolve()

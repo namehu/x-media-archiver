@@ -1,2 +1,6 @@
-"""Application service layer shared by CLI and local API."""
+"""命令行与本地 API 共享的应用服务层。
 
+这里放的是偏业务语义的 service 封装，供 CLI 命令和 API 路由共同复用。
+各模块通常会把更底层的数据库、下载器或工作流能力，组合成更适合上层调用
+的操作入口。
+"""

@@ -1,5 +1,7 @@
 from __future__ import annotations
 
+"""面向媒体库视图的只读服务，覆盖推文、媒体、导出和重复项。"""
+
 from pathlib import Path
 
 from xarchiver.archive import ensure_archive_dirs
@@ -21,6 +23,8 @@ VIDEO_EXTENSIONS = {".mp4", ".mov", ".m4v", ".webm"}
 
 
 def get_summary(settings: Settings) -> dict[str, object]:
+    """返回媒体库首页仪表盘所需的汇总信息。"""
+
     ensure_archive_dirs(settings.archive_dir)
     status_counts = get_status_counts()
     media_count = get_media_count()
@@ -39,6 +43,8 @@ def get_summary(settings: Settings) -> dict[str, object]:
 
 
 def get_library_snapshot() -> dict[str, int]:
+    """返回可嵌入队列或来源结果中的精简媒体库快照。"""
+
     media_status_counts = get_media_status_counts()
     return {
         "media_total": sum(media_status_counts.values()),
@@ -57,6 +63,8 @@ def list_media(
     offset: int = 0,
     author_username: str | None = None,
 ) -> list[dict[str, object]]:
+    """查询媒体记录，并补上基于归档路径生成的稳定访问地址。"""
+
     rows = search_media(
         author=author,
         text=text,
@@ -81,6 +89,8 @@ def list_media_page(
     offset: int = 0,
     author_username: str | None = None,
 ) -> dict[str, object]:
+    """返回包含总数信息的媒体分页结果。"""
+
     rows = list_media(
         settings,
         author=author,
@@ -104,6 +114,8 @@ def list_media_page(
 
 
 def get_author_options(query: str | None = None, limit: int = 20) -> dict[str, object]:
+    """返回筛选面板使用的轻量作者建议列表。"""
+
     rows = [dict(row) for row in list_author_options(query=query, limit=limit)]
     return {"rows": rows, "count": len(rows)}
 
@@ -118,6 +130,8 @@ def list_posts_page(
     limit: int = 20,
     offset: int = 0,
 ) -> dict[str, object]:
+    """返回带媒体元数据的推文分页结果。"""
+
     posts, media_rows, total_count = search_post_feed(
         source_id=source_id,
         source_type=source_type,
@@ -149,6 +163,8 @@ def list_posts_page(
 
 
 def get_tweet_detail(settings: Settings, tweet_id: str) -> dict[str, object] | None:
+    """一次性读取推文详情、关联媒体及最近下载尝试。"""
+
     with connect() as conn:
         with conn.cursor() as cur:
             cur.execute(
@@ -235,15 +251,21 @@ def get_tweet_detail(settings: Settings, tweet_id: str) -> dict[str, object] | N
 
 
 def list_export_media(settings: Settings, status: str | None = "verified") -> list[dict[str, object]]:
+    """返回可导出的媒体记录，结构与 API 返回保持一致。"""
+
     return [attach_media_url(row, settings.archive_dir) for row in fetch_export_rows(status)]
 
 
 def list_duplicates(settings: Settings) -> dict[str, object]:
+    """以内存分组的方式返回全部重复媒体记录。"""
+
     rows = [attach_media_url(row, settings.archive_dir) for row in fetch_duplicate_rows()]
     return {"duplicate_groups": count_duplicate_groups(rows), "rows": rows}
 
 
 def list_duplicates_page(settings: Settings, limit: int = 100, offset: int = 0) -> dict[str, object]:
+    """返回适配 WebUI 的重复媒体分页分组结果。"""
+
     rows = [attach_media_url(row, settings.archive_dir) for row in fetch_duplicate_group_rows(limit=limit, offset=offset)]
     groups: list[dict[str, object]] = []
     for row in rows:
@@ -270,6 +292,8 @@ def list_duplicates_page(settings: Settings, limit: int = 100, offset: int = 0) 
 
 
 def list_recent_exports(archive_dir: Path, limit: int = 5) -> list[dict[str, object]]:
+    """列出 ``archive/exports`` 下最近生成的导出文件。"""
+
     exports_dir = archive_dir / "exports"
     if not exports_dir.exists():
         return []
@@ -290,6 +314,8 @@ def list_recent_exports(archive_dir: Path, limit: int = 5) -> list[dict[str, obj
 
 
 def attach_media_url(row: dict[str, object] | RowModel, archive_dir: Path) -> dict[str, object]:
+    """根据本地归档路径补充下载地址和预览地址。"""
+
     values = dict(row)
     local_path = values.get("local_path")
     relative_path = archive_relative_path(local_path, archive_dir)
@@ -302,6 +328,8 @@ def attach_media_url(row: dict[str, object] | RowModel, archive_dir: Path) -> di
 
 
 def media_preview_relative_path(values: dict[str, object], archive_dir: Path, relative_path: str) -> str:
+    """视频优先返回生成的预览图路径，否则直接复用媒体路径。"""
+
     if not relative_path:
         return ""
     is_video = values.get("media_type") == "video" or Path(relative_path).suffix.lower() in VIDEO_EXTENSIONS
@@ -315,6 +343,8 @@ def media_preview_relative_path(values: dict[str, object], archive_dir: Path, re
 
 
 def versioned_media_url(archive_dir: Path, relative_path: str) -> str:
+    """根据文件元数据追加缓存击穿用的版本参数。"""
+
     url = f"/api/v1/media-file/{relative_path}"
     try:
         stat = (archive_dir / relative_path).stat()
@@ -324,6 +354,8 @@ def versioned_media_url(archive_dir: Path, relative_path: str) -> str:
 
 
 def archive_relative_path(value: object, archive_dir: Path) -> str:
+    """把存储路径规范化为 API 可识别的 archive 相对路径。"""
+
     if not value:
         return ""
     path_text = str(value).replace("\\", "/")

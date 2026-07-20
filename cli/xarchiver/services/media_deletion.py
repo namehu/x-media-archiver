@@ -1,5 +1,11 @@
 from __future__ import annotations
 
+"""带审计能力的媒体删除流程。
+
+删除逻辑刻意保持保守：先锁定相关记录，再限制文件路径只能落在
+``archive/media`` 下，记录操作结果，最后才删除数据库引用。
+"""
+
 from collections.abc import Mapping
 from dataclasses import dataclass
 from pathlib import Path
@@ -20,11 +26,15 @@ ACTIVE_ITEM_STATUSES = ("pending", "blocked", "processing", "failed_retryable")
 
 @dataclass(frozen=True)
 class DeleteFile:
+    """待删除的文件对象，以及它是否必须存在才算完整执行。"""
+
     path: Path
     required: bool
 
 
 class MediaFileDeleteError(OSError):
+    """包装文件系统异常，并附带已完成的部分删除统计。"""
+
     def __init__(self, cause: OSError, partial_result: dict[str, int]) -> None:
         super().__init__(str(cause))
         self.partial_result = partial_result
@@ -35,6 +45,8 @@ def delete_media_assets(
     operation_id: UUID,
     media_ids: list[int],
 ) -> dict[str, object]:
+    """原子化删除指定媒体资产，并写入审计记录。"""
+
     normalized_ids = list(dict.fromkeys(int(media_id) for media_id in media_ids))
     if not normalized_ids or len(normalized_ids) > 200:
         raise ArchiverError("invalid_media_ids")
@@ -82,7 +94,7 @@ def delete_media_assets(
 
             tweet_ids = list(dict.fromkeys(str(row["tweet_id"]) for row in assets))
             for tweet_id in tweet_ids:
-                # Advisory locks are the established cross-worker serialization mechanism.
+                # 事务级顾问锁是当前仓库既有的跨 worker 串行化机制。
                 cur.execute("select pg_advisory_xact_lock(hashtextextended(%s, 0))", (tweet_id,))
 
             active_sql, active_params = compile_query(
@@ -99,6 +111,8 @@ def delete_media_assets(
             _upsert_running_audit(cur, operation_id, normalized_ids, tweet_ids, bool(audit))
 
             try:
+                # 先删文件再删数据库记录，避免文件系统半失败时，数据库却已经
+                # 误报“媒体已删除”。
                 file_result = _delete_files(files)
                 _remove_empty_media_dirs(settings.archive_dir, files)
             except MediaFileDeleteError as exc:
@@ -184,6 +198,8 @@ def delete_media_assets(
 
 
 def _completed_result(operation_id: UUID) -> dict[str, object] | None:
+    """返回一个已完成删除操作的持久化结果。"""
+
     sql, params = compile_query(
         select(media_delete_operations.c.status, media_delete_operations.c.result).where(
             media_delete_operations.c.operation_id == operation_id
@@ -199,6 +215,8 @@ def _completed_result(operation_id: UUID) -> dict[str, object] | None:
 
 
 def _prior_partial_result(audit: Mapping[str, object] | None) -> dict[str, int]:
+    """从失败的审计记录中提取可复用的部分删除统计。"""
+
     if not audit or audit["status"] != "failed":
         return {"deleted_file_count": 0, "deleted_bytes": 0}
     value = audit.get("result")
@@ -216,6 +234,8 @@ def _upsert_running_audit(
     tweet_ids: list[str],
     exists: bool,
 ) -> None:
+    """插入或刷新当前操作对应的运行中审计记录。"""
+
     if exists:
         statement = (
             update(media_delete_operations)
@@ -241,6 +261,8 @@ def _upsert_running_audit(
 
 
 def _collect_delete_files(archive_dir: Path, assets: list[dict[str, object]]) -> list[DeleteFile]:
+    """收集主媒体文件，以及需要一并删除的预览图和缩略图。"""
+
     files: dict[str, DeleteFile] = {}
     for asset in assets:
         local_path = _safe_media_path(archive_dir, asset.get("local_path"))
@@ -259,6 +281,8 @@ def _collect_delete_files(archive_dir: Path, assets: list[dict[str, object]]) ->
 
 
 def _safe_media_path(archive_dir: Path, value: object) -> Path | None:
+    """解析路径，并确保它始终位于 ``archive/media`` 目录内。"""
+
     if not value:
         return None
     path_text = str(value).replace("\\", "/")
@@ -274,6 +298,8 @@ def _safe_media_path(archive_dir: Path, value: object) -> Path | None:
     if candidate.is_symlink():
         raise ArchiverError("invalid_media_delete_path")
     resolved = candidate.resolve()
+    # 只允许操作 ``archive/media`` 里的真实文件；符号链接、父级逃逸、
+    # 目录路径都直接拒绝。
     if media_root != resolved and media_root not in resolved.parents:
         raise ArchiverError("invalid_media_delete_path")
     if resolved.exists() and not resolved.is_file():
@@ -282,6 +308,8 @@ def _safe_media_path(archive_dir: Path, value: object) -> Path | None:
 
 
 def _delete_files(files: list[DeleteFile]) -> dict[str, int]:
+    """删除目标文件，并统计删除字节数与缺失文件数。"""
+
     deleted_file_count = 0
     deleted_bytes = 0
     missing_file_count = 0
@@ -312,6 +340,8 @@ def _delete_files(files: list[DeleteFile]) -> dict[str, int]:
 
 
 def _remove_empty_media_dirs(archive_dir: Path, files: list[DeleteFile]) -> None:
+    """尽力清理删除后已经变空的媒体目录。"""
+
     media_root = (archive_dir / "media").resolve()
     parents = sorted(
         {item.path.parent for item in files},

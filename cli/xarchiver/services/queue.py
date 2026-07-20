@@ -1,5 +1,11 @@
 from __future__ import annotations
 
+"""归档队列服务。
+
+这个模块负责围绕 archive run / item 做编排，包括提交、抢占、重试退避、
+暂停恢复停止，以及 worker 租约管理。
+"""
+
 import logging
 from pathlib import Path
 from threading import Event, Thread
@@ -46,10 +52,14 @@ SOURCE_BLOCKING_RUN_STATUSES = ("queued", "running", "paused")
 
 
 class WorkerLeaseLost(RuntimeError):
+    """当已领取条目被其他 worker 接管时抛出。"""
+
     pass
 
 
 class ArchiveItemLeaseHeartbeat:
+    """后台心跳线程，用来维持已领取归档条目的租约。"""
+
     def __init__(self, item_ids: list[int], worker_id: str | None) -> None:
         self.item_ids = item_ids
         self.worker_id = worker_id
@@ -85,6 +95,8 @@ def submit_archive_batch(
     input_path: str | None = None,
     source_id: int | None = None,
 ) -> dict[str, object]:
+    """规范化输入记录，并创建一个排队中的归档运行。"""
+
     rows = normalize_records(records, trigger_type)
     unique_rows = list({str(row["tweet_id"]): row for row in rows}.values())
     input_summary = {
@@ -137,6 +149,8 @@ def submit_archive_batch(
             run_id = IdRow.model_validate(dict(cur.fetchone())).id
             for row in unique_rows:
                 tweet_id = str(row["tweet_id"])
+                # 通过每条 tweet 的顾问锁做串行化，避免两个运行并发
+                # 判断同一条推文到底应该入队还是关联已有任务。
                 cur.execute("select pg_advisory_xact_lock(hashtextextended(%s, 0))", (tweet_id,))
                 cur.execute("select download_status from tweets where tweet_id = %s for update", (tweet_id,))
                 tweet_status = DownloadStatusRow.model_validate(dict(cur.fetchone())).download_status
@@ -215,6 +229,8 @@ def submit_archive_batch(
 
 
 def find_source_blocker(cur, source_id: int | None, exclude_run_id: int | None = None) -> int | None:
+    """返回当前阻塞同一 source 的活动或暂停运行。"""
+
     if source_id is None:
         return None
     params: list[object] = [source_id]
@@ -240,16 +256,22 @@ def find_source_blocker(cur, source_id: int | None, exclude_run_id: int | None =
 
 
 def submit_urls_file(path: Path) -> dict[str, object]:
+    """解析纯文本 URL 文件，并作为一批任务加入归档队列。"""
+
     rows = parse_url_rows(path, "cli_urls", path.as_posix())
     return submit_archive_batch(rows, "cli_urls", path.as_posix())
 
 
 def submit_jsonl_file(path: Path) -> dict[str, object]:
+    """解析 JSONL 导入文件，并作为一批任务加入归档队列。"""
+
     rows = parse_jsonl_rows(path)
     return submit_archive_batch(rows, "cli_jsonl", path.as_posix())
 
 
 def normalize_records(records: list[dict[str, Any]], trigger_type: str) -> list[dict[str, Any]]:
+    """把原始输入记录转换成标准归档运行载荷结构。"""
+
     if not records:
         raise ValueError("records_required")
     rows: list[dict[str, Any]] = []
@@ -274,6 +296,8 @@ def normalize_records(records: list[dict[str, Any]], trigger_type: str) -> list[
 
 
 def json_safe_value(value: Any) -> Any:
+    """在入库前把嵌套值转换成 JSON 安全的基础结构。"""
+
     if isinstance(value, dict):
         return {str(key): json_safe_value(item) for key, item in value.items()}
     if isinstance(value, list):
@@ -284,6 +308,8 @@ def json_safe_value(value: Any) -> Any:
 
 
 def fetch_tweet_statuses(tweet_ids: list[str]) -> dict[str, str]:
+    """批量读取推文当前下载状态，并按 tweet_id 建索引。"""
+
     if not tweet_ids:
         return {}
     with connect() as conn:
@@ -296,6 +322,8 @@ def fetch_tweet_statuses(tweet_ids: list[str]) -> dict[str, str]:
 
 
 def has_pending_download_work() -> bool:
+    """判断队列里是否还有可运行的归档条目。"""
+
     with connect() as conn:
         with conn.cursor() as cur:
             cur.execute(
@@ -310,6 +338,8 @@ def has_pending_download_work() -> bool:
 
 
 def process_next_queued_run(settings: Settings, worker_id: str | None = None) -> dict[str, object] | None:
+    """领取下一批可运行任务，执行处理，并收敛运行状态。"""
+
     claimed = claim_next_items(settings.retry_limit, getattr(settings, "queue_batch_size", 20), worker_id=worker_id)
     if not claimed:
         return None
@@ -324,6 +354,8 @@ def process_next_queued_run(settings: Settings, worker_id: str | None = None) ->
             update_processed_items(run_id, claimed, settings, pipeline, worker_id=worker_id)
             lease.ensure_active()
     except Exception as exc:
+        # 非租约类异常会回写到已领取条目上，避免运行一直卡在 processing，
+        # 同时给后续重试或收敛留出状态依据。
         if not isinstance(exc, WorkerLeaseLost):
             fail_processing_items(run_id, claimed, settings, str(exc), worker_id=worker_id)
         log_queue_event(
@@ -348,6 +380,8 @@ def claim_next_items(
     batch_size: int = 20,
     worker_id: str | None = None,
 ) -> list[ArchiveClaimedItemRow]:
+    """为某个 worker 原子领取下一批可执行归档条目。"""
+
     batch_size = max(1, int(batch_size))
     with connect() as conn:
         with conn.cursor() as cur:
@@ -422,6 +456,8 @@ def update_processed_items(
     pipeline: dict[str, object],
     worker_id: str | None = None,
 ) -> None:
+    """把下游推文状态回写成 archive_run_items 的最终条目状态。"""
+
     tweet_statuses = fetch_tweet_statuses([str(row["tweet_id"]) for row in claimed])
     item_errors = fetch_latest_item_errors([int(row["id"]) for row in claimed])
     with connect() as conn:
@@ -431,6 +467,7 @@ def update_processed_items(
                 retries = int(row["retry_count"]) + 1
                 tweet_status = tweet_statuses.get(tweet_id, "failed_retryable")
                 cancel_requested = bool(row.get("cancel_requested"))
+                # 队列条目的最终状态以下载流水线结束后的 tweet/media 结果为准。
                 if cancel_requested and tweet_status != "verified":
                     item_status = "cancelled"
                 elif tweet_status == "verified":
@@ -492,6 +529,8 @@ def fail_processing_items(
     error: str,
     worker_id: str | None = None,
 ) -> None:
+    """把当前已领取条目标记为 worker 级失败，并设置退避时间。"""
+
     with connect() as conn:
         with conn.cursor() as cur:
             for row in claimed:
@@ -531,6 +570,8 @@ def fail_processing_items(
 
 
 def update_run_after_processing(run_id: int, pipeline: dict[str, object] | None) -> None:
+    """在条目状态变化后，重新计算运行状态与结果摘要。"""
+
     task_counts = count_run_items(run_id)
     current = get_run(run_id)
     current_status = str(current.get("status")) if current else ""
@@ -546,6 +587,8 @@ def update_run_after_processing(run_id: int, pipeline: dict[str, object] | None)
         status = "completed_with_failures"
     else:
         status = "completed"
+    # 运行结果里既保存任务计数，也保存某一时刻的媒体库快照，方便 UI 在
+    # 不额外做复杂关联查询的情况下稳定展示摘要。
     input_summary = current.get("result", {}).get("input", {}) if current else {}
     media = pipeline.get("media") if pipeline else None
     result = build_run_result(input_summary, task_counts, media)
@@ -567,6 +610,8 @@ def update_run_after_processing(run_id: int, pipeline: dict[str, object] | None)
 
 
 def count_run_items(run_id: int) -> dict[str, int]:
+    """把队列条目按状态聚合成运行结果使用的任务摘要。"""
+
     counts = {
         "queued_count": 0,
         "blocked_count": 0,
@@ -616,6 +661,8 @@ def count_run_items(run_id: int) -> dict[str, int]:
 
 
 def release_next_blocked_source_run(source_id: int | None) -> int | None:
+    """当阻塞者清空后，释放同一 source 的下一个 blocked 运行。"""
+
     if source_id is None:
         return None
     with connect() as conn:
@@ -667,6 +714,8 @@ def release_next_blocked_source_run(source_id: int | None) -> int | None:
 
 
 def fetch_latest_item_errors(item_ids: list[int]) -> dict[int, dict[str, object]]:
+    """返回每个条目最新一条 download_attempt 错误信息。"""
+
     if not item_ids:
         return {}
     with connect() as conn:
@@ -695,6 +744,8 @@ def build_run_result(
     tasks: dict[str, int],
     media: dict[str, object] | None = None,
 ) -> dict[str, object]:
+    """构造持久化到 ``archive_runs.result`` 的结果载荷。"""
+
     return {
         "pipeline_version": "queue-v1",
         "scope": "submitted_batch",
@@ -732,6 +783,8 @@ def list_runs(
     failed_only: bool = False,
     source_id: int | None = None,
 ) -> list[ArchiveRunRow]:
+    """使用共享过滤构造器列出归档运行。"""
+
     sql, params = build_runs_query(
         status=status,
         tweet_id=tweet_id,
@@ -754,6 +807,8 @@ def list_runs_page(
     failed_only: bool = False,
     source_id: int | None = None,
 ) -> dict[str, object]:
+    """返回带总数信息的归档运行分页结果。"""
+
     rows = list_runs(limit=limit, offset=offset, status=status, tweet_id=tweet_id, failed_only=failed_only, source_id=source_id)
     total_count = count_runs(status=status, tweet_id=tweet_id, failed_only=failed_only, source_id=source_id)
     return {
@@ -771,6 +826,8 @@ def count_runs(
     failed_only: bool = False,
     source_id: int | None = None,
 ) -> int:
+    """按与 ``list_runs`` 相同的过滤条件统计归档运行数量。"""
+
     sql, params = build_count_runs_query(status=status, tweet_id=tweet_id, failed_only=failed_only, source_id=source_id)
     with connect() as conn:
         with conn.cursor() as cur:
@@ -786,6 +843,8 @@ def build_runs_query(
     limit: int = 50,
     offset: int = 0,
 ) -> tuple[str, dict[str, object]]:
+    """构造归档运行分页查询。"""
+
     statement = (
         select(
             archive_runs.c.id,
@@ -821,6 +880,8 @@ def build_count_runs_query(
     failed_only: bool = False,
     source_id: int | None = None,
 ) -> tuple[str, dict[str, object]]:
+    """构造与 ``build_runs_query`` 对应的数量查询。"""
+
     statement = select(func.count().cast(Integer).label("count")).select_from(archive_runs)
     statement = apply_runs_filters(
         statement,
@@ -839,6 +900,8 @@ def apply_runs_filters(
     failed_only: bool = False,
     source_id: int | None = None,
 ) -> Select:
+    """把可选的运行过滤条件应用到 SQLAlchemy 语句上。"""
+
     filters = build_runs_filters(status=status, tweet_id=tweet_id, failed_only=failed_only, source_id=source_id)
     if not filters:
         return statement
@@ -851,6 +914,8 @@ def build_runs_filters(
     failed_only: bool = False,
     source_id: int | None = None,
 ) -> list[ColumnElement[bool]]:
+    """构造可复用的运行过滤表达式，供列表和计数查询共用。"""
+
     filters: list[ColumnElement[bool]] = []
     if source_id is not None:
         filters.append(archive_runs.c.source_id == bindparam("source_id", source_id))
@@ -884,6 +949,8 @@ def build_runs_filters(
 
 
 def get_run(run_id: int) -> ArchiveRunRow | None:
+    """按 ID 读取单个归档运行。"""
+
     with connect() as conn:
         with conn.cursor() as cur:
             cur.execute(
@@ -901,6 +968,8 @@ def get_run(run_id: int) -> ArchiveRunRow | None:
 
 
 def get_run_detail(run_id: int) -> dict[str, object] | None:
+    """读取运行详情，以及其条目和最近下载尝试。"""
+
     run = get_run(run_id)
     if run is None:
         return None
@@ -944,6 +1013,8 @@ def get_run_detail(run_id: int) -> dict[str, object] | None:
 
 
 def retry_run(run_id: int) -> dict[str, object]:
+    """基于永久失败条目创建一次新的手动重试运行。"""
+
     detail = get_run_detail(run_id)
     if detail is None:
         raise ValueError("archive_run_not_found")
@@ -964,6 +1035,8 @@ def retry_run(run_id: int) -> dict[str, object]:
 
 
 def pause_run(run_id: int) -> dict[str, object]:
+    """暂停 queued/running 状态的运行，阻止后续继续领新任务。"""
+
     run = get_run(run_id)
     if run is None:
         raise ValueError("archive_run_not_found")
@@ -988,6 +1061,8 @@ def pause_run(run_id: int) -> dict[str, object]:
 
 
 def resume_run(run_id: int) -> dict[str, object]:
+    """恢复一个已暂停运行，并遵守同 source 阻塞规则。"""
+
     run = get_run(run_id)
     if run is None:
         raise ValueError("archive_run_not_found")
@@ -1028,6 +1103,8 @@ def resume_run(run_id: int) -> dict[str, object]:
 
 
 def stop_run(run_id: int) -> dict[str, object]:
+    """取消排队条目，并请求正在处理的条目自然停机。"""
+
     run = get_run(run_id)
     if run is None:
         raise ValueError("archive_run_not_found")
@@ -1080,6 +1157,8 @@ def cancel_run_items(
     item_ids: list[int] | None = None,
     tweet_ids: list[str] | None = None,
 ) -> dict[str, object]:
+    """只取消运行内的部分条目，而不是停止整个运行。"""
+
     run = get_run(run_id)
     if run is None:
         raise ValueError("archive_run_not_found")
@@ -1133,6 +1212,8 @@ def cancel_run_items(
 
 
 def submit_requeue_batch(statuses: list[str], limit: int | None = None) -> dict[str, object]:
+    """把指定终态中的推文重新放回队列。"""
+
     sql, params = build_requeue_urls_query(statuses=statuses, limit=limit)
     with connect() as conn:
         with conn.cursor() as cur:
@@ -1146,6 +1227,8 @@ def submit_requeue_batch(statuses: list[str], limit: int | None = None) -> dict[
 
 
 def build_requeue_urls_query(statuses: list[str], limit: int | None = None) -> tuple[str, dict[str, object]]:
+    """构造批量重新入队使用的查询语句。"""
+
     statement = (
         select(tweets.c.url)
         .select_from(tweets)
@@ -1158,6 +1241,8 @@ def build_requeue_urls_query(statuses: list[str], limit: int | None = None) -> t
 
 
 def fetch_retry_urls(run_id: int) -> list[UrlRow]:
+    """读取某次历史运行中永久失败条目的 URL。"""
+
     with connect() as conn:
         with conn.cursor() as cur:
             cur.execute(
@@ -1173,6 +1258,8 @@ def fetch_retry_urls(run_id: int) -> list[UrlRow]:
 
 
 def reset_tweets_for_retry(tweet_ids: list[str]) -> None:
+    """重置推文状态，使下载流水线把它们重新视为 pending。"""
+
     with connect() as conn:
         with conn.cursor() as cur:
             cur.execute(
@@ -1186,10 +1273,14 @@ def reset_tweets_for_retry(tweet_ids: list[str]) -> None:
 
 
 def log_queue_event(event: str, **details: object) -> None:
-    logger.info("Archive queue event: %s", event, extra={"event": event, "details": details})
+    """通过 Python logger 输出结构化队列日志事件。"""
+
+    logger.info("归档队列事件：%s", event, extra={"event": event, "details": details})
 
 
 def heartbeat_archive_items(item_ids: list[int], worker_id: str) -> bool:
+    """为当前 worker 已领取的归档条目续租。"""
+
     if not item_ids:
         return True
     with connect() as conn:
@@ -1209,6 +1300,8 @@ def heartbeat_archive_items(item_ids: list[int], worker_id: str) -> bool:
 
 
 def count_expired_archive_item_leases() -> int:
+    """统计处理租约已经过期的归档条目数。"""
+
     with connect() as conn:
         with conn.cursor() as cur:
             cur.execute(
