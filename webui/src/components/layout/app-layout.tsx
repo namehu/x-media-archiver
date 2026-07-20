@@ -1,6 +1,6 @@
 import { NavLink, Outlet, useLocation, useNavigate, useNavigationType } from "react-router-dom";
 import { useEffect, useMemo, useState } from "react";
-import { Menu, Monitor, Moon, Sun, type LucideIcon } from "lucide-react";
+import { Bug, Menu, Monitor, Moon, Sun, type LucideIcon } from "lucide-react";
 import { useQuery } from "@tanstack/react-query";
 import { useServerEvents } from "../../hooks/useServerEvents";
 import { LiveIndicator } from "../ui/live-indicator";
@@ -9,7 +9,9 @@ import { Badge } from "../ui/badge";
 import { Button } from "../ui/button";
 import { Separator } from "../ui/separator";
 import { Sheet, SheetContent, SheetHeader, SheetTitle } from "../ui/sheet";
+import { Tooltip, TooltipContent, TooltipTrigger } from "../ui/tooltip";
 import { apiGet, type HealthDetail } from "../../lib/api";
+import { buildDebuggerSearch, persistDebuggerMode, resolveDebuggerMode, syncDebuggerMode } from "../../lib/debugger-mode";
 import { useTheme, type Theme } from "../../lib/theme";
 import { cn } from "../../lib/utils";
 import { AccountMenu } from "../auth/account-menu";
@@ -72,6 +74,7 @@ export function AppLayout() {
   const queueWork = (health?.queue.pending_items ?? 0) + (health?.queue.processing_items ?? 0);
   const activeScans = health?.sources.active_scan_runs ?? 0;
   const recentErrors = health?.recent_errors.length ?? 0;
+  const debuggerModeEnabled = resolveDebuggerMode(location.search).enabled;
 
   useEffect(() => {
     if (scrollContainer && navigationType !== "POP") scrollContainer.scrollTo({ top: 0 });
@@ -82,6 +85,20 @@ export function AppLayout() {
     setTheme(next);
   };
   const ThemeIcon = themeIcons[theme];
+  const toggleDebuggerMode = () => {
+    const nextEnabled = !debuggerModeEnabled;
+
+    persistDebuggerMode(nextEnabled);
+    syncDebuggerMode(nextEnabled);
+    navigate(
+      {
+        pathname: location.pathname,
+        search: buildDebuggerSearch(location.search, nextEnabled),
+        hash: location.hash,
+      },
+      { replace: true },
+    );
+  };
 
   const eventLabel: Record<string, string> = {
     connected: "实时事件已连接",
@@ -213,6 +230,26 @@ export function AppLayout() {
               搜索
               <span className="ml-2 text-fg-tertiary">⌘K</span>
             </Button>
+            <Tooltip>
+              <TooltipTrigger asChild>
+                <Button
+                  variant="ghost"
+                  size="icon"
+                  onClick={toggleDebuggerMode}
+                  className={cn(
+                    "text-fg-tertiary hover:text-fg-primary",
+                    debuggerModeEnabled && "bg-brand-soft/15 text-brand hover:bg-brand-soft/20 hover:text-brand",
+                  )}
+                  title={debuggerModeEnabled ? "关闭媒体调试模式" : "开启媒体调试模式"}
+                  aria-label={debuggerModeEnabled ? "关闭媒体调试模式" : "开启媒体调试模式"}
+                >
+                  <Bug className="h-4 w-4" />
+                </Button>
+              </TooltipTrigger>
+              <TooltipContent>
+                {debuggerModeEnabled ? "媒体调试已开启：隐藏图片和视频" : "媒体调试：隐藏图片和视频"}
+              </TooltipContent>
+            </Tooltip>
             <Button
               variant="ghost"
               size="icon"
