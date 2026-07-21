@@ -130,6 +130,8 @@ class DownloadAttemptRow(RowModel):
     exit_code: int | None = None
     error_category: str | None = None
     error_message: str | None = None
+    stderr_excerpt: str | None = None
+    log_stream_id: int | None = None
     started_at: datetime | None = None
     finished_at: datetime | None = None
 

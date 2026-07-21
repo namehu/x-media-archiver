@@ -1646,6 +1646,10 @@ export interface components {
             error_category?: string | null;
             /** Error Message */
             error_message?: string | null;
+            /** Stderr Excerpt */
+            stderr_excerpt?: string | null;
+            /** Log Stream Id */
+            log_stream_id?: number | null;
             /** Started At */
             started_at?: string | null;
             /** Finished At */

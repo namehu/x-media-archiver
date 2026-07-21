@@ -6,16 +6,30 @@ from unittest.mock import patch
 
 from xarchiver.db import connect
 from xarchiver.services.operation_logs import (
+    append_operation_log_entries,
     append_operation_log_entry,
     close_operation_log_stream,
     create_operation_log_stream,
     list_operation_log_streams,
     parse_gallery_dl_log_level,
     read_operation_log_entries,
+    redact_sensitive_text,
 )
 
 
 class OperationLogServiceTests(unittest.TestCase):
+    def test_redact_sensitive_text_covers_headers_and_url_query_tokens(self) -> None:
+        value = redact_sensitive_text(
+            "Authorization: Bearer secret-token\n"
+            "x-csrf-token: csrf-value\n"
+            "https://example.test/file?token=secret&sig=signature"
+        )
+
+        self.assertNotIn("secret-token", value)
+        self.assertNotIn("csrf-value", value)
+        self.assertNotIn("signature", value)
+        self.assertIn("[redacted]", value)
+
     def tearDown(self) -> None:
         with connect() as conn:
             with conn.cursor() as cur:
@@ -47,6 +61,32 @@ class OperationLogServiceTests(unittest.TestCase):
         self.assertIn("auth_token=[redacted]", only_error["entries"][0]["message"])
         self.assertGreater(int(recent["next_cursor"]), 0)
         self.assertGreaterEqual(page["total_count"], 1)
+
+    def test_batch_append_writes_multiple_entries_with_one_log_event(self) -> None:
+        with TemporaryDirectory() as tmpdir:
+            settings = SimpleNamespace(archive_dir=Path(tmpdir), operation_log_max_bytes=10_000)
+            with patch("xarchiver.services.operation_logs.get_settings", return_value=settings), patch(
+                "xarchiver.services.operation_logs.publish_event"
+            ) as publish:
+                stream_id = create_operation_log_stream(
+                    "download_job",
+                    9004,
+                    "logs/download-logs/job-9004.jsonl",
+                    {"test_case": "operation_logs"},
+                )
+                written = append_operation_log_entries(
+                    stream_id,
+                    [
+                        {"level": "info", "component": "yt-dlp.stdout", "message": "one"},
+                        {"level": "error", "component": "yt-dlp.stderr", "message": "two"},
+                    ],
+                )
+                result = read_operation_log_entries(stream_id, limit=10)
+
+        self.assertEqual(len(written), 2)
+        self.assertEqual([entry["message"] for entry in result["entries"]], ["one", "two"])
+        publish.assert_called_once()
+        self.assertEqual(publish.call_args.args[2]["entry_count"], 2)
 
     def test_missing_log_file_returns_unavailable_without_losing_stream(self) -> None:
         with TemporaryDirectory() as tmpdir:

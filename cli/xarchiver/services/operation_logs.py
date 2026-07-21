@@ -23,6 +23,12 @@ SENSITIVE_PATTERNS = (
     (re.compile(r"(auth_token=)[^\s;&]+", re.IGNORECASE), r"\1[redacted]"),
     (re.compile(r"(ct0=)[^\s;&]+", re.IGNORECASE), r"\1[redacted]"),
     (re.compile(r"(cookie:\s*)[^\n\r]+", re.IGNORECASE), r"\1[redacted]"),
+    (re.compile(r"(authorization:\s*(?:bearer|basic)\s+)[^\s\n\r]+", re.IGNORECASE), r"\1[redacted]"),
+    (re.compile(r"(x-(?:csrf-token|guest-token|api-key):\s*)[^\s\n\r]+", re.IGNORECASE), r"\1[redacted]"),
+    (
+        re.compile(r"([?&](?:access_token|api_key|auth_token|ct0|key|oauth_token|signature|sig|token)=)[^&#\s]+", re.IGNORECASE),
+        r"\1[redacted]",
+    ),
     (re.compile(r"(postgres(?:ql)?(?:\+psycopg)?://[^:\s]+:)[^@\s]+@", re.IGNORECASE), r"\1[redacted]@"),
 )
 
@@ -64,11 +70,46 @@ def append_operation_log_entry(
 ) -> dict[str, Any] | None:
     """追加一条结构化日志，并原子更新流级统计信息。"""
 
-    level = normalize_log_level(level)
-    message = redact_sensitive_text(message).strip()
-    raw = redact_sensitive_text(raw).rstrip("\n\r") if raw is not None else None
-    if not message and not raw and exception is None:
-        return None
+    entries = append_operation_log_entries(
+        stream_id,
+        [
+            {
+                "level": level,
+                "component": component,
+                "message": message,
+                "raw": raw,
+                "context": context,
+                "exception": exception,
+            }
+        ],
+    )
+    return entries[0] if entries else None
+
+
+def append_operation_log_entries(stream_id: int, entries: list[dict[str, Any]]) -> list[dict[str, Any]]:
+    """批量追加日志，以一次数据库事务和一次事件通知收敛高频输出。"""
+
+    prepared_entries: list[dict[str, Any]] = []
+    for value in entries:
+        level = normalize_log_level(str(value.get("level") or "info"))
+        message = redact_sensitive_text(str(value.get("message") or "")).strip()
+        raw_value = value.get("raw")
+        raw = redact_sensitive_text(str(raw_value)).rstrip("\n\r") if raw_value is not None else None
+        exception = value.get("exception")
+        if not message and not raw and exception is None:
+            continue
+        prepared_entries.append(
+            build_log_entry(
+                level,
+                str(value.get("component") or "xarchiver"),
+                message or raw or "",
+                raw=raw,
+                context=value.get("context") if isinstance(value.get("context"), dict) else None,
+                exception=exception if isinstance(exception, BaseException) else None,
+            )
+        )
+    if not prepared_entries:
+        return []
 
     with connect() as conn:
         with conn.cursor() as cur:
@@ -84,37 +125,45 @@ def append_operation_log_entry(
             )
             row = cur.fetchone()
             if row is None:
-                return None
+                return []
             if row["is_truncated"]:
-                return None
+                return []
 
-            entry = build_log_entry(level, component, message or raw or "", raw=raw, context=context, exception=exception)
-            encoded = (json.dumps(entry, ensure_ascii=False, default=str, separators=(",", ":")) + "\n").encode("utf-8")
             current_size = int(row["byte_size"] or 0)
             max_bytes = int(get_settings().operation_log_max_bytes)
-            if current_size + len(encoded) > max_bytes:
-                # 达到体积上限后，只再补一条告警日志，并把流标记为已截断，
-                # 后续不再继续膨胀。
-                entry = build_log_entry(
-                    "warning",
-                    "xarchiver",
-                    f"操作日志达到 {max_bytes} 字节后已截断。",
-                    context=context,
-                )
+            accepted_entries: list[dict[str, Any]] = []
+            encoded_entries: list[bytes] = []
+            encoded_size = 0
+            is_truncated = False
+            for entry in prepared_entries:
                 encoded = (json.dumps(entry, ensure_ascii=False, default=str, separators=(",", ":")) + "\n").encode("utf-8")
+                if current_size + encoded_size + len(encoded) <= max_bytes:
+                    accepted_entries.append(entry)
+                    encoded_entries.append(encoded)
+                    encoded_size += len(encoded)
+                    continue
+                # 达到体积上限后，只补一条告警并停止接收当前批剩余输出。
+                warning = build_log_entry("warning", "xarchiver", f"操作日志达到 {max_bytes} 字节后已截断。")
+                accepted_entries.append(warning)
+                encoded_entries.append(
+                    (json.dumps(warning, ensure_ascii=False, default=str, separators=(",", ":")) + "\n").encode("utf-8")
+                )
                 is_truncated = True
-            else:
-                is_truncated = False
+                break
+            if not accepted_entries:
+                return []
 
             path = resolve_operation_log_path(str(row["log_path"]))
             path.parent.mkdir(parents=True, exist_ok=True)
             with path.open("ab") as handle:
-                handle.write(encoded)
+                handle.writelines(encoded_entries)
 
-            line_count = int(row["line_count"] or 0) + 1
-            byte_size = current_size + len(encoded)
+            line_count = int(row["line_count"] or 0) + len(accepted_entries)
+            byte_size = current_size + encoded_size + (len(encoded_entries[-1]) if is_truncated else 0)
             level_counts = dict(row["level_counts"] or {})
-            level_counts[entry["level"]] = int(level_counts.get(entry["level"], 0)) + 1
+            for entry in accepted_entries:
+                level_counts[entry["level"]] = int(level_counts.get(entry["level"], 0)) + 1
+            last_entry = accepted_entries[-1]
             cur.execute(
                 """
                 update operation_log_streams
@@ -131,8 +180,8 @@ def append_operation_log_entry(
                     line_count,
                     byte_size,
                     Jsonb(level_counts),
-                    entry["level"],
-                    entry["message"],
+                    last_entry["level"],
+                    last_entry["message"],
                     is_truncated,
                     stream_id,
                 ),
@@ -146,10 +195,11 @@ def append_operation_log_entry(
             "stream_id": stream_id,
             "scope_type": row["scope_type"],
             "scope_id": row["scope_id"],
-            "level": entry["level"],
+            "level": last_entry["level"],
+            "entry_count": len(accepted_entries),
         },
     )
-    return entry
+    return accepted_entries
 
 
 def close_operation_log_stream(stream_id: int) -> None:

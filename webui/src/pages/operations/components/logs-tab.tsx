@@ -16,11 +16,13 @@ const PAGE_SIZE = 50;
 
 export function LogsTab({ initialStreamId }: LogsTabProps) {
   const [level, setLevel] = React.useState("");
+  const [scopeType, setScopeType] = React.useState("");
   const [sourceId, setSourceId] = React.useState("");
   const [scanRunId, setScanRunId] = React.useState(initialStreamId ? "" : "");
+  const [downloadJobId, setDownloadJobId] = React.useState("");
   const [keyword, setKeyword] = React.useState("");
   const [selectedStreamId, setSelectedStreamId] = React.useState<number | null>(initialStreamId ?? null);
-  const queryString = buildLogStreamsQuery({ level, sourceId, scanRunId, keyword });
+  const queryString = buildLogStreamsQuery({ level, scopeType, sourceId, scanRunId, downloadJobId, keyword });
   const streamsQuery = useQuery({
     queryKey: ["operation-log-streams", queryString],
     queryFn: () => apiGet<OperationLogStreamsPageResponse>(`/api/v1/log-streams?limit=${PAGE_SIZE}${queryString}`),
@@ -42,7 +44,12 @@ export function LogsTab({ initialStreamId }: LogsTabProps) {
           </div>
         </CardHeader>
         <CardContent className="space-y-4">
-          <div className="grid gap-2 md:grid-cols-4">
+          <div className="grid gap-2 md:grid-cols-3 xl:grid-cols-6">
+            <Select value={scopeType} onChange={(event) => setScopeType(event.target.value)}>
+              <option value="">全部类型</option>
+              <option value="source_scan">扫描</option>
+              <option value="download_job">下载</option>
+            </Select>
             <Select value={level} onChange={(event) => setLevel(event.target.value)}>
               <option value="">全部级别</option>
               <option value="debug">debug</option>
@@ -53,6 +60,7 @@ export function LogsTab({ initialStreamId }: LogsTabProps) {
             </Select>
             <Input value={sourceId} onChange={(event) => setSourceId(event.target.value)} placeholder="来源 ID" />
             <Input value={scanRunId} onChange={(event) => setScanRunId(event.target.value)} placeholder="扫描批次 ID" />
+            <Input value={downloadJobId} onChange={(event) => setDownloadJobId(event.target.value)} placeholder="下载 Job ID" />
             <Input value={keyword} onChange={(event) => setKeyword(event.target.value)} placeholder="关键字" />
           </div>
           <div className="overflow-hidden rounded-md border border-border-subtle">
@@ -75,7 +83,7 @@ export function LogsTab({ initialStreamId }: LogsTabProps) {
                   >
                     <TableCell>
                       <button type="button" className="text-left font-semibold text-brand hover:text-brand-hover">
-                        {stream.scope_type} #{stream.scope_id}
+                        {scopeTypeLabel(stream.scope_type)} #{stream.scope_id}
                       </button>
                       <div className="text-xs text-fg-secondary">{stream.log_path}</div>
                     </TableCell>
@@ -107,8 +115,9 @@ function LogStreamDetail({ streamId, stream }: { streamId: number | null; stream
         `/api/v1/log-streams/${streamId}?limit=300${level ? `&level=${encodeURIComponent(level)}` : ""}`,
       ),
     enabled: Boolean(streamId),
-    refetchInterval: stream && !stream.closed_at ? 3000 : false,
+    refetchInterval: stream?.closed_at ? false : 3000,
   });
+  const effectiveStream = stream ?? query.data?.stream ?? null;
   const entries = query.data?.entries ?? [];
   return (
     <Card>
@@ -126,13 +135,13 @@ function LogStreamDetail({ streamId, stream }: { streamId: number | null; stream
         </div>
       </CardHeader>
       <CardContent className="space-y-3">
-        {stream ? (
+        {effectiveStream ? (
           <div className="grid gap-2 rounded-md bg-bg-muted p-3 text-xs text-fg-secondary">
-            <span>{stream.log_path}</span>
+            <span>{effectiveStream.log_path}</span>
             <span>
-              大小: {formatBytes(stream.byte_size)} · 行数: {stream.line_count}
+              大小: {formatBytes(effectiveStream.byte_size)} · 行数: {effectiveStream.line_count}
             </span>
-            {stream.is_truncated ? <span className="text-warning">日志已达到大小上限，后续详细输出已截断。</span> : null}
+            {effectiveStream.is_truncated ? <span className="text-warning">日志已达到大小上限，后续详细输出已截断。</span> : null}
           </div>
         ) : (
           <p className="text-sm text-fg-secondary">选择一个日志流查看详情。</p>
@@ -159,15 +168,32 @@ function LogLevelBadge({ level }: { level?: string | null }) {
   return <Badge tone="secondary">{level}</Badge>;
 }
 
-function buildLogStreamsQuery(filters: { level: string; sourceId: string; scanRunId: string; keyword: string }) {
+function buildLogStreamsQuery(filters: {
+  level: string;
+  scopeType: string;
+  sourceId: string;
+  scanRunId: string;
+  downloadJobId: string;
+  keyword: string;
+}) {
   const params = new URLSearchParams();
-  params.set("scope_type", "source_scan");
+  if (filters.scopeType) params.set("scope_type", filters.scopeType);
   if (filters.level) params.set("level", filters.level);
   if (filters.sourceId.trim()) params.set("source_id", filters.sourceId.trim());
   if (filters.scanRunId.trim()) params.set("scan_run_id", filters.scanRunId.trim());
+  if (filters.downloadJobId.trim()) {
+    params.set("scope_type", "download_job");
+    params.set("scope_id", filters.downloadJobId.trim());
+  }
   if (filters.keyword.trim()) params.set("keyword", filters.keyword.trim());
   const text = params.toString();
   return text ? `&${text}` : "";
+}
+
+function scopeTypeLabel(value: string) {
+  if (value === "source_scan") return "扫描";
+  if (value === "download_job") return "下载";
+  return value;
 }
 
 function formatLogEntry(entry: OperationLogEntriesResponse["entries"][number]) {

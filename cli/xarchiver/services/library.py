@@ -17,6 +17,7 @@ from xarchiver.exporter import (
 )
 from xarchiver.row_models import DownloadAttemptRow, RowModel, TweetDetailRow, TweetMediaAssetRow
 from xarchiver.search import count_search_media, list_author_options, search_media, search_post_feed
+from xarchiver.services.operation_logs import redact_sensitive_text
 from xarchiver.status import get_media_count, get_media_status_counts, get_status_counts
 
 VIDEO_EXTENSIONS = {".mp4", ".mov", ".m4v", ".webm"}
@@ -226,26 +227,22 @@ def get_tweet_detail(settings: Settings, tweet_id: str) -> dict[str, object] | N
 
             cur.execute(
                 """
-                select
-                    id,
-                    job_id,
-                    engine,
-                    status,
-                    exit_code,
-                    error_category,
-                    error_message,
-                    finished_at
-                from download_attempts
-                where tweet_id = %s
-                order by finished_at desc nulls last, id desc
+                select a.id, a.job_id, a.engine, a.status, a.exit_code,
+                       a.error_category, a.error_message, a.stderr_excerpt,
+                       j.log_stream_id, a.finished_at
+                from download_attempts a
+                left join download_jobs j on j.id = a.job_id
+                where a.tweet_id = %s
+                order by a.finished_at desc nulls last, a.id desc
                 limit 20
                 """,
                 (tweet_id,),
             )
-            attempts = [
-                dict(DownloadAttemptRow.model_validate(dict(row)))
-                for row in cur.fetchall()
-            ]
+            attempts = []
+            for row in cur.fetchall():
+                value = dict(row)
+                value["stderr_excerpt"] = redact_sensitive_text(value.get("stderr_excerpt")) or None
+                attempts.append(dict(DownloadAttemptRow.model_validate(value)))
 
     return {"tweet": dict(tweet), "media": media, "attempts": attempts}
 

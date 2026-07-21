@@ -39,6 +39,7 @@ from xarchiver.row_models import (
     UrlRow,
 )
 from xarchiver.services.library import get_library_snapshot
+from xarchiver.services.operation_logs import redact_sensitive_text
 from xarchiver.sql_builder import compile_query
 from xarchiver.tables import archive_run_items, archive_runs, tweets
 from xarchiver.workflow import process_tweet_scope
@@ -992,16 +993,20 @@ def get_run_detail(run_id: int) -> dict[str, object] | None:
             if item_ids:
                 cur.execute(
                     """
-                    select id, archive_run_item_id, job_id, tweet_id, engine, status, exit_code,
-                           error_category, error_message, started_at, finished_at
-                    from download_attempts
-                    where archive_run_item_id = any(%s)
-                    order by archive_run_item_id, id desc
+                    select a.id, a.archive_run_item_id, a.job_id, a.tweet_id, a.engine, a.status, a.exit_code,
+                           a.error_category, a.error_message, a.stderr_excerpt, j.log_stream_id,
+                           a.started_at, a.finished_at
+                    from download_attempts a
+                    left join download_jobs j on j.id = a.job_id
+                    where a.archive_run_item_id = any(%s)
+                    order by a.archive_run_item_id, a.id desc
                     """,
                     (item_ids,),
                 )
                 for attempt in cur.fetchall():
-                    attempt_row = ArchiveRunAttemptRow.model_validate(dict(attempt))
+                    value = dict(attempt)
+                    value["stderr_excerpt"] = redact_sensitive_text(value.get("stderr_excerpt")) or None
+                    attempt_row = ArchiveRunAttemptRow.model_validate(value)
                     attempts_by_item[int(attempt_row.archive_run_item_id)].append(dict(attempt_row))
     return {
         **dict(run),

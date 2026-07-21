@@ -134,6 +134,8 @@ export type TweetDetail = {
     exit_code?: number | null;
     error_category?: string | null;
     error_message?: string | null;
+    stderr_excerpt?: string | null;
+    log_stream_id?: number | null;
     finished_at?: string | null;
   }>;
 };

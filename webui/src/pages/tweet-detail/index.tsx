@@ -1,7 +1,7 @@
 import { useMemo, useState } from "react";
 import { useQuery } from "@tanstack/react-query";
 import { CalendarDays, ExternalLink, FileText, Image as ImageIcon, Images, Loader2, RotateCcw } from "lucide-react";
-import { useParams } from "react-router-dom";
+import { Link, useParams } from "react-router-dom";
 import { apiGet, type MediaRow, type TweetDetail } from "../../lib/api";
 import { errorLabel, mediaTypeLabel, statusLabel } from "../../lib/formatters";
 import { formatDateTime } from "../../lib/utils";
@@ -271,6 +271,21 @@ function AttemptsTimeline({ attempts, title, emptyText }: { attempts: Attempt[];
                       ? errorLabel(attempt.error_category || attempt.error_message)
                       : "ok"}
                   </p>
+                  {attempt.stderr_excerpt ? (
+                    <pre className="mt-2 max-h-36 overflow-auto whitespace-pre-wrap break-words rounded-md bg-bg-elevated p-2 font-mono text-xs text-fg-secondary">
+                      {attempt.stderr_excerpt}
+                    </pre>
+                  ) : null}
+                  {attempt.log_stream_id ? (
+                    <Link
+                      to={`/operations?tab=logs&streamId=${attempt.log_stream_id}`}
+                      className="mt-2 inline-flex text-xs font-semibold text-brand hover:text-brand-hover"
+                    >
+                      查看 Job 日志
+                    </Link>
+                  ) : (
+                    <p className="mt-2 text-xs text-fg-tertiary">该历史任务未保存完整日志。</p>
+                  )}
                 </div>
               </li>
             ))}

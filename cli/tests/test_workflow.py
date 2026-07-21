@@ -39,6 +39,20 @@ class WorkflowTests(unittest.TestCase):
         self.assertEqual(download.call_args_list[0].kwargs["archive_run_id"], 9)
         self.assertEqual(download.call_args_list[0].kwargs["run_item_ids"], {"1": 13})
 
+    def test_scoped_pipeline_skips_ytdlp_when_gallery_dl_downloaded_every_tweet(self) -> None:
+        settings = SimpleNamespace()
+        gallery_result = {"job_id": 1, "count": 1, "media_backfill": {"media_ids": [7], "tweet_ids": ["1"]}}
+        with (
+            patch("xarchiver.workflow.download", return_value=gallery_result) as download,
+            patch("xarchiver.workflow.verify_media_assets", return_value={"verified": 1, "missing": 0, "corrupt": 0}),
+            patch("xarchiver.workflow.get_library_snapshot", return_value={"media_total": 1, "verified_total": 1}),
+        ):
+            result = process_tweet_scope(["1"], settings)
+
+        download.assert_called_once()
+        self.assertEqual(result["download"]["yt_dlp"]["job_id"], None)
+        self.assertEqual(result["download"]["yt_dlp_candidate_count"], 0)
+
     def test_archive_urls_recovers_interrupted_runs_before_import(self) -> None:
         settings = SimpleNamespace(stuck_timeout_minutes=120)
         with (

@@ -32,6 +32,14 @@ from xarchiver.db import connect
 from xarchiver.media import backfill_media_assets
 from xarchiver.row_models import DownloadCandidateRow, IdRow
 from xarchiver.services.cookies import resolve_cookie_content
+from xarchiver.services.operation_logs import (
+    append_operation_log_entries,
+    append_operation_log_entry,
+    close_operation_log_stream,
+    create_operation_log_stream,
+    parse_gallery_dl_log_level,
+    redact_sensitive_text,
+)
 from xarchiver.sql_builder import compile_query
 from xarchiver.tables import tweets
 
@@ -61,6 +69,7 @@ GALLERY_DL_OUTPUT_MODE = {
     "progress": f"{GALLERY_DL_PROGRESS_PREFIX}progress|{{0}}|{{1}}|0|0\n",
     "progress-total": f"{GALLERY_DL_PROGRESS_PREFIX}progress|{{0}}|{{1}}|{{2}}|{{3}}\n",
 }
+DOWNLOAD_LOG_BATCH_SIZE = 100
 
 
 @dataclass
@@ -108,6 +117,14 @@ def download(
         "dry_run" if dry_run else "running",
         archive_run_id,
     )
+    log_stream_id = get_download_job_log_stream_id(job_id)
+    append_download_log(
+        log_stream_id,
+        "info",
+        "download",
+        "下载任务已创建。",
+        context={"engine": engine, "tweet_count": len(tweets), "dry_run": dry_run},
+    )
     log_download_event(
         "download.job.started",
         job_id=job_id,
@@ -151,6 +168,7 @@ def download(
             run_item_ids,
         )
         mark_tweets_failed([tweet["tweet_id"] for tweet in tweets], "failed_retryable", category)
+        append_download_log(log_stream_id, "error", "download", f"Cookies 校验失败: {cookie_error}")
         finish_job(job_id, "failed", 0, len(tweets), category)
         log_download_event(
             "download.job.failed",
@@ -183,6 +201,7 @@ def download(
             run_item_ids,
         )
         mark_tweets_failed([tweet["tweet_id"] for tweet in tweets], "failed_retryable", category)
+        append_download_log(log_stream_id, "error", "download", f"下载器未安装: {executable}")
         finish_job(job_id, "failed", 0, len(tweets), f"{executable} not found")
         log_download_event(
             "download.job.failed",
@@ -207,13 +226,21 @@ def download(
         engine=engine,
         tweet_count=len(tweets),
     )
+    append_download_log(log_stream_id, "info", "download", f"启动 {engine} 下载器。")
     mark_run_items_progress(job_id, tweets, run_item_ids, f"{engine} 下载中")
     # 运行下载器并持续采集进度；成功后再做媒体回填。
-    result = run_command_with_progress(command, settings, job_id, tweets, run_item_ids, engine)
-    stderr_excerpt = result.stderr[-4000:] if result.stderr else None
+    try:
+        result = run_command_with_progress(command, settings, job_id, tweets, run_item_ids, engine, log_stream_id)
+    except Exception as exc:
+        append_download_log(log_stream_id, "error", "download", "下载器进程异常退出。", exception=exc)
+        finish_job(job_id, "failed", 0, len(tweets), ErrorCategory.WORKER_ERROR.value)
+        raise
+    raw_stderr_excerpt = result.stderr[-4000:] if result.stderr else None
+    stderr_excerpt = redact_sensitive_text(raw_stderr_excerpt) or None
 
     if result.returncode == 0:
         mark_run_items_progress(job_id, tweets, run_item_ids, "下载器完成，正在回填媒体")
+        append_download_log(log_stream_id, "info", "download", "下载器已完成，开始回填媒体索引。")
         backfill_result = backfill_media_assets(
             settings.archive_dir,
             tweet_ids=[tweet["tweet_id"] for tweet in tweets],
@@ -222,6 +249,13 @@ def download(
         downloaded_ids = set(backfill_result["tweet_ids"])
         downloaded = [tweet for tweet in tweets if tweet["tweet_id"] in downloaded_ids]
         missing = [tweet for tweet in tweets if tweet["tweet_id"] not in downloaded_ids]
+        append_download_log(
+            log_stream_id,
+            "info" if not missing else "warning",
+            "download",
+            "媒体回填完成。",
+            context={"downloaded_count": len(downloaded), "missing_count": len(missing)},
+        )
         mark_run_items_finished(downloaded, run_item_ids, media_sizes, "下载完成，等待校验")
         mark_run_items_progress(
             job_id,
@@ -278,7 +312,13 @@ def download(
             error_category=None if not missing else ErrorCategory.DOWNLOAD_NO_OUTPUT.value,
         )
     else:
-        category = classify_error(result.returncode, stderr_excerpt)
+        category = classify_error(result.returncode, raw_stderr_excerpt)
+        append_download_log(
+            log_stream_id,
+            "error",
+            "download",
+            f"下载器以退出码 {result.returncode} 结束: {category}。",
+        )
         status = (
             "failed_permanent"
             if category in {item.value for item in PERMANENT_DOWNLOAD_CATEGORIES}
@@ -533,7 +573,18 @@ def create_job(
             )
             job_id = IdRow.model_validate(dict(cur.fetchone())).id
         conn.commit()
-        return job_id
+    log_path = download_log_relative_path(job_id)
+    log_stream_id = create_operation_log_stream(
+        "download_job",
+        job_id,
+        log_path,
+        {"engine": engine, "archive_run_id": archive_run_id, "tweet_count": total_count},
+    )
+    with connect() as conn:
+        with conn.cursor() as cur:
+            cur.execute("update download_jobs set log_stream_id = %s where id = %s", (log_stream_id, job_id))
+        conn.commit()
+    return job_id
 
 
 def finish_job(job_id: int, status: str, success_count: int, failed_count: int, error: str | None) -> None:
@@ -564,6 +615,16 @@ def finish_job(job_id: int, status: str, success_count: int, failed_count: int, 
                 (status, success_count, failed_count, error, status, status, status, job_id),
             )
         conn.commit()
+    log_stream_id = get_download_job_log_stream_id(job_id)
+    append_download_log(
+        log_stream_id,
+        "error" if status == "failed" else "info",
+        "download",
+        f"下载任务结束: {status}。",
+        context={"success_count": success_count, "failed_count": failed_count, "error_category": error},
+    )
+    if log_stream_id is not None:
+        close_operation_log_stream(log_stream_id)
 
 
 def mark_run_items_progress(
@@ -794,6 +855,7 @@ def run_command_with_progress(
     candidate_tweets: list[dict[str, str]],
     run_item_ids: dict[str, int] | None,
     engine: str,
+    log_stream_id: int | None = None,
 ) -> subprocess.CompletedProcess[str]:
     """运行下载器命令，并在运行期间持续解析进度输出。"""
 
@@ -807,16 +869,28 @@ def run_command_with_progress(
     stderr_chunks: list[str] = []
     progress_state = DownloadProgressState(last_fallback_scan_at=time.monotonic())
     state_lock = Lock()
+    log_buffer_lock = Lock()
+    pending_log_entries: list[dict[str, object]] = []
     tweet_ids = [tweet["tweet_id"] for tweet in candidate_tweets]
     tweet_id_set = set(tweet_ids)
 
-    def read_stream(stream, chunks: list[str]) -> None:
+    def read_stream(stream, chunks: list[str], stream_name: str) -> None:
         """读取 stdout/stderr，并从中抽取下载进度信号。"""
 
         if stream is None:
             return
         for chunk in stream:
             chunks.append(chunk)
+            ready_entries = queue_download_log_entry(
+                pending_log_entries,
+                log_buffer_lock,
+                level=download_output_log_level(engine, stream_name, chunk),
+                component=f"{engine}.{stream_name}",
+                message=chunk.rstrip("\r\n") or f"{stream_name} 输出空行",
+                raw=chunk,
+            )
+            if ready_entries and log_stream_id is not None:
+                append_operation_log_entries(log_stream_id, ready_entries)
             if engine == "yt-dlp":
                 progress = parse_downloader_progress(chunk)
                 if not progress:
@@ -857,8 +931,8 @@ def run_command_with_progress(
                 run_item_ids,
             )
 
-    stdout_thread = Thread(target=read_stream, args=(process.stdout, stdout_chunks), daemon=True)
-    stderr_thread = Thread(target=read_stream, args=(process.stderr, stderr_chunks), daemon=True)
+    stdout_thread = Thread(target=read_stream, args=(process.stdout, stdout_chunks, "stdout"), daemon=True)
+    stderr_thread = Thread(target=read_stream, args=(process.stderr, stderr_chunks, "stderr"), daemon=True)
     stdout_thread.start()
     stderr_thread.start()
 
@@ -870,6 +944,7 @@ def run_command_with_progress(
     )
     while process.poll() is None:
         time.sleep(1)
+        flush_download_log_entries(log_stream_id, pending_log_entries, log_buffer_lock)
         current_at = time.monotonic()
         with state_lock:
             native_progress_seen = progress_state.native_progress_seen
@@ -960,6 +1035,7 @@ def run_command_with_progress(
     return_code = process.wait()
     stdout_thread.join(timeout=1)
     stderr_thread.join(timeout=1)
+    flush_download_log_entries(log_stream_id, pending_log_entries, log_buffer_lock)
     return subprocess.CompletedProcess(command, return_code, "".join(stdout_chunks), "".join(stderr_chunks))
 
 
@@ -1324,6 +1400,89 @@ def classify_error(exit_code: int, stderr: str | None) -> str:
     """根据 stderr 内容把下载失败归类到统一错误类别。"""
 
     return category_value(classify_x_error(stderr)) or ErrorCategory.UNKNOWN.value
+
+
+def download_log_relative_path(job_id: int) -> str:
+    """构造下载 Job 对应的 archive 相对 JSONL 路径。"""
+
+    return f"logs/download-logs/job-{job_id}.jsonl"
+
+
+def get_download_job_log_stream_id(job_id: int) -> int | None:
+    """读取下载 Job 的日志流关联；旧 Job 允许没有日志流。"""
+
+    with connect() as conn:
+        with conn.cursor() as cur:
+            cur.execute("select log_stream_id from download_jobs where id = %s", (job_id,))
+            row = cur.fetchone()
+    return int(row["log_stream_id"]) if row and row["log_stream_id"] is not None else None
+
+
+def append_download_log(
+    log_stream_id: int | None,
+    level: str,
+    component: str,
+    message: str,
+    *,
+    raw: str | None = None,
+    context: dict[str, object] | None = None,
+    exception: BaseException | None = None,
+) -> None:
+    """向下载日志流追加一条可审计记录；兼容旧 Job 无日志流。"""
+
+    if log_stream_id is not None:
+        append_operation_log_entry(log_stream_id, level, component, message, raw=raw, context=context, exception=exception)
+
+
+def queue_download_log_entry(
+    pending_entries: list[dict[str, object]],
+    lock: Lock,
+    *,
+    level: str,
+    component: str,
+    message: str,
+    raw: str,
+) -> list[dict[str, object]]:
+    """从下载器读取线程积累输出，交由主循环批量落盘。"""
+
+    with lock:
+        pending_entries.append(
+            {"level": level, "component": component, "message": message, "raw": raw}
+        )
+        if len(pending_entries) < DOWNLOAD_LOG_BATCH_SIZE:
+            return []
+        entries = pending_entries[:]
+        pending_entries.clear()
+    return entries
+
+
+def flush_download_log_entries(
+    log_stream_id: int | None,
+    pending_entries: list[dict[str, object]],
+    lock: Lock,
+) -> int:
+    """批量持久化已读取的下载器输出，并合并为一次日志事件。"""
+
+    if log_stream_id is None:
+        return 0
+    with lock:
+        entries = pending_entries[:]
+        pending_entries.clear()
+    if not entries:
+        return 0
+    return len(append_operation_log_entries(log_stream_id, entries))
+
+
+def download_output_log_level(engine: str, stream_name: str, line: str) -> str:
+    """按下载器输出和流来源推断适合筛选的日志级别。"""
+
+    if engine == "gallery-dl":
+        return parse_gallery_dl_log_level(line)
+    if re.match(r"^\s*ERROR:", line, re.IGNORECASE):
+        return "error"
+    if re.match(r"^\s*WARNING:", line, re.IGNORECASE):
+        return "warning"
+    return "info"
 
 
 def empty_backfill_result() -> dict[str, object]:

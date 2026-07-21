@@ -215,6 +215,7 @@ download_jobs = Table(
     Column("archive_run_id", BigInteger),
     Column("status", Text),
     Column("current_tweet_id", Text),
+    Column("log_stream_id", BigInteger),
     Column("last_progress_at", DateTime(timezone=True)),
     Column("created_at", DateTime(timezone=True)),
 )

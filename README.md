@@ -253,7 +253,7 @@ Archive Queue 支持粘贴 URL 或选择本地 TXT/JSONL 文件（浏览器侧�
 Sources 记录长期存在的 X/Twitter 来源，例如个人页、媒体页、likes、bookmarks、搜索页或手工集合。一个 source 可向同一 Archive Queue 提交发现的 tweet URL，同时保留 source-to-tweet 的可追溯关系。当前实现提供了可恢复的 source 模型、手动 discovered-URL 提交，以及用于 profile timeline 和用户媒体页的小批量 `gallery-dl` 扫描。source 扫描只记录 discovered tweets，不会自动提交到下载队列。准备下载受控批次时，需使用显式的 submit 动作。每次受控扫描会在 `archive_sources.cursor_state` 中记录其逻辑 batch window、重复/新增数量以及 cursor 诊断信息。
 
 Sources 列表支持按最近更新或创建时间正/倒序排序；置顶来源会持久化保存，并始终位于普通来源之前。
-2026-05-27 的真实验证表明，数值区间不是深层媒体历史的高效延续机制。source collector 现已持久化 Twitter extractor 的原生 continuation cursor，并将其用于历史批次。扫描只做发现记录，绝不自动提交下载。每次 source scan 尝试，以及因下载进行中导致的每次 defer，都会写入 `source_scan_runs`，包含其 range、cursor 快照、计数、结果与错误摘要。Sources 详情页展示最近 20 次扫描事件与累计统计，使得停滞的 history scan 可在重启后脱离容器日志进行诊断。运行中的扫描会将完整的 `gallery-dl` 日志以 JSONL 操作日志流形式写入 `archive/logs/source-scan-logs/`；数据库仅存储日志流 ID、相对路径、各级别计数器、最新进度等摘要字段。WebUI 的 source 日志面板和 `Operations -> Logs` 通过 API 读取这些日志流。
+2026-05-27 的真实验证表明，数值区间不是深层媒体历史的高效延续机制。source collector 现已持久化 Twitter extractor 的原生 continuation cursor，并将其用于历史批次。扫描只做发现记录，绝不自动提交下载。每次 source scan 尝试，以及因下载进行中导致的每次 defer，都会写入 `source_scan_runs`，包含其 range、cursor 快照、计数、结果与错误摘要。Sources 详情页展示最近 20 次扫描事件与累计统计，使得停滞的 history scan 可在重启后脱离容器日志进行诊断。运行中的扫描会将完整的 `gallery-dl` 日志以 JSONL 操作日志流形式写入 `archive/logs/source-scan-logs/`；下载任务同样会把脱敏后的 `gallery-dl` / `yt-dlp` stdout 与 stderr 写入 `archive/logs/download-logs/`。数据库仅存储日志流 ID、相对路径、各级别计数器、最新进度等摘要字段。WebUI 的 source 日志面板、推文详情和 `Operations -> Logs` 通过 API 读取这些日志流；升级前已完成的下载任务仅保留错误摘要。
 
 按钮含义与操作流程见 [`docs/source-scanning-workflow.md`](docs/source-scanning-workflow.md)，真实验证中发现的原生 cursor 阻塞问题见 [`docs/source-scanning-acceptance.md`](docs/source-scanning-acceptance.md)。
 

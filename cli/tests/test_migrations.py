@@ -33,6 +33,8 @@ class MigrationTests(unittest.TestCase):
                 "009_add_cookie_validation.py",
                 "010_add_source_pinning.py",
                 "011_add_media_delete_audit.py",
+                "012_add_download_job_log_stream.py",
+                "013_expand_operation_log_stream_scope.py",
             ],
         )
         upgrade.assert_called_once()
@@ -44,7 +46,7 @@ class MigrationTests(unittest.TestCase):
 
         with (
             patch("xarchiver.migrations.get_settings", return_value=settings),
-            patch("xarchiver.migrations.current_alembic_revision", return_value="011_add_media_delete_audit"),
+            patch("xarchiver.migrations.current_alembic_revision", return_value="013_expand_log_scope"),
             patch("xarchiver.migrations.command.upgrade") as upgrade,
         ):
             self.assertEqual(migrate(), [])
@@ -79,6 +81,8 @@ class MigrationTests(unittest.TestCase):
                 "009_add_cookie_validation.py",
                 "010_add_source_pinning.py",
                 "011_add_media_delete_audit.py",
+                "012_add_download_job_log_stream.py",
+                "013_expand_operation_log_stream_scope.py",
             ],
         )
 
@@ -104,6 +108,28 @@ class MigrationTests(unittest.TestCase):
         self.assertIn("create table if not exists media_assets", sql)
         self.assertIn("create table if not exists archive_run_items", sql)
         self.assertIn("create table if not exists source_scan_runs", sql)
+
+    def test_download_job_log_stream_revision_is_idempotent(self) -> None:
+        module = importlib.import_module("xarchiver.alembic.versions.012_add_download_job_log_stream")
+        captured_sql: list[str] = []
+
+        with patch.object(module.op, "execute", side_effect=captured_sql.append):
+            module.upgrade()
+
+        sql = captured_sql[0]
+        self.assertIn("add column if not exists log_stream_id bigint references operation_log_streams(id)", sql)
+        self.assertIn("idx_download_jobs_log_stream", sql)
+
+    def test_operation_log_scope_revision_allows_download_jobs(self) -> None:
+        module = importlib.import_module("xarchiver.alembic.versions.013_expand_operation_log_stream_scope")
+        captured_sql: list[str] = []
+
+        with patch.object(module.op, "execute", side_effect=captured_sql.append):
+            module.upgrade()
+
+        sql = captured_sql[0]
+        self.assertIn("drop constraint if exists chk_operation_log_streams_scope_type", sql)
+        self.assertIn("'download_job'", sql)
 
     def test_cookie_config_revision_contains_singleton_table(self) -> None:
         module = importlib.import_module("xarchiver.alembic.versions.002_add_cookie_config")

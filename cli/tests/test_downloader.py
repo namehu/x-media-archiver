@@ -11,14 +11,20 @@ from xarchiver.downloader import (
     DownloadProgressState,
     build_command,
     classify_error,
+    create_job,
+    download_log_relative_path,
+    download_output_log_level,
     estimate_downloaded_bytes_by_tweet,
     fetch_download_candidates,
+    finish_job,
+    flush_download_log_entries,
     format_sleep_range,
     handle_gallery_dl_progress_event,
     parse_downloader_progress,
     parse_gallery_dl_progress,
     parse_gallery_dl_size,
     prepare_cookies,
+    queue_download_log_entry,
     resolve_gallery_dl_progress_path,
     sample_current_download_path,
     should_run_fallback_scan,
@@ -55,6 +61,50 @@ class DownloaderTests(unittest.TestCase):
         self.assertEqual(classify_error(1, "HTTP Error 404: not found"), "invalid_url")
         self.assertEqual(classify_error(1, "Connection timed out"), "network_error")
         self.assertEqual(classify_error(2, "unexpected stderr"), "unknown")
+
+    def test_download_log_helpers_use_stable_path_and_levels(self) -> None:
+        self.assertEqual(download_log_relative_path(114), "logs/download-logs/job-114.jsonl")
+        self.assertEqual(download_output_log_level("yt-dlp", "stderr", "ERROR: unavailable"), "error")
+        self.assertEqual(download_output_log_level("yt-dlp", "stdout", "[download] 20%"), "info")
+        self.assertEqual(download_output_log_level("yt-dlp", "stderr", "0 errors so far"), "info")
+        self.assertEqual(download_output_log_level("gallery-dl", "stderr", "[warning] retry"), "warning")
+
+    def test_download_log_buffer_batches_stdout_and_stderr(self) -> None:
+        pending: list[dict[str, object]] = []
+        lock = Lock()
+        queue_download_log_entry(pending, lock, level="info", component="yt-dlp.stdout", message="out", raw="out\n")
+        queue_download_log_entry(pending, lock, level="error", component="yt-dlp.stderr", message="err", raw="err\n")
+
+        with patch("xarchiver.downloader.append_operation_log_entries", return_value=[{}, {}]) as append:
+            written = flush_download_log_entries(11, pending, lock)
+
+        self.assertEqual(written, 2)
+        self.assertEqual(pending, [])
+        self.assertEqual([item["component"] for item in append.call_args.args[1]], ["yt-dlp.stdout", "yt-dlp.stderr"])
+
+    def test_create_and_finish_job_manage_log_stream_lifecycle(self) -> None:
+        with tempfile.TemporaryDirectory() as tmp:
+            settings = SimpleNamespace(archive_dir=Path(tmp), operation_log_max_bytes=10_000)
+            with patch("xarchiver.services.operation_logs.get_settings", return_value=settings):
+                job_id = create_job("yt-dlp", Path(tmp) / "input.txt", 1, "running")
+                finish_job(job_id, "finished", 1, 0, None)
+            with connect() as conn:
+                with conn.cursor() as cur:
+                    cur.execute(
+                        """
+                        select j.log_stream_id, l.log_path, l.closed_at
+                        from download_jobs j join operation_log_streams l on l.id = j.log_stream_id
+                        where j.id = %s
+                        """,
+                        (job_id,),
+                    )
+                    row = cur.fetchone()
+                    cur.execute("delete from download_jobs where id = %s", (job_id,))
+                    cur.execute("delete from operation_log_streams where id = %s", (row["log_stream_id"],))
+                conn.commit()
+
+        self.assertEqual(row["log_path"], f"logs/download-logs/job-{job_id}.jsonl")
+        self.assertIsNotNone(row["closed_at"])
 
     def test_core_error_classifier_is_single_source_for_x_errors(self) -> None:
         self.assertEqual(classify_x_error("HTTP Error 429: rate limited"), ErrorCategory.RATE_LIMITED)

@@ -72,15 +72,20 @@ def process_tweet_scope(
         archive_run_id=archive_run_id,
         run_item_ids=item_ids,
     )
-    fallback_result = download(
-        "yt-dlp",
-        settings,
-        limit,
-        dry_run=False,
-        tweet_ids=tweet_ids,
-        archive_run_id=archive_run_id,
-        run_item_ids=item_ids,
-    )
+    gallery_downloaded_tweet_ids = set(download_tweet_ids(gallery_result))
+    fallback_tweet_ids = [tweet_id for tweet_id in tweet_ids if tweet_id not in gallery_downloaded_tweet_ids]
+    if fallback_tweet_ids:
+        fallback_result = download(
+            "yt-dlp",
+            settings,
+            limit,
+            dry_run=False,
+            tweet_ids=fallback_tweet_ids,
+            archive_run_id=archive_run_id,
+            run_item_ids=item_ids,
+        )
+    else:
+        fallback_result = empty_download_result()
     media_ids = sorted(set(download_media_ids(gallery_result) + download_media_ids(fallback_result)))
     downloaded_tweet_ids = sorted(
         set(download_tweet_ids(gallery_result) + download_tweet_ids(fallback_result))
@@ -115,6 +120,12 @@ def summarize_download_result(result: dict[str, object]) -> dict[str, object]:
         "exit_code": result.get("exit_code"),
         "media_backfill": result.get("media_backfill"),
     }
+
+
+def empty_download_result() -> dict[str, object]:
+    """表示无需启动 fallback 下载器的空结果，不创建下载 Job。"""
+
+    return {"job_id": None, "count": 0, "media_backfill": {"media_ids": [], "tweet_ids": []}}
 
 
 def download_media_ids(result: dict[str, object]) -> list[int]:

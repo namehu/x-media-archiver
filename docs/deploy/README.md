@@ -397,7 +397,7 @@ OPERATION_LOG_MAX_BYTES=10485760 # 单个任务日志流 JSONL 文件大小上�
 ```
 
 `SOURCE_SCAN_*` 只影响来源发现，不影响下载队列。调高 sleep 区间可降低触发 X/Twitter 限流的风险，代价是吞吐下降。
-来源扫描的详细日志写入 `ARCHIVE_DIR/logs/source-scan-logs/`，数据库只保存日志流索引和摘要。
+来源扫描的详细日志写入 `ARCHIVE_DIR/logs/source-scan-logs/`；下载任务会把脱敏后的下载器 stdout/stderr 写入 `ARCHIVE_DIR/logs/download-logs/`。数据库只保存日志流索引和摘要，单条日志流使用 `OPERATION_LOG_MAX_BYTES` 限制大小。
 
 ---
 
