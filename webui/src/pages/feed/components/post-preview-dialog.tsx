@@ -45,6 +45,7 @@ export function PostPreviewDialog({
   const debugRedactionEnabled = useDebugRedactionEnabled();
   const location = useLocation();
   const swiperRef = useRef<SwiperInstance | null>(null);
+  const activeHistoryTokenRef = useRef<string | null>(null);
   const [contextExpanded, setContextExpanded] = useState(false);
 
   const handleClose = useCallback(() => {
@@ -62,7 +63,16 @@ export function PostPreviewDialog({
 
   useEffect(() => {
     if (!historyToken) return undefined;
-    if (!isDialogHistoryEntry(location.state, historyToken)) {
+
+    if (isDialogHistoryEntry(location.state, historyToken)) {
+      activeHistoryTokenRef.current = historyToken;
+      return undefined;
+    }
+
+    // Opening the dialog updates local state before React Router publishes the
+    // pushed location. Only treat a missing token as a close after this dialog
+    // has observed its own history entry, which is what happens on Back.
+    if (activeHistoryTokenRef.current === historyToken) {
       onOpenChange(false);
     }
     return undefined;
