@@ -249,6 +249,15 @@ class V1RouterSmokeTests(unittest.TestCase):
             )
         self.assertEqual(ctx.exception.status_code, 400)
 
+    def test_v1_source_create_maps_duplicate_to_409(self):
+        with patch("xarchiver.api.v1.sources.create_source", side_effect=ValueError("source_already_exists")):
+            with self.assertRaises(HTTPException) as ctx:
+                self.post_paths["/api/v1/sources"](
+                    SourceCreateRequest(source_type="profile", source_url="https://x.com/user")
+                )
+        self.assertEqual(ctx.exception.status_code, 409)
+        self.assertEqual(ctx.exception.detail, "source_already_exists")
+
     def test_v1_source_status_maps_not_found_to_404(self):
         with patch("xarchiver.api.v1.sources.update_source_status", side_effect=ValueError("source_not_found")):
             with self.assertRaises(HTTPException) as ctx:

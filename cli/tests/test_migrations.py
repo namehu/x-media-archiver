@@ -35,6 +35,7 @@ class MigrationTests(unittest.TestCase):
                 "011_add_media_delete_audit.py",
                 "012_add_download_job_log_stream.py",
                 "013_expand_operation_log_stream_scope.py",
+                "014_unique_source_urls.py",
             ],
         )
         upgrade.assert_called_once()
@@ -46,7 +47,7 @@ class MigrationTests(unittest.TestCase):
 
         with (
             patch("xarchiver.migrations.get_settings", return_value=settings),
-            patch("xarchiver.migrations.current_alembic_revision", return_value="013_expand_log_scope"),
+            patch("xarchiver.migrations.current_alembic_revision", return_value="014_unique_source_urls"),
             patch("xarchiver.migrations.command.upgrade") as upgrade,
         ):
             self.assertEqual(migrate(), [])
@@ -83,6 +84,7 @@ class MigrationTests(unittest.TestCase):
                 "011_add_media_delete_audit.py",
                 "012_add_download_job_log_stream.py",
                 "013_expand_operation_log_stream_scope.py",
+                "014_unique_source_urls.py",
             ],
         )
 
@@ -239,6 +241,20 @@ class MigrationTests(unittest.TestCase):
         self.assertIn("create table if not exists media_delete_operations", sql)
         self.assertIn("requested_media_ids jsonb not null", sql)
         self.assertIn("idx_media_delete_operations_created_at", sql)
+
+    def test_unique_source_urls_revision_checks_duplicates_and_adds_unique_index(self) -> None:
+        module = importlib.import_module("xarchiver.alembic.versions.014_unique_source_urls")
+        captured_sql: list[str] = []
+
+        with patch.object(module.op, "execute", side_effect=captured_sql.append):
+            module.upgrade()
+
+        sql = captured_sql[0]
+        self.assertIn("xma_normalize_source_url", sql)
+        self.assertIn("duplicate archive_sources source_url after normalization", sql)
+        self.assertIn("update archive_sources", sql)
+        self.assertIn("create unique index if not exists uq_archive_sources_source_url", sql)
+        self.assertIn("where source_url is not null", sql)
 
 
 if __name__ == "__main__":

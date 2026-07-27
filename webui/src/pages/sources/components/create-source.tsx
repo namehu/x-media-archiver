@@ -4,6 +4,7 @@ import { Dialog, DialogClose, DialogContent, DialogFooter, DialogHeader, DialogT
 import { Field, FieldDescription, FieldError, FieldGroup, FieldLabel } from "@/components/ui/field";
 import { Input } from "@/components/ui/input";
 import { Select, SelectContent, SelectGroup, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
+import { ApiError } from "@/lib/api";
 import { sourceTypeLabel } from "@/lib/formatters";
 import { SOURCE_TYPES } from "../utils";
 
@@ -27,6 +28,7 @@ export function CreateSource({
   const [label, setLabel] = useState("");
   const hasSourceUrl = sourceUrl.trim().length > 0;
   const canCreate = sourceUrl.trim().length > 0 && !isPending;
+  const errorMessage = createSourceErrorMessage(error);
 
   useEffect(() => {
     setSourceType("profile");
@@ -118,7 +120,7 @@ export function CreateSource({
               </div>
             </div>
           </FieldGroup>
-          {error ? <FieldError errors={[{ message: String(error) }]} /> : null}
+          {errorMessage ? <FieldError errors={[{ message: errorMessage }]} /> : null}
           <DialogFooter>
             <Button type="submit" disabled={!canCreate}>
               新增来源
@@ -128,4 +130,15 @@ export function CreateSource({
       </DialogContent>
     </Dialog>
   );
+}
+
+function createSourceErrorMessage(error: unknown) {
+  if (!error) return null;
+  if (
+    error instanceof ApiError &&
+    (error.code === "source_already_exists" || error.detail === "source_already_exists")
+  ) {
+    return "该来源链接已存在，请从列表中选择已有来源。";
+  }
+  return String(error);
 }

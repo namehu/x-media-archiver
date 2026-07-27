@@ -57,6 +57,18 @@ class SourceServiceTests(unittest.TestCase):
         with self.assertRaisesRegex(ValueError, "invalid_source_url"):
             normalize_source_url("https://example.com/user")
 
+    def test_normalize_source_url_canonicalizes_equivalent_x_hosts(self) -> None:
+        self.assertEqual(
+            normalize_source_url(" http://www.twitter.com/example/media/#top "),
+            "https://x.com/example/media",
+        )
+
+    def test_normalize_source_url_preserves_query(self) -> None:
+        self.assertEqual(
+            normalize_source_url("https://twitter.com/search?q=from%3Aexample/"),
+            "https://x.com/search?q=from%3Aexample/",
+        )
+
     def test_infer_author_username_for_media_url(self) -> None:
         self.assertEqual(
             infer_author_username("user_media", "https://x.com/example/media"),
@@ -560,6 +572,13 @@ class SourceDiscoveryIntegrationTests(unittest.TestCase):
         self.assertEqual(row["scope_id"], scan_run_id)
         self.assertEqual(row["log_path"], source_scan_log_relative_path(int(source["id"]), scan_run_id))
         self.assertEqual(row["metadata"]["source_id"], int(source["id"]))
+
+    def test_create_source_rejects_duplicate_normalized_url(self) -> None:
+        source = create_source("user_media", "http://twitter.com/sourcefixture/media/")
+
+        self.assertEqual(source["source_url"], self.source_urls[0])
+        with self.assertRaisesRegex(ValueError, "source_already_exists"):
+            create_source("user_media", "https://x.com/sourcefixture/media")
 
     def test_repeated_discovery_preserves_first_discovered_at(self) -> None:
         source = create_source("user_media", "https://x.com/sourcefixture/media")
