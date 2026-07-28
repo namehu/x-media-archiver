@@ -1,14 +1,25 @@
-import { useMemo, useState } from "react";
-import { Copy, ExternalLink, MoreHorizontal } from "lucide-react";
+import { useMemo, useRef, useState } from "react";
+import { Copy, ExternalLink, MoreHorizontal, Trash2 } from "lucide-react";
 import { toast } from "sonner";
 import type { PostFeedRow } from "@/lib/api";
 import { Avatar, AvatarFallback } from "@/components/ui/avatar";
+import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
+import {
+  Drawer,
+  DrawerClose,
+  DrawerContent,
+  DrawerDescription,
+  DrawerFooter,
+  DrawerHeader,
+  DrawerTitle,
+} from "@/components/ui/drawer";
 import {
   DropdownMenu,
   DropdownMenuContent,
   DropdownMenuGroup,
   DropdownMenuItem,
+  DropdownMenuSeparator,
   DropdownMenuTrigger,
 } from "@/components/ui/dropdown-menu";
 import {
@@ -20,21 +31,31 @@ import {
 import { formatDateTime, cn } from "@/lib/utils";
 import { PostMediaGrid } from "./post-media-grid";
 
+const LONG_PRESS_MENU_DELAY_MS = 520;
+const LONG_PRESS_CANCEL_DISTANCE_PX = 10;
+
 export function PostCard({
   post,
   activeVideoId,
   previewOpen,
+  deleted,
   onActivateVideo,
+  onRequestDelete,
   onPreview,
 }: {
   post: PostFeedRow;
   activeVideoId: string | null;
   previewOpen: boolean;
+  deleted: boolean;
   onActivateVideo: (videoId: string | null) => void;
+  onRequestDelete: () => void;
   onPreview: (index: number) => void;
 }) {
   const debugRedactionEnabled = useDebugRedactionEnabled();
   const [expanded, setExpanded] = useState(false);
+  const [mobileActionsOpen, setMobileActionsOpen] = useState(false);
+  const longPressTimerRef = useRef<number | null>(null);
+  const longPressGestureRef = useRef<{ pointerId: number; startX: number; startY: number } | null>(null);
   const authorName = post.author_display_name || post.author_username || "未知作者";
   const tweetText = post.tweet_text || "暂无帖子正文";
   const tweetUrl = getDebugExternalHref(debugRedactionEnabled, post.tweet_url);
@@ -55,8 +76,65 @@ export function PostCard({
     }
   };
 
+  const clearLongPressTimer = () => {
+    if (longPressTimerRef.current !== null) {
+      window.clearTimeout(longPressTimerRef.current);
+      longPressTimerRef.current = null;
+    }
+  };
+
+  const resetLongPress = (event?: React.PointerEvent<HTMLElement>) => {
+    clearLongPressTimer();
+    const pointerId = longPressGestureRef.current?.pointerId;
+    longPressGestureRef.current = null;
+    if (event && pointerId !== undefined && event.currentTarget.hasPointerCapture(pointerId)) {
+      event.currentTarget.releasePointerCapture(pointerId);
+    }
+  };
+
+  const handleLongPressStart = (event: React.PointerEvent<HTMLElement>) => {
+    if (deleted) return;
+    if (event.pointerType === "mouse" || event.button !== 0) return;
+    if (isLongPressExcludedTarget(event.target)) return;
+
+    longPressGestureRef.current = {
+      pointerId: event.pointerId,
+      startX: event.clientX,
+      startY: event.clientY,
+    };
+    event.currentTarget.setPointerCapture(event.pointerId);
+    clearLongPressTimer();
+    longPressTimerRef.current = window.setTimeout(() => {
+      longPressTimerRef.current = null;
+      longPressGestureRef.current = null;
+      setMobileActionsOpen(true);
+    }, LONG_PRESS_MENU_DELAY_MS);
+  };
+
+  const handleLongPressMove = (event: React.PointerEvent<HTMLElement>) => {
+    const gesture = longPressGestureRef.current;
+    if (!gesture || gesture.pointerId !== event.pointerId) return;
+    const moved =
+      Math.abs(event.clientX - gesture.startX) > LONG_PRESS_CANCEL_DISTANCE_PX ||
+      Math.abs(event.clientY - gesture.startY) > LONG_PRESS_CANCEL_DISTANCE_PX;
+    if (moved) resetLongPress(event);
+  };
+
+  const requestDelete = () => {
+    if (deleted) return;
+    setMobileActionsOpen(false);
+    onRequestDelete();
+  };
+
   return (
-    <article className="border-b border-border-subtle bg-bg-elevated px-4 py-3.5 sm:px-5 sm:py-4 transition-colors hover:bg-bg-subtle/50">
+    <article
+      className="border-b border-border-subtle bg-bg-elevated px-4 py-3.5 transition-colors hover:bg-bg-subtle/50 sm:px-5 sm:py-4"
+      onPointerDown={handleLongPressStart}
+      onPointerMove={handleLongPressMove}
+      onPointerUp={resetLongPress}
+      onPointerCancel={resetLongPress}
+      onLostPointerCapture={() => resetLongPress()}
+    >
       <div className="flex items-start gap-3">
         <Avatar className="size-10 shrink-0" {...getDebugRedactProps(debugRedactionEnabled)}>
           <AvatarFallback>{avatarInitials(authorName)}</AvatarFallback>
@@ -77,6 +155,7 @@ export function PostCard({
                 >
                   {relativeTime}
                 </time>
+                {deleted ? <Badge tone="secondary">本地媒体已删除</Badge> : null}
               </div>
             </div>
             <DropdownMenu>
@@ -106,42 +185,97 @@ export function PostCard({
                   >
                     <ExternalLink data-icon="inline-start" />在 X 中查看
                   </DropdownMenuItem>
+                  <DropdownMenuSeparator />
+                  <DropdownMenuItem disabled={deleted} className="text-danger focus:text-danger" onSelect={requestDelete}>
+                    <Trash2 data-icon="inline-start" />
+                    {deleted ? "本地媒体已删除" : "删除本地媒体"}
+                  </DropdownMenuItem>
                 </DropdownMenuGroup>
               </DropdownMenuContent>
             </DropdownMenu>
           </header>
 
-          <div className="mt-1.5" {...getDebugRedactProps(debugRedactionEnabled)}>
-            <p
-              className={cn(
-                "break-words text-[15px] leading-6 text-fg-primary",
-                !expanded && isLong ? "whitespace-normal line-clamp-6" : "whitespace-pre-wrap",
-              )}
-            >
-              {tweetText}
-            </p>
-            {isLong ? (
-              <button
-                type="button"
-                className="mt-1 text-[13px] font-medium text-brand hover:underline"
-                onClick={() => setExpanded((current) => !current)}
+          {!deleted ? (
+            <div className="mt-1.5" {...getDebugRedactProps(debugRedactionEnabled)}>
+              <p
+                className={cn(
+                  "break-words text-[15px] leading-6 text-fg-primary",
+                  !expanded && isLong ? "whitespace-normal line-clamp-6" : "whitespace-pre-wrap",
+                )}
               >
-                {expanded ? "收起" : "展开"}
-              </button>
-            ) : null}
-          </div>
+                {tweetText}
+              </p>
+              {isLong ? (
+                <button
+                  type="button"
+                  className="mt-1 text-[13px] font-medium text-brand hover:underline"
+                  onClick={() => setExpanded((current) => !current)}
+                >
+                  {expanded ? "收起" : "展开"}
+                </button>
+              ) : null}
+            </div>
+          ) : null}
 
-          <PostMediaGrid
-            media={post.media}
-            tweetId={post.tweet_id}
-            activeVideoId={activeVideoId}
-            previewOpen={previewOpen}
-            onActivateVideo={onActivateVideo}
-            onPreview={onPreview}
-          />
+          {deleted ? (
+            <DeletedMediaPlaceholder />
+          ) : (
+            <PostMediaGrid
+              media={post.media}
+              tweetId={post.tweet_id}
+              activeVideoId={activeVideoId}
+              previewOpen={previewOpen}
+              onActivateVideo={onActivateVideo}
+              onPreview={onPreview}
+            />
+          )}
         </div>
       </div>
+      <Drawer open={mobileActionsOpen} onOpenChange={setMobileActionsOpen}>
+        <DrawerContent className="border-border-subtle bg-bg-elevated text-fg-primary">
+          <DrawerHeader>
+            <DrawerTitle>帖子操作</DrawerTitle>
+            <DrawerDescription className="text-fg-secondary">对这篇本地归档帖子执行操作。</DrawerDescription>
+          </DrawerHeader>
+          <DrawerFooter>
+            <Button type="button" variant="destructive" disabled={deleted} onClick={requestDelete}>
+              <Trash2 data-icon="inline-start" />
+              {deleted ? "本地媒体已删除" : "删除本地媒体"}
+            </Button>
+            <DrawerClose asChild>
+              <Button type="button" variant="outline">
+                取消
+              </Button>
+            </DrawerClose>
+          </DrawerFooter>
+        </DrawerContent>
+      </Drawer>
     </article>
+  );
+}
+
+function DeletedMediaPlaceholder() {
+  return (
+    <div
+      data-feed-media="true"
+      className="mt-3 flex min-h-32 items-center justify-center rounded-xl border border-dashed border-border-subtle bg-bg-muted px-4 py-8 text-center"
+    >
+      <div className="flex flex-col gap-1">
+        <span className="text-sm font-medium text-fg-primary">本地媒体已删除</span>
+        <span className="text-xs text-fg-secondary">Tweet、来源和下载历史已保留，可之后重新归档。</span>
+      </div>
+    </div>
+  );
+}
+
+function isLongPressExcludedTarget(target: EventTarget | null) {
+  return (
+    target instanceof HTMLElement &&
+    Boolean(
+      target.closest(
+        'button, a, input, select, textarea, [role="button"], [role="menuitem"], [data-feed-media="true"]',
+      ),
+    )
   );
 }
 

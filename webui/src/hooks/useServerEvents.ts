@@ -166,8 +166,14 @@ function invalidateForEvent(queryClient: QueryClient, event: ServerEvent) {
   }
 
   if (topic === "library" || eventType.startsWith("library.")) {
+    const deletedTweetIds = stringArrayFromPayload(payload, "tweet_ids");
+    if (eventType === "library.media_deleted" && deletedTweetIds.length) {
+      markDeletedPostsInCache(queryClient, deletedTweetIds);
+    }
     void queryClient.invalidateQueries({ queryKey: ["media"] });
-    void queryClient.invalidateQueries({ queryKey: ["posts"] });
+    if (eventType !== "library.media_deleted") {
+      void queryClient.invalidateQueries({ queryKey: ["posts"] });
+    }
     void queryClient.invalidateQueries({ queryKey: ["tweet"] });
     void queryClient.invalidateQueries({ queryKey: ["summary"] });
     void queryClient.invalidateQueries({ queryKey: ["failures"] });
@@ -203,4 +209,41 @@ function numberFromPayload(payload: Record<string, unknown>, ...keys: string[]) 
     }
   }
   return null;
+}
+
+function stringArrayFromPayload(payload: Record<string, unknown>, key: string) {
+  const value = payload[key];
+  if (!Array.isArray(value)) return [];
+  return value.filter((item): item is string => typeof item === "string" && item.length > 0);
+}
+
+function markDeletedPostsInCache(queryClient: QueryClient, tweetIds: string[]) {
+  const deletedTweetIds = new Set(tweetIds);
+  queryClient.setQueriesData({ queryKey: ["posts"] }, (current: unknown) => markDeletedPosts(current, deletedTweetIds));
+}
+
+function markDeletedPosts(current: unknown, deletedTweetIds: Set<string>): unknown {
+  if (!current || typeof current !== "object" || !("pages" in current)) return current;
+  const infiniteData = current as {
+    pages?: Array<{ rows?: Array<Record<string, unknown>> }>;
+    pageParams?: unknown[];
+  };
+  if (!Array.isArray(infiniteData.pages)) return current;
+
+  let changed = false;
+  const pages = infiniteData.pages.map((page) => {
+    if (!Array.isArray(page.rows)) return page;
+    let pageChanged = false;
+    const rows = page.rows.map((row) => {
+      const tweetId = typeof row.tweet_id === "string" ? row.tweet_id : "";
+      if (!deletedTweetIds.has(tweetId)) return row;
+      pageChanged = true;
+      return { ...row, media: [] };
+    });
+    if (!pageChanged) return page;
+    changed = true;
+    return { ...page, rows };
+  });
+
+  return changed ? { ...infiniteData, pages } : current;
 }
