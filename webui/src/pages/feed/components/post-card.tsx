@@ -29,6 +29,7 @@ import {
   useDebugRedactionEnabled,
 } from "@/lib/debug-redaction";
 import { formatDateTime, cn } from "@/lib/utils";
+import type { FeedVideoPlaybackStateApi } from "../video-playback-state";
 import { PostMediaGrid } from "./post-media-grid";
 
 const LONG_PRESS_MENU_DELAY_MS = 520;
@@ -42,6 +43,8 @@ export function PostCard({
   onActivateVideo,
   onRequestDelete,
   onPreview,
+  getVideoState,
+  updateVideoState,
 }: {
   post: PostFeedRow;
   activeVideoId: string | null;
@@ -50,7 +53,7 @@ export function PostCard({
   onActivateVideo: (videoId: string | null) => void;
   onRequestDelete: () => void;
   onPreview: (index: number) => void;
-}) {
+} & FeedVideoPlaybackStateApi) {
   const debugRedactionEnabled = useDebugRedactionEnabled();
   const [expanded, setExpanded] = useState(false);
   const [mobileActionsOpen, setMobileActionsOpen] = useState(false);
@@ -227,6 +230,8 @@ export function PostCard({
               previewOpen={previewOpen}
               onActivateVideo={onActivateVideo}
               onPreview={onPreview}
+              getVideoState={getVideoState}
+              updateVideoState={updateVideoState}
             />
           )}
         </div>

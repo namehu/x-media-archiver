@@ -3,6 +3,7 @@ import { Virtuoso, type StateSnapshot, type VirtuosoHandle } from "react-virtuos
 import type { PostFeedRow } from "@/lib/api";
 import { Button } from "@/components/ui/button";
 import { useAppScrollContainer } from "@/components/layout/app-scroll-container";
+import type { FeedVideoPlaybackStateApi } from "../video-playback-state";
 import { PostCard } from "./post-card";
 
 export function FeedList({
@@ -20,6 +21,8 @@ export function FeedList({
   onActivateVideo,
   onRequestDelete,
   onPreview,
+  getVideoState,
+  updateVideoState,
 }: {
   rows: PostFeedRow[];
   hasNextPage: boolean;
@@ -35,7 +38,7 @@ export function FeedList({
   onActivateVideo: (videoId: string | null) => void;
   onRequestDelete: (post: PostFeedRow) => void;
   onPreview: (post: PostFeedRow, index: number) => void;
-}) {
+} & FeedVideoPlaybackStateApi) {
   const scrollParent = useAppScrollContainer();
   const loadMorePendingRef = useRef(false);
   const virtuosoRef = useRef<VirtuosoHandle>(null);
@@ -74,6 +77,8 @@ export function FeedList({
           onActivateVideo={onActivateVideo}
           onRequestDelete={() => onRequestDelete(post)}
           onPreview={(index) => onPreview(post, index)}
+          getVideoState={getVideoState}
+          updateVideoState={updateVideoState}
         />
       )}
       restoreStateFrom={restoreStateFrom ?? undefined}
