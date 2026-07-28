@@ -13,10 +13,12 @@ export function FeedList({
   restoreStateFrom,
   activeVideoId,
   previewOpen,
+  deletedTweetIds,
   onLoadMore,
   onRetryLoadMore,
   onStateChanged,
   onActivateVideo,
+  onRequestDelete,
   onPreview,
 }: {
   rows: PostFeedRow[];
@@ -26,10 +28,12 @@ export function FeedList({
   restoreStateFrom: StateSnapshot | null;
   activeVideoId: string | null;
   previewOpen: boolean;
+  deletedTweetIds: Set<string>;
   onLoadMore: () => void;
   onRetryLoadMore: () => void;
   onStateChanged: (state: StateSnapshot) => void;
   onActivateVideo: (videoId: string | null) => void;
+  onRequestDelete: (post: PostFeedRow) => void;
   onPreview: (post: PostFeedRow, index: number) => void;
 }) {
   const scrollParent = useAppScrollContainer();
@@ -66,7 +70,9 @@ export function FeedList({
           post={post}
           activeVideoId={activeVideoId}
           previewOpen={previewOpen}
+          deleted={deletedTweetIds.has(post.tweet_id) || post.media.length === 0}
           onActivateVideo={onActivateVideo}
+          onRequestDelete={() => onRequestDelete(post)}
           onPreview={(index) => onPreview(post, index)}
         />
       )}

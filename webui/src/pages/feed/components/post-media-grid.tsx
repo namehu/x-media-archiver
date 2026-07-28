@@ -23,6 +23,7 @@ export function PostMediaGrid({
 
   return (
     <div
+      data-feed-media="true"
       className={cn(
         "mt-3 grid overflow-hidden rounded-xl border border-border-subtle bg-black",
         count === 1 && "grid-cols-1",

@@ -1,9 +1,11 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
-import { useInfiniteQuery, useQuery, useQueryClient } from "@tanstack/react-query";
+import { useInfiniteQuery, useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { Heart, ListFilter, SlidersHorizontal } from "lucide-react";
 import { useLocation, useNavigate, useNavigationType } from "react-router-dom";
+import { toast } from "sonner";
 import type { StateSnapshot } from "react-virtuoso";
 import {
+  apiDelete,
   apiGet,
   mediaQueryString,
   type PostFeedPageResponse,
@@ -17,12 +19,24 @@ import { Sheet, SheetContent, SheetDescription, SheetHeader, SheetTitle } from "
 import { Skeleton } from "@/components/ui/skeleton";
 import { ToggleGroup, ToggleGroupItem } from "@/components/ui/toggle-group";
 import { createDialogHistoryEntry } from "@/lib/dialog-history";
+import {
+  formatDeletedBytes,
+  mediaDeleteErrorMessage,
+  type MediaDeleteResponse,
+} from "@/lib/media-deletion";
 import { DEFAULT_FEED_FILTERS, FeedFilterPanel, type FeedFilters } from "./components/feed-filter-panel";
 import { FeedList } from "./components/feed-list";
+import { PostDeleteDialog } from "./components/post-delete-dialog";
 import { PostPreviewDialog } from "./components/post-preview-dialog";
 import { getFeedBrowseState, saveFeedBrowseState } from "./feed-browse-state";
 
 const PAGE_SIZE = 20;
+
+type PostDeleteTarget = {
+  post: PostFeedRow;
+  mediaIds: number[];
+  estimatedBytes: number;
+};
 
 export function FeedPage() {
   const location = useLocation();
@@ -39,6 +53,10 @@ export function FeedPage() {
   const [mobileFiltersOpen, setMobileFiltersOpen] = useState(false);
   const [activeVideoId, setActiveVideoId] = useState<string | null>(null);
   const [preview, setPreview] = useState<{ post: PostFeedRow; index: number; historyToken: string } | null>(null);
+  const [deleteTargetPost, setDeleteTargetPost] = useState<PostDeleteTarget | null>(null);
+  const [deleteDialogOpen, setDeleteDialogOpen] = useState(false);
+  const [deleteOperationId, setDeleteOperationId] = useState<string | null>(null);
+  const [deletedTweetIds, setDeletedTweetIds] = useState<Set<string>>(() => new Set());
   const filtersRef = useRef(filters);
   const submittedRef = useRef(submitted);
   const listStateRef = useRef<StateSnapshot | null>(restoreListState);
@@ -74,6 +92,44 @@ export function FeedPage() {
   });
   const rows = useMemo(() => postsQuery.data?.pages.flatMap((page) => page.rows) ?? [], [postsQuery.data]);
   const totalCount = postsQuery.data?.pages[0]?.total_count ?? 0;
+  const deleteMutation = useMutation({
+    mutationFn: (operationId: string) => {
+      if (!deleteTargetPost) throw new Error("未选择要删除的帖子。");
+      return apiDelete<MediaDeleteResponse>("/api/v1/library/media", {
+        body: {
+          operation_id: operationId,
+          media_ids: deleteTargetPost.mediaIds,
+          confirm_physical_delete: true,
+        },
+      });
+    },
+    onSuccess: async (response) => {
+      const deletedTweetId = deleteTargetPost?.post.tweet_id ?? null;
+      setDeleteDialogOpen(false);
+      setDeleteOperationId(null);
+      setDeleteTargetPost(null);
+      setActiveVideoId(null);
+      setPreview((current) => (current?.post.tweet_id === deletedTweetId ? null : current));
+      if (deletedTweetId) {
+        setDeletedTweetIds((current) => {
+          const next = new Set(current);
+          next.add(deletedTweetId);
+          return next;
+        });
+      }
+      await Promise.all([
+        queryClient.invalidateQueries({ queryKey: ["media"] }),
+        queryClient.invalidateQueries({ queryKey: ["tweet"] }),
+        queryClient.invalidateQueries({ queryKey: ["summary"] }),
+        queryClient.invalidateQueries({ queryKey: ["failures"] }),
+        queryClient.invalidateQueries({ queryKey: ["duplicates"] }),
+        queryClient.invalidateQueries({ queryKey: ["source-discovered"] }),
+      ]);
+      toast.success(
+        `已删除 ${response.result.deleted_media_count} 项媒体，释放 ${formatDeletedBytes(response.result.deleted_bytes)}`,
+      );
+    },
+  });
 
   useEffect(
     () => () => {
@@ -100,12 +156,14 @@ export function FeedPage() {
 
   const applyFilters = () => {
     const nextFilters = { ...filters };
+    setDeletedTweetIds(new Set());
     resetListAndQuery(nextFilters);
     setSubmitted(nextFilters);
   };
 
   const resetFilters = () => {
     const nextFilters = { ...DEFAULT_FEED_FILTERS };
+    setDeletedTweetIds(new Set());
     resetListAndQuery(nextFilters);
     setFilters(nextFilters);
     setSubmitted(nextFilters);
@@ -118,6 +176,7 @@ export function FeedPage() {
       source_id: "",
       source_type: value === "likes" ? "likes" : "",
     };
+    setDeletedTweetIds(new Set());
     resetListAndQuery(nextFilters);
     setFilters(nextFilters);
     setSubmitted(nextFilters);
@@ -134,6 +193,22 @@ export function FeedPage() {
     },
     [location.key],
   );
+
+  const openPostDeleteDialog = useCallback((post: PostFeedRow) => {
+    const mediaIds = post.media.map((item) => item.id);
+    if (!mediaIds.length) {
+      toast.error("这篇帖子没有可删除的本地媒体。");
+      return;
+    }
+    deleteMutation.reset();
+    setDeleteTargetPost({
+      post,
+      mediaIds,
+      estimatedBytes: post.media.reduce((total, item) => total + (item.file_size ?? 0), 0),
+    });
+    setDeleteOperationId(crypto.randomUUID());
+    setDeleteDialogOpen(true);
+  }, [deleteMutation]);
 
   return (
     <div className="-m-4 sm:-m-6 lg:m-0">
@@ -202,10 +277,12 @@ export function FeedPage() {
               restoreStateFrom={restoreListState}
               activeVideoId={activeVideoId}
               previewOpen={Boolean(preview)}
+              deletedTweetIds={deletedTweetIds}
               onLoadMore={() => void postsQuery.fetchNextPage()}
               onRetryLoadMore={() => void postsQuery.fetchNextPage()}
               onStateChanged={handleListStateChanged}
               onActivateVideo={setActiveVideoId}
+              onRequestDelete={openPostDeleteDialog}
               onPreview={(post, index) => {
                 const dialogEntry = createDialogHistoryEntry(location.state);
                 setActiveVideoId(null);
@@ -268,6 +345,23 @@ export function FeedPage() {
         onActiveIndexChange={(index) => setPreview((current) => (current ? { ...current, index } : null))}
         onOpenChange={(open) => {
           if (!open) setPreview(null);
+        }}
+      />
+      <PostDeleteDialog
+        open={deleteDialogOpen}
+        mediaCount={deleteTargetPost?.mediaIds.length ?? 0}
+        estimatedBytes={deleteTargetPost?.estimatedBytes ?? 0}
+        pending={deleteMutation.isPending}
+        error={deleteMutation.error ? mediaDeleteErrorMessage(deleteMutation.error) : null}
+        onOpenChange={(open) => {
+          setDeleteDialogOpen(open);
+          if (!open) {
+            setDeleteOperationId(null);
+            setDeleteTargetPost(null);
+          }
+        }}
+        onConfirm={() => {
+          if (deleteOperationId) deleteMutation.mutate(deleteOperationId);
         }}
       />
     </div>
