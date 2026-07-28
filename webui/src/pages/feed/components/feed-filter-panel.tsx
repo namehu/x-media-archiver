@@ -43,7 +43,7 @@ export function FeedFilterPanel({
   const fieldId = useId();
 
   return (
-    <Card className="lg:sticky lg:top-4">
+    <Card>
       <CardHeader className="pb-3">
         <div className="flex items-center justify-between gap-3">
           <CardTitle className="flex items-center gap-2 text-base">

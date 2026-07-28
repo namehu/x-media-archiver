@@ -12,6 +12,7 @@ import {
   type PostFeedRow,
   type SourcePageResponse,
 } from "@/lib/api";
+import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { EmptyState } from "@/components/ui/empty-state";
 import { ErrorState } from "@/components/ui/error-state";
@@ -213,8 +214,8 @@ export function FeedPage() {
   return (
     <div className="-m-4 sm:-m-6 lg:m-0">
       <div className="mx-auto grid max-w-[1020px] items-start lg:grid-cols-[minmax(0,680px)_280px] lg:gap-5">
-        <main className="min-w-0 overflow-hidden border-x border-border-subtle bg-bg-elevated lg:rounded-xl lg:border">
-          <header className="sticky top-0 z-20 border-b border-border-subtle bg-bg-elevated/90 backdrop-blur">
+        <main className="min-w-0 border-x border-border-subtle bg-bg-elevated lg:overflow-hidden lg:rounded-xl lg:border">
+          <header className="sticky -top-4 z-40 border-b border-border-subtle bg-bg-elevated shadow-1 sm:-top-6 lg:top-0 lg:z-20 lg:shadow-none">
             <div className="flex items-center justify-between gap-3 px-4 py-2.5 sm:px-5">
               <div className="min-w-0">
                 <h1 className="text-xl font-bold tracking-tight text-fg-primary">帖子浏览</h1>
@@ -222,16 +223,21 @@ export function FeedPage() {
                   {postsQuery.data ? `共 ${totalCount.toLocaleString()} 条本地帖子` : "像刷 X 一样浏览本地归档"}
                 </p>
               </div>
-              <Button
-                type="button"
-                variant="outline"
-                size="icon"
-                className="lg:hidden"
-                aria-label="打开筛选"
-                onClick={() => setMobileFiltersOpen(true)}
-              >
-                <SlidersHorizontal />
-              </Button>
+              <div className="flex shrink-0 items-center gap-2 lg:hidden">
+                <Button
+                  type="button"
+                  variant="secondary"
+                  size="sm"
+                  aria-label="打开筛选"
+                  onClick={() => setMobileFiltersOpen(true)}
+                >
+                  <SlidersHorizontal data-icon="inline-start" />
+                  筛选
+                </Button>
+                <Badge tone={draftFilterCount ? "default" : "secondary"}>
+                  {draftFilterCount ? `${draftFilterCount} 项` : "默认"}
+                </Badge>
+              </div>
             </div>
             {hasLikesSource ? (
               <ToggleGroup
@@ -306,7 +312,7 @@ export function FeedPage() {
           ) : null}
         </main>
 
-        <aside className="hidden min-w-0 lg:block">
+        <aside className="hidden min-w-0 self-start lg:sticky lg:top-4 lg:block">
           <FeedFilterPanel
             filters={filters}
             sources={sources}
