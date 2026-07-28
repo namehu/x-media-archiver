@@ -12,6 +12,7 @@ import { Sheet, SheetContent, SheetHeader, SheetTitle } from "../ui/sheet";
 import { Tooltip, TooltipContent, TooltipTrigger } from "../ui/tooltip";
 import { apiGet, type HealthDetail } from "../../lib/api";
 import { buildDebuggerSearch, persistDebuggerMode, resolveDebuggerMode, syncDebuggerMode } from "../../lib/debugger-mode";
+import { isAnyDialogHistoryEntry } from "../../lib/dialog-history";
 import { useTheme, type Theme } from "../../lib/theme";
 import { cn } from "../../lib/utils";
 import { AccountMenu } from "../auth/account-menu";
@@ -77,8 +78,9 @@ export function AppLayout() {
   const debuggerModeEnabled = resolveDebuggerMode(location.search).enabled;
 
   useEffect(() => {
-    if (scrollContainer && navigationType !== "POP") scrollContainer.scrollTo({ top: 0 });
-  }, [location.key, navigationType, scrollContainer]);
+    if (!scrollContainer || navigationType === "POP" || isAnyDialogHistoryEntry(location.state)) return;
+    scrollContainer.scrollTo({ top: 0 });
+  }, [location.key, location.state, navigationType, scrollContainer]);
 
   const cycleTheme = () => {
     const next = themeOrder[(themeOrder.indexOf(theme) + 1) % themeOrder.length];

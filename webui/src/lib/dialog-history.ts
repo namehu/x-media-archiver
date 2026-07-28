@@ -22,6 +22,10 @@ export function isDialogHistoryEntry(state: unknown, token: string) {
   return asHistoryRecord(state)[DIALOG_HISTORY_KEY] === token;
 }
 
+export function isAnyDialogHistoryEntry(state: unknown) {
+  return typeof asHistoryRecord(state)[DIALOG_HISTORY_KEY] === "string";
+}
+
 export function closeDialogHistoryEntry(token: string, onExit: () => void) {
   const routerState = asHistoryRecord(history.state).usr;
   if (isDialogHistoryEntry(routerState, token)) {
