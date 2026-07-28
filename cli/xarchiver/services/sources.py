@@ -15,7 +15,7 @@ import subprocess
 from pathlib import Path
 from threading import Event, Thread
 from typing import Any
-from urllib.parse import urlparse
+from urllib.parse import urlparse, urlunparse
 
 from psycopg.errors import UniqueViolation
 from psycopg.types.json import Jsonb
@@ -137,18 +137,24 @@ def create_source(
     source_type = normalize_source_type(source_type)
     source_url = normalize_source_url(source_url)
     author_username = author_username or infer_author_username(source_type, source_url)
-    with connect() as conn:
-        with conn.cursor() as cur:
-            cur.execute(
-                """
-                insert into archive_sources (source_type, source_url, label, author_username)
-                values (%s, %s, %s, %s)
-                returning *
-                """,
-                (source_type, source_url, label, author_username),
-            )
-            row = dict(ArchiveSourceRow.model_validate(dict(cur.fetchone())))
-        conn.commit()
+    try:
+        with connect() as conn:
+            with conn.cursor() as cur:
+                cur.execute("select 1 from archive_sources where source_url = %s limit 1", (source_url,))
+                if cur.fetchone():
+                    raise ValueError("source_already_exists")
+                cur.execute(
+                    """
+                    insert into archive_sources (source_type, source_url, label, author_username)
+                    values (%s, %s, %s, %s)
+                    returning *
+                    """,
+                    (source_type, source_url, label, author_username),
+                )
+                row = dict(ArchiveSourceRow.model_validate(dict(cur.fetchone())))
+            conn.commit()
+    except UniqueViolation as exc:
+        raise ValueError("source_already_exists") from exc
     publish_event(
         "sources",
         "source.created",
@@ -2635,14 +2641,16 @@ def normalize_source_url(source_url: str) -> str:
 
     value = source_url.strip()
     parsed = urlparse(value)
-    if parsed.scheme not in {"https", "http"} or parsed.netloc.lower() not in {
+    hostname = (parsed.hostname or "").lower()
+    if parsed.scheme not in {"https", "http"} or hostname not in {
         "x.com",
         "www.x.com",
         "twitter.com",
         "www.twitter.com",
     }:
         raise ValueError("invalid_source_url")
-    return value
+    path = parsed.path.rstrip("/")
+    return urlunparse(("https", "x.com", path, parsed.params, parsed.query, ""))
 
 
 def infer_author_username(source_type: str, source_url: str) -> str | None:
