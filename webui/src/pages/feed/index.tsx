@@ -12,7 +12,6 @@ import {
   type PostFeedRow,
   type SourcePageResponse,
 } from "@/lib/api";
-import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { EmptyState } from "@/components/ui/empty-state";
 import { ErrorState } from "@/components/ui/error-state";
@@ -20,11 +19,7 @@ import { Sheet, SheetContent, SheetDescription, SheetHeader, SheetTitle } from "
 import { Skeleton } from "@/components/ui/skeleton";
 import { ToggleGroup, ToggleGroupItem } from "@/components/ui/toggle-group";
 import { createDialogHistoryEntry } from "@/lib/dialog-history";
-import {
-  formatDeletedBytes,
-  mediaDeleteErrorMessage,
-  type MediaDeleteResponse,
-} from "@/lib/media-deletion";
+import { formatDeletedBytes, mediaDeleteErrorMessage, type MediaDeleteResponse } from "@/lib/media-deletion";
 import { DEFAULT_FEED_FILTERS, FeedFilterPanel, type FeedFilters } from "./components/feed-filter-panel";
 import { FeedList } from "./components/feed-list";
 import { PostDeleteDialog } from "./components/post-delete-dialog";
@@ -74,7 +69,6 @@ export function FeedPage() {
     staleTime: 60_000,
   });
   const sources = sourcesQuery.data?.rows ?? [];
-  const hasLikesSource = sources.some((source) => source.source_type === "likes");
   const draftFilterCount = useMemo(() => countActiveFilters(filters), [filters]);
   const query = useMemo(() => feedQueryString(submitted), [submitted]);
 
@@ -236,30 +230,33 @@ export function FeedPage() {
     [location.key],
   );
 
-  const openPostDeleteDialog = useCallback((post: PostFeedRow) => {
-    const mediaIds = post.media.map((item) => item.id);
-    if (!mediaIds.length) {
-      toast.error("这篇帖子没有可删除的本地媒体。");
-      return;
-    }
-    deleteMutation.reset();
-    setDeleteTargetPost({
-      post,
-      mediaIds,
-      estimatedBytes: post.media.reduce((total, item) => total + (item.file_size ?? 0), 0),
-    });
-    setDeleteOperationId(crypto.randomUUID());
-    setDeleteDialogOpen(true);
-  }, [deleteMutation]);
+  const openPostDeleteDialog = useCallback(
+    (post: PostFeedRow) => {
+      const mediaIds = post.media.map((item) => item.id);
+      if (!mediaIds.length) {
+        toast.error("这篇帖子没有可删除的本地媒体。");
+        return;
+      }
+      deleteMutation.reset();
+      setDeleteTargetPost({
+        post,
+        mediaIds,
+        estimatedBytes: post.media.reduce((total, item) => total + (item.file_size ?? 0), 0),
+      });
+      setDeleteOperationId(crypto.randomUUID());
+      setDeleteDialogOpen(true);
+    },
+    [deleteMutation],
+  );
 
   return (
     <div className="-m-4 sm:-m-6 lg:m-0">
       <div className="mx-auto grid max-w-[1020px] items-start lg:grid-cols-[minmax(0,680px)_280px] lg:gap-5">
         <main className="min-w-0 border-x border-border-subtle bg-bg-elevated lg:overflow-hidden lg:rounded-xl lg:border">
-          <header className="sticky -top-4 z-40 border-b border-border-subtle bg-bg-elevated shadow-1 sm:-top-6 lg:top-0 lg:z-20 lg:shadow-none">
-            <div className="flex items-center justify-between gap-3 px-4 py-2.5 sm:px-5">
+          <header className="sticky -top-4 z-40 border-b border-border-subtle bg-bg-elevated/95 shadow-sm backdrop-blur sm:-top-6 lg:top-0 lg:z-20 lg:shadow-none">
+            <div className="flex items-center justify-between gap-3 px-4 py-2 sm:px-5">
               <div className="min-w-0">
-                <h1 className="text-xl font-bold tracking-tight text-fg-primary">帖子浏览</h1>
+                <h1 className="text-lg font-bold tracking-tight text-fg-primary">帖子浏览</h1>
                 <p className="truncate text-xs text-fg-secondary">
                   {postsQuery.data ? `共 ${totalCount.toLocaleString()} 条本地帖子` : "像刷 X 一样浏览本地归档"}
                 </p>
@@ -267,41 +264,52 @@ export function FeedPage() {
               <div className="flex shrink-0 items-center gap-2 lg:hidden">
                 <Button
                   type="button"
-                  variant="secondary"
+                  variant={draftFilterCount ? "default" : "secondary"}
                   size="sm"
+                  className="h-8 rounded-full px-3 text-xs shadow-none"
                   aria-label="打开筛选"
                   onClick={() => setMobileFiltersOpen(true)}
                 >
-                  <SlidersHorizontal data-icon="inline-start" />
+                  <SlidersHorizontal className="mr-1.5 size-3.5" />
                   筛选
+                  {draftFilterCount > 0 && (
+                    <span className="ml-1.5 flex h-4 min-w-[1rem] items-center justify-center rounded-full bg-bg-base/20 px-1 text-[10px] font-bold text-white">
+                      {draftFilterCount}
+                    </span>
+                  )}
                 </Button>
-                <Badge tone={draftFilterCount ? "default" : "secondary"}>
-                  {draftFilterCount ? `${draftFilterCount} 项` : "默认"}
-                </Badge>
               </div>
             </div>
-            {hasLikesSource ? (
-              <ToggleGroup
-                type="single"
-                value={submitted.source_type === "likes" ? "likes" : "all"}
-                onValueChange={switchFeed}
-                className="grid grid-cols-2 gap-0 px-2"
+            <ToggleGroup
+              type="single"
+              value={submitted.source_type === "likes" ? "likes" : "all"}
+              onValueChange={switchFeed}
+              className="flex w-full gap-0"
+            >
+              <ToggleGroupItem
+                value="all"
+                className="group relative flex h-11 flex-1 items-center justify-center rounded-none bg-transparent text-sm font-medium text-fg-secondary transition-colors hover:bg-muted/50 hover:text-fg-primary data-[state=on]:bg-transparent data-[state=on]:text-fg-primary"
               >
-                <ToggleGroupItem
-                  value="all"
-                  className="rounded-none border-b-2 border-transparent data-[state=on]:border-brand"
-                >
+                <span className="relative flex h-full items-center justify-center px-3 group-data-[state=on]:font-bold">
                   全部
-                </ToggleGroupItem>
-                <ToggleGroupItem
-                  value="likes"
-                  className="rounded-none border-b-2 border-transparent data-[state=on]:border-brand"
-                >
-                  <Heart data-icon="inline-start" />
+                  {submitted.source_type !== "likes" && (
+                    <div className="absolute bottom-0 left-0 right-0 h-1 animate-in fade-in zoom-in-90 duration-200 rounded-t-full bg-brand" />
+                  )}
+                </span>
+              </ToggleGroupItem>
+              <ToggleGroupItem
+                value="likes"
+                className="group relative flex h-11 flex-1 items-center justify-center rounded-none bg-transparent text-sm font-medium text-fg-secondary transition-colors hover:bg-muted/50 hover:text-fg-primary data-[state=on]:bg-transparent data-[state=on]:text-fg-primary"
+              >
+                <span className="relative flex h-full items-center justify-center gap-1.5 px-3 group-data-[state=on]:font-bold">
+                  <Heart className="size-4" />
                   我的喜欢
-                </ToggleGroupItem>
-              </ToggleGroup>
-            ) : null}
+                  {submitted.source_type === "likes" && (
+                    <div className="absolute bottom-0 left-0 right-0 h-1 animate-in fade-in zoom-in-90 duration-200 rounded-t-full bg-brand" />
+                  )}
+                </span>
+              </ToggleGroupItem>
+            </ToggleGroup>
           </header>
 
           {postsQuery.isLoading ? <FeedSkeleton /> : null}
