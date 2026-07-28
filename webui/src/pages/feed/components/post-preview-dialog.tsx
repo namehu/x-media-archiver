@@ -1,6 +1,6 @@
 import { useCallback, useEffect, useRef, useState } from "react";
 import Artplayer from "artplayer";
-import { ExternalLink } from "lucide-react";
+import { ExternalLink, X as CloseIcon } from "lucide-react";
 import { Keyboard, Navigation, Pagination } from "swiper/modules";
 import { Swiper, SwiperSlide } from "swiper/react";
 import type { Swiper as SwiperInstance } from "swiper/types";
@@ -58,6 +58,7 @@ export function PostPreviewDialog({
   const swiperRef = useRef<SwiperInstance | null>(null);
   const activeHistoryTokenRef = useRef<string | null>(null);
   const [contextExpanded, setContextExpanded] = useState(false);
+  const [uiVisible, setUiVisible] = useState(true);
 
   const handleClose = useCallback(() => {
     if (!historyToken) {
@@ -106,20 +107,32 @@ export function PostPreviewDialog({
         if (!open) handleClose();
       }}
     >
-      <DialogContent className="left-0 top-0 grid h-[100dvh] w-screen max-w-none translate-x-0 translate-y-0 grid-rows-[minmax(0,1fr)_auto] overflow-hidden rounded-none border-0 bg-black p-0 md:grid-cols-[minmax(0,1fr)_360px] md:grid-rows-1 [&>button]:bg-black/60 [&>button]:text-white [&>button]:hover:bg-black/80">
+      <DialogContent className="left-0 top-0 grid h-[100dvh] w-screen max-w-none translate-x-0 translate-y-0 overflow-hidden rounded-none border-0 bg-black p-0 [&>button]:hidden">
         <DialogHeader className="sr-only">
           <DialogTitle>帖子媒体预览</DialogTitle>
           <DialogDescription>左右切换查看同一帖子的本地媒体。</DialogDescription>
         </DialogHeader>
-        <div className="min-h-0 min-w-0 bg-black">
+
+        {/* 关闭按钮 */}
+        <button
+          type="button"
+          onClick={handleClose}
+          className={`absolute right-4 top-4 z-50 flex size-10 items-center justify-center rounded-full bg-black/40 text-white backdrop-blur transition-all duration-300 hover:bg-black/60 ${uiVisible ? "opacity-100" : "opacity-0 pointer-events-none"}`}
+          aria-label="关闭预览"
+        >
+          <CloseIcon className="size-5" />
+        </button>
+
+        <div className="relative size-full bg-black">
           <Swiper
             key={post.tweet_id}
-            className="size-full [&_.swiper-button-next]:hidden [&_.swiper-button-prev]:hidden sm:[&_.swiper-button-next]:flex sm:[&_.swiper-button-prev]:flex"
+            className={`size-full [&_.swiper-button-next]:hidden [&_.swiper-button-prev]:hidden sm:[&_.swiper-button-next]:flex sm:[&_.swiper-button-prev]:flex ${uiVisible ? "[&_.swiper-button-next]:opacity-100 [&_.swiper-button-prev]:opacity-100 [&_.swiper-pagination]:opacity-100" : "[&_.swiper-button-next]:opacity-0 [&_.swiper-button-prev]:opacity-0 [&_.swiper-pagination]:opacity-0"} [&_.swiper-button-next]:transition-opacity [&_.swiper-button-prev]:transition-opacity [&_.swiper-pagination]:transition-opacity [&_.swiper-pagination]:duration-300 [&_.swiper-button-next]:duration-300 [&_.swiper-button-prev]:duration-300 [&_.swiper-pagination-fraction]:top-auto [&_.swiper-pagination-fraction]:bottom-5 [&_.swiper-pagination-fraction]:text-white/60 [&_.swiper-pagination-fraction]:text-sm`}
             modules={[Keyboard, Navigation, Pagination]}
             initialSlide={activeIndex}
             keyboard={{ enabled: true }}
             navigation
             pagination={{ type: "fraction" }}
+            onClick={() => setUiVisible((v) => !v)}
             onSwiper={(swiper) => {
               swiperRef.current = swiper;
             }}
@@ -137,6 +150,7 @@ export function PostPreviewDialog({
                         videoId={`${post.tweet_id}:${item.id}`}
                         getVideoState={getVideoState}
                         updateVideoState={updateVideoState}
+                        onControlToggle={setUiVisible}
                       />
                     ) : (
                       <img src={item.media_url} alt="" className="max-h-full max-w-full select-none object-contain" />
@@ -148,65 +162,77 @@ export function PostPreviewDialog({
               </SwiperSlide>
             ))}
           </Swiper>
-        </div>
-        <aside className="max-h-[36dvh] overflow-y-auto border-t border-white/15 bg-black p-4 md:max-h-none md:border-l md:border-t-0 md:p-5">
-          <div className="flex items-start justify-between gap-4">
-            <a
-              href={authorProfileHref}
-              target={authorProfileHref ? "_blank" : undefined}
-              rel={authorProfileHref ? "noopener noreferrer" : undefined}
-              className="flex min-w-0 flex-1 items-start gap-3 transition-opacity hover:opacity-80"
-              title={getDebugLinkTitle(debugRedactionEnabled, "author", "在 X 中查看主页")}
-              aria-disabled={!authorProfileHref}
-              onClick={(event) => {
-                if (!authorProfileHref) event.preventDefault();
-              }}
-            >
-              <Avatar
-                className="size-10 shrink-0 border border-white/10"
+
+          {/* 顶部悬浮信息流 */}
+          <aside
+            className={`pointer-events-none absolute top-0 left-0 right-0 z-40 bg-gradient-to-b from-black/90 via-black/60 to-transparent pt-4 pb-24 px-4 md:px-6 transition-all duration-300 ${uiVisible ? "translate-y-0 opacity-100" : "-translate-y-8 opacity-0"}`}
+          >
+            <div className="pointer-events-auto mx-auto max-w-3xl">
+              <div className="flex items-start justify-between gap-4">
+                <a
+                  href={authorProfileHref}
+                  target={authorProfileHref ? "_blank" : undefined}
+                  rel={authorProfileHref ? "noopener noreferrer" : undefined}
+                  className="flex min-w-0 flex-1 items-center gap-3 transition-opacity hover:opacity-80"
+                  title={getDebugLinkTitle(debugRedactionEnabled, "author", "在 X 中查看主页")}
+                  aria-disabled={!authorProfileHref}
+                  onClick={(event) => {
+                    if (!authorProfileHref) event.preventDefault();
+                    event.stopPropagation();
+                  }}
+                >
+                  <Avatar
+                    className="size-10 shrink-0 border border-white/10"
+                    {...getDebugRedactProps(debugRedactionEnabled)}
+                  >
+                    <AvatarFallback className="bg-white/20 text-white">{avatarInitials(authorName)}</AvatarFallback>
+                  </Avatar>
+                  <div className="min-w-0 flex-1" {...getDebugRedactProps(debugRedactionEnabled)}>
+                    <p className="truncate font-semibold text-white leading-tight">{authorName}</p>
+                    <div className="flex items-center gap-2 text-sm text-white/70">
+                      <p className="truncate">{post.author_username ? `@${post.author_username}` : "用户名未知"}</p>
+                      <span>·</span>
+                      <p className="shrink-0">{formatDateTime(post.published_at)}</p>
+                    </div>
+                  </div>
+                </a>
+                <a
+                  href={tweetHref}
+                  target={tweetHref ? "_blank" : undefined}
+                  rel={tweetHref ? "noopener noreferrer" : undefined}
+                  className="shrink-0 rounded-full p-2 text-white/70 transition-colors hover:bg-white/10 hover:text-white"
+                  title={getDebugLinkTitle(debugRedactionEnabled, "tweet", "在 X 中查看此贴")}
+                  aria-disabled={!tweetHref}
+                  onClick={(event) => {
+                    if (!tweetHref) event.preventDefault();
+                    event.stopPropagation();
+                  }}
+                >
+                  <ExternalLink className="size-5" />
+                </a>
+              </div>
+              <button
+                type="button"
+                className="mt-3 w-full text-left outline-none cursor-pointer"
+                onClick={(e) => {
+                  e.stopPropagation();
+                  setContextExpanded((current) => !current);
+                }}
                 {...getDebugRedactProps(debugRedactionEnabled)}
               >
-                <AvatarFallback className="bg-white/20 text-white">{avatarInitials(authorName)}</AvatarFallback>
-              </Avatar>
-              <div className="min-w-0 flex-1" {...getDebugRedactProps(debugRedactionEnabled)}>
-                <p className="truncate font-semibold text-white">{authorName}</p>
-                <p className="truncate text-sm text-white/60">
-                  {post.author_username ? `@${post.author_username}` : "用户名未知"}
+                <p
+                  className={
+                    contextExpanded
+                      ? "whitespace-pre-wrap text-[15px] leading-relaxed text-white drop-shadow-md"
+                      : "line-clamp-2 whitespace-pre-wrap text-[15px] leading-relaxed text-white drop-shadow-md"
+                  }
+                >
+                  {tweetText}
                 </p>
-              </div>
-            </a>
-            <a
-              href={tweetHref}
-              target={tweetHref ? "_blank" : undefined}
-              rel={tweetHref ? "noopener noreferrer" : undefined}
-              className="shrink-0 rounded-full p-2 text-white/60 transition-colors hover:bg-white/10 hover:text-white"
-              title={getDebugLinkTitle(debugRedactionEnabled, "tweet", "在 X 中查看此贴")}
-              aria-disabled={!tweetHref}
-              onClick={(event) => {
-                if (!tweetHref) event.preventDefault();
-              }}
-            >
-              <ExternalLink className="size-5" />
-            </a>
-          </div>
-          <button
-            type="button"
-            className="mt-4 w-full text-left outline-none"
-            onClick={() => setContextExpanded((current) => !current)}
-            {...getDebugRedactProps(debugRedactionEnabled)}
-          >
-            <p
-              className={
-                contextExpanded
-                  ? "whitespace-pre-wrap text-[15px] leading-relaxed text-white/90"
-                  : "line-clamp-3 whitespace-pre-wrap text-[15px] leading-relaxed text-white/90"
-              }
-            >
-              {tweetText}
-            </p>
-          </button>
-          <p className="mt-4 text-xs text-white/50">{formatDateTime(post.published_at)}</p>
-        </aside>
+              </button>
+            </div>
+          </aside>
+        </div>
       </DialogContent>
     </Dialog>
   );
@@ -223,11 +249,13 @@ function PreviewVideo({
   videoId,
   getVideoState,
   updateVideoState,
+  onControlToggle,
 }: {
   src: string;
   previewUrl?: string | null;
   active: boolean;
   videoId: string;
+  onControlToggle?: React.Dispatch<React.SetStateAction<boolean>>;
 } & FeedVideoPlaybackStateApi) {
   const wrapperRef = useRef<HTMLDivElement>(null);
   const containerRef = useRef<HTMLDivElement>(null);
@@ -346,6 +374,13 @@ function PreviewVideo({
     playerVideo.addEventListener("ratechange", writePausedState);
     playerVideo.addEventListener("seeked", writePausedState);
     playerVideo.addEventListener("ended", writePausedState);
+
+    // 监听 Artplayer 控制栏的显示与隐藏事件，同步外部 UI
+    player.on("control", (show: boolean) => {
+      if (onControlToggle) {
+        onControlToggle(show);
+      }
+    });
 
     const syncTimer = window.setInterval(writePausedState, 250);
 
