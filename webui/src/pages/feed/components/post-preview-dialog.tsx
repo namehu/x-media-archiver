@@ -11,6 +11,15 @@ import { Dialog, DialogContent, DialogDescription, DialogHeader, DialogTitle } f
 import { createArtplayerCleanup } from "@/lib/artplayer-lifecycle";
 import { closeDialogHistoryEntry, isDialogHistoryEntry } from "@/lib/dialog-history";
 import {
+  clampPlaybackTime,
+  finiteOrZero,
+  formatPlaybackClock,
+  formatPlaybackCountdown,
+  remainingPlaybackSeconds,
+  type FeedVideoPlaybackSnapshot,
+  type FeedVideoPlaybackStateApi,
+} from "../video-playback-state";
+import {
   getDebugAuthorProfileHref,
   getDebugExternalHref,
   getDebugLinkTitle,
@@ -35,13 +44,15 @@ export function PostPreviewDialog({
   historyToken,
   onActiveIndexChange,
   onOpenChange,
+  getVideoState,
+  updateVideoState,
 }: {
   post: PostFeedRow | null;
   activeIndex: number;
   historyToken: string | null;
   onActiveIndexChange: (index: number) => void;
   onOpenChange: (open: boolean) => void;
-}) {
+} & FeedVideoPlaybackStateApi) {
   const debugRedactionEnabled = useDebugRedactionEnabled();
   const location = useLocation();
   const swiperRef = useRef<SwiperInstance | null>(null);
@@ -119,7 +130,14 @@ export function PostPreviewDialog({
                 <div className="flex size-full items-center justify-center">
                   {item.media_url ? (
                     item.media_type === "video" ? (
-                      <PreviewVideo src={item.media_url} previewUrl={item.preview_url} active={index === activeIndex} />
+                      <PreviewVideo
+                        src={item.media_url}
+                        previewUrl={item.preview_url}
+                        active={index === activeIndex}
+                        videoId={`${post.tweet_id}:${item.id}`}
+                        getVideoState={getVideoState}
+                        updateVideoState={updateVideoState}
+                      />
                     ) : (
                       <img src={item.media_url} alt="" className="max-h-full max-w-full select-none object-contain" />
                     )
@@ -198,7 +216,19 @@ function avatarInitials(value: string) {
   return Array.from(value.trim()).slice(0, 2).join("").toUpperCase() || "?";
 }
 
-function PreviewVideo({ src, previewUrl, active }: { src: string; previewUrl?: string | null; active: boolean }) {
+function PreviewVideo({
+  src,
+  previewUrl,
+  active,
+  videoId,
+  getVideoState,
+  updateVideoState,
+}: {
+  src: string;
+  previewUrl?: string | null;
+  active: boolean;
+  videoId: string;
+} & FeedVideoPlaybackStateApi) {
   const wrapperRef = useRef<HTMLDivElement>(null);
   const containerRef = useRef<HTMLDivElement>(null);
   const longPressTimerRef = useRef<number | null>(null);
@@ -233,6 +263,7 @@ function PreviewVideo({ src, previewUrl, active }: { src: string; previewUrl?: s
       return undefined;
     }
 
+    const initialState = getVideoState(videoId);
     const player = new Artplayer({
       container,
       url: src,
@@ -254,6 +285,69 @@ function PreviewVideo({ src, previewUrl, active }: { src: string; previewUrl?: s
     });
 
     const cleanupPlayer = createArtplayerCleanup(player, container);
+    const playerVideo = player.video;
+    let restoredPlaybackState = !initialState;
+
+    const updateDefaultTimeDisplay = () => {
+      const timeElement = getArtplayerTimeElement(player);
+      const remainingSeconds = remainingPlaybackSeconds(playerVideo.duration, playerVideo.currentTime);
+      if (timeElement && remainingSeconds !== null) {
+        timeElement.textContent = formatPlaybackCountdown(remainingSeconds);
+      }
+    };
+
+    const writePlayerState = (snapshot: FeedVideoPlaybackSnapshot = {}) => {
+      updateDefaultTimeDisplay();
+      return updateVideoState(videoId, {
+        currentTime:
+          restoredPlaybackState || !initialState ? finiteOrZero(playerVideo.currentTime) : initialState.currentTime,
+        paused: playerVideo.paused,
+        ended: playerVideo.ended,
+        playbackRate: player.playbackRate,
+        volume: playerVideo.volume,
+        muted: playerVideo.muted,
+        duration: Number.isFinite(playerVideo.duration) ? playerVideo.duration : null,
+        ...snapshot,
+      });
+    };
+
+    const restorePlaybackState = () => {
+      if (restoredPlaybackState) return;
+      const state = initialState;
+      if (!state) return;
+
+      restoredPlaybackState = true;
+      playerVideo.muted = state.muted;
+      playerVideo.volume = clampVolume(state.volume);
+      player.playbackRate = state.playbackRate > 0 ? state.playbackRate : 1;
+      const targetTime = state.ended ? 0 : clampPlaybackTime(state.currentTime, playerVideo.duration || state.duration);
+      playerVideo.currentTime = targetTime;
+      writePlayerState({
+        currentTime: targetTime,
+        paused: state.paused,
+        ended: state.ended,
+      });
+    };
+
+    if (playerVideo.readyState >= 1) {
+      restorePlaybackState();
+    } else {
+      playerVideo.addEventListener("loadedmetadata", restorePlaybackState, { once: true });
+    }
+
+    const writePlayingState = () => writePlayerState({ paused: false, ended: false });
+    const writePausedState = () => writePlayerState();
+
+    playerVideo.addEventListener("durationchange", writePausedState);
+    playerVideo.addEventListener("timeupdate", writePausedState);
+    playerVideo.addEventListener("play", writePlayingState);
+    playerVideo.addEventListener("pause", writePausedState);
+    playerVideo.addEventListener("volumechange", writePausedState);
+    playerVideo.addEventListener("ratechange", writePausedState);
+    playerVideo.addEventListener("seeked", writePausedState);
+    playerVideo.addEventListener("ended", writePausedState);
+
+    const syncTimer = window.setInterval(writePausedState, 250);
 
     const clearLongPressTimer = () => {
       if (longPressTimerRef.current !== null) {
@@ -353,7 +447,7 @@ function PreviewVideo({ src, previewUrl, active }: { src: string; previewUrl?: s
       const roundedTargetTime = Math.round(targetTime);
 
       currentGesture.targetTime = targetTime;
-      player.currentTime = targetTime;
+      playerVideo.currentTime = targetTime;
       event.preventDefault();
       event.stopPropagation();
 
@@ -398,9 +492,29 @@ function PreviewVideo({ src, previewUrl, active }: { src: string; previewUrl?: s
     wrapper.addEventListener("pointercancel", finishGesture, true);
     wrapper.addEventListener("lostpointercapture", finishGesture, true);
 
-    void player.play().catch(() => undefined);
+    if (!initialState || (!initialState.paused && !initialState.ended)) {
+      void player.play().catch(() => undefined);
+    } else {
+      player.pause();
+      writePlayerState({ paused: true, ended: initialState.ended });
+    }
 
     return () => {
+      const wasPlaying = !playerVideo.paused && !playerVideo.ended;
+      writePlayerState({
+        paused: wasPlaying ? false : playerVideo.paused,
+        ended: playerVideo.ended,
+      });
+      window.clearInterval(syncTimer);
+      playerVideo.removeEventListener("loadedmetadata", restorePlaybackState);
+      playerVideo.removeEventListener("durationchange", writePausedState);
+      playerVideo.removeEventListener("timeupdate", writePausedState);
+      playerVideo.removeEventListener("play", writePlayingState);
+      playerVideo.removeEventListener("pause", writePausedState);
+      playerVideo.removeEventListener("volumechange", writePausedState);
+      playerVideo.removeEventListener("ratechange", writePausedState);
+      playerVideo.removeEventListener("seeked", writePausedState);
+      playerVideo.removeEventListener("ended", writePausedState);
       wrapper.removeEventListener("pointerdown", handlePointerDown, true);
       wrapper.removeEventListener("pointermove", handlePointerMove, true);
       wrapper.removeEventListener("pointerup", finishGesture, true);
@@ -409,7 +523,7 @@ function PreviewVideo({ src, previewUrl, active }: { src: string; previewUrl?: s
       resetGestureState();
       cleanupPlayer();
     };
-  }, [active, previewUrl, src]);
+  }, [active, getVideoState, previewUrl, src, updateVideoState, videoId]);
 
   if (!active) {
     return previewUrl ? (
@@ -451,22 +565,27 @@ function clampTime(value: number, max: number) {
   return Math.min(Math.max(value, 0), max);
 }
 
-function formatSeekOverlay(delta: number, targetTime: number, duration: number) {
-  const deltaPrefix = delta > 0 ? "+" : "";
-  return `${deltaPrefix}${delta}s · ${formatClock(targetTime)} / ${formatClock(duration)}`;
+function clampVolume(value: number) {
+  if (!Number.isFinite(value)) return 1;
+  return Math.min(Math.max(value, 0), 1);
 }
 
-function formatClock(value: number) {
-  const totalSeconds = Math.max(0, Math.floor(value));
-  const hours = Math.floor(totalSeconds / 3600);
-  const minutes = Math.floor((totalSeconds % 3600) / 60);
-  const seconds = totalSeconds % 60;
+function getArtplayerTimeElement(player: Artplayer) {
+  const directMatch = player.query<HTMLElement>(".art-control-time");
+  if (directMatch) return directMatch;
 
-  if (hours > 0) {
-    return `${hours}:${minutes.toString().padStart(2, "0")}:${seconds.toString().padStart(2, "0")}`;
-  }
+  const controlsLeft = player.query<HTMLElement>(".art-controls-left");
+  if (!controlsLeft) return null;
+  return (
+    Array.from(controlsLeft.querySelectorAll<HTMLElement>(".art-control")).find((element) =>
+      /(?:\d+:)?\d{2}:\d{2}\s*\/\s*(?:\d+:)?\d{2}:\d{2}/.test(element.textContent ?? ""),
+    ) ?? null
+  );
+}
 
-  return `${minutes.toString().padStart(2, "0")}:${seconds.toString().padStart(2, "0")}`;
+function formatSeekOverlay(delta: number, targetTime: number, duration: number) {
+  const deltaPrefix = delta > 0 ? "+" : "";
+  return `${deltaPrefix}${delta}s · ${formatPlaybackClock(targetTime)} / ${formatPlaybackClock(duration)}`;
 }
 
 function brandColor() {

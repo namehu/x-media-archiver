@@ -30,6 +30,7 @@ import { FeedList } from "./components/feed-list";
 import { PostDeleteDialog } from "./components/post-delete-dialog";
 import { PostPreviewDialog } from "./components/post-preview-dialog";
 import { getFeedBrowseState, saveFeedBrowseState } from "./feed-browse-state";
+import type { FeedVideoPlaybackSnapshot, FeedVideoPlaybackState } from "./video-playback-state";
 
 const PAGE_SIZE = 20;
 
@@ -61,6 +62,9 @@ export function FeedPage() {
   const filtersRef = useRef(filters);
   const submittedRef = useRef(submitted);
   const listStateRef = useRef<StateSnapshot | null>(restoreListState);
+  const videoPlaybackStatesRef = useRef<Map<string, FeedVideoPlaybackState>>(
+    new Map(restoredState?.videoPlaybackStates ?? []),
+  );
   filtersRef.current = filters;
   submittedRef.current = submitted;
 
@@ -105,12 +109,18 @@ export function FeedPage() {
       });
     },
     onSuccess: async (response) => {
+      const deletedPost = deleteTargetPost?.post ?? null;
       const deletedTweetId = deleteTargetPost?.post.tweet_id ?? null;
       setDeleteDialogOpen(false);
       setDeleteOperationId(null);
       setDeleteTargetPost(null);
       setActiveVideoId(null);
       setPreview((current) => (current?.post.tweet_id === deletedTweetId ? null : current));
+      if (deletedPost) {
+        for (const media of deletedPost.media) {
+          videoPlaybackStatesRef.current.delete(`${deletedPost.tweet_id}:${media.id}`);
+        }
+      }
       if (deletedTweetId) {
         setDeletedTweetIds((current) => {
           const next = new Set(current);
@@ -138,10 +148,39 @@ export function FeedPage() {
         filters: filtersRef.current,
         submittedFilters: submittedRef.current,
         listState: listStateRef.current,
+        videoPlaybackStates: Array.from(videoPlaybackStatesRef.current.entries()),
       });
     },
     [location.key],
   );
+
+  const getVideoState = useCallback((videoId: string) => videoPlaybackStatesRef.current.get(videoId), []);
+
+  const updateVideoState = useCallback((videoId: string, snapshot: FeedVideoPlaybackSnapshot) => {
+    const current = videoPlaybackStatesRef.current.get(videoId);
+    const next: FeedVideoPlaybackState = {
+      currentTime: snapshot.currentTime ?? current?.currentTime ?? 0,
+      paused: snapshot.paused ?? current?.paused ?? true,
+      ended: snapshot.ended ?? current?.ended ?? false,
+      playbackRate: snapshot.playbackRate ?? current?.playbackRate ?? 1,
+      volume: snapshot.volume ?? current?.volume ?? 1,
+      muted: snapshot.muted ?? current?.muted ?? false,
+      duration: snapshot.duration ?? current?.duration ?? null,
+      updatedAt: Date.now(),
+    };
+    videoPlaybackStatesRef.current.set(videoId, next);
+    return next;
+  }, []);
+
+  const clearVideoPlaybackStates = useCallback((post?: PostFeedRow | null) => {
+    if (!post) {
+      videoPlaybackStatesRef.current.clear();
+      return;
+    }
+    for (const media of post.media) {
+      videoPlaybackStatesRef.current.delete(`${post.tweet_id}:${media.id}`);
+    }
+  }, []);
 
   const resetListAndQuery = useCallback(
     (nextFilters: FeedFilters) => {
@@ -150,9 +189,10 @@ export function FeedPage() {
       setRestoreListState(null);
       setListVersion((version) => version + 1);
       setActiveVideoId(null);
+      clearVideoPlaybackStates();
       void queryClient.resetQueries({ queryKey: ["posts", nextQuery], exact: true });
     },
-    [queryClient],
+    [clearVideoPlaybackStates, queryClient],
   );
 
   const applyFilters = () => {
@@ -190,6 +230,7 @@ export function FeedPage() {
         filters: filtersRef.current,
         submittedFilters: submittedRef.current,
         listState: state,
+        videoPlaybackStates: Array.from(videoPlaybackStatesRef.current.entries()),
       });
     },
     [location.key],
@@ -289,6 +330,8 @@ export function FeedPage() {
               onStateChanged={handleListStateChanged}
               onActivateVideo={setActiveVideoId}
               onRequestDelete={openPostDeleteDialog}
+              getVideoState={getVideoState}
+              updateVideoState={updateVideoState}
               onPreview={(post, index) => {
                 const dialogEntry = createDialogHistoryEntry(location.state);
                 setActiveVideoId(null);
@@ -348,9 +391,18 @@ export function FeedPage() {
         post={preview?.post ?? null}
         activeIndex={preview?.index ?? 0}
         historyToken={preview?.historyToken ?? null}
+        getVideoState={getVideoState}
+        updateVideoState={updateVideoState}
         onActiveIndexChange={(index) => setPreview((current) => (current ? { ...current, index } : null))}
         onOpenChange={(open) => {
-          if (!open) setPreview(null);
+          if (open) return;
+          const currentPreview = preview;
+          const media = currentPreview?.post.media[currentPreview.index];
+          const videoId =
+            currentPreview && media?.media_type === "video" ? `${currentPreview.post.tweet_id}:${media.id}` : null;
+          const videoState = videoId ? getVideoState(videoId) : undefined;
+          setPreview(null);
+          setActiveVideoId(videoId && videoState && !videoState.paused && !videoState.ended ? videoId : null);
         }}
       />
       <PostDeleteDialog

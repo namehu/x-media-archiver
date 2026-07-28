@@ -1,5 +1,6 @@
 import type { PostFeedMedia } from "@/lib/api";
 import { cn } from "@/lib/utils";
+import type { FeedVideoPlaybackStateApi } from "../video-playback-state";
 import { FeedVideo } from "./feed-video";
 
 export function PostMediaGrid({
@@ -9,6 +10,8 @@ export function PostMediaGrid({
   previewOpen,
   onActivateVideo,
   onPreview,
+  getVideoState,
+  updateVideoState,
 }: {
   media: PostFeedMedia[];
   tweetId: string;
@@ -16,7 +19,7 @@ export function PostMediaGrid({
   previewOpen: boolean;
   onActivateVideo: (videoId: string | null) => void;
   onPreview: (index: number) => void;
-}) {
+} & FeedVideoPlaybackStateApi) {
   const visible = media.slice(0, 4);
   const count = visible.length;
   if (!count) return null;
@@ -59,6 +62,8 @@ export function PostMediaGrid({
                 previewOpen={previewOpen}
                 onActivate={onActivateVideo}
                 onPreview={() => onPreview(index)}
+                getVideoState={getVideoState}
+                updateVideoState={updateVideoState}
               />
             ) : (
               <button
