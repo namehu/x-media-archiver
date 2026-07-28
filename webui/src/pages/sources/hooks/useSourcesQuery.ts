@@ -1,5 +1,5 @@
 import { useMutation, useQuery } from "@tanstack/react-query";
-import { apiGet, apiPost, type ArchiveSourceListItem, type SourcePageResponse } from "@/lib/api";
+import { apiDelete, apiGet, apiPost, type ArchiveSourceListItem, type SourceDeleteResponse, type SourcePageResponse } from "@/lib/api";
 import { sourceQueryString } from "../utils";
 
 export const SOURCES_PAGE_SIZE = 50;
@@ -29,6 +29,18 @@ export function useCreateSource(onCreated: (source: ArchiveSourceListItem) => Pr
       }),
     onSuccess: async (source) => {
       await onCreated(source);
+    },
+  });
+}
+
+export function useDeleteSource(onDeleted: (result: SourceDeleteResponse) => Promise<void> | void) {
+  return useMutation({
+    mutationFn: (sourceId: number) =>
+      apiDelete<SourceDeleteResponse>(`/api/v1/sources/${sourceId}`, {
+        body: { confirm_delete: true },
+      }),
+    onSuccess: async (result) => {
+      await onDeleted(result);
     },
   });
 }

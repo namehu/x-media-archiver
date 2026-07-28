@@ -447,7 +447,11 @@ export interface paths {
         get: operations["archive_source_detail_api_v1_sources__source_id__get"];
         put?: never;
         post?: never;
-        delete?: never;
+        /**
+         * Delete Archive Source
+         * @description 软删除来源配置，不删除 Tweet、媒体文件或任务历史。
+         */
+        delete: operations["delete_archive_source_api_v1_sources__source_id__delete"];
         options?: never;
         head?: never;
         patch?: never;
@@ -1269,6 +1273,8 @@ export interface components {
             label?: string | null;
             /** Author Username */
             author_username?: string | null;
+            /** Deleted At */
+            deleted_at?: string | null;
             /** Cursor State */
             cursor_state?: {
                 [key: string]: unknown;
@@ -1344,6 +1350,8 @@ export interface components {
             label?: string | null;
             /** Author Username */
             author_username?: string | null;
+            /** Deleted At */
+            deleted_at?: string | null;
             /** Cursor State */
             cursor_state?: {
                 [key: string]: unknown;
@@ -1417,6 +1425,8 @@ export interface components {
             label?: string | null;
             /** Author Username */
             author_username?: string | null;
+            /** Deleted At */
+            deleted_at?: string | null;
         } & {
             [key: string]: unknown;
         };
@@ -2249,6 +2259,26 @@ export interface components {
             label?: string | null;
             /** Author Username */
             author_username?: string | null;
+        };
+        /** SourceDeleteRequest */
+        SourceDeleteRequest: {
+            /**
+             * Confirm Delete
+             * @default false
+             */
+            confirm_delete: boolean;
+        };
+        /** SourceDeleteResponse */
+        SourceDeleteResponse: {
+            /** Source Id */
+            source_id: number;
+            /**
+             * Deleted At
+             * Format: date-time
+             */
+            deleted_at: string;
+        } & {
+            [key: string]: unknown;
         };
         /** SourceDiscoveryPageResponse */
         SourceDiscoveryPageResponse: {
@@ -3511,6 +3541,41 @@ export interface operations {
                 };
                 content: {
                     "application/json": components["schemas"]["ArchiveSourceDetailResponse"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    delete_archive_source_api_v1_sources__source_id__delete: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                source_id: number;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["SourceDeleteRequest"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["SourceDeleteResponse"];
                 };
             };
             /** @description Validation Error */

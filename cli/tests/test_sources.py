@@ -16,6 +16,7 @@ from xarchiver.services.sources import (
     build_scan_range,
     count_discovered_media,
     create_source,
+    delete_source,
     detect_gallery_dl_exhausted_retry,
     discover_records_with_gallery_dl,
     extract_gallery_dl_cursor,
@@ -579,6 +580,118 @@ class SourceDiscoveryIntegrationTests(unittest.TestCase):
         self.assertEqual(source["source_url"], self.source_urls[0])
         with self.assertRaisesRegex(ValueError, "source_already_exists"):
             create_source("user_media", "https://x.com/sourcefixture/media")
+
+    def test_delete_source_soft_deletes_without_removing_history(self) -> None:
+        source = create_source("user_media", self.source_urls[0])
+        record_source_discoveries(
+            int(source["id"]),
+            [
+                {
+                    "tweet_id": self.tweet_id,
+                    "url": f"https://x.com/sourcefixture/status/{self.tweet_id}",
+                    "author_username": "sourcefixture",
+                    "author_display_name": None,
+                    "text": None,
+                    "published_at": None,
+                    "collected_at": None,
+                    "raw_import": {"media_count": 1},
+                }
+            ],
+        )
+        scan_run_id = start_source_scan_run(
+            int(source["id"]),
+            "manual_next",
+            {"start": 1, "end": 20, "limit": 20},
+            {},
+            worker_id="worker-test",
+        )
+        submitted = submit_source_downloads(int(source["id"]), "all_unsubmitted")
+        with connect() as conn:
+            with conn.cursor() as cur:
+                cur.execute("update source_scan_runs set status = 'succeeded', finished_at = now() where id = %s", (scan_run_id,))
+                cur.execute("update archive_runs set status = 'completed', finished_at = now() where id = %s", (submitted["run_id"],))
+            conn.commit()
+
+        result = delete_source(int(source["id"]), confirm_delete=True)
+
+        self.assertEqual(result["source_id"], source["id"])
+        self.assertIsNone(get_source(int(source["id"])))
+        page = list_sources_page(limit=20)
+        self.assertNotIn(source["id"], [row["id"] for row in page["rows"]])
+        with connect() as conn:
+            with conn.cursor() as cur:
+                cur.execute(
+                    "select status, is_pinned, next_scan_at, deleted_at from archive_sources where id = %s",
+                    (source["id"],),
+                )
+                source_row = cur.fetchone()
+                cur.execute("select count(*)::int as count from source_discovered_tweets where source_id = %s", (source["id"],))
+                discovered_count = int(cur.fetchone()["count"])
+                cur.execute("select count(*)::int as count from source_scan_runs where source_id = %s", (source["id"],))
+                scan_count = int(cur.fetchone()["count"])
+                cur.execute("select count(*)::int as count from archive_runs where source_id = %s", (source["id"],))
+                run_count = int(cur.fetchone()["count"])
+
+        self.assertEqual(source_row["status"], "paused")
+        self.assertFalse(source_row["is_pinned"])
+        self.assertIsNone(source_row["next_scan_at"])
+        self.assertIsNotNone(source_row["deleted_at"])
+        self.assertEqual(discovered_count, 1)
+        self.assertEqual(scan_count, 1)
+        self.assertEqual(run_count, 1)
+
+    def test_create_source_restores_soft_deleted_source(self) -> None:
+        source = create_source("user_media", self.source_urls[0], label="旧来源")
+        delete_source(int(source["id"]), confirm_delete=True)
+
+        restored = create_source("user_media", "https://x.com/sourcefixture/media", label="恢复来源")
+
+        self.assertEqual(restored["id"], source["id"])
+        self.assertEqual(restored["label"], "恢复来源")
+        self.assertEqual(restored["status"], "active")
+        self.assertIsNone(restored["deleted_at"])
+        self.assertIsNotNone(get_source(int(source["id"])))
+
+    def test_delete_source_rejects_unconfirmed_request(self) -> None:
+        source = create_source("user_media", self.source_urls[0])
+
+        with self.assertRaisesRegex(ValueError, "source_delete_confirmation_required"):
+            delete_source(int(source["id"]))
+
+    def test_delete_source_rejects_active_scan(self) -> None:
+        source = create_source("profile", self.source_urls[2])
+        start_source_scan_run(
+            int(source["id"]),
+            "manual_next",
+            {"start": 1, "end": 20, "limit": 20},
+            {},
+            worker_id="worker-test",
+        )
+
+        with self.assertRaisesRegex(ValueError, "source_delete_active_work"):
+            delete_source(int(source["id"]), confirm_delete=True)
+
+    def test_delete_source_rejects_active_download_run(self) -> None:
+        source = create_source("user_media", self.source_urls[0])
+        record_source_discoveries(
+            int(source["id"]),
+            [
+                {
+                    "tweet_id": self.tweet_id,
+                    "url": f"https://x.com/sourcefixture/status/{self.tweet_id}",
+                    "author_username": "sourcefixture",
+                    "author_display_name": None,
+                    "text": None,
+                    "published_at": None,
+                    "collected_at": None,
+                    "raw_import": {"media_count": 1},
+                }
+            ],
+        )
+        submit_source_downloads(int(source["id"]), "all_unsubmitted")
+
+        with self.assertRaisesRegex(ValueError, "source_delete_active_work"):
+            delete_source(int(source["id"]), confirm_delete=True)
 
     def test_repeated_discovery_preserves_first_discovered_at(self) -> None:
         source = create_source("user_media", "https://x.com/sourcefixture/media")

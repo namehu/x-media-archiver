@@ -16,6 +16,7 @@ from xarchiver.api.schemas import (
     MediaDeleteRequest,
     PostFeedPageResponse,
     SourceCreateRequest,
+    SourceDeleteRequest,
     SourceDiscoveryPageResponse,
     SourcePinRequest,
     SourceScanRunsPageResponse,
@@ -110,6 +111,7 @@ class V1RouterSmokeTests(unittest.TestCase):
     def test_v1_delete_routes_registered(self):
         self.assertIn("/api/v1/settings/cookies", self.delete_paths)
         self.assertIn("/api/v1/library/media", self.delete_paths)
+        self.assertIn("/api/v1/sources/{source_id}", self.delete_paths)
 
     def test_v1_media_delete_rejects_unconfirmed(self):
         with self.assertRaises(HTTPException) as ctx:
@@ -266,6 +268,23 @@ class V1RouterSmokeTests(unittest.TestCase):
                 )
         self.assertEqual(ctx.exception.status_code, 404)
 
+    def test_v1_source_delete_requires_confirmation(self):
+        with self.assertRaises(HTTPException) as ctx:
+            self.delete_paths["/api/v1/sources/{source_id}"](
+                2, SourceDeleteRequest()
+            )
+        self.assertEqual(ctx.exception.status_code, 400)
+        self.assertEqual(ctx.exception.detail, "source_delete_confirmation_required")
+
+    def test_v1_source_delete_maps_active_work_to_409(self):
+        with patch("xarchiver.api.v1.sources.delete_source", side_effect=ValueError("source_delete_active_work")):
+            with self.assertRaises(HTTPException) as ctx:
+                self.delete_paths["/api/v1/sources/{source_id}"](
+                    2, SourceDeleteRequest(confirm_delete=True)
+                )
+        self.assertEqual(ctx.exception.status_code, 409)
+        self.assertEqual(ctx.exception.detail, "source_delete_active_work")
+
     def test_v1_archive_runs_list_delegates_all_filters(self):
         page = {"rows": [], "count": 0, "total_count": 0, "limit": 10, "offset": 20}
         with patch("xarchiver.api.v1.archive_runs.list_runs_page", return_value=page) as mock:
@@ -405,6 +424,7 @@ class V1RouterSmokeTests(unittest.TestCase):
         paths = set(self.app.openapi()["paths"].keys())
         self.assertIn("/api/v1/archive-runs", paths)
         self.assertIn("/api/v1/sources", paths)
+        self.assertIn("/api/v1/sources/{source_id}", paths)
         self.assertIn("/api/v1/sources/{source_id}/scan-sessions", paths)
         self.assertIn("/api/v1/library/media", paths)
         self.assertIn("/api/v1/library/authors", paths)

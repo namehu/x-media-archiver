@@ -364,6 +364,7 @@ type ArchiveSourceBase = {
   error_category?: string | null;
   error_message?: string | null;
   next_scan_at?: string | null;
+  deleted_at?: string | null;
   cursor_state?: {
     next_start_index?: number;
     last_range_start?: number;
@@ -404,6 +405,11 @@ export type ArchiveSource = ArchiveSourceDetail;
 export type SourcePageResponse = PageResponse<ArchiveSourceListItem>;
 export type SourceDiscoveryPageResponse = PageResponse<SourceDiscovery>;
 export type SourceScanRunsPageResponse = PageResponse<SourceScanRun>;
+
+export type SourceDeleteResponse = {
+  source_id: number;
+  deleted_at: string;
+};
 
 export type SourceDownloadSummary = {
   source_id: number;

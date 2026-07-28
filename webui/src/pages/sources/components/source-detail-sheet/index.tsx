@@ -40,12 +40,14 @@ type DetailActions = {
   stopDownload: (runId: number) => void;
   cancelDownloadItems: (input: { runId: number; tweetIds: string[] }) => void;
   stopHistory: (sourceId: number) => void;
+  deleteSource: (sourceId: number) => void;
   pending: {
     submit: boolean;
     status: boolean;
     submitDiscovered: boolean;
     download: boolean;
     history: boolean;
+    deleteSource: boolean;
   };
   errors: {
     submit: unknown;
@@ -53,6 +55,7 @@ type DetailActions = {
     submitDiscovered: unknown;
     download: unknown;
     history: unknown;
+    deleteSource: unknown;
   };
 };
 
@@ -166,6 +169,9 @@ export function SourceDetailPanel({
                   now={now}
                   detailUpdatedAt={detailUpdatedAt}
                   scanLimit={persistedScanLimit}
+                  deletePending={actions.pending.deleteSource}
+                  deleteError={actions.errors.deleteSource}
+                  onDelete={actions.deleteSource}
                 />
               </TabsContent>
               <TabsContent

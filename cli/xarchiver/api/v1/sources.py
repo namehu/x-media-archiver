@@ -14,6 +14,8 @@ from xarchiver.api.schemas import (
     ArchiveSourceResponse,
     ArchiveSubmissionResponse,
     SourceCreateRequest,
+    SourceDeleteRequest,
+    SourceDeleteResponse,
     SourceDiscoveryPageResponse,
     SourceDownloadRequest,
     SourceDownloadSummaryResponse,
@@ -30,6 +32,7 @@ from xarchiver.api.schemas import (
 )
 from xarchiver.services.sources import (
     create_source,
+    delete_source,
     get_source,
     get_source_downloads,
     list_source_discovered_page,
@@ -100,6 +103,20 @@ def archive_source_detail(source_id: int) -> dict[str, object]:
     if result is None:
         raise HTTPException(status_code=404, detail="source_not_found")
     return result
+
+
+@router.delete("/{source_id}", response_model=SourceDeleteResponse)
+def delete_archive_source(source_id: int, request: SourceDeleteRequest) -> dict[str, object]:
+    """软删除来源配置，不删除 Tweet、媒体文件或任务历史。"""
+
+    try:
+        return execute_write_action(
+            "source-delete",
+            lambda: delete_source(source_id, request.confirm_delete),
+            scope=f"source:{source_id}",
+        )["result"]
+    except ValueError as exc:
+        raise_api_error(exc, default_status=409)
 
 
 @router.get("/{source_id}/discovered", response_model=SourceDiscoveryPageResponse)
