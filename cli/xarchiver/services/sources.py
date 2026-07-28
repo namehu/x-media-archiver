@@ -476,6 +476,19 @@ def delete_source(source_id: int, confirm_delete: bool = False) -> dict[str, obj
             )
             if cur.fetchone() is not None:
                 raise ValueError("source_delete_active_work")
+            cur.execute(
+                """
+                select i.id
+                from archive_run_items i
+                join archive_runs r on r.id = i.archive_run_id
+                where r.source_id = %s
+                  and i.status = 'processing'
+                limit 1
+                """,
+                (source_id,),
+            )
+            if cur.fetchone() is not None:
+                raise ValueError("source_delete_active_work")
             cursor_state = set_active_scan_session_state(
                 source.cursor_state,
                 "stopped",

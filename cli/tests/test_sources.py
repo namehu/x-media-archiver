@@ -693,6 +693,44 @@ class SourceDiscoveryIntegrationTests(unittest.TestCase):
         with self.assertRaisesRegex(ValueError, "source_delete_active_work"):
             delete_source(int(source["id"]), confirm_delete=True)
 
+    def test_delete_source_rejects_stopped_run_with_processing_item(self) -> None:
+        source = create_source("user_media", self.source_urls[0])
+        record_source_discoveries(
+            int(source["id"]),
+            [
+                {
+                    "tweet_id": self.tweet_id,
+                    "url": f"https://x.com/sourcefixture/status/{self.tweet_id}",
+                    "author_username": "sourcefixture",
+                    "author_display_name": None,
+                    "text": None,
+                    "published_at": None,
+                    "collected_at": None,
+                    "raw_import": {"media_count": 1},
+                }
+            ],
+        )
+        submitted = submit_source_downloads(int(source["id"]), "all_unsubmitted")
+        with connect() as conn:
+            with conn.cursor() as cur:
+                cur.execute(
+                    "update archive_runs set status = 'stopped' where id = %s",
+                    (submitted["run_id"],),
+                )
+                cur.execute(
+                    """
+                    update archive_run_items
+                    set status = 'processing',
+                        cancel_requested = true
+                    where archive_run_id = %s
+                    """,
+                    (submitted["run_id"],),
+                )
+            conn.commit()
+
+        with self.assertRaisesRegex(ValueError, "source_delete_active_work"):
+            delete_source(int(source["id"]), confirm_delete=True)
+
     def test_repeated_discovery_preserves_first_discovered_at(self) -> None:
         source = create_source("user_media", "https://x.com/sourcefixture/media")
         first = {

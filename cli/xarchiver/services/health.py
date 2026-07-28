@@ -177,19 +177,21 @@ def get_recent_errors(cur, limit: int = 5) -> list[dict[str, object]]:
         where error_category is not null or error_message is not null
         union all
         select 'source_scan' as kind,
-               id::text as id,
-               source_id::text as subject,
+               r.id::text as id,
+               r.source_id::text as subject,
                null::bigint as archive_run_id,
                null::bigint as archive_run_item_id,
                null::text as tweet_id,
-               source_id,
-               id as source_scan_run_id,
-               '/sources?sourceId=' || source_id::text as target_path,
-               error_category,
-               error_message,
-               coalesce(finished_at, created_at) as occurred_at
-        from source_scan_runs
-        where error_category is not null or error_message is not null
+               r.source_id,
+               r.id as source_scan_run_id,
+               '/sources?sourceId=' || r.source_id::text as target_path,
+               r.error_category,
+               r.error_message,
+               coalesce(r.finished_at, r.created_at) as occurred_at
+        from source_scan_runs r
+        join archive_sources s on s.id = r.source_id
+        where s.deleted_at is null
+          and (r.error_category is not null or r.error_message is not null)
         order by occurred_at desc nulls last
         limit %s
         """,
