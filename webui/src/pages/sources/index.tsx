@@ -10,12 +10,14 @@ import { SourcesList } from "./components/sources-list";
 import { useDownloadPolicy, useSourceDetail } from "./hooks/useSourceDetail";
 import { useSourceActions } from "./hooks/useSourceScan";
 import { useCreateSource, useDeleteSource, useSourcesQuery } from "./hooks/useSourcesQuery";
+import type { SourceDeletedFilter } from "./utils";
 
 export function SourcesPage() {
   const queryClient = useQueryClient();
   const [searchParams, setSearchParams] = useSearchParams();
   const [selectedSourceId, setSelectedSourceId] = useState<number | null>(null);
   const [sourceTypeFilter, setSourceTypeFilter] = useState("");
+  const [sourceDeletedFilter, setSourceDeletedFilter] = useState<SourceDeletedFilter>("active");
   const [sortBy, setSortBy] = useState<"updated_at" | "created_at">("updated_at");
   const [sortDirection, setSortDirection] = useState<"asc" | "desc">("desc");
   const [offset, setOffset] = useState(0);
@@ -26,8 +28,9 @@ export function SourcesPage() {
   const [createDialogOpen, setCreateDialogOpen] = useState(false);
   const [detailSheetOpen, setDetailSheetOpen] = useState(false);
 
-  const sourcesQuery = useSourcesQuery(sourceTypeFilter, sortBy, sortDirection, offset);
-  const detailQuery = useSourceDetail(selectedSourceId);
+  const includeDeletedDetail = sourceDeletedFilter !== "active";
+  const sourcesQuery = useSourcesQuery(sourceTypeFilter, sourceDeletedFilter, sortBy, sortDirection, offset);
+  const detailQuery = useSourceDetail(selectedSourceId, includeDeletedDetail);
   const policyQuery = useDownloadPolicy();
   const selected = detailQuery.data;
   const activeScanRun = selected?.active_scan_run;
@@ -106,10 +109,12 @@ export function SourcesPage() {
         data={sourcesQuery.data}
         selectedSourceId={selectedSourceId}
         typeFilter={sourceTypeFilter}
+        deletedFilter={sourceDeletedFilter}
         sortBy={sortBy}
         sortDirection={sortDirection}
         offset={offset}
         onTypeFilterChange={setSourceTypeFilter}
+        onDeletedFilterChange={setSourceDeletedFilter}
         onSortChange={(nextSortBy, nextSortDirection) => {
           setOffset(0);
           setSortBy(nextSortBy);

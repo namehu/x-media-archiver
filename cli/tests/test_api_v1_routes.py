@@ -354,6 +354,7 @@ class V1RouterSmokeTests(unittest.TestCase):
                 offset=0,
                 source_status="active",
                 source_type="profile",
+                deleted="all",
                 sort_by="created_at",
                 sort_direction="asc",
             )
@@ -361,6 +362,7 @@ class V1RouterSmokeTests(unittest.TestCase):
         mock.assert_called_once_with(
             status="active",
             source_type="profile",
+            deleted="all",
             sort_by="created_at",
             sort_direction="asc",
             limit=5,
@@ -422,8 +424,10 @@ class V1RouterSmokeTests(unittest.TestCase):
             "active_scan_run": None,
         }
 
-        with patch("xarchiver.api.v1.sources.get_source", return_value=detail):
-            result = self.get_paths["/api/v1/sources/{source_id}"](2)
+        with patch("xarchiver.api.v1.sources.get_source", return_value=detail) as mock:
+            result = self.get_paths["/api/v1/sources/{source_id}"](2, include_deleted=True)
+
+        mock.assert_called_once_with(2, include_deleted=True)
 
         payload = ArchiveSourceDetailResponse.model_validate(result).model_dump(mode="json")
         self.assertEqual(payload["scan_summary"]["batch_count"], 5)
@@ -434,20 +438,28 @@ class V1RouterSmokeTests(unittest.TestCase):
     def test_v1_source_discovered_delegates_pagination(self):
         page = {"rows": [], "count": 0, "total_count": 7, "limit": 25, "offset": 50}
         with patch("xarchiver.api.v1.sources.list_source_discovered_page", return_value=page) as mock:
-            result = self.get_paths["/api/v1/sources/{source_id}/discovered"](2, limit=25, offset=50)
+            result = self.get_paths["/api/v1/sources/{source_id}/discovered"](2, limit=25, offset=50, include_deleted=True)
 
         payload = SourceDiscoveryPageResponse.model_validate(result).model_dump(mode="json")
         self.assertEqual(payload["total_count"], 7)
-        mock.assert_called_once_with(2, limit=25, offset=50)
+        mock.assert_called_once_with(2, limit=25, offset=50, include_deleted=True)
+
+    def test_v1_source_downloads_delegates_include_deleted(self):
+        response = {"source_id": 2, "recent_runs": []}
+        with patch("xarchiver.api.v1.sources.get_source_downloads", return_value=response) as mock:
+            result = self.get_paths["/api/v1/sources/{source_id}/downloads"](2, include_deleted=True)
+
+        self.assertEqual(result, response)
+        mock.assert_called_once_with(2, include_deleted=True)
 
     def test_v1_source_scan_runs_delegates_pagination(self):
         page = {"rows": [], "count": 0, "total_count": 3, "limit": 20, "offset": 20}
         with patch("xarchiver.api.v1.sources.list_source_scan_runs_page", return_value=page) as mock:
-            result = self.get_paths["/api/v1/sources/{source_id}/scan-runs"](2, limit=20, offset=20)
+            result = self.get_paths["/api/v1/sources/{source_id}/scan-runs"](2, limit=20, offset=20, include_deleted=True)
 
         payload = SourceScanRunsPageResponse.model_validate(result).model_dump(mode="json")
         self.assertEqual(payload["total_count"], 3)
-        mock.assert_called_once_with(2, limit=20, offset=20)
+        mock.assert_called_once_with(2, limit=20, offset=20, include_deleted=True)
 
     # ── OpenAPI schema: v1 routes appear in the spec ──────────────────────────
 

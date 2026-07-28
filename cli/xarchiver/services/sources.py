@@ -72,6 +72,7 @@ from xarchiver.tables import (
 
 VALID_SOURCE_TYPES = {"profile", "user_media", "likes", "bookmarks", "search", "manual"}
 VALID_SOURCE_STATUSES = {"active", "paused", "completed", "failed"}
+VALID_SOURCE_DELETED_FILTERS = {"active", "deleted", "all"}
 VALID_SOURCE_SORT_FIELDS = {"updated_at", "created_at"}
 VALID_SORT_DIRECTIONS = {"asc", "desc"}
 VALID_SCAN_TRIGGERS = {"history_worker", "manual_next", "latest_refresh", "from_start_repair"}
@@ -214,6 +215,7 @@ def create_source(
 def list_sources(
     status: str | None = None,
     source_type: str | None = None,
+    deleted: str = "active",
     sort_by: str = "updated_at",
     sort_direction: str = "desc",
     limit: int = 50,
@@ -224,6 +226,7 @@ def list_sources(
     sql, params = build_sources_query(
         status=status,
         source_type=source_type,
+        deleted=deleted,
         sort_by=sort_by,
         sort_direction=sort_direction,
         limit=limit,
@@ -238,6 +241,7 @@ def list_sources(
 def list_sources_page(
     status: str | None = None,
     source_type: str | None = None,
+    deleted: str = "active",
     sort_by: str = "updated_at",
     sort_direction: str = "desc",
     limit: int = 50,
@@ -248,12 +252,13 @@ def list_sources_page(
     rows = list_sources(
         status=status,
         source_type=source_type,
+        deleted=deleted,
         sort_by=sort_by,
         sort_direction=sort_direction,
         limit=limit,
         offset=offset,
     )
-    total_count = count_sources(status=status, source_type=source_type)
+    total_count = count_sources(status=status, source_type=source_type, deleted=deleted)
     return {
         "rows": [dict(row) for row in rows],
         "count": len(rows),
@@ -266,10 +271,11 @@ def list_sources_page(
 def count_sources(
     status: str | None = None,
     source_type: str | None = None,
+    deleted: str = "active",
 ) -> int:
     """按与 ``list_sources`` 相同的过滤条件统计来源数量。"""
 
-    sql, params = build_count_sources_query(status=status, source_type=source_type)
+    sql, params = build_count_sources_query(status=status, source_type=source_type, deleted=deleted)
     with connect() as conn:
         with conn.cursor() as cur:
             cur.execute(sql, params)
@@ -279,6 +285,7 @@ def count_sources(
 def build_sources_query(
     status: str | None = None,
     source_type: str | None = None,
+    deleted: str = "active",
     sort_by: str = "updated_at",
     sort_direction: str = "desc",
     limit: int = 50,
@@ -337,18 +344,19 @@ def build_sources_query(
         .limit(bindparam("limit", limit))
         .offset(bindparam("offset", offset))
     )
-    statement = apply_source_filters(statement, status=status, source_type=source_type)
+    statement = apply_source_filters(statement, status=status, source_type=source_type, deleted=deleted)
     return compile_query(statement)
 
 
 def build_count_sources_query(
     status: str | None = None,
     source_type: str | None = None,
+    deleted: str = "active",
 ) -> tuple[str, dict[str, object]]:
     """构造与 ``build_sources_query`` 对应的数量查询。"""
 
     statement = select(func.count().cast(Integer).label("count")).select_from(archive_sources)
-    statement = apply_source_filters(statement, status=status, source_type=source_type)
+    statement = apply_source_filters(statement, status=status, source_type=source_type, deleted=deleted)
     return compile_query(statement)
 
 
@@ -356,10 +364,11 @@ def apply_source_filters(
     statement: Select,
     status: str | None = None,
     source_type: str | None = None,
+    deleted: str = "active",
 ) -> Select:
     """把可选来源过滤条件应用到 SQLAlchemy 语句上。"""
 
-    filters = build_source_filters(status=status, source_type=source_type)
+    filters = build_source_filters(status=status, source_type=source_type, deleted=deleted)
     if not filters:
         return statement
     return statement.where(and_(*filters))
@@ -368,10 +377,16 @@ def apply_source_filters(
 def build_source_filters(
     status: str | None = None,
     source_type: str | None = None,
+    deleted: str = "active",
 ) -> list[ColumnElement[bool]]:
     """构造可复用的来源过滤表达式。"""
 
-    filters: list[ColumnElement[bool]] = [archive_sources.c.deleted_at.is_(None)]
+    normalized_deleted = normalize_source_deleted_filter(deleted)
+    filters: list[ColumnElement[bool]] = []
+    if normalized_deleted == "active":
+        filters.append(archive_sources.c.deleted_at.is_(None))
+    elif normalized_deleted == "deleted":
+        filters.append(archive_sources.c.deleted_at.is_not(None))
     if status:
         filters.append(
             archive_sources.c.status == bindparam(
@@ -387,6 +402,15 @@ def build_source_filters(
             )
         )
     return filters
+
+
+def normalize_source_deleted_filter(value: str) -> str:
+    """校验来源软删除筛选范围。"""
+
+    normalized = value.strip().lower()
+    if normalized not in VALID_SOURCE_DELETED_FILTERS:
+        raise ValueError("invalid_source_deleted_filter")
+    return normalized
 
 
 def normalize_source_sort_field(value: str) -> str:
@@ -518,7 +542,7 @@ def delete_source(source_id: int, confirm_delete: bool = False) -> dict[str, obj
     return result
 
 
-def get_source(source_id: int) -> dict[str, object] | None:
+def get_source(source_id: int, include_deleted: bool = False) -> dict[str, object] | None:
     """读取单个来源，并附带发现聚合和当前扫描元数据。"""
 
     with connect() as conn:
@@ -539,10 +563,10 @@ def get_source(source_id: int) -> dict[str, object] | None:
                 from archive_sources s
                 left join source_discovered_tweets d on d.source_id = s.id
                 where s.id = %s
-                  and s.deleted_at is null
+                  and (%s or s.deleted_at is null)
                 group by s.id
                 """,
-                (source_id,),
+                (source_id, include_deleted),
             )
             source = cur.fetchone()
             if source is None:
@@ -588,12 +612,20 @@ def get_source(source_id: int) -> dict[str, object] | None:
     }
 
 
-def list_source_discovered_page(source_id: int, limit: int = 50, offset: int = 0) -> dict[str, object]:
+def list_source_discovered_page(
+    source_id: int,
+    limit: int = 50,
+    offset: int = 0,
+    include_deleted: bool = False,
+) -> dict[str, object]:
     """返回某个来源已发现的推文，并补上队列进度信息。"""
 
     with connect() as conn:
         with conn.cursor() as cur:
-            cur.execute("select 1 from archive_sources where id = %s and deleted_at is null", (source_id,))
+            cur.execute(
+                "select 1 from archive_sources where id = %s and (%s or deleted_at is null)",
+                (source_id, include_deleted),
+            )
             if cur.fetchone() is None:
                 raise ValueError("source_not_found")
             cur.execute(
@@ -655,12 +687,20 @@ def list_source_discovered_page(source_id: int, limit: int = 50, offset: int = 0
     }
 
 
-def list_source_scan_runs_page(source_id: int, limit: int = 20, offset: int = 0) -> dict[str, object]:
+def list_source_scan_runs_page(
+    source_id: int,
+    limit: int = 20,
+    offset: int = 0,
+    include_deleted: bool = False,
+) -> dict[str, object]:
     """返回某个来源的扫描运行历史。"""
 
     with connect() as conn:
         with conn.cursor() as cur:
-            cur.execute("select 1 from archive_sources where id = %s and deleted_at is null", (source_id,))
+            cur.execute(
+                "select 1 from archive_sources where id = %s and (%s or deleted_at is null)",
+                (source_id, include_deleted),
+            )
             if cur.fetchone() is None:
                 raise ValueError("source_not_found")
             cur.execute(
@@ -2560,10 +2600,10 @@ def submit_discovered_tweets(
     return submit_source_downloads(source_id, "selected" if tweet_ids else "all_unsubmitted", tweet_ids=tweet_ids, limit=limit)
 
 
-def get_source_downloads(source_id: int) -> dict[str, object]:
+def get_source_downloads(source_id: int, include_deleted: bool = False) -> dict[str, object]:
     """返回某个来源的 active、paused、blocked 与整体下载状态。"""
 
-    if get_source(source_id) is None:
+    if get_source(source_id, include_deleted=include_deleted) is None:
         raise ValueError("source_not_found")
     runs = list_runs(limit=20, source_id=source_id)
     active = next((run for run in runs if run.status in {"queued", "running"}), None)

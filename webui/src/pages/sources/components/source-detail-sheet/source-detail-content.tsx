@@ -1,6 +1,6 @@
 import type { ArchiveSourceDetail } from "@/lib/api";
 import { ApiError } from "@/lib/api";
-import { Alert, AlertTitle } from "@/components/ui/alert";
+import { Alert, AlertDescription, AlertTitle } from "@/components/ui/alert";
 import {
   AlertDialog,
   AlertDialogAction,
@@ -37,13 +37,23 @@ export function SourceDetailContent({
   onDelete: (sourceId: number) => void;
 }) {
   const debugRedactionEnabled = useDebugRedactionEnabled();
+  const isDeleted = Boolean(source.deleted_at);
   const historyEnabled = Boolean(source.cursor_state?.automation_enabled);
   const [confirmDeleteOpen, setConfirmDeleteOpen] = React.useState(false);
 
   return (
     <div className="space-y-3">
+      {isDeleted ? (
+        <Alert>
+          <AlertTitle>此来源已软删除</AlertTitle>
+          <AlertDescription>
+            已发现 Tweet、媒体文件、下载任务和扫描历史仍然保留。重新新增相同 URL 会恢复这个来源。
+          </AlertDescription>
+        </Alert>
+      ) : null}
       <div className="grid gap-2 rounded-lg bg-bg-muted p-3 text-sm">
         <DetailRow label="更新时间" value={formatDateTime(source.updated_at)} />
+        {source.deleted_at ? <DetailRow label="删除时间" value={formatDateTime(source.deleted_at)} /> : null}
         <DetailRow label="下一批范围" value={formatNextRange(source.cursor_state, scanLimit)} />
         <DetailRow label="扫描状态" value={formatScanState(source.cursor_state)} />
         <DetailRow label="任务状态" value={formatHistoryState(source)} />
@@ -66,6 +76,7 @@ export function SourceDetailContent({
         <DetailRow label="最近成功扫描" value={formatDateTime(source.scan_summary?.last_success_at)} />
         <DetailRow label="最近扫描错误" value={formatDateTime(source.scan_summary?.last_error_at)} />
       </div>
+      {!isDeleted ? (
       <section className="rounded-lg border border-danger/30 bg-bg-surface p-3">
         <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
           <div className="min-w-0">
@@ -86,6 +97,8 @@ export function SourceDetailContent({
           </Button>
         </div>
       </section>
+      ) : null}
+      {!isDeleted ? (
       <AlertDialog open={confirmDeleteOpen} onOpenChange={(open) => !deletePending && setConfirmDeleteOpen(open)}>
         <AlertDialogContent>
           <AlertDialogHeader>
@@ -116,6 +129,7 @@ export function SourceDetailContent({
           </AlertDialogFooter>
         </AlertDialogContent>
       </AlertDialog>
+      ) : null}
     </div>
   );
 }

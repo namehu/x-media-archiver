@@ -3461,6 +3461,7 @@ export interface operations {
                 offset?: number;
                 source_status?: string | null;
                 source_type?: string | null;
+                deleted?: string;
                 sort_by?: string;
                 sort_direction?: string;
             };
@@ -3525,7 +3526,9 @@ export interface operations {
     };
     archive_source_detail_api_v1_sources__source_id__get: {
         parameters: {
-            query?: never;
+            query?: {
+                include_deleted?: boolean;
+            };
             header?: never;
             path: {
                 source_id: number;
@@ -3594,6 +3597,7 @@ export interface operations {
             query?: {
                 limit?: number;
                 offset?: number;
+                include_deleted?: boolean;
             };
             header?: never;
             path: {
@@ -3625,7 +3629,9 @@ export interface operations {
     };
     archive_source_downloads_api_v1_sources__source_id__downloads_get: {
         parameters: {
-            query?: never;
+            query?: {
+                include_deleted?: boolean;
+            };
             header?: never;
             path: {
                 source_id: number;
@@ -3694,6 +3700,7 @@ export interface operations {
             query?: {
                 limit?: number;
                 offset?: number;
+                include_deleted?: boolean;
             };
             header?: never;
             path: {

@@ -8,20 +8,27 @@ import { Select, SelectContent, SelectGroup, SelectItem, SelectTrigger, SelectVa
 import { Tooltip, TooltipContent, TooltipTrigger } from "@/components/ui/tooltip";
 import { getDebugRedactProps, useDebugRedactionEnabled } from "@/lib/debug-redaction";
 import { sourceTypeLabel } from "@/lib/formatters";
-import { SOURCE_TYPES, sourceScanStatus } from "../utils";
+import { SOURCE_TYPES, sourceScanStatus, type SourceDeletedFilter } from "../utils";
 import { SOURCES_PAGE_SIZE } from "../hooks/useSourcesQuery";
 
 const ALL_TYPE_VALUE = "__all_type__";
 const SOURCE_SORT_VALUES = ["updated_at:desc", "updated_at:asc", "created_at:desc", "created_at:asc"] as const;
+const SOURCE_DELETED_LABELS: Record<SourceDeletedFilter, string> = {
+  active: "正常来源",
+  deleted: "已删除来源",
+  all: "全部来源",
+};
 
 export function SourcesList({
   data,
   selectedSourceId,
   typeFilter,
+  deletedFilter,
   sortBy,
   sortDirection,
   offset,
   onTypeFilterChange,
+  onDeletedFilterChange,
   onSortChange,
   onOffsetChange,
   onSelectSource,
@@ -32,10 +39,12 @@ export function SourcesList({
   data?: SourcePageResponse;
   selectedSourceId: number | null;
   typeFilter: string;
+  deletedFilter: SourceDeletedFilter;
   sortBy: "updated_at" | "created_at";
   sortDirection: "asc" | "desc";
   offset: number;
   onTypeFilterChange: (value: string) => void;
+  onDeletedFilterChange: (value: SourceDeletedFilter) => void;
   onSortChange: (sortBy: "updated_at" | "created_at", sortDirection: "asc" | "desc") => void;
   onOffsetChange: (offset: number) => void;
   onSelectSource: (sourceId: number) => void;
@@ -58,7 +67,7 @@ export function SourcesList({
         </div>
       </CardHeader>
       <CardContent className="space-y-3">
-        <div className="grid gap-2 sm:grid-cols-2">
+        <div className="grid gap-2 lg:grid-cols-3">
           <Select
             value={typeFilter || ALL_TYPE_VALUE}
             onValueChange={(value) => {
@@ -75,6 +84,27 @@ export function SourcesList({
                 {SOURCE_TYPES.map((type) => (
                   <SelectItem key={type} value={type}>
                     {sourceTypeLabel(type)}
+                  </SelectItem>
+                ))}
+              </SelectGroup>
+            </SelectContent>
+          </Select>
+          <Select
+            value={deletedFilter}
+            onValueChange={(value) => {
+              if (value !== "active" && value !== "deleted" && value !== "all") return;
+              onOffsetChange(0);
+              onDeletedFilterChange(value);
+            }}
+          >
+            <SelectTrigger>
+              <SelectValue />
+            </SelectTrigger>
+            <SelectContent>
+              <SelectGroup>
+                {Object.entries(SOURCE_DELETED_LABELS).map(([value, label]) => (
+                  <SelectItem key={value} value={value}>
+                    {label}
                   </SelectItem>
                 ))}
               </SelectGroup>
@@ -123,7 +153,11 @@ export function SourcesList({
             />
           ))}
         </div>
-        {data?.rows.length === 0 ? <p className="text-sm text-fg-secondary">还没有登记来源。</p> : null}
+        {data?.rows.length === 0 ? (
+          <p className="text-sm text-fg-secondary">
+            {deletedFilter === "deleted" ? "还没有已删除来源。" : "还没有登记来源。"}
+          </p>
+        ) : null}
         {data && data.rows.length > 0 ? (
           <Pagination
             offset={offset}
@@ -153,6 +187,7 @@ function SourceListItem({
   pinPending: boolean;
 }) {
   const debugRedactionEnabled = useDebugRedactionEnabled();
+  const isDeleted = Boolean(source.deleted_at);
   const scanStatus = sourceScanStatus(source);
 
   return (
@@ -177,6 +212,7 @@ function SourceListItem({
       <div className="min-w-0 flex-1">
         <div className="flex items-center gap-1.5">
           {source.is_pinned ? <Pin className="h-3.5 w-3.5 shrink-0 text-brand" aria-label="已置顶" /> : null}
+          {isDeleted ? <Badge tone="danger">已删除</Badge> : null}
           <div className="truncate text-sm font-semibold text-fg-primary">{source.label || source.source_url}</div>
         </div>
         <div className="mt-0.5 text-xs text-fg-secondary" {...getDebugRedactProps(debugRedactionEnabled)}>
@@ -198,8 +234,8 @@ function SourceListItem({
               size="icon"
               variant="ghost"
               className="h-8 w-8"
-              aria-label={source.is_pinned ? "取消置顶" : "置顶"}
-              disabled={pinPending}
+              aria-label={isDeleted ? "已删除来源不可置顶" : source.is_pinned ? "取消置顶" : "置顶"}
+              disabled={pinPending || isDeleted}
               onClick={(event) => {
                 event.stopPropagation();
                 onPin(source.id, !source.is_pinned);
@@ -208,7 +244,7 @@ function SourceListItem({
               {source.is_pinned ? <PinOff className="h-4 w-4" /> : <Pin className="h-4 w-4" />}
             </Button>
           </TooltipTrigger>
-          <TooltipContent>{source.is_pinned ? "取消置顶" : "置顶"}</TooltipContent>
+          <TooltipContent>{isDeleted ? "已删除来源不可置顶" : source.is_pinned ? "取消置顶" : "置顶"}</TooltipContent>
         </Tooltip>
       </div>
     </div>

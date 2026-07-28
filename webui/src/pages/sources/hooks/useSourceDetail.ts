@@ -8,10 +8,11 @@ import {
   type SourceScanRunsPageResponse,
 } from "@/lib/api";
 
-export function useSourceDetail(sourceId: number | null) {
+export function useSourceDetail(sourceId: number | null, includeDeleted = false) {
+  const deletedQuery = includeDeleted ? "?include_deleted=true" : "";
   return useQuery({
-    queryKey: ["source", sourceId],
-    queryFn: () => apiGet<ArchiveSourceDetail>(`/api/v1/sources/${sourceId}`),
+    queryKey: ["source", sourceId, includeDeleted],
+    queryFn: () => apiGet<ArchiveSourceDetail>(`/api/v1/sources/${sourceId}${deletedQuery}`),
     enabled: sourceId !== null,
     refetchInterval: (query) => {
       const source = query.state.data as ArchiveSourceDetail | undefined;
@@ -22,21 +23,26 @@ export function useSourceDetail(sourceId: number | null) {
   });
 }
 
-export function useSourceDownloads(sourceId: number | null, enabled: boolean) {
+export function useSourceDownloads(sourceId: number | null, enabled: boolean, includeDeleted = false) {
+  const deletedQuery = includeDeleted ? "?include_deleted=true" : "";
   return useQuery({
-    queryKey: ["source-downloads", sourceId],
-    queryFn: () => apiGet<SourceDownloadSummary>(`/api/v1/sources/${sourceId}/downloads`),
+    queryKey: ["source-downloads", sourceId, includeDeleted],
+    queryFn: () => apiGet<SourceDownloadSummary>(`/api/v1/sources/${sourceId}/downloads${deletedQuery}`),
     enabled: enabled && sourceId !== null,
     refetchInterval: enabled ? 3000 : false,
   });
 }
 
-export function useSourceDiscovered(sourceId: number | null, enabled: boolean) {
+export function useSourceDiscovered(sourceId: number | null, enabled: boolean, includeDeleted = false) {
   const pageSize = 50;
   return useInfiniteQuery({
-    queryKey: ["source-discovered", sourceId],
-    queryFn: ({ pageParam }) =>
-      apiGet<SourceDiscoveryPageResponse>(`/api/v1/sources/${sourceId}/discovered?limit=${pageSize}&offset=${pageParam}`),
+    queryKey: ["source-discovered", sourceId, includeDeleted],
+    queryFn: ({ pageParam }) => {
+      const deletedParam = includeDeleted ? "&include_deleted=true" : "";
+      return apiGet<SourceDiscoveryPageResponse>(
+        `/api/v1/sources/${sourceId}/discovered?limit=${pageSize}&offset=${pageParam}${deletedParam}`,
+      );
+    },
     initialPageParam: 0,
     getNextPageParam: (lastPage) => {
       const nextOffset = lastPage.offset + lastPage.count;
@@ -47,12 +53,16 @@ export function useSourceDiscovered(sourceId: number | null, enabled: boolean) {
   });
 }
 
-export function useSourceScanRuns(sourceId: number | null, enabled: boolean, hasActiveScan: boolean) {
+export function useSourceScanRuns(sourceId: number | null, enabled: boolean, hasActiveScan: boolean, includeDeleted = false) {
   const pageSize = 20;
   return useInfiniteQuery({
-    queryKey: ["source-scan-runs", sourceId],
-    queryFn: ({ pageParam }) =>
-      apiGet<SourceScanRunsPageResponse>(`/api/v1/sources/${sourceId}/scan-runs?limit=${pageSize}&offset=${pageParam}`),
+    queryKey: ["source-scan-runs", sourceId, includeDeleted],
+    queryFn: ({ pageParam }) => {
+      const deletedParam = includeDeleted ? "&include_deleted=true" : "";
+      return apiGet<SourceScanRunsPageResponse>(
+        `/api/v1/sources/${sourceId}/scan-runs?limit=${pageSize}&offset=${pageParam}${deletedParam}`,
+      );
+    },
     initialPageParam: 0,
     getNextPageParam: (lastPage) => {
       const nextOffset = lastPage.offset + lastPage.count;

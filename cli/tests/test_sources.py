@@ -616,8 +616,23 @@ class SourceDiscoveryIntegrationTests(unittest.TestCase):
 
         self.assertEqual(result["source_id"], source["id"])
         self.assertIsNone(get_source(int(source["id"])))
+        deleted_detail = get_source(int(source["id"]), include_deleted=True)
+        self.assertIsNotNone(deleted_detail)
+        self.assertEqual(deleted_detail["id"], source["id"])
         page = list_sources_page(limit=20)
         self.assertNotIn(source["id"], [row["id"] for row in page["rows"]])
+        deleted_page = list_sources_page(deleted="deleted", limit=20)
+        self.assertIn(source["id"], [row["id"] for row in deleted_page["rows"]])
+        all_page = list_sources_page(deleted="all", limit=20)
+        self.assertIn(source["id"], [row["id"] for row in all_page["rows"]])
+        with self.assertRaisesRegex(ValueError, "source_not_found"):
+            list_source_discovered_page(int(source["id"]))
+        discovered_page = list_source_discovered_page(int(source["id"]), include_deleted=True)
+        scan_runs_page = list_source_scan_runs_page(int(source["id"]), include_deleted=True)
+        downloads = get_source_downloads(int(source["id"]), include_deleted=True)
+        self.assertEqual(discovered_page["total_count"], 1)
+        self.assertEqual(scan_runs_page["total_count"], 1)
+        self.assertEqual(downloads["source_id"], source["id"])
         with connect() as conn:
             with conn.cursor() as cur:
                 cur.execute(
@@ -639,6 +654,10 @@ class SourceDiscoveryIntegrationTests(unittest.TestCase):
         self.assertEqual(discovered_count, 1)
         self.assertEqual(scan_count, 1)
         self.assertEqual(run_count, 1)
+
+    def test_list_sources_page_rejects_invalid_deleted_filter(self) -> None:
+        with self.assertRaisesRegex(ValueError, "invalid_source_deleted_filter"):
+            list_sources_page(deleted="archived")
 
     def test_create_source_restores_soft_deleted_source(self) -> None:
         source = create_source("user_media", self.source_urls[0], label="旧来源")
