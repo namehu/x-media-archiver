@@ -138,91 +138,93 @@ export function PostCard({
       onPointerCancel={resetLongPress}
       onLostPointerCapture={() => resetLongPress()}
     >
-      <div className="flex items-start gap-3">
-        <Avatar className="size-10 shrink-0" {...getDebugRedactProps(debugRedactionEnabled)}>
-          <AvatarFallback>{avatarInitials(authorName)}</AvatarFallback>
-        </Avatar>
-        <div className="min-w-0 flex-1">
-          <header className="flex items-start justify-between gap-2">
-            <div className="min-w-0" {...getDebugRedactProps(debugRedactionEnabled)}>
-              <div className="flex min-w-0 flex-wrap items-baseline gap-x-1.5 gap-y-0.5">
-                <span className="max-w-full truncate font-semibold text-fg-primary">{authorName}</span>
-                {post.author_username ? (
-                  <span className="truncate text-sm text-fg-secondary">@{post.author_username}</span>
-                ) : null}
-                <span className="text-sm text-fg-tertiary">·</span>
-                <time
-                  className="text-sm text-fg-tertiary"
-                  dateTime={post.published_at || undefined}
-                  title={formatDateTime(post.published_at)}
-                >
-                  {relativeTime}
-                </time>
-                {deleted ? <Badge tone="secondary">本地媒体已删除</Badge> : null}
+      <div className="flex flex-col gap-2">
+        <header className="flex items-center justify-between gap-2">
+          <div className="flex min-w-0 items-center gap-2">
+            <Avatar className="size-9 shrink-0" {...getDebugRedactProps(debugRedactionEnabled)}>
+              <AvatarFallback>{avatarInitials(authorName)}</AvatarFallback>
+            </Avatar>
+            <div className="min-w-0 flex-1" {...getDebugRedactProps(debugRedactionEnabled)}>
+              <div className="flex flex-col">
+                <div className="flex items-center gap-1.5">
+                  <span className="truncate font-semibold text-fg-primary text-[15px]">{authorName}</span>
+                  {deleted ? (
+                    <Badge tone="secondary" className="h-4 px-1 text-[10px]">
+                      已删除
+                    </Badge>
+                  ) : null}
+                </div>
+                <div className="flex items-center gap-1.5 text-[13px] text-fg-secondary">
+                  {post.author_username ? <span className="truncate">@{post.author_username}</span> : null}
+                  <span className="text-fg-tertiary">·</span>
+                  <time
+                    dateTime={post.published_at || undefined}
+                    title={formatDateTime(post.published_at)}
+                    className="hover:underline"
+                  >
+                    {relativeTime}
+                  </time>
+                </div>
               </div>
             </div>
-            <DropdownMenu>
-              <DropdownMenuTrigger asChild>
-                <Button
-                  type="button"
-                  variant="ghost"
-                  size="icon"
-                  aria-label="帖子操作"
-                  className="-mr-2 -mt-2 shrink-0"
+          </div>
+          <DropdownMenu>
+            <DropdownMenuTrigger asChild>
+              <Button type="button" variant="ghost" size="icon" aria-label="帖子操作" className="shrink-0 -mr-2">
+                <MoreHorizontal className="size-5" />
+              </Button>
+            </DropdownMenuTrigger>
+            <DropdownMenuContent align="end">
+              <DropdownMenuGroup>
+                <DropdownMenuItem onSelect={() => void copyLink()}>
+                  <Copy data-icon="inline-start" />
+                  复制链接
+                </DropdownMenuItem>
+                <DropdownMenuItem
+                  disabled={!tweetUrl}
+                  onSelect={() => {
+                    if (tweetUrl) window.open(tweetUrl, "_blank", "noopener,noreferrer");
+                  }}
+                  title={getDebugLinkTitle(debugRedactionEnabled, "tweet", "在 X 中查看")}
                 >
-                  <MoreHorizontal />
-                </Button>
-              </DropdownMenuTrigger>
-              <DropdownMenuContent align="end">
-                <DropdownMenuGroup>
-                  <DropdownMenuItem onSelect={() => void copyLink()}>
-                    <Copy data-icon="inline-start" />
-                    复制链接
-                  </DropdownMenuItem>
-                  <DropdownMenuItem
-                    disabled={!tweetUrl}
-                    onSelect={() => {
-                      if (tweetUrl) window.open(tweetUrl, "_blank", "noopener,noreferrer");
-                    }}
-                    title={getDebugLinkTitle(debugRedactionEnabled, "tweet", "在 X 中查看")}
-                  >
-                    <ExternalLink data-icon="inline-start" />在 X 中查看
-                  </DropdownMenuItem>
-                  <DropdownMenuSeparator />
-                  <DropdownMenuItem disabled={deleted} className="text-danger focus:text-danger" onSelect={requestDelete}>
-                    <Trash2 data-icon="inline-start" />
-                    {deleted ? "本地媒体已删除" : "删除本地媒体"}
-                  </DropdownMenuItem>
-                </DropdownMenuGroup>
-              </DropdownMenuContent>
-            </DropdownMenu>
-          </header>
+                  <ExternalLink data-icon="inline-start" />在 X 中查看
+                </DropdownMenuItem>
+                <DropdownMenuSeparator />
+                <DropdownMenuItem disabled={deleted} className="text-danger focus:text-danger" onSelect={requestDelete}>
+                  <Trash2 data-icon="inline-start" />
+                  {deleted ? "本地媒体已删除" : "删除本地媒体"}
+                </DropdownMenuItem>
+              </DropdownMenuGroup>
+            </DropdownMenuContent>
+          </DropdownMenu>
+        </header>
 
-          {!deleted ? (
-            <div className="mt-1.5" {...getDebugRedactProps(debugRedactionEnabled)}>
-              <p
-                className={cn(
-                  "break-words text-[15px] leading-6 text-fg-primary",
-                  !expanded && isLong ? "whitespace-normal line-clamp-6" : "whitespace-pre-wrap",
-                )}
+        {!deleted ? (
+          <div className="mt-1" {...getDebugRedactProps(debugRedactionEnabled)}>
+            <p
+              className={cn(
+                "break-words text-[15px] leading-relaxed text-fg-primary",
+                !expanded && isLong ? "whitespace-normal line-clamp-6" : "whitespace-pre-wrap",
+              )}
+            >
+              {tweetText}
+            </p>
+            {isLong ? (
+              <button
+                type="button"
+                className="mt-1 text-[13px] font-medium text-brand hover:underline"
+                onClick={() => setExpanded((current) => !current)}
               >
-                {tweetText}
-              </p>
-              {isLong ? (
-                <button
-                  type="button"
-                  className="mt-1 text-[13px] font-medium text-brand hover:underline"
-                  onClick={() => setExpanded((current) => !current)}
-                >
-                  {expanded ? "收起" : "展开"}
-                </button>
-              ) : null}
-            </div>
-          ) : null}
+                {expanded ? "收起" : "展开"}
+              </button>
+            ) : null}
+          </div>
+        ) : null}
 
-          {deleted ? (
-            <DeletedMediaPlaceholder />
-          ) : (
+        {deleted ? (
+          <DeletedMediaPlaceholder />
+        ) : (
+          <div className="mt-1">
             <PostMediaGrid
               media={post.media}
               tweetId={post.tweet_id}
@@ -233,8 +235,8 @@ export function PostCard({
               getVideoState={getVideoState}
               updateVideoState={updateVideoState}
             />
-          )}
-        </div>
+          </div>
+        )}
       </div>
       <Drawer open={mobileActionsOpen} onOpenChange={setMobileActionsOpen}>
         <DrawerContent className="border-border-subtle bg-bg-elevated text-fg-primary">
