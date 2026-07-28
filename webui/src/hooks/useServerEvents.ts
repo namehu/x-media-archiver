@@ -21,6 +21,8 @@ const SERVER_EVENT_TYPES = [
   "run.items_updated",
   "run.items_failed",
   "source.created",
+  "source.deleted",
+  "source.restored",
   "source.updated",
   "source.history",
   "source.scan",

@@ -82,6 +82,33 @@ class HealthServiceTests(unittest.TestCase):
         self.assertEqual(source_error["source_scan_run_id"], scan_run_id)
         self.assertEqual(source_error["target_path"], f"/sources?sourceId={source_id}")
 
+    def test_recent_errors_excludes_soft_deleted_source_scans(self) -> None:
+        with connect() as conn:
+            with conn.cursor() as cur:
+                cur.execute(
+                    """
+                    insert into archive_sources (source_type, source_url, deleted_at)
+                    values ('profile', %s, now())
+                    returning id
+                    """,
+                    (self.source_url,),
+                )
+                source_id = int(cur.fetchone()["id"])
+                cur.execute(
+                    """
+                    insert into source_scan_runs (
+                      source_id, trigger_type, status, requested_limit, error_category, error_message
+                    )
+                    values (%s, 'manual_next', 'failed', 20, 'network_error', 'network failed')
+                    """,
+                    (source_id,),
+                )
+            conn.commit()
+
+        errors = get_health_detail()["recent_errors"]
+
+        self.assertNotIn(source_id, [error.get("source_id") for error in errors if error["kind"] == "source_scan"])
+
     def test_health_detail_includes_db_pool_stats(self) -> None:
         detail = get_health_detail()
 

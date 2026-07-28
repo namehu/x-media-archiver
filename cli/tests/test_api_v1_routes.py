@@ -1,3 +1,6 @@
+import asyncio
+import json
+import os
 import unittest
 from datetime import UTC, datetime
 from unittest.mock import ANY, patch
@@ -16,6 +19,7 @@ from xarchiver.api.schemas import (
     MediaDeleteRequest,
     PostFeedPageResponse,
     SourceCreateRequest,
+    SourceDeleteRequest,
     SourceDiscoveryPageResponse,
     SourcePinRequest,
     SourceScanRunsPageResponse,
@@ -24,6 +28,7 @@ from xarchiver.api.schemas import (
     UpdateCookiesRequest,
     VerifyRequest,
 )
+from xarchiver.config import get_settings
 from xarchiver.row_models import ArchiveRunRow, ArchiveSourceListRow
 
 
@@ -110,6 +115,7 @@ class V1RouterSmokeTests(unittest.TestCase):
     def test_v1_delete_routes_registered(self):
         self.assertIn("/api/v1/settings/cookies", self.delete_paths)
         self.assertIn("/api/v1/library/media", self.delete_paths)
+        self.assertIn("/api/v1/sources/{source_id}", self.delete_paths)
 
     def test_v1_media_delete_rejects_unconfirmed(self):
         with self.assertRaises(HTTPException) as ctx:
@@ -266,6 +272,50 @@ class V1RouterSmokeTests(unittest.TestCase):
                 )
         self.assertEqual(ctx.exception.status_code, 404)
 
+    def test_v1_source_delete_requires_confirmation(self):
+        with self.assertRaises(HTTPException) as ctx:
+            self.delete_paths["/api/v1/sources/{source_id}"](
+                2, SourceDeleteRequest()
+            )
+        self.assertEqual(ctx.exception.status_code, 400)
+        self.assertEqual(ctx.exception.detail, "source_delete_confirmation_required")
+
+    def test_v1_source_delete_maps_active_work_to_409(self):
+        with patch("xarchiver.api.v1.sources.delete_source", side_effect=ValueError("source_delete_active_work")):
+            with self.assertRaises(HTTPException) as ctx:
+                self.delete_paths["/api/v1/sources/{source_id}"](
+                    2, SourceDeleteRequest(confirm_delete=True)
+                )
+        self.assertEqual(ctx.exception.status_code, 409)
+        self.assertEqual(ctx.exception.detail, "source_delete_active_work")
+
+    def test_v1_source_delete_http_requires_body(self):
+        response = self._api_delete("/api/v1/sources/2")
+
+        self.assertEqual(response["status"], 422)
+
+    def test_v1_source_delete_http_rejects_unconfirmed_body(self):
+        response = self._api_delete("/api/v1/sources/2", body={"confirm_delete": False})
+
+        self.assertEqual(response["status"], 400)
+        self.assertEqual(response["json"]["detail"], "source_delete_confirmation_required")
+
+    def test_v1_source_delete_http_maps_active_work_to_409(self):
+        with patch("xarchiver.api.v1.sources.delete_source", side_effect=ValueError("source_delete_active_work")):
+            response = self._api_delete("/api/v1/sources/2", body={"confirm_delete": True})
+
+        self.assertEqual(response["status"], 409)
+        self.assertEqual(response["json"]["detail"], "source_delete_active_work")
+
+    def _api_delete(self, path: str, body: dict[str, object] | None = None) -> dict[str, object]:
+        with patch.dict(os.environ, {"AUTH_MODE": "disabled"}):
+            get_settings.cache_clear()
+            try:
+                app = create_app()
+                return asyncio.run(asgi_request(app, "DELETE", path, body))
+            finally:
+                get_settings.cache_clear()
+
     def test_v1_archive_runs_list_delegates_all_filters(self):
         page = {"rows": [], "count": 0, "total_count": 0, "limit": 10, "offset": 20}
         with patch("xarchiver.api.v1.archive_runs.list_runs_page", return_value=page) as mock:
@@ -304,6 +354,7 @@ class V1RouterSmokeTests(unittest.TestCase):
                 offset=0,
                 source_status="active",
                 source_type="profile",
+                deleted="all",
                 sort_by="created_at",
                 sort_direction="asc",
             )
@@ -311,6 +362,7 @@ class V1RouterSmokeTests(unittest.TestCase):
         mock.assert_called_once_with(
             status="active",
             source_type="profile",
+            deleted="all",
             sort_by="created_at",
             sort_direction="asc",
             limit=5,
@@ -372,8 +424,10 @@ class V1RouterSmokeTests(unittest.TestCase):
             "active_scan_run": None,
         }
 
-        with patch("xarchiver.api.v1.sources.get_source", return_value=detail):
-            result = self.get_paths["/api/v1/sources/{source_id}"](2)
+        with patch("xarchiver.api.v1.sources.get_source", return_value=detail) as mock:
+            result = self.get_paths["/api/v1/sources/{source_id}"](2, include_deleted=True)
+
+        mock.assert_called_once_with(2, include_deleted=True)
 
         payload = ArchiveSourceDetailResponse.model_validate(result).model_dump(mode="json")
         self.assertEqual(payload["scan_summary"]["batch_count"], 5)
@@ -384,20 +438,28 @@ class V1RouterSmokeTests(unittest.TestCase):
     def test_v1_source_discovered_delegates_pagination(self):
         page = {"rows": [], "count": 0, "total_count": 7, "limit": 25, "offset": 50}
         with patch("xarchiver.api.v1.sources.list_source_discovered_page", return_value=page) as mock:
-            result = self.get_paths["/api/v1/sources/{source_id}/discovered"](2, limit=25, offset=50)
+            result = self.get_paths["/api/v1/sources/{source_id}/discovered"](2, limit=25, offset=50, include_deleted=True)
 
         payload = SourceDiscoveryPageResponse.model_validate(result).model_dump(mode="json")
         self.assertEqual(payload["total_count"], 7)
-        mock.assert_called_once_with(2, limit=25, offset=50)
+        mock.assert_called_once_with(2, limit=25, offset=50, include_deleted=True)
+
+    def test_v1_source_downloads_delegates_include_deleted(self):
+        response = {"source_id": 2, "recent_runs": []}
+        with patch("xarchiver.api.v1.sources.get_source_downloads", return_value=response) as mock:
+            result = self.get_paths["/api/v1/sources/{source_id}/downloads"](2, include_deleted=True)
+
+        self.assertEqual(result, response)
+        mock.assert_called_once_with(2, include_deleted=True)
 
     def test_v1_source_scan_runs_delegates_pagination(self):
         page = {"rows": [], "count": 0, "total_count": 3, "limit": 20, "offset": 20}
         with patch("xarchiver.api.v1.sources.list_source_scan_runs_page", return_value=page) as mock:
-            result = self.get_paths["/api/v1/sources/{source_id}/scan-runs"](2, limit=20, offset=20)
+            result = self.get_paths["/api/v1/sources/{source_id}/scan-runs"](2, limit=20, offset=20, include_deleted=True)
 
         payload = SourceScanRunsPageResponse.model_validate(result).model_dump(mode="json")
         self.assertEqual(payload["total_count"], 3)
-        mock.assert_called_once_with(2, limit=20, offset=20)
+        mock.assert_called_once_with(2, limit=20, offset=20, include_deleted=True)
 
     # ── OpenAPI schema: v1 routes appear in the spec ──────────────────────────
 
@@ -405,6 +467,7 @@ class V1RouterSmokeTests(unittest.TestCase):
         paths = set(self.app.openapi()["paths"].keys())
         self.assertIn("/api/v1/archive-runs", paths)
         self.assertIn("/api/v1/sources", paths)
+        self.assertIn("/api/v1/sources/{source_id}", paths)
         self.assertIn("/api/v1/sources/{source_id}/scan-sessions", paths)
         self.assertIn("/api/v1/library/media", paths)
         self.assertIn("/api/v1/library/authors", paths)
@@ -462,6 +525,47 @@ class V1RouterSmokeTests(unittest.TestCase):
         check.assert_called_once()
         self.assertEqual(result["validation_status"], "valid")
         self.assertNotIn("content", result)
+
+async def asgi_request(app, method: str, path: str, body: dict[str, object] | None = None) -> dict[str, object]:
+    body_bytes = b"" if body is None else json.dumps(body).encode()
+    headers = [(b"host", b"testserver")]
+    if body is not None:
+        headers.append((b"content-type", b"application/json"))
+    scope = {
+        "type": "http",
+        "asgi": {"version": "3.0", "spec_version": "2.3"},
+        "http_version": "1.1",
+        "method": method,
+        "scheme": "http",
+        "path": path,
+        "raw_path": path.encode(),
+        "query_string": b"",
+        "headers": headers,
+        "client": ("testclient", 50000),
+        "server": ("testserver", 80),
+        "root_path": "",
+    }
+    messages: list[dict[str, object]] = []
+    request_sent = False
+
+    async def receive() -> dict[str, object]:
+        nonlocal request_sent
+        if request_sent:
+            return {"type": "http.request", "body": b"", "more_body": False}
+        request_sent = True
+        return {"type": "http.request", "body": body_bytes, "more_body": False}
+
+    async def send(message: dict[str, object]) -> None:
+        messages.append(message)
+
+    await app(scope, receive, send)
+    status = next(message["status"] for message in messages if message["type"] == "http.response.start")
+    response_body = b"".join(
+        message.get("body", b"")
+        for message in messages
+        if message["type"] == "http.response.body"
+    )
+    return {"status": status, "body": response_body, "json": json.loads(response_body or b"{}")}
 
 
 if __name__ == "__main__":

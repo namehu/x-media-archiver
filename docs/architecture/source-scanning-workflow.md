@@ -327,6 +327,11 @@ sequenceDiagram
 - 下载工作台必须独立于扫描控制，避免把“暂停扫描”和“暂停下载”混为一个动作。
 - 发现列表只允许页内选择；跨页批量下载必须使用“下载新发现”入口。
 - 用户触发下载提交时必须明确知道这是下载队列动作，不是继续扫描动作。
+- 删除来源是软删除：只隐藏来源配置并停用后续自动扫描，不删除已归档 Tweet、媒体文件、下载任务、发现记录或扫描历史。
+- 删除来源前必须确认该来源没有运行中扫描批次，也没有 queued/running/paused/blocked 下载 run；系统不得隐式停止这些工作。
+- 软删除后再次新增相同规范化 URL 会恢复原来源记录并保留历史，不创建第二条来源历史。
+- 来源列表默认只显示未删除来源；可通过 `GET /api/v1/sources?deleted=deleted` 查看已删除来源，通过 `deleted=all` 同时查看未删除与已删除来源。
+- 单个已删除来源的详情、发现记录、扫描历史和下载摘要仅用于只读审计，读取时需传 `include_deleted=true`；写操作仍默认拒绝已删除来源。
 
 ## 8. API 需求
 
@@ -342,6 +347,7 @@ sequenceDiagram
 | `GET /api/v1/sources/{source_id}/downloads` | 查看来源下载工作台汇总、active/paused/blocked runs，并通过 `current_tweet_id` 标识下载器当前处理项 | `SourceDownloadSummaryResponse` |
 | `POST /api/v1/sources/{source_id}/downloads` | 下载选中、新发现或失败项 | `ArchiveSubmissionResponse` |
 | `POST /api/v1/sources/{source_id}/submit-discovered` | 兼容旧入口，等价于提交未入队发现项 | `ArchiveSubmissionResponse` |
+| `DELETE /api/v1/sources/{source_id}` | 软删除来源配置，需 `confirm_delete=true` | `SourceDeleteResponse` |
 | `POST /api/v1/archive-runs/{run_id}/pause` | 暂停下载 run，不强杀当前子进程 | `ArchiveRunControlResponse` |
 | `POST /api/v1/archive-runs/{run_id}/resume` | 恢复暂停下载 run | `ArchiveRunControlResponse` |
 | `POST /api/v1/archive-runs/{run_id}/stop` | 停止下载 run，取消未开始 item | `ArchiveRunControlResponse` |

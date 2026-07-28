@@ -1,6 +1,7 @@
 import { useEffect, useState } from "react";
 import { useQueryClient } from "@tanstack/react-query";
 import { useSearchParams } from "react-router-dom";
+import { toast } from "sonner";
 import type { ArchiveSubmission } from "@/lib/api";
 import { statusLabel } from "@/lib/formatters";
 import { CreateSource } from "./components/create-source";
@@ -8,13 +9,15 @@ import { SourceDetailPanel } from "./components/source-detail-sheet";
 import { SourcesList } from "./components/sources-list";
 import { useDownloadPolicy, useSourceDetail } from "./hooks/useSourceDetail";
 import { useSourceActions } from "./hooks/useSourceScan";
-import { useCreateSource, useSourcesQuery } from "./hooks/useSourcesQuery";
+import { useCreateSource, useDeleteSource, useSourcesQuery } from "./hooks/useSourcesQuery";
+import type { SourceDeletedFilter } from "./utils";
 
 export function SourcesPage() {
   const queryClient = useQueryClient();
   const [searchParams, setSearchParams] = useSearchParams();
   const [selectedSourceId, setSelectedSourceId] = useState<number | null>(null);
   const [sourceTypeFilter, setSourceTypeFilter] = useState("");
+  const [sourceDeletedFilter, setSourceDeletedFilter] = useState<SourceDeletedFilter>("active");
   const [sortBy, setSortBy] = useState<"updated_at" | "created_at">("updated_at");
   const [sortDirection, setSortDirection] = useState<"asc" | "desc">("desc");
   const [offset, setOffset] = useState(0);
@@ -25,8 +28,9 @@ export function SourcesPage() {
   const [createDialogOpen, setCreateDialogOpen] = useState(false);
   const [detailSheetOpen, setDetailSheetOpen] = useState(false);
 
-  const sourcesQuery = useSourcesQuery(sourceTypeFilter, sortBy, sortDirection, offset);
-  const detailQuery = useSourceDetail(selectedSourceId);
+  const includeDeletedDetail = sourceDeletedFilter !== "active";
+  const sourcesQuery = useSourcesQuery(sourceTypeFilter, sourceDeletedFilter, sortBy, sortDirection, offset);
+  const detailQuery = useSourceDetail(selectedSourceId, includeDeletedDetail);
   const policyQuery = useDownloadPolicy();
   const selected = detailQuery.data;
   const activeScanRun = selected?.active_scan_run;
@@ -47,6 +51,19 @@ export function SourcesPage() {
     setCreateResetKey((key) => key + 1);
     setCreateDialogOpen(false);
     await refresh(source.id);
+  });
+
+  const deleteMutation = useDeleteSource(async () => {
+    setDetailSheetOpen(false);
+    setSelectedSourceId(null);
+    setFeedback(null);
+    setScanFeedback(null);
+    setSearchParams({});
+    await Promise.all([
+      refresh(),
+      queryClient.invalidateQueries({ queryKey: ["health-detail"] }),
+    ]);
+    toast.success("来源已删除，历史记录和本地媒体已保留。");
   });
 
   const actions = useSourceActions({
@@ -73,12 +90,14 @@ export function SourcesPage() {
   const selectSource = (sourceId: number) => {
     setFeedback(null);
     setScanFeedback(null);
+    deleteMutation.reset();
     setSelectedSourceId(sourceId);
     setDetailSheetOpen(true);
     setSearchParams({ sourceId: String(sourceId) });
   };
 
   const closeDetail = () => {
+    deleteMutation.reset();
     setDetailSheetOpen(false);
     setSelectedSourceId(null);
     setSearchParams({});
@@ -90,10 +109,12 @@ export function SourcesPage() {
         data={sourcesQuery.data}
         selectedSourceId={selectedSourceId}
         typeFilter={sourceTypeFilter}
+        deletedFilter={sourceDeletedFilter}
         sortBy={sortBy}
         sortDirection={sortDirection}
         offset={offset}
         onTypeFilterChange={setSourceTypeFilter}
+        onDeletedFilterChange={setSourceDeletedFilter}
         onSortChange={(nextSortBy, nextSortDirection) => {
           setOffset(0);
           setSortBy(nextSortBy);
@@ -141,6 +162,7 @@ export function SourcesPage() {
           stopDownload: actions.stopDownloadMutation.mutate,
           cancelDownloadItems: actions.cancelDownloadItemsMutation.mutate,
           stopHistory: actions.stopHistoryScanMutation.mutate,
+          deleteSource: deleteMutation.mutate,
           pending: {
             submit: actions.submitMutation.isPending,
             status: actions.statusMutation.isPending,
@@ -156,6 +178,7 @@ export function SourcesPage() {
               actions.pauseScanSessionMutation.isPending ||
               actions.resumeScanSessionMutation.isPending ||
               actions.stopHistoryScanMutation.isPending,
+            deleteSource: deleteMutation.isPending,
           },
           errors: {
             submit: actions.submitMutation.error,
@@ -172,6 +195,7 @@ export function SourcesPage() {
               actions.pauseScanSessionMutation.error ||
               actions.resumeScanSessionMutation.error ||
               actions.stopHistoryScanMutation.error,
+            deleteSource: deleteMutation.error,
           },
         }}
         onManualSubmitted={() => setFeedback(null)}

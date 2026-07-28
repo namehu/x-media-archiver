@@ -419,6 +419,7 @@ def build_post_feed_conditions(
                 )
             )
             .where(source_discovered_tweets.c.tweet_id == tweets.c.tweet_id)
+            .where(archive_sources.c.deleted_at.is_(None))
         )
         if source_id is not None:
             membership = membership.where(

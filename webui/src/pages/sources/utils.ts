@@ -7,6 +7,8 @@ export function unwrapActionResult(response: Record<string, unknown>) {
 }
 
 export const SOURCE_TYPES = ["profile", "user_media", "likes", "bookmarks", "search", "manual"] as const;
+export const SOURCE_DELETED_FILTERS = ["active", "deleted", "all"] as const;
+export type SourceDeletedFilter = (typeof SOURCE_DELETED_FILTERS)[number];
 
 export function parseRecordUrls(value: string) {
   const seen = new Set<string>();
@@ -25,6 +27,7 @@ export function parseRecordUrls(value: string) {
 
 export function sourceQueryString(
   type: string,
+  deleted: SourceDeletedFilter,
   sortBy: "updated_at" | "created_at",
   sortDirection: "asc" | "desc",
   limit: number,
@@ -32,6 +35,7 @@ export function sourceQueryString(
 ) {
   const search = new URLSearchParams({ limit: String(limit), offset: String(offset) });
   if (type) search.set("source_type", type);
+  if (deleted !== "active") search.set("deleted", deleted);
   search.set("sort_by", sortBy);
   search.set("sort_direction", sortDirection);
   return search.toString();
@@ -57,6 +61,8 @@ export function formatHistoryState(source: ArchiveSourceDetail) {
 }
 
 export function sourceScanStatus(source: ArchiveSourceListItem) {
+  if (source.deleted_at) return { key: "deleted", label: "已删除", tone: "danger" as const };
+
   const state = source.cursor_state?.automation_state;
   const automationEnabled = Boolean(source.cursor_state?.automation_enabled);
 

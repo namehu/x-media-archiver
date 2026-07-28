@@ -263,6 +263,7 @@ class ArchiveSourceRow(RowModel):
     error_message: str | None = None
     last_scan_at: datetime | None = None
     next_scan_at: datetime | None = None
+    deleted_at: datetime | None = None
     created_at: datetime
     updated_at: datetime
 

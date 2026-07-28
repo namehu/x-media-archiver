@@ -14,6 +14,8 @@ from xarchiver.api.schemas import (
     ArchiveSourceResponse,
     ArchiveSubmissionResponse,
     SourceCreateRequest,
+    SourceDeleteRequest,
+    SourceDeleteResponse,
     SourceDiscoveryPageResponse,
     SourceDownloadRequest,
     SourceDownloadSummaryResponse,
@@ -30,6 +32,7 @@ from xarchiver.api.schemas import (
 )
 from xarchiver.services.sources import (
     create_source,
+    delete_source,
     get_source,
     get_source_downloads,
     list_source_discovered_page,
@@ -73,6 +76,7 @@ def archive_sources(
     offset: int = Query(0, ge=0),
     source_status: str | None = None,
     source_type: str | None = None,
+    deleted: str = Query("active", pattern="^(active|deleted|all)$"),
     sort_by: str = Query("updated_at", pattern="^(updated_at|created_at)$"),
     sort_direction: str = Query("desc", pattern="^(asc|desc)$"),
 ) -> dict[str, object]:
@@ -82,6 +86,7 @@ def archive_sources(
         page = list_sources_page(
             status=source_status,
             source_type=source_type,
+            deleted=deleted,
             sort_by=sort_by,
             sort_direction=sort_direction,
             limit=limit,
@@ -93,13 +98,27 @@ def archive_sources(
 
 
 @router.get("/{source_id}", response_model=ArchiveSourceDetailResponse)
-def archive_source_detail(source_id: int) -> dict[str, object]:
+def archive_source_detail(source_id: int, include_deleted: bool = False) -> dict[str, object]:
     """查询单个来源的详情。"""
 
-    result = get_source(source_id)
+    result = get_source(source_id, include_deleted=include_deleted)
     if result is None:
         raise HTTPException(status_code=404, detail="source_not_found")
     return result
+
+
+@router.delete("/{source_id}", response_model=SourceDeleteResponse)
+def delete_archive_source(source_id: int, request: SourceDeleteRequest) -> dict[str, object]:
+    """软删除来源配置，不删除 Tweet、媒体文件或任务历史。"""
+
+    try:
+        return execute_write_action(
+            "source-delete",
+            lambda: delete_source(source_id, request.confirm_delete),
+            scope=f"source:{source_id}",
+        )["result"]
+    except ValueError as exc:
+        raise_api_error(exc, default_status=409)
 
 
 @router.get("/{source_id}/discovered", response_model=SourceDiscoveryPageResponse)
@@ -107,19 +126,20 @@ def archive_source_discovered(
     source_id: int,
     limit: int = Query(50, ge=1, le=200),
     offset: int = Query(0, ge=0),
+    include_deleted: bool = False,
 ) -> dict[str, object]:
     try:
-        return list_source_discovered_page(source_id, limit=limit, offset=offset)
+        return list_source_discovered_page(source_id, limit=limit, offset=offset, include_deleted=include_deleted)
     except ValueError as exc:
         raise_api_error(exc)
 
 
 @router.get("/{source_id}/downloads", response_model=SourceDownloadSummaryResponse)
-def archive_source_downloads(source_id: int) -> dict[str, object]:
+def archive_source_downloads(source_id: int, include_deleted: bool = False) -> dict[str, object]:
     """查询某个来源当前下载状态摘要。"""
 
     try:
-        return get_source_downloads(source_id)
+        return get_source_downloads(source_id, include_deleted=include_deleted)
     except ValueError as exc:
         raise_api_error(exc, default_status=404)
 
@@ -144,9 +164,10 @@ def archive_source_scan_runs(
     source_id: int,
     limit: int = Query(20, ge=1, le=100),
     offset: int = Query(0, ge=0),
+    include_deleted: bool = False,
 ) -> dict[str, object]:
     try:
-        return list_source_scan_runs_page(source_id, limit=limit, offset=offset)
+        return list_source_scan_runs_page(source_id, limit=limit, offset=offset, include_deleted=include_deleted)
     except ValueError as exc:
         raise_api_error(exc)
 

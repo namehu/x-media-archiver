@@ -466,6 +466,7 @@ class ArchiveSourceResponse(FlexibleResponse):
     is_pinned: bool = False
     label: str | None = None
     author_username: str | None = None
+    deleted_at: datetime | None = None
 
 
 class ArchiveSourceListResponse(ArchiveSourceResponse):
@@ -587,6 +588,11 @@ class SourceScanRunsPageResponse(PageMetaResponse):
 class ArchiveSourceDetailResponse(ArchiveSourceListResponse):
     scan_summary: SourceScanSummaryResponse
     active_scan_run: SourceScanRunResponse | None = None
+
+
+class SourceDeleteResponse(FlexibleResponse):
+    source_id: int
+    deleted_at: datetime
 
 
 # 操作日志相关响应

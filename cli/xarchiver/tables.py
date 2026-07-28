@@ -164,6 +164,7 @@ archive_sources = Table(
     Column("error_message", Text),
     Column("last_scan_at", DateTime(timezone=True)),
     Column("next_scan_at", DateTime(timezone=True)),
+    Column("deleted_at", DateTime(timezone=True)),
     Column("created_at", DateTime(timezone=True)),
     Column("updated_at", DateTime(timezone=True)),
 )

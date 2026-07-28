@@ -40,12 +40,14 @@ type DetailActions = {
   stopDownload: (runId: number) => void;
   cancelDownloadItems: (input: { runId: number; tweetIds: string[] }) => void;
   stopHistory: (sourceId: number) => void;
+  deleteSource: (sourceId: number) => void;
   pending: {
     submit: boolean;
     status: boolean;
     submitDiscovered: boolean;
     download: boolean;
     history: boolean;
+    deleteSource: boolean;
   };
   errors: {
     submit: unknown;
@@ -53,6 +55,7 @@ type DetailActions = {
     submitDiscovered: unknown;
     download: unknown;
     history: unknown;
+    deleteSource: unknown;
   };
 };
 
@@ -84,12 +87,14 @@ export function SourceDetailPanel({
   const [activeTab, setActiveTab] = React.useState("tweets");
   const [logRun, setLogRun] = React.useState<SourceScanRun | null>(null);
   const persistedScanLimit = source ? preferredScanLimit(source, policy) : 20;
-  const discoveredQuery = useSourceDiscovered(source?.id ?? null, activeTab === "tweets");
-  const downloadsQuery = useSourceDownloads(source?.id ?? null, activeTab === "tweets");
+  const isDeleted = Boolean(source?.deleted_at);
+  const discoveredQuery = useSourceDiscovered(source?.id ?? null, activeTab === "tweets", isDeleted);
+  const downloadsQuery = useSourceDownloads(source?.id ?? null, activeTab === "tweets", isDeleted);
   const scanRunsQuery = useSourceScanRuns(
     source?.id ?? null,
     activeTab === "history",
     source?.active_scan_run?.status === "running",
+    isDeleted,
   );
   const scanRuns = scanRunsQuery.data?.pages.flatMap((page) => page.rows) ?? [];
   const scanStatus = source ? sourceScanStatus(source) : null;
@@ -97,6 +102,10 @@ export function SourceDetailPanel({
   React.useEffect(() => {
     setActiveTab("tweets");
   }, [source?.id]);
+
+  React.useEffect(() => {
+    if (isDeleted && activeTab === "config") setActiveTab("details");
+  }, [activeTab, isDeleted]);
 
   return (
     <Sheet open={open} onOpenChange={onOpenChange}>
@@ -132,7 +141,7 @@ export function SourceDetailPanel({
                     <TabsTrigger value="tweets">发现的 Tweet</TabsTrigger>
                     <TabsTrigger value="details">详情</TabsTrigger>
                     <TabsTrigger value="history">扫描历史</TabsTrigger>
-                    <TabsTrigger value="config">提交与导入</TabsTrigger>
+                    {!isDeleted ? <TabsTrigger value="config">提交与导入</TabsTrigger> : null}
                   </TabsList>
                 </div>
               </SheetHeader>
@@ -155,6 +164,7 @@ export function SourceDetailPanel({
                   error={discoveredQuery.error || downloadsQuery.error}
                   onLoadMore={() => discoveredQuery.fetchNextPage()}
                   statusLabel={statusLabel}
+                  readonly={isDeleted}
                 />
               </TabsContent>
               <TabsContent
@@ -166,6 +176,9 @@ export function SourceDetailPanel({
                   now={now}
                   detailUpdatedAt={detailUpdatedAt}
                   scanLimit={persistedScanLimit}
+                  deletePending={actions.pending.deleteSource}
+                  deleteError={actions.errors.deleteSource}
+                  onDelete={actions.deleteSource}
                 />
               </TabsContent>
               <TabsContent

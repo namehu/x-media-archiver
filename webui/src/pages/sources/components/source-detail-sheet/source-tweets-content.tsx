@@ -1,6 +1,7 @@
 import * as React from "react";
 import { ChevronDown } from "lucide-react";
 import type { ArchiveSourceDetail, SourceDiscoveryPageResponse, SourceDownloadSummary, SourceScanRun } from "@/lib/api";
+import { Alert, AlertDescription, AlertTitle } from "@/components/ui/alert";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Collapsible, CollapsibleContent, CollapsibleTrigger } from "@/components/ui/collapsible";
@@ -46,6 +47,7 @@ export function SourceTweetsContent({
   onLoadMore,
   statusLabel,
   now,
+  readonly = false,
 }: {
   source: ArchiveSourceDetail;
   actions: DetailActions;
@@ -61,6 +63,7 @@ export function SourceTweetsContent({
   onLoadMore: () => void;
   statusLabel: (status?: string | null) => string;
   now: number;
+  readonly?: boolean;
 }) {
   const [followRunId, setFollowRunId] = React.useState<number | null>(null);
   const [followMode, setFollowMode] = React.useState<DownloadFollowMode>("following");
@@ -115,23 +118,30 @@ export function SourceTweetsContent({
   return (
     <div className="flex min-h-0 flex-1 flex-col gap-4">
       <div className="shrink-0">
-        <div className="grid gap-4 lg:grid-cols-2">
-          <ScanActions
-            source={source}
-            actions={actions}
-            scanFeedback={scanFeedback}
-            scanLimit={scanLimit}
-            onOpenLog={onOpenLog}
-          />
-          <SourceDownloadPanel
-            source={source}
-            downloads={downloads}
-            actions={actions}
-            statusLabel={statusLabel}
-            onSubmitDownload={submitDownloadAndFollow}
-            onResumeDownload={resumeDownloadAndFollow}
-          />
-        </div>
+        {readonly ? (
+          <Alert>
+            <AlertTitle>已删除来源只读查看</AlertTitle>
+            <AlertDescription>可以查看发现记录、下载状态和扫描历史，不能继续扫描或提交下载。</AlertDescription>
+          </Alert>
+        ) : (
+          <div className="grid gap-4 lg:grid-cols-2">
+            <ScanActions
+              source={source}
+              actions={actions}
+              scanFeedback={scanFeedback}
+              scanLimit={scanLimit}
+              onOpenLog={onOpenLog}
+            />
+            <SourceDownloadPanel
+              source={source}
+              downloads={downloads}
+              actions={actions}
+              statusLabel={statusLabel}
+              onSubmitDownload={submitDownloadAndFollow}
+              onResumeDownload={resumeDownloadAndFollow}
+            />
+          </div>
+        )}
         {source.active_scan_run ? (
           <div className="mt-4">
             <ActiveScan run={source.active_scan_run} source={source} now={now} />
@@ -160,6 +170,7 @@ export function SourceTweetsContent({
           onFollowModeChange={setFollowMode}
           onFrontierTweetChange={setFrontierTweetId}
           onSubmitDownload={submitDownloadAndFollow}
+          readonly={readonly}
         />
       </div>
     </div>

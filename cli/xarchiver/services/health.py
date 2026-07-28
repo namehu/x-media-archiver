@@ -93,6 +93,7 @@ def get_source_summary(cur) -> dict[str, object]:
         """
         select status, count(*)::int as count
         from archive_sources
+        where deleted_at is null
         group by status
         """
     )
@@ -107,6 +108,7 @@ def get_source_summary(cur) -> dict[str, object]:
         select count(*)::int as count
         from archive_sources
         where cursor_state->>'automation_enabled' = 'true'
+          and deleted_at is null
           and coalesce(cursor_state->>'automation_state', '') not in ('stopped', 'paused', 'completed')
         """
     )
@@ -116,8 +118,10 @@ def get_source_summary(cur) -> dict[str, object]:
     cur.execute(
         """
         select count(*)::int as count
-        from source_scan_runs
-        where status in ('running', 'waiting_downloads')
+        from source_scan_runs r
+        join archive_sources s on s.id = r.source_id
+        where r.status in ('running', 'waiting_downloads')
+          and s.deleted_at is null
         """
     )
     active_scan_runs = int(cur.fetchone()["count"])
@@ -125,10 +129,12 @@ def get_source_summary(cur) -> dict[str, object]:
     # 获取最近一次扫描运行记录
     cur.execute(
         """
-        select id, source_id, trigger_type, status, requested_limit, error_category,
-               error_message, started_at, finished_at, created_at
-        from source_scan_runs
-        order by created_at desc, id desc
+        select r.id, r.source_id, r.trigger_type, r.status, r.requested_limit, r.error_category,
+               r.error_message, r.started_at, r.finished_at, r.created_at
+        from source_scan_runs r
+        join archive_sources s on s.id = r.source_id
+        where s.deleted_at is null
+        order by r.created_at desc, r.id desc
         limit 1
         """
     )
@@ -171,19 +177,21 @@ def get_recent_errors(cur, limit: int = 5) -> list[dict[str, object]]:
         where error_category is not null or error_message is not null
         union all
         select 'source_scan' as kind,
-               id::text as id,
-               source_id::text as subject,
+               r.id::text as id,
+               r.source_id::text as subject,
                null::bigint as archive_run_id,
                null::bigint as archive_run_item_id,
                null::text as tweet_id,
-               source_id,
-               id as source_scan_run_id,
-               '/sources?sourceId=' || source_id::text as target_path,
-               error_category,
-               error_message,
-               coalesce(finished_at, created_at) as occurred_at
-        from source_scan_runs
-        where error_category is not null or error_message is not null
+               r.source_id,
+               r.id as source_scan_run_id,
+               '/sources?sourceId=' || r.source_id::text as target_path,
+               r.error_category,
+               r.error_message,
+               coalesce(r.finished_at, r.created_at) as occurred_at
+        from source_scan_runs r
+        join archive_sources s on s.id = r.source_id
+        where s.deleted_at is null
+          and (r.error_category is not null or r.error_message is not null)
         order by occurred_at desc nulls last
         limit %s
         """,

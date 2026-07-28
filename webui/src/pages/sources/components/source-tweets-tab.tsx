@@ -57,6 +57,7 @@ export function SourceTweetsTab({
   onFollowModeChange,
   onFrontierTweetChange,
   onSubmitDownload,
+  readonly = false,
 }: {
   pages: SourceDiscoveryPageResponse[];
   downloads?: SourceDownloadSummary;
@@ -75,6 +76,7 @@ export function SourceTweetsTab({
   onFollowModeChange: (mode: DownloadFollowMode) => void;
   onFrontierTweetChange: (tweetId: string | null) => void;
   onSubmitDownload: (input: DownloadSubmitInput) => void;
+  readonly?: boolean;
 }) {
   const virtuosoRef = React.useRef<VirtuosoHandle>(null);
   const loadMoreRequestedRef = React.useRef(false);
@@ -100,9 +102,11 @@ export function SourceTweetsTab({
   const totalCount = pages[0]?.total_count ?? 0;
   const [selected, setSelected] = React.useState<Set<string>>(new Set());
   const selectedIds = Array.from(selected);
-  const selectableIds = tweets
-    .filter((tweet) => canQueue(tweet) || canCancel(tweet.active_item_status))
-    .map((tweet) => tweet.tweet_id);
+  const selectableIds = readonly
+    ? []
+    : tweets
+        .filter((tweet) => canQueue(tweet) || canCancel(tweet.active_item_status))
+        .map((tweet) => tweet.tweet_id);
   const selectedQueueIds = tweets
     .filter((tweet) => selected.has(tweet.tweet_id) && canQueue(tweet))
     .map((tweet) => tweet.tweet_id);
@@ -308,7 +312,7 @@ export function SourceTweetsTab({
             </span>
           </div>
 
-          {hasSelection && (
+          {!readonly && hasSelection && (
             <div className="flex flex-wrap items-center gap-2 animate-in fade-in zoom-in-95 duration-200">
               <Button
                 type="button"
@@ -382,6 +386,7 @@ export function SourceTweetsTab({
               statusLabel={statusLabel}
               onUserInspect={pauseFollowingForUserNavigation}
               onSubmitDownload={onSubmitDownload}
+              readonly={readonly}
             />
           )}
           components={{
@@ -681,6 +686,7 @@ function TweetListItem({
   statusLabel,
   onUserInspect,
   onSubmitDownload,
+  readonly = false,
 }: {
   tweet: TweetRow;
   sourceId: number;
@@ -691,6 +697,7 @@ function TweetListItem({
   statusLabel: (status?: string | null) => string;
   onUserInspect: () => void;
   onSubmitDownload: (input: DownloadSubmitInput) => void;
+  readonly?: boolean;
 }) {
   const debugRedactionEnabled = useDebugRedactionEnabled();
   return (
@@ -707,13 +714,15 @@ function TweetListItem({
       >
         <div className="flex items-start justify-between gap-3">
           <div className="flex min-w-0 flex-1 gap-3">
-            <Checkbox
-              className="mt-1"
-              checked={selected}
-              aria-label={getDebugSelectionLabel(debugRedactionEnabled, tweet.tweet_id)}
-              disabled={!canQueue(tweet) && !canCancel(tweet.active_item_status)}
-              onCheckedChange={onSelectionChange}
-            />
+            {!readonly ? (
+              <Checkbox
+                className="mt-1"
+                checked={selected}
+                aria-label={getDebugSelectionLabel(debugRedactionEnabled, tweet.tweet_id)}
+                disabled={!canQueue(tweet) && !canCancel(tweet.active_item_status)}
+                onCheckedChange={onSelectionChange}
+              />
+            ) : null}
             <div className="flex min-w-0 flex-1 flex-col gap-3">
               <TweetText text={tweet.text} onUserInspect={onUserInspect} />
               <div
@@ -751,7 +760,7 @@ function TweetListItem({
               statusLabel={statusLabel}
               tone={tweet.active_item_status ? "secondary" : undefined}
             />
-            {canQueue(tweet) ? (
+            {!readonly && canQueue(tweet) ? (
               <Button
                 type="button"
                 size="sm"
@@ -761,7 +770,7 @@ function TweetListItem({
               >
                 下载
               </Button>
-            ) : canCancel(tweet.active_item_status) && tweet.active_run_id ? (
+            ) : !readonly && canCancel(tweet.active_item_status) && tweet.active_run_id ? (
               <Button
                 type="button"
                 size="sm"
