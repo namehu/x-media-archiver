@@ -37,6 +37,7 @@ from xarchiver.services.sources import (
     record_source_discoveries,
     record_waiting_downloads_scan,
     recover_expired_source_scan_leases,
+    reorder_sources,
     scan_run_status,
     scan_source,
     schedule_next_history_scan,
@@ -875,7 +876,7 @@ class SourceDiscoveryIntegrationTests(unittest.TestCase):
         self.assertEqual(page["offset"], 1)
         self.assertEqual([row["id"] for row in page["rows"]], [first["id"]])
 
-    def test_sources_sorting_keeps_pinned_items_first_and_is_stable(self) -> None:
+    def test_sources_sorting_uses_pin_manual_order_and_created_at_fallback(self) -> None:
         first = create_source("user_media", self.source_urls[0])
         second = create_source("user_media", self.source_urls[1])
         third = create_source("user_media", self.source_urls[2])
@@ -883,23 +884,57 @@ class SourceDiscoveryIntegrationTests(unittest.TestCase):
             with conn.cursor() as cur:
                 cur.execute("update archive_sources set created_at = '2099-01-01 00:00:00+00' where id = %s", (first["id"],))
                 cur.execute("update archive_sources set created_at = '2099-01-02 00:00:00+00' where id = %s", (second["id"],))
-                cur.execute("update archive_sources set created_at = '2099-01-03 00:00:00+00' where id = %s", (third["id"],))
+                cur.execute(
+                    """
+                    update archive_sources
+                    set created_at = '2099-01-03 00:00:00+00',
+                        manual_order = 1
+                    where id = %s
+                    """,
+                    (third["id"],),
+                )
             conn.commit()
 
         update_source_pin(int(first["id"]), True)
-        descending = list_sources_page(sort_by="created_at", sort_direction="desc", limit=10)
-        ascending = list_sources_page(sort_by="created_at", sort_direction="asc", limit=10)
+        page = list_sources_page(limit=1000)
 
         source_ids = {first["id"], second["id"], third["id"]}
-        descending_ids = [row["id"] for row in descending["rows"] if row["id"] in source_ids]
-        ascending_ids = [row["id"] for row in ascending["rows"] if row["id"] in source_ids]
-        self.assertEqual(descending_ids, [first["id"], third["id"], second["id"]])
-        self.assertEqual(ascending_ids, [first["id"], second["id"], third["id"]])
+        page_ids = [row["id"] for row in page["rows"] if row["id"] in source_ids]
+        self.assertEqual(page_ids, [first["id"], third["id"], second["id"]])
 
         updated = update_source_pin(int(first["id"]), False)
         self.assertFalse(updated["is_pinned"])
         with self.assertRaisesRegex(ValueError, "source_not_found"):
             update_source_pin(999999999, True)
+
+    def test_reorder_sources_persists_manual_order_within_one_partition(self) -> None:
+        first = create_source("user_media", self.source_urls[0])
+        second = create_source("user_media", self.source_urls[1])
+        third = create_source("user_media", self.source_urls[2])
+
+        result = reorder_sources([int(third["id"]), int(first["id"]), int(second["id"])])
+        page = list_sources_page(limit=1000)
+
+        source_ids = {first["id"], second["id"], third["id"]}
+        page_ids = [row["id"] for row in page["rows"] if row["id"] in source_ids]
+        self.assertEqual(page_ids, [third["id"], first["id"], second["id"]])
+        self.assertGreaterEqual(result["updated_count"], 3)
+
+    def test_reorder_sources_rejects_deleted_or_cross_pinned_sources(self) -> None:
+        first = create_source("user_media", self.source_urls[0])
+        second = create_source("user_media", self.source_urls[1])
+        third = create_source("user_media", self.source_urls[2])
+
+        update_source_pin(int(first["id"]), True)
+        with self.assertRaisesRegex(ValueError, "source_reorder_cross_pinned_partition"):
+            reorder_sources([int(first["id"]), int(second["id"])])
+
+        delete_source(int(third["id"]), confirm_delete=True)
+        with self.assertRaisesRegex(ValueError, "source_reorder_invalid_source"):
+            reorder_sources([int(second["id"]), int(third["id"])])
+
+        with self.assertRaisesRegex(ValueError, "source_reorder_too_few_sources"):
+            reorder_sources([int(second["id"]), int(second["id"])])
 
     def test_source_detail_is_slim_and_exposes_active_scan_run(self) -> None:
         source = create_source("profile", self.source_urls[2])

@@ -9,6 +9,7 @@ export function unwrapActionResult(response: Record<string, unknown>) {
 export const SOURCE_TYPES = ["profile", "user_media", "likes", "bookmarks", "search", "manual"] as const;
 export const SOURCE_DELETED_FILTERS = ["active", "deleted", "all"] as const;
 export type SourceDeletedFilter = (typeof SOURCE_DELETED_FILTERS)[number];
+export type SourceSortBy = "manual_order" | "updated_at" | "created_at";
 
 export function parseRecordUrls(value: string) {
   const seen = new Set<string>();
@@ -28,7 +29,7 @@ export function parseRecordUrls(value: string) {
 export function sourceQueryString(
   type: string,
   deleted: SourceDeletedFilter,
-  sortBy: "updated_at" | "created_at",
+  sortBy: SourceSortBy,
   sortDirection: "asc" | "desc",
   limit: number,
   offset: number,

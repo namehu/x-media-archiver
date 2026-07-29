@@ -1,4 +1,4 @@
-import { useEffect, useState } from "react";
+import { useEffect, useMemo, useState } from "react";
 import { useQuery, useQueryClient } from "@tanstack/react-query";
 import { useSearchParams } from "react-router-dom";
 import { toast } from "sonner";
@@ -9,8 +9,8 @@ import { SourceDetailPanel } from "./components/source-detail-sheet";
 import { SourcesList } from "./components/sources-list";
 import { useDownloadPolicy, useSourceDetail } from "./hooks/useSourceDetail";
 import { useSourceActions } from "./hooks/useSourceScan";
-import { useCreateSource, useDeleteSource, useSourcesQuery } from "./hooks/useSourcesQuery";
-import type { SourceDeletedFilter } from "./utils";
+import { useCreateSource, useDeleteSource, useReorderSources, useSourcesQuery } from "./hooks/useSourcesQuery";
+import type { SourceDeletedFilter, SourceSortBy } from "./utils";
 
 export function SourcesPage() {
   const queryClient = useQueryClient();
@@ -18,9 +18,8 @@ export function SourcesPage() {
   const [selectedSourceId, setSelectedSourceId] = useState<number | null>(null);
   const [sourceTypeFilter, setSourceTypeFilter] = useState("");
   const [sourceDeletedFilter, setSourceDeletedFilter] = useState<SourceDeletedFilter>("active");
-  const [sortBy, setSortBy] = useState<"updated_at" | "created_at">("updated_at");
+  const [sortBy, setSortBy] = useState<SourceSortBy>("manual_order");
   const [sortDirection, setSortDirection] = useState<"asc" | "desc">("desc");
-  const [offset, setOffset] = useState(0);
   const [feedback, setFeedback] = useState<ArchiveSubmission | null>(null);
   const [scanFeedback, setScanFeedback] = useState<Record<string, unknown> | null>(null);
   const [now, setNow] = useState(() => Date.now());
@@ -29,7 +28,7 @@ export function SourcesPage() {
   const [detailSheetOpen, setDetailSheetOpen] = useState(false);
 
   const includeDeletedDetail = sourceDeletedFilter !== "active";
-  const sourcesQuery = useSourcesQuery(sourceTypeFilter, sourceDeletedFilter, sortBy, sortDirection, offset);
+  const sourcesQuery = useSourcesQuery(sourceTypeFilter, sourceDeletedFilter, sortBy, sortDirection);
   const detailQuery = useSourceDetail(selectedSourceId, includeDeletedDetail);
   const policyQuery = useDownloadPolicy();
   const healthQuery = useQuery({
@@ -90,6 +89,23 @@ export function SourcesPage() {
     onRefresh: refresh,
   });
 
+  const sourcesData = useMemo(() => {
+    const pages = sourcesQuery.data?.pages ?? [];
+    const rows = pages.flatMap((page) => page.rows);
+    const firstPage = pages[0];
+    return {
+      rows,
+      count: rows.length,
+      total_count: firstPage?.total_count ?? 0,
+      limit: firstPage?.limit ?? 50,
+      offset: 0,
+    };
+  }, [sourcesQuery.data]);
+
+  const reorderMutation = useReorderSources(async () => {
+    await queryClient.invalidateQueries({ queryKey: ["sources"] });
+  });
+
   useEffect(() => {
     const sourceId = Number(searchParams.get("sourceId"));
     if (Number.isFinite(sourceId) && sourceId > 0) {
@@ -123,25 +139,31 @@ export function SourcesPage() {
   return (
     <div className="space-y-5">
       <SourcesList
-        data={sourcesQuery.data}
+        data={sourcesData}
         selectedSourceId={selectedSourceId}
         typeFilter={sourceTypeFilter}
         deletedFilter={sourceDeletedFilter}
         sortBy={sortBy}
         sortDirection={sortDirection}
-        offset={offset}
         onTypeFilterChange={setSourceTypeFilter}
         onDeletedFilterChange={setSourceDeletedFilter}
         onSortChange={(nextSortBy, nextSortDirection) => {
-          setOffset(0);
           setSortBy(nextSortBy);
           setSortDirection(nextSortDirection);
         }}
-        onOffsetChange={setOffset}
         onSelectSource={selectSource}
         onAddClick={() => setCreateDialogOpen(true)}
         onPin={(sourceId, isPinned) => actions.pinMutation.mutate({ sourceId, isPinned })}
         pinPendingSourceId={actions.pinMutation.isPending ? actions.pinMutation.variables?.sourceId : undefined}
+        canReorder={sourceDeletedFilter === "active" && sortBy === "manual_order"}
+        isLoading={sourcesQuery.isLoading}
+        isFetchingNextPage={sourcesQuery.isFetchingNextPage}
+        hasNextPage={Boolean(sourcesQuery.hasNextPage)}
+        error={sourcesQuery.error}
+        reorderPending={reorderMutation.isPending}
+        onLoadMore={() => sourcesQuery.fetchNextPage()}
+        onRetryLoadMore={() => sourcesQuery.fetchNextPage()}
+        onReorder={(sourceIds) => reorderMutation.mutateAsync(sourceIds)}
       />
 
       {/* 新增来源弹窗 */}

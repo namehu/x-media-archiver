@@ -23,6 +23,7 @@ from sqlalchemy import (
     Integer,
     and_,
     bindparam,
+    case,
     func,
     or_,
     select,
@@ -76,7 +77,7 @@ from xarchiver.tables import (
 VALID_SOURCE_TYPES = {"profile", "user_media", "likes", "bookmarks", "search", "manual"}
 VALID_SOURCE_STATUSES = {"active", "paused", "completed", "failed"}
 VALID_SOURCE_DELETED_FILTERS = {"active", "deleted", "all"}
-VALID_SOURCE_SORT_FIELDS = {"updated_at", "created_at"}
+VALID_SOURCE_SORT_FIELDS = {"manual_order", "updated_at", "created_at"}
 VALID_SORT_DIRECTIONS = {"asc", "desc"}
 VALID_SCAN_TRIGGERS = {"history_worker", "manual_next", "latest_refresh", "from_start_repair"}
 VALID_SCAN_SESSION_MODES = {"history", "latest_refresh", "from_start"}
@@ -178,6 +179,7 @@ def create_source(
                             author_username = %s,
                             status = 'active',
                             is_pinned = false,
+                            manual_order = 0,
                             cursor_state = %s,
                             next_scan_at = null,
                             error_category = null,
@@ -223,7 +225,7 @@ def list_sources(
     status: str | None = None,
     source_type: str | None = None,
     deleted: str = "active",
-    sort_by: str = "updated_at",
+    sort_by: str = "manual_order",
     sort_direction: str = "desc",
     limit: int = 50,
     offset: int = 0,
@@ -249,7 +251,7 @@ def list_sources_page(
     status: str | None = None,
     source_type: str | None = None,
     deleted: str = "active",
-    sort_by: str = "updated_at",
+    sort_by: str = "manual_order",
     sort_direction: str = "desc",
     limit: int = 50,
     offset: int = 0,
@@ -293,7 +295,7 @@ def build_sources_query(
     status: str | None = None,
     source_type: str | None = None,
     deleted: str = "active",
-    sort_by: str = "updated_at",
+    sort_by: str = "manual_order",
     sort_direction: str = "desc",
     limit: int = 50,
     offset: int = 0,
@@ -326,10 +328,20 @@ def build_sources_query(
         .scalar_subquery()
     )
 
-    sort_column = archive_sources.c[normalize_source_sort_field(sort_by)]
+    normalized_sort_field = normalize_source_sort_field(sort_by)
     normalized_direction = normalize_sort_direction(sort_direction)
-    sort_expression = sort_column.asc() if normalized_direction == "asc" else sort_column.desc()
-    id_expression = archive_sources.c.id.asc() if normalized_direction == "asc" else archive_sources.c.id.desc()
+    if normalized_sort_field == "manual_order":
+        sort_expressions = [
+            case((archive_sources.c.manual_order > 0, 0), else_=1).asc(),
+            archive_sources.c.manual_order.asc(),
+            archive_sources.c.created_at.desc(),
+            archive_sources.c.id.desc(),
+        ]
+    else:
+        sort_column = archive_sources.c[normalized_sort_field]
+        sort_expression = sort_column.asc() if normalized_direction == "asc" else sort_column.desc()
+        id_expression = archive_sources.c.id.asc() if normalized_direction == "asc" else archive_sources.c.id.desc()
+        sort_expressions = [sort_expression, id_expression]
 
     statement = (
         select(
@@ -347,7 +359,7 @@ def build_sources_query(
             )
         )
         .group_by(archive_sources.c.id)
-        .order_by(archive_sources.c.is_pinned.desc(), sort_expression, id_expression)
+        .order_by(archive_sources.c.is_pinned.desc(), *sort_expressions)
         .limit(bindparam("limit", limit))
         .offset(bindparam("offset", offset))
     )
@@ -445,7 +457,7 @@ def update_source_pin(source_id: int, is_pinned: bool) -> dict[str, object]:
             archive_sources.c.id == bindparam("source_id"),
             archive_sources.c.deleted_at.is_(None),
         )
-        .values(is_pinned=bindparam("is_pinned"))
+        .values(is_pinned=bindparam("is_pinned"), manual_order=0)
         .returning(archive_sources)
     )
     sql, params = compile_query(statement)
@@ -460,6 +472,71 @@ def update_source_pin(source_id: int, is_pinned: bool) -> dict[str, object]:
         conn.commit()
     publish_event("sources", "source.pin_changed", {"source_id": source_id, "is_pinned": is_pinned})
     return get_source(source_id) or dict(result)
+
+
+def reorder_sources(source_ids: list[int]) -> dict[str, object]:
+    """Persist the manual order for one active pinned or unpinned source partition."""
+
+    deduped_source_ids = list(dict.fromkeys(source_ids))
+    if len(deduped_source_ids) < 2:
+        raise ValueError("source_reorder_too_few_sources")
+    if len(deduped_source_ids) > 200:
+        raise ValueError("source_reorder_too_many_sources")
+
+    requested_ids = {int(source_id) for source_id in deduped_source_ids}
+    with connect() as conn:
+        with conn.cursor() as cur:
+            select_requested = (
+                select(
+                    archive_sources.c.id,
+                    archive_sources.c.is_pinned,
+                )
+                .where(archive_sources.c.id.in_(requested_ids))
+                .where(archive_sources.c.deleted_at.is_(None))
+                .with_for_update()
+            )
+            sql, params = compile_query(select_requested)
+            cur.execute(sql, params)
+            requested_rows = [dict(row) for row in cur.fetchall()]
+            if len(requested_rows) != len(requested_ids):
+                raise ValueError("source_reorder_invalid_source")
+
+            pinned_values = {bool(row["is_pinned"]) for row in requested_rows}
+            if len(pinned_values) != 1:
+                raise ValueError("source_reorder_cross_pinned_partition")
+            is_pinned = pinned_values.pop()
+
+            partition_order = (
+                select(archive_sources.c.id)
+                .where(
+                    archive_sources.c.deleted_at.is_(None),
+                    archive_sources.c.is_pinned.is_(is_pinned),
+                )
+                .order_by(
+                    case((archive_sources.c.manual_order > 0, 0), else_=1).asc(),
+                    archive_sources.c.manual_order.asc(),
+                    archive_sources.c.created_at.desc(),
+                    archive_sources.c.id.desc(),
+                )
+                .with_for_update()
+            )
+            sql, params = compile_query(partition_order)
+            cur.execute(sql, params)
+            existing_ids = [int(row["id"]) for row in cur.fetchall()]
+
+            final_ids = deduped_source_ids + [source_id for source_id in existing_ids if source_id not in requested_ids]
+            order_by_id = {source_id: index + 1 for index, source_id in enumerate(final_ids)}
+            update_statement = (
+                update(archive_sources)
+                .where(archive_sources.c.id.in_(order_by_id.keys()))
+                .values(manual_order=case(order_by_id, value=archive_sources.c.id))
+            )
+            sql, params = compile_query(update_statement)
+            cur.execute(sql, params)
+        conn.commit()
+
+    publish_event("sources", "source.reordered", {"source_ids": deduped_source_ids, "is_pinned": is_pinned})
+    return {"source_ids": deduped_source_ids, "is_pinned": is_pinned, "updated_count": len(final_ids)}
 
 
 def delete_source(source_id: int, confirm_delete: bool = False) -> dict[str, object]:

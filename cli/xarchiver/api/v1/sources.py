@@ -22,6 +22,7 @@ from xarchiver.api.schemas import (
     SourceHistoryScanRequest,
     SourcePinRequest,
     SourceRecordsRequest,
+    SourceReorderRequest,
     SourceScanRequest,
     SourceScanRunsPageResponse,
     SourceScanSessionRequest,
@@ -39,6 +40,7 @@ from xarchiver.services.sources import (
     list_source_scan_runs_page,
     list_sources_page,
     pause_source_scan_session,
+    reorder_sources,
     resume_source_scan_session,
     scan_source,
     start_source_history_scan,
@@ -77,7 +79,7 @@ def archive_sources(
     source_status: str | None = None,
     source_type: str | None = None,
     deleted: str = Query("active", pattern="^(active|deleted|all)$"),
-    sort_by: str = Query("updated_at", pattern="^(updated_at|created_at)$"),
+    sort_by: str = Query("manual_order", pattern="^(manual_order|updated_at|created_at)$"),
     sort_direction: str = Query("desc", pattern="^(asc|desc)$"),
 ) -> dict[str, object]:
     """分页查询来源列表。"""
@@ -95,6 +97,20 @@ def archive_sources(
         return {**page, "rows": [dict(row) for row in page.get("rows", [])]}
     except ValueError as exc:
         raise_api_error(exc)
+
+
+@router.post("/reorder", response_model=WriteActionResponse)
+def reorder_archive_sources(request: SourceReorderRequest) -> dict[str, object]:
+    """持久化正常来源列表中某个置顶分区内的手动排序。"""
+
+    try:
+        return execute_write_action(
+            "source-reorder",
+            lambda: reorder_sources(request.source_ids),
+            scope="sources",
+        )
+    except ValueError as exc:
+        raise_api_error(exc, default_status=409)
 
 
 @router.get("/{source_id}", response_model=ArchiveSourceDetailResponse)

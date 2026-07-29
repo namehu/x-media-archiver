@@ -253,6 +253,7 @@ class ArchiveSourceRow(RowModel):
     author_username: str | None = None
     status: str
     is_pinned: bool = False
+    manual_order: int = 0
     cursor_state: dict[str, Any]
     last_seen_tweet_id: str | None = None
     newest_seen_tweet_id: str | None = None

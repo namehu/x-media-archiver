@@ -84,6 +84,10 @@ class SourcePinRequest(BaseModel):
     is_pinned: bool
 
 
+class SourceReorderRequest(BaseModel):
+    source_ids: list[int] = Field(min_length=2, max_length=200)
+
+
 class SourceDeleteRequest(BaseModel):
     confirm_delete: bool = False
 

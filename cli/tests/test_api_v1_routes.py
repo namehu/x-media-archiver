@@ -22,6 +22,7 @@ from xarchiver.api.schemas import (
     SourceDeleteRequest,
     SourceDiscoveryPageResponse,
     SourcePinRequest,
+    SourceReorderRequest,
     SourceScanRunsPageResponse,
     SourcesPageResponse,
     SourceStatusRequest,
@@ -89,6 +90,7 @@ class V1RouterSmokeTests(unittest.TestCase):
             "/api/v1/sources/{source_id}/submit-discovered",
             "/api/v1/sources/{source_id}/status",
             "/api/v1/sources/{source_id}/pin",
+            "/api/v1/sources/reorder",
             "/api/v1/sources/{source_id}/scan",
             "/api/v1/sources/{source_id}/history-scan",
             "/api/v1/sources/{source_id}/scan-sessions",
@@ -374,6 +376,24 @@ class V1RouterSmokeTests(unittest.TestCase):
             with self.assertRaises(HTTPException) as ctx:
                 self.post_paths["/api/v1/sources/{source_id}/pin"](999, SourcePinRequest(is_pinned=True))
         self.assertEqual(ctx.exception.status_code, 404)
+
+    def test_v1_source_reorder_uses_write_action(self):
+        with patch(
+            "xarchiver.api.v1.sources.reorder_sources",
+            return_value={"source_ids": [3, 2], "is_pinned": False, "updated_count": 2},
+        ) as mock:
+            result = self.post_paths["/api/v1/sources/reorder"](SourceReorderRequest(source_ids=[3, 2]))
+
+        self.assertEqual(result["action"], "source-reorder")
+        self.assertEqual(result["status"], "completed")
+        self.assertEqual(result["result"]["source_ids"], [3, 2])
+        mock.assert_called_once_with([3, 2])
+
+    def test_v1_source_reorder_maps_invalid_sources_to_409(self):
+        with patch("xarchiver.api.v1.sources.reorder_sources", side_effect=ValueError("source_reorder_invalid_source")):
+            with self.assertRaises(HTTPException) as ctx:
+                self.post_paths["/api/v1/sources/reorder"](SourceReorderRequest(source_ids=[3, 2]))
+        self.assertEqual(ctx.exception.status_code, 409)
 
     def test_v1_sources_response_serializes_row_models(self):
         row = ArchiveSourceListRow.model_validate(

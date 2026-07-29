@@ -464,6 +464,7 @@ class ArchiveSourceResponse(FlexibleResponse):
     source_url: str | None = None
     status: str
     is_pinned: bool = False
+    manual_order: int = 0
     label: str | None = None
     author_username: str | None = None
     deleted_at: datetime | None = None

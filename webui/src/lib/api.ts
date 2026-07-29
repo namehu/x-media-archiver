@@ -369,6 +369,7 @@ type ArchiveSourceBase = {
   author_username?: string | null;
   status: "active" | "paused" | "completed" | "failed";
   is_pinned: boolean;
+  manual_order: number;
   discovered_count?: number | null;
   submitted_count?: number | null;
   discovered_tweet_count?: number | null;

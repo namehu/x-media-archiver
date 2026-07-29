@@ -1,22 +1,34 @@
-import { useMutation, useQuery } from "@tanstack/react-query";
-import { apiDelete, apiGet, apiPost, type ArchiveSourceListItem, type SourceDeleteResponse, type SourcePageResponse } from "@/lib/api";
-import { sourceQueryString, type SourceDeletedFilter } from "../utils";
+import { useInfiniteQuery, useMutation } from "@tanstack/react-query";
+import {
+  apiDelete,
+  apiGet,
+  apiPost,
+  type ActionResponse,
+  type ArchiveSourceListItem,
+  type SourceDeleteResponse,
+  type SourcePageResponse,
+} from "@/lib/api";
+import { sourceQueryString, type SourceDeletedFilter, type SourceSortBy } from "../utils";
 
 export const SOURCES_PAGE_SIZE = 50;
 
 export function useSourcesQuery(
   typeFilter: string,
   deletedFilter: SourceDeletedFilter,
-  sortBy: "updated_at" | "created_at",
+  sortBy: SourceSortBy,
   sortDirection: "asc" | "desc",
-  offset: number,
 ) {
-  return useQuery({
-    queryKey: ["sources", typeFilter, deletedFilter, sortBy, sortDirection, offset],
-    queryFn: () =>
+  return useInfiniteQuery({
+    queryKey: ["sources", typeFilter, deletedFilter, sortBy, sortDirection],
+    queryFn: ({ pageParam }) =>
       apiGet<SourcePageResponse>(
-        `/api/v1/sources?${sourceQueryString(typeFilter, deletedFilter, sortBy, sortDirection, SOURCES_PAGE_SIZE, offset)}`,
+        `/api/v1/sources?${sourceQueryString(typeFilter, deletedFilter, sortBy, sortDirection, SOURCES_PAGE_SIZE, pageParam)}`,
       ),
+    initialPageParam: 0,
+    getNextPageParam: (lastPage) => {
+      const nextOffset = lastPage.offset + lastPage.count;
+      return nextOffset < lastPage.total_count ? nextOffset : undefined;
+    },
   });
 }
 
@@ -42,6 +54,18 @@ export function useDeleteSource(onDeleted: (result: SourceDeleteResponse) => Pro
       }),
     onSuccess: async (result) => {
       await onDeleted(result);
+    },
+  });
+}
+
+export function useReorderSources(onReordered: () => Promise<void> | void) {
+  return useMutation({
+    mutationFn: (sourceIds: number[]) =>
+      apiPost<ActionResponse>("/api/v1/sources/reorder", {
+        source_ids: sourceIds,
+      }),
+    onSuccess: async () => {
+      await onReordered();
     },
   });
 }
