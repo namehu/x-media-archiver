@@ -74,6 +74,17 @@ export function PostPreviewDialog({
   }, [activeIndex]);
 
   useEffect(() => {
+    if (!post) return undefined;
+
+    const animationFrame = window.requestAnimationFrame(() => {
+      swiperRef.current?.update();
+      swiperRef.current?.slideTo(activeIndex, 0);
+    });
+
+    return () => window.cancelAnimationFrame(animationFrame);
+  }, [activeIndex, post]);
+
+  useEffect(() => {
     if (!historyToken) return undefined;
 
     if (isDialogHistoryEntry(location.state, historyToken)) {
@@ -107,7 +118,7 @@ export function PostPreviewDialog({
         if (!open) handleClose();
       }}
     >
-      <DialogContent className="left-0 top-0 grid h-[100dvh] w-screen max-w-none translate-x-0 translate-y-0 overflow-hidden rounded-none border-0 bg-black p-0 [&>button]:hidden">
+      <DialogContent className="left-0 top-0 h-[100dvh] w-screen max-w-none translate-x-0 translate-y-0 overflow-hidden rounded-none border-0 bg-black p-0 [&>button]:hidden">
         <DialogHeader className="sr-only">
           <DialogTitle>帖子媒体预览</DialogTitle>
           <DialogDescription>左右切换查看同一帖子的本地媒体。</DialogDescription>
@@ -123,15 +134,18 @@ export function PostPreviewDialog({
           <CloseIcon className="size-5" />
         </button>
 
-        <div className="relative size-full bg-black">
+        <div className="relative h-full min-h-0 w-full min-w-0 overflow-hidden bg-black">
           <Swiper
             key={post.tweet_id}
-            className={`size-full [&_.swiper-button-next]:hidden [&_.swiper-button-prev]:hidden sm:[&_.swiper-button-next]:flex sm:[&_.swiper-button-prev]:flex ${uiVisible ? "[&_.swiper-button-next]:opacity-100 [&_.swiper-button-prev]:opacity-100 [&_.swiper-pagination]:opacity-100" : "[&_.swiper-button-next]:opacity-0 [&_.swiper-button-prev]:opacity-0 [&_.swiper-pagination]:opacity-0"} [&_.swiper-button-next]:transition-opacity [&_.swiper-button-prev]:transition-opacity [&_.swiper-pagination]:transition-opacity [&_.swiper-pagination]:duration-300 [&_.swiper-button-next]:duration-300 [&_.swiper-button-prev]:duration-300 [&_.swiper-pagination-fraction]:top-auto [&_.swiper-pagination-fraction]:bottom-5 [&_.swiper-pagination-fraction]:text-white/60 [&_.swiper-pagination-fraction]:text-sm`}
+            className={`h-full min-h-0 w-full min-w-0 max-w-full [&_.swiper-button-next]:hidden [&_.swiper-button-prev]:hidden sm:[&_.swiper-button-next]:flex sm:[&_.swiper-button-prev]:flex ${uiVisible ? "[&_.swiper-button-next]:opacity-100 [&_.swiper-button-prev]:opacity-100 [&_.swiper-pagination]:opacity-100" : "[&_.swiper-button-next]:opacity-0 [&_.swiper-button-prev]:opacity-0 [&_.swiper-pagination]:opacity-0"} [&_.swiper-button-next]:transition-opacity [&_.swiper-button-prev]:transition-opacity [&_.swiper-pagination]:transition-opacity [&_.swiper-pagination]:duration-300 [&_.swiper-button-next]:duration-300 [&_.swiper-button-prev]:duration-300 [&_.swiper-pagination-fraction]:top-auto [&_.swiper-pagination-fraction]:bottom-5 [&_.swiper-pagination-fraction]:text-white/60 [&_.swiper-pagination-fraction]:text-sm`}
             modules={[Keyboard, Navigation, Pagination]}
             initialSlide={activeIndex}
             keyboard={{ enabled: true }}
             navigation
             pagination={{ type: "fraction" }}
+            observer
+            observeParents
+            resizeObserver
             onClick={() => setUiVisible((v) => !v)}
             onSwiper={(swiper) => {
               swiperRef.current = swiper;
