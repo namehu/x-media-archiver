@@ -320,7 +320,7 @@ function PreviewVideo({
       fastForward: false,
       theme: brandColor(),
       moreVideoAttr: {
-        preload: "none",
+        preload: "auto",
         playsInline: true,
       },
       ...(previewUrl ? { poster: previewUrl } : {}),
@@ -541,7 +541,7 @@ function PreviewVideo({
     wrapper.addEventListener("pointercancel", finishGesture, true);
     wrapper.addEventListener("lostpointercapture", finishGesture, true);
 
-    if (!initialState || (!initialState.paused && !initialState.ended)) {
+    if (!initialState || !initialState.ended) {
       void player.play().catch(() => undefined);
     } else {
       player.pause();
