@@ -436,13 +436,30 @@ class V1RouterSmokeTests(unittest.TestCase):
         self.assertNotIn("scan_runs", payload)
 
     def test_v1_source_discovered_delegates_pagination(self):
-        page = {"rows": [], "count": 0, "total_count": 7, "limit": 25, "offset": 50}
+        page = {"rows": [], "count": 0, "total_count": 7, "unfiltered_total_count": 9, "facets": None, "limit": 25, "offset": 50}
         with patch("xarchiver.api.v1.sources.list_source_discovered_page", return_value=page) as mock:
-            result = self.get_paths["/api/v1/sources/{source_id}/discovered"](2, limit=25, offset=50, include_deleted=True)
+            result = self.get_paths["/api/v1/sources/{source_id}/discovered"](
+                2,
+                limit=25,
+                offset=50,
+                include_deleted=True,
+                media_type="video",
+                queue_state="unsubmitted",
+                download_state="pending",
+            )
 
         payload = SourceDiscoveryPageResponse.model_validate(result).model_dump(mode="json")
         self.assertEqual(payload["total_count"], 7)
-        mock.assert_called_once_with(2, limit=25, offset=50, include_deleted=True)
+        self.assertEqual(payload["unfiltered_total_count"], 9)
+        mock.assert_called_once_with(
+            2,
+            limit=25,
+            offset=50,
+            include_deleted=True,
+            media_type="video",
+            queue_state="unsubmitted",
+            download_state="pending",
+        )
 
     def test_v1_source_downloads_delegates_include_deleted(self):
         response = {"source_id": 2, "recent_runs": []}

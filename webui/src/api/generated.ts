@@ -2280,6 +2280,79 @@ export interface components {
         } & {
             [key: string]: unknown;
         };
+        /** SourceDiscoveryActionCountsResponse */
+        SourceDiscoveryActionCountsResponse: {
+            /**
+             * All Unsubmitted
+             * @default 0
+             */
+            all_unsubmitted: number;
+            /**
+             * Missing
+             * @default 0
+             */
+            missing: number;
+            /**
+             * Failed
+             * @default 0
+             */
+            failed: number;
+        } & {
+            [key: string]: unknown;
+        };
+        /** SourceDiscoveryDownloadFacetsResponse */
+        SourceDiscoveryDownloadFacetsResponse: {
+            /**
+             * Pending
+             * @default 0
+             */
+            pending: number;
+            /**
+             * Active
+             * @default 0
+             */
+            active: number;
+            /**
+             * Completed
+             * @default 0
+             */
+            completed: number;
+            /**
+             * Failed
+             * @default 0
+             */
+            failed: number;
+        } & {
+            [key: string]: unknown;
+        };
+        /** SourceDiscoveryFacetsResponse */
+        SourceDiscoveryFacetsResponse: {
+            media?: components["schemas"]["SourceDiscoveryMediaFacetsResponse"];
+            queue?: components["schemas"]["SourceDiscoveryQueueFacetsResponse"];
+            download?: components["schemas"]["SourceDiscoveryDownloadFacetsResponse"];
+        } & {
+            [key: string]: unknown;
+        };
+        /** SourceDiscoveryMediaFacetsResponse */
+        SourceDiscoveryMediaFacetsResponse: {
+            /**
+             * All
+             * @default 0
+             */
+            all: number;
+            /**
+             * Video
+             * @default 0
+             */
+            video: number;
+            /**
+             * Photo
+             * @default 0
+             */
+            photo: number;
+        } & {
+            [key: string]: unknown;
+        };
         /** SourceDiscoveryPageResponse */
         SourceDiscoveryPageResponse: {
             /** Count */
@@ -2292,6 +2365,28 @@ export interface components {
             offset: number;
             /** Rows */
             rows: components["schemas"]["SourceDiscoveryResponse"][];
+            /**
+             * Unfiltered Total Count
+             * @default 0
+             */
+            unfiltered_total_count: number;
+            action_counts?: components["schemas"]["SourceDiscoveryActionCountsResponse"];
+            facets?: components["schemas"]["SourceDiscoveryFacetsResponse"] | null;
+        } & {
+            [key: string]: unknown;
+        };
+        /** SourceDiscoveryQueueFacetsResponse */
+        SourceDiscoveryQueueFacetsResponse: {
+            /**
+             * Unsubmitted
+             * @default 0
+             */
+            unsubmitted: number;
+            /**
+             * Submitted
+             * @default 0
+             */
+            submitted: number;
         } & {
             [key: string]: unknown;
         };
@@ -2424,6 +2519,8 @@ export interface components {
             confirm_all: boolean;
             /** Limit */
             limit?: number | null;
+            /** Media Type */
+            media_type?: string | null;
         };
         /** SourceDownloadSummaryResponse */
         SourceDownloadSummaryResponse: {
@@ -3598,6 +3695,9 @@ export interface operations {
                 limit?: number;
                 offset?: number;
                 include_deleted?: boolean;
+                media_type?: string | null;
+                queue_state?: string | null;
+                download_state?: string | null;
             };
             header?: never;
             path: {

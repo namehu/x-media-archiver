@@ -299,7 +299,7 @@ sequenceDiagram
 | --- | --- |
 | 已发现 Tweet | 当前来源已记录的去重 Tweet 数量 |
 | 扫描发现媒体 | 扫描元数据聚合得到的媒体项数量，下载前为预估 |
-| 未入队发现 | 已发现但尚未提交至下载队列的 Tweet 数量 |
+| 待下载发现 | 已发现但尚未完成本地归档的 Tweet 数量 |
 | 下一批范围 | 当前 active session 将使用的 Tweet 窗口 |
 | 扫描状态 | 当前 active session 是否可继续、已完成或进入重复区 |
 | 历史扫描任务 | 当前会话模式和后台调度状态 |
@@ -312,10 +312,12 @@ sequenceDiagram
 
 | 场景 | 系统行为 | 用户可见结果 |
 | --- | --- | --- |
-| 暂停下载后继续扫描 | 新 Tweet 只进入发现池 | 旧 run 仍显示暂停，新发现显示未入队 |
+| 暂停下载后继续扫描 | 新 Tweet 只进入发现池 | 旧 run 仍显示暂停，新发现显示待下载 |
 | 继续下载 | 只恢复暂停 run | 不自动包含暂停后新发现 |
-| 下载新发现 | 创建新的来源 run | 若旧 run 暂停，新 run 显示等待前序任务 |
+| 下载缺失项 | 创建新的来源 run | 只提交当前筛选中未完成的 Tweet，已完成项不会重新下载 |
 | 下载选中 | 只提交选中且未 active/未完成 Tweet | 已有任务和已归档项被跳过 |
+| 按媒体类型下载 | 发现列表按 `media_type=video/photo` 筛选 Tweet 后提交缺失项 | 命中的 Tweet 整体处理；图文混合 Tweet 会同时命中视频和图片筛选 |
+| 重新下载当前筛选 | 使用高级下载入口强制提交当前筛选 | 会包含已完成项，需二次确认，通常只用于修复本地文件 |
 | 取消选中 | pending/blocked 变 `cancelled`，processing 标记取消请求 | 当前子进程自然结束 |
 | 停止下载 | 取消未开始 item，processing 自然结束 | 后续 blocked run 可被释放 |
 
@@ -325,8 +327,8 @@ sequenceDiagram
 - 暂停后允许恢复当前会话或停止当前会话。
 - 停止后保留 cursor，允许继续当前会话，也允许按业务规则启动分叉会话。
 - 下载工作台必须独立于扫描控制，避免把“暂停扫描”和“暂停下载”混为一个动作。
-- 发现列表只允许页内选择；跨页批量下载必须使用“下载新发现”入口。
-- 用户触发下载提交时必须明确知道这是下载队列动作，不是继续扫描动作。
+- 发现列表只允许页内选择；跨页批量下载必须使用“下载缺失项”入口。
+- 用户触发默认下载时必须明确知道已完成项不会重新下载；强制重下只能从高级入口触发。
 - 删除来源是软删除：只隐藏来源配置并停用后续自动扫描，不删除已归档 Tweet、媒体文件、下载任务、发现记录或扫描历史。
 - 删除来源前必须确认该来源没有运行中扫描批次，也没有 queued/running/paused/blocked 下载 run；系统不得隐式停止这些工作。
 - 软删除后再次新增相同规范化 URL 会恢复原来源记录并保留历史，不创建第二条来源历史。
@@ -342,11 +344,12 @@ sequenceDiagram
 | `POST /api/v1/sources/{source_id}/scan-sessions/resume` | 恢复当前扫描会话 | `ArchiveSourceDetailResponse` |
 | `POST /api/v1/sources/{source_id}/scan-sessions/stop` | 停止当前扫描会话 | `ArchiveSourceDetailResponse` |
 | `GET /api/v1/sources/{source_id}` | 获取来源详情、汇总、active run | `ArchiveSourceDetailResponse` |
+| `GET /api/v1/sources/{source_id}/discovered` | 分页查看发现 Tweet；支持 `media_type=video/photo`、`queue_state=unsubmitted/submitted`、`download_state=pending/active/completed/failed` 服务端筛选，并在首页返回分面计数 | `SourceDiscoveryPageResponse` |
 | `GET /api/v1/sources/{source_id}/scan-runs` | 分页查看扫描批次审计 | `SourceScanRunsPageResponse` |
 | `GET /api/v1/log-streams/{stream_id}` | 查看扫描日志 | `OperationLogEntriesResponse` |
 | `GET /api/v1/sources/{source_id}/downloads` | 查看来源下载工作台汇总、active/paused/blocked runs，并通过 `current_tweet_id` 标识下载器当前处理项 | `SourceDownloadSummaryResponse` |
-| `POST /api/v1/sources/{source_id}/downloads` | 下载选中、新发现或失败项 | `ArchiveSubmissionResponse` |
-| `POST /api/v1/sources/{source_id}/submit-discovered` | 兼容旧入口，等价于提交未入队发现项 | `ArchiveSubmissionResponse` |
+| `POST /api/v1/sources/{source_id}/downloads` | 下载选中、缺失项、失败项，或高级重下当前筛选 | `ArchiveSubmissionResponse` |
+| `POST /api/v1/sources/{source_id}/submit-discovered` | 兼容旧入口，等价于提交尚未关联下载任务的发现项 | `ArchiveSubmissionResponse` |
 | `DELETE /api/v1/sources/{source_id}` | 软删除来源配置，需 `confirm_delete=true` | `SourceDeleteResponse` |
 | `POST /api/v1/archive-runs/{run_id}/pause` | 暂停下载 run，不强杀当前子进程 | `ArchiveRunControlResponse` |
 | `POST /api/v1/archive-runs/{run_id}/resume` | 恢复暂停下载 run | `ArchiveRunControlResponse` |
@@ -360,6 +363,8 @@ sequenceDiagram
 - 写操作必须保持 API 进程内锁语义或显式更新并发策略。
 - 所有错误响应不得暴露 cookie、生产连接串或其他凭据。
 - 下载提交必须按 Tweet 加锁并保持幂等，不能为同一 Tweet 创建多个 active item。
+- `POST /api/v1/sources/{source_id}/downloads` 可携带 `media_type=video/photo`；该参数是 Tweet 级筛选，只决定哪些发现 Tweet 被提交处理，不改变单个 Tweet 内媒体项的下载范围。
+- 默认 scope `download_missing` 只提交当前筛选中未完成且当前没有活动下载任务的 Tweet；`redownload_filter` 才会重新提交已完成项，保留给高级操作。
 - 同一来源只能有一个 runnable 下载 run；后续来源 run 使用 `blocked` 等待释放。
 - WebUI 仅在用户本次触发下载或恢复时自动跟随目标 run；自动跟随使用列表顺序中的单向队列游标，只在游标越过视口下边界时向下滚动。并发下载回头处理游标上方的 Tweet 时仍更新真实当前项高亮，但不得自动向上拉回列表。
 - 鼠标滚轮、触摸拖动、键盘翻页或展开 Tweet 正文会暂停自动跟随；“继续跟随”回到已记录的队列游标，“定位当前项”是允许跳到 `current_tweet_id` 并从该位置重建游标的显式操作。已有运行任务只提供显式定位入口。

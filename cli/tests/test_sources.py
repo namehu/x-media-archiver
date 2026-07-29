@@ -949,6 +949,156 @@ class SourceDiscoveryIntegrationTests(unittest.TestCase):
         self.assertEqual(page["offset"], 1)
         self.assertEqual(page["rows"][0]["tweet_id"], self.tweet_ids[0])
 
+    def test_source_discovered_filters_facets_and_media_type_downloads(self) -> None:
+        source = create_source("user_media", self.source_urls[0])
+        tweet_ids = [
+            self.tweet_ids[0],
+            self.tweet_ids[1],
+            "919900000000000003",
+            "919900000000000004",
+        ]
+        try:
+            record_source_discoveries(
+                int(source["id"]),
+                [
+                    {
+                        "tweet_id": tweet_ids[0],
+                        "url": f"https://x.com/sourcefixture/status/{tweet_ids[0]}",
+                        "author_username": "sourcefixture",
+                        "author_display_name": None,
+                        "text": "photo",
+                        "published_at": None,
+                        "collected_at": None,
+                        "media_count": 1,
+                        "media_types": ["photo"],
+                        "has_photo": True,
+                        "raw_import": {},
+                    },
+                    {
+                        "tweet_id": tweet_ids[1],
+                        "url": f"https://x.com/sourcefixture/status/{tweet_ids[1]}",
+                        "author_username": "sourcefixture",
+                        "author_display_name": None,
+                        "text": "video",
+                        "published_at": None,
+                        "collected_at": None,
+                        "media_count": 1,
+                        "media_types": ["video"],
+                        "has_video": True,
+                        "raw_import": {},
+                    },
+                    {
+                        "tweet_id": tweet_ids[2],
+                        "url": f"https://x.com/sourcefixture/status/{tweet_ids[2]}",
+                        "author_username": "sourcefixture",
+                        "author_display_name": None,
+                        "text": "mixed",
+                        "published_at": None,
+                        "collected_at": None,
+                        "media_count": 2,
+                        "media_types": ["photo", "video"],
+                        "has_photo": True,
+                        "has_video": True,
+                        "raw_import": {},
+                    },
+                    {
+                        "tweet_id": tweet_ids[3],
+                        "url": f"https://x.com/sourcefixture/status/{tweet_ids[3]}",
+                        "author_username": "sourcefixture",
+                        "author_display_name": None,
+                        "text": "legacy",
+                        "published_at": None,
+                        "collected_at": None,
+                        "media_count": 1,
+                        "has_video": True,
+                        "raw_import": {},
+                    },
+                ],
+            )
+
+            video_page = list_source_discovered_page(int(source["id"]), media_type="video")
+
+            self.assertEqual(video_page["total_count"], 2)
+            self.assertEqual(video_page["unfiltered_total_count"], 4)
+            self.assertEqual({row["tweet_id"] for row in video_page["rows"]}, {tweet_ids[1], tweet_ids[2]})
+            self.assertEqual(video_page["facets"]["media"], {"all": 4, "video": 2, "photo": 2})
+            self.assertEqual(video_page["action_counts"], {"all_unsubmitted": 2, "missing": 2, "failed": 0})
+
+            submitted = submit_source_downloads(int(source["id"]), "download_missing", media_type="video")
+
+            with connect() as conn:
+                with conn.cursor() as cur:
+                    cur.execute(
+                        """
+                        select tweet_id, archive_run_id
+                        from source_discovered_tweets
+                        where source_id = %s
+                        """,
+                        (source["id"],),
+                    )
+                    archive_run_ids = {str(row["tweet_id"]): row["archive_run_id"] for row in cur.fetchall()}
+                    cur.execute(
+                        "update tweets set download_status = 'failed_retryable' where tweet_id = %s",
+                        (tweet_ids[0],),
+                    )
+                conn.commit()
+
+            self.assertEqual(submitted["submitted_count"], 2)
+            self.assertIsNone(archive_run_ids[tweet_ids[0]])
+            self.assertIsNotNone(archive_run_ids[tweet_ids[1]])
+            self.assertIsNotNone(archive_run_ids[tweet_ids[2]])
+            self.assertIsNone(archive_run_ids[tweet_ids[3]])
+            self.assertEqual(list_source_discovered_page(int(source["id"]), queue_state="submitted")["total_count"], 2)
+            self.assertEqual(list_source_discovered_page(int(source["id"]), queue_state="unsubmitted")["total_count"], 2)
+            self.assertEqual(list_source_discovered_page(int(source["id"]), download_state="active")["total_count"], 2)
+            self.assertEqual(list_source_discovered_page(int(source["id"]), download_state="failed")["rows"][0]["tweet_id"], tweet_ids[0])
+            self.assertEqual(list_source_discovered_page(int(source["id"]), download_state="pending")["total_count"], 1)
+            photo_page = list_source_discovered_page(int(source["id"]), media_type="photo")
+            self.assertEqual(photo_page["total_count"], 2)
+            self.assertEqual(photo_page["action_counts"], {"all_unsubmitted": 1, "missing": 1, "failed": 1})
+
+            with connect() as conn:
+                with conn.cursor() as cur:
+                    cur.execute(
+                        "update tweets set download_status = 'verified' where tweet_id = %s",
+                        (tweet_ids[0],),
+                    )
+                conn.commit()
+
+            missing_photo = submit_source_downloads(int(source["id"]), "download_missing", media_type="photo")
+            self.assertEqual(missing_photo["submitted_count"], 0)
+            resubmitted = submit_source_downloads(int(source["id"]), "redownload_filter", media_type="photo")
+            self.assertEqual(resubmitted["submitted_count"], 2)
+        finally:
+            with connect() as conn:
+                with conn.cursor() as cur:
+                    cur.execute(
+                        """
+                        delete from download_jobs
+                        where archive_run_id in (
+                            select distinct archive_run_id
+                            from archive_run_items
+                            where tweet_id = any(%s)
+                        )
+                        """,
+                        (tweet_ids,),
+                    )
+                    cur.execute(
+                        """
+                        delete from archive_runs
+                        where exists (
+                            select 1
+                            from archive_run_items
+                            where archive_run_id = archive_runs.id
+                              and tweet_id = any(%s)
+                        )
+                        """,
+                        (tweet_ids,),
+                    )
+                    cur.execute("delete from archive_sources where id = %s", (source["id"],))
+                    cur.execute("delete from tweets where tweet_id = any(%s)", (tweet_ids,))
+                conn.commit()
+
     def test_source_download_queues_and_claims_tweets_in_visible_order(self) -> None:
         source = create_source("user_media", self.source_urls[0])
         record_source_discoveries(

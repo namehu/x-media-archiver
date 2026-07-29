@@ -1,5 +1,6 @@
 import { useMutation } from "@tanstack/react-query";
 import { apiPost, type ArchiveRunControl, type ArchiveSourceDetail, type ArchiveSourceListItem, type ArchiveSubmission } from "@/lib/api";
+import type { DownloadSubmitInput } from "../components/source-tweet-filters";
 import { unwrapActionResult } from "../utils";
 
 export type SourceScanMode = "history" | "latest_refresh" | "from_start";
@@ -56,8 +57,13 @@ export function useSourceActions({
   });
 
   const sourceDownloadMutation = useMutation({
-    mutationFn: ({ sourceId, scope, tweetIds, limit }: { sourceId: number; scope: "selected" | "all_unsubmitted" | "failed"; tweetIds?: string[]; limit?: number }) =>
-      apiPost<ArchiveSubmission>(`/api/v1/sources/${sourceId}/downloads`, { scope, tweet_ids: tweetIds, limit }),
+    mutationFn: ({ sourceId, scope, tweetIds, limit, mediaType }: DownloadSubmitInput) =>
+      apiPost<ArchiveSubmission>(`/api/v1/sources/${sourceId}/downloads`, {
+        scope,
+        tweet_ids: tweetIds,
+        limit,
+        media_type: mediaType,
+      }),
     onSuccess: async (result) => {
       onFeedback(result);
       await onRefresh(result.source_id);

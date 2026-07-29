@@ -42,7 +42,7 @@ export function DownloadActions({
   const canSubmit = (source.unsubmitted_tweet_count || 0) > 0 && !actions.pending.submitDiscovered;
 
   return (
-    <ActionBlock title="提交下载" hint="仅将已经发现的 Tweet 提交给下载队列，不会继续扫描来源。">
+    <ActionBlock title="提交下载" hint="仅将已经发现但尚未下载的 Tweet 提交处理，不会继续扫描来源。">
       <Input
         className="w-28"
         type="number"
@@ -57,7 +57,7 @@ export function DownloadActions({
         disabled={!canSubmit}
         onClick={() => actions.submitDiscovered({ sourceId: source.id, limit: submitLimit.clamped(500) })}
       >
-        提交未入队发现项
+        提交待下载发现项
       </Button>
       {actions.errors.submitDiscovered ? <ErrorLine error={actions.errors.submitDiscovered} /> : null}
       {feedback ? <FeedbackLine feedback={feedback} /> : null}

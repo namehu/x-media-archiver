@@ -24,6 +24,7 @@ from sqlalchemy import (
     and_,
     bindparam,
     func,
+    or_,
     select,
     update,
 )
@@ -63,6 +64,8 @@ from xarchiver.services.queue import (
 )
 from xarchiver.sql_builder import compile_query
 from xarchiver.tables import (
+    archive_run_items,
+    archive_runs,
     archive_sources,
     download_jobs,
     source_discovered_tweets,
@@ -77,6 +80,9 @@ VALID_SOURCE_SORT_FIELDS = {"updated_at", "created_at"}
 VALID_SORT_DIRECTIONS = {"asc", "desc"}
 VALID_SCAN_TRIGGERS = {"history_worker", "manual_next", "latest_refresh", "from_start_repair"}
 VALID_SCAN_SESSION_MODES = {"history", "latest_refresh", "from_start"}
+VALID_DISCOVERY_MEDIA_TYPES = {"video", "photo"}
+VALID_DISCOVERY_QUEUE_STATES = {"unsubmitted", "submitted"}
+VALID_DISCOVERY_DOWNLOAD_STATES = {"pending", "active", "completed", "failed"}
 SOURCE_DELETE_BLOCKING_SCAN_STATUSES = {"running", "waiting_downloads"}
 SOURCE_DELETE_BLOCKING_RUN_STATUSES = {"queued", "running", "paused", "blocked"}
 SCAN_MODE_TO_TRIGGER = {
@@ -612,24 +618,102 @@ def get_source(source_id: int, include_deleted: bool = False) -> dict[str, objec
     }
 
 
+DISCOVERY_ACTIVE_SQL = "a.active_item_status in ('pending','blocked','processing')"
+DISCOVERY_COMPLETED_SQL = "t.download_status in ('verified','downloaded','skipped')"
+DISCOVERY_FAILED_SQL = (
+    "t.download_status in ('failed_retryable','failed_permanent','missing','corrupt') "
+    "or a.active_item_status = 'failed_retryable'"
+)
+DISCOVERY_PENDING_SQL = (
+    f"not coalesce(({DISCOVERY_ACTIVE_SQL}), false) "
+    f"and not coalesce(({DISCOVERY_COMPLETED_SQL}), false) "
+    f"and not coalesce(({DISCOVERY_FAILED_SQL}), false)"
+)
+DISCOVERY_MISSING_SQL = (
+    f"not coalesce(({DISCOVERY_ACTIVE_SQL}), false) "
+    f"and not coalesce(({DISCOVERY_COMPLETED_SQL}), false)"
+)
+
+
+def normalize_discovery_media_type(value: str | None) -> str | None:
+    """校验发现列表与下载提交使用的媒体类型筛选。"""
+
+    if value is None or value == "":
+        return None
+    normalized = value.strip().lower()
+    if normalized not in VALID_DISCOVERY_MEDIA_TYPES:
+        raise ValueError("invalid_media_type")
+    return normalized
+
+
+def normalize_discovery_queue_state(value: str | None) -> str | None:
+    """校验发现列表入队状态筛选。"""
+
+    if value is None or value == "":
+        return None
+    normalized = value.strip().lower()
+    if normalized not in VALID_DISCOVERY_QUEUE_STATES:
+        raise ValueError("invalid_queue_state")
+    return normalized
+
+
+def normalize_discovery_download_state(value: str | None) -> str | None:
+    """校验发现列表下载状态筛选。"""
+
+    if value is None or value == "":
+        return None
+    normalized = value.strip().lower()
+    if normalized not in VALID_DISCOVERY_DOWNLOAD_STATES:
+        raise ValueError("invalid_download_state")
+    return normalized
+
+
+def build_discovery_filter_clauses(
+    media_type: str | None,
+    queue_state: str | None,
+    download_state: str | None,
+) -> tuple[list[str], list[object]]:
+    """构造发现列表、数量查询和分面复用的参数化筛选条件。"""
+
+    clauses: list[str] = []
+    params: list[object] = []
+    normalized_media_type = normalize_discovery_media_type(media_type)
+    normalized_queue_state = normalize_discovery_queue_state(queue_state)
+    normalized_download_state = normalize_discovery_download_state(download_state)
+    if normalized_media_type:
+        clauses.append("d.raw_payload->'media_types' ? %s")
+        params.append(normalized_media_type)
+    if normalized_queue_state == "unsubmitted":
+        clauses.append("d.archive_run_id is null")
+    elif normalized_queue_state == "submitted":
+        clauses.append("d.archive_run_id is not null")
+    if normalized_download_state == "active":
+        clauses.append(f"({DISCOVERY_ACTIVE_SQL})")
+    elif normalized_download_state == "completed":
+        clauses.append(f"({DISCOVERY_COMPLETED_SQL})")
+    elif normalized_download_state == "failed":
+        clauses.append(f"({DISCOVERY_FAILED_SQL})")
+    elif normalized_download_state == "pending":
+        clauses.append(DISCOVERY_PENDING_SQL)
+    return clauses, params
+
+
 def list_source_discovered_page(
     source_id: int,
     limit: int = 50,
     offset: int = 0,
     include_deleted: bool = False,
+    media_type: str | None = None,
+    queue_state: str | None = None,
+    download_state: str | None = None,
 ) -> dict[str, object]:
     """返回某个来源已发现的推文，并补上队列进度信息。"""
 
-    with connect() as conn:
-        with conn.cursor() as cur:
-            cur.execute(
-                "select 1 from archive_sources where id = %s and (%s or deleted_at is null)",
-                (source_id, include_deleted),
-            )
-            if cur.fetchone() is None:
-                raise ValueError("source_not_found")
-            cur.execute(
-                """
+    filter_clauses, filter_params = build_discovery_filter_clauses(media_type, queue_state, download_state)
+    where_sql = " and ".join(["d.source_id = %s", *filter_clauses])
+    query_params: list[object] = [source_id, *filter_params, limit, offset]
+    count_params: list[object] = [source_id, *filter_params]
+    active_items_cte = """
                 with active_items as (
                   select distinct on (i.tweet_id)
                          i.tweet_id,
@@ -647,7 +731,21 @@ def list_source_discovered_page(
                   join archive_runs r on r.id = i.archive_run_id
                   where i.status in ('pending', 'blocked', 'processing', 'failed_retryable')
                   order by i.tweet_id, i.id desc
-                ),
+                )
+                """
+    with connect() as conn:
+        with conn.cursor() as cur:
+            cur.execute(
+                "select 1 from archive_sources where id = %s and (%s or deleted_at is null)",
+                (source_id, include_deleted),
+            )
+            if cur.fetchone() is None:
+                raise ValueError("source_not_found")
+            # This endpoint predates the SQLAlchemy Core migration and already uses fixed SQL with
+            # several CTEs; keep the local fixed SQL shape while appending parameterized filters.
+            cur.execute(
+                f"""
+                {active_items_cte},
                 media_summary as (
                   select tweet_id,
                          count(*) filter (where download_status in ('downloaded', 'verified'))::int as downloaded_media_count,
@@ -666,22 +764,97 @@ def list_source_discovered_page(
                 join tweets t on t.tweet_id = d.tweet_id
                 left join active_items a on a.tweet_id = d.tweet_id
                 left join media_summary m on m.tweet_id = d.tweet_id
-                where d.source_id = %s
+                where {where_sql}
                 order by d.discovered_at desc, d.id desc
                 limit %s offset %s
                 """,
-                (source_id, limit, offset),
+                tuple(query_params),
             )
             rows = [dict(SourceDiscoveryRow.model_validate(dict(row))) for row in cur.fetchall()]
+            cur.execute(
+                f"""
+                {active_items_cte}
+                select count(*)::int as count
+                from source_discovered_tweets d
+                join tweets t on t.tweet_id = d.tweet_id
+                left join active_items a on a.tweet_id = d.tweet_id
+                where {where_sql}
+                """,
+                tuple(count_params),
+            )
+            total_count = int(cur.fetchone()["count"])
+            cur.execute(
+                f"""
+                {active_items_cte}
+                select
+                  count(*) filter (where d.archive_run_id is null)::int as all_unsubmitted_count,
+                  count(*) filter (where {DISCOVERY_MISSING_SQL})::int as missing_count,
+                  count(*) filter (where {DISCOVERY_FAILED_SQL})::int as failed_count
+                from source_discovered_tweets d
+                join tweets t on t.tweet_id = d.tweet_id
+                left join active_items a on a.tweet_id = d.tweet_id
+                where {where_sql}
+                """,
+                tuple(count_params),
+            )
+            action_count_row = cur.fetchone()
+            action_counts = {
+                "all_unsubmitted": int(action_count_row["all_unsubmitted_count"]),
+                "missing": int(action_count_row["missing_count"]),
+                "failed": int(action_count_row["failed_count"]),
+            }
             cur.execute(
                 "select count(*)::int as count from source_discovered_tweets where source_id = %s",
                 (source_id,),
             )
-            total_count = int(cur.fetchone()["count"])
+            unfiltered_total_count = int(cur.fetchone()["count"])
+            facets = None
+            if offset == 0:
+                cur.execute(
+                    f"""
+                    {active_items_cte}
+                    select
+                      count(*)::int as all_count,
+                      count(*) filter (where d.raw_payload->'media_types' ? 'video')::int as video_count,
+                      count(*) filter (where d.raw_payload->'media_types' ? 'photo')::int as photo_count,
+                      count(*) filter (where d.archive_run_id is null)::int as unsubmitted_count,
+                      count(*) filter (where d.archive_run_id is not null)::int as submitted_count,
+                      count(*) filter (where {DISCOVERY_ACTIVE_SQL})::int as active_count,
+                      count(*) filter (where {DISCOVERY_COMPLETED_SQL})::int as completed_count,
+                      count(*) filter (where {DISCOVERY_FAILED_SQL})::int as failed_count,
+                      count(*) filter (where {DISCOVERY_PENDING_SQL})::int as pending_count
+                    from source_discovered_tweets d
+                    join tweets t on t.tweet_id = d.tweet_id
+                    left join active_items a on a.tweet_id = d.tweet_id
+                    where d.source_id = %s
+                    """,
+                    (source_id,),
+                )
+                facet_row = cur.fetchone()
+                facets = {
+                    "media": {
+                        "all": int(facet_row["all_count"]),
+                        "video": int(facet_row["video_count"]),
+                        "photo": int(facet_row["photo_count"]),
+                    },
+                    "queue": {
+                        "unsubmitted": int(facet_row["unsubmitted_count"]),
+                        "submitted": int(facet_row["submitted_count"]),
+                    },
+                    "download": {
+                        "pending": int(facet_row["pending_count"]),
+                        "active": int(facet_row["active_count"]),
+                        "completed": int(facet_row["completed_count"]),
+                        "failed": int(facet_row["failed_count"]),
+                    },
+                }
     return {
         "rows": rows,
         "count": len(rows),
         "total_count": total_count,
+        "unfiltered_total_count": unfiltered_total_count,
+        "action_counts": action_counts,
+        "facets": facets,
         "limit": limit,
         "offset": offset,
     }
@@ -2343,6 +2516,7 @@ def submit_source_downloads(
     scope: str,
     tweet_ids: list[str] | None = None,
     limit: int | None = None,
+    media_type: str | None = None,
 ) -> dict[str, object]:
     """按指定范围把某个来源发现到的推文加入下载队列。"""
 
@@ -2350,13 +2524,29 @@ def submit_source_downloads(
     if source is None:
         raise ValueError("source_not_found")
     normalized_scope = scope.strip().lower()
-    if normalized_scope not in {"selected", "all_unsubmitted", "failed"}:
+    if normalized_scope not in {
+        "selected",
+        "all_unsubmitted",
+        "failed",
+        "download_missing",
+        "retry_failed",
+        "redownload_filter",
+        "current_filter",
+    }:
         raise ValueError("invalid_source_download_scope")
+    normalized_media_type = normalize_discovery_media_type(media_type)
     normalized_tweet_ids = list(dict.fromkeys(str(item).strip() for item in (tweet_ids or []) if str(item).strip()))
     if normalized_scope == "selected" and not normalized_tweet_ids:
         raise ValueError("tweet_ids_required")
-    if normalized_scope == "failed":
-        retry_result = retry_source_failed_items(source_id, source, tweet_ids=normalized_tweet_ids or None, limit=limit)
+    retry_scope = normalized_scope in {"failed", "retry_failed"}
+    if retry_scope:
+        retry_result = retry_source_failed_items(
+            source_id,
+            source,
+            tweet_ids=normalized_tweet_ids or None,
+            limit=limit,
+            media_type=normalized_media_type,
+        )
         if retry_result["submitted_count"]:
             return retry_result
     rows = fetch_source_download_candidates(
@@ -2364,9 +2554,10 @@ def submit_source_downloads(
         normalized_scope,
         tweet_ids=normalized_tweet_ids or None,
         limit=limit,
+        media_type=normalized_media_type,
     )
     if not rows:
-        return build_empty_source_download_submission(source_id, normalized_scope, source)
+        return build_empty_source_download_submission(source_id, normalized_scope, source, media_type=normalized_media_type)
     records = [
         {
             "url": row["url"],
@@ -2422,14 +2613,25 @@ def retry_source_failed_items(
     source: dict[str, object],
     tweet_ids: list[str] | None = None,
     limit: int | None = None,
+    media_type: str | None = None,
 ) -> dict[str, object]:
     """直接重开 failed_retryable 条目，而不是新建一个运行。"""
 
+    normalized_media_type = normalize_discovery_media_type(media_type)
     source_url = str(source.get("source_url") or "")
     with connect() as conn:
         with conn.cursor() as cur:
             filters = ["r.source_id = %s", "i.status = 'failed_retryable'"]
             params: list[object] = [source_id]
+            discovery_join = ""
+            if normalized_media_type:
+                discovery_join = """
+                join source_discovered_tweets d
+                  on d.source_id = r.source_id
+                 and d.tweet_id = i.tweet_id
+                """
+                filters.append("d.raw_payload->'media_types' ? %s")
+                params.append(normalized_media_type)
             if tweet_ids:
                 filters.append("i.tweet_id = any(%s)")
                 params.append(tweet_ids)
@@ -2442,6 +2644,7 @@ def retry_source_failed_items(
                 select i.id, i.archive_run_id, i.tweet_id
                 from archive_run_items i
                 join archive_runs r on r.id = i.archive_run_id
+                {discovery_join}
                 where {" and ".join(filters)}
                 order by i.updated_at asc, i.id asc
                 {limit_sql}
@@ -2451,7 +2654,12 @@ def retry_source_failed_items(
             )
             rows = [dict(row) for row in cur.fetchall()]
             if not rows:
-                return build_empty_source_download_submission(source_id, "failed", source)
+                return build_empty_source_download_submission(
+                    source_id,
+                    "failed",
+                    source,
+                    media_type=normalized_media_type,
+                )
             run_ids = sorted({int(row["archive_run_id"]) for row in rows})
             affected_tweet_ids = [str(row["tweet_id"]) for row in rows]
             for run_id in run_ids:
@@ -2518,6 +2726,7 @@ def retry_source_failed_items(
             "scope": "failed",
             "source_id": source_id,
             "source_url": source_url,
+            "media_type": normalized_media_type,
             "input_record_count": len(affected_tweet_ids),
             "unique_tweet_count": len(affected_tweet_ids),
             "duplicate_input_count": 0,
@@ -2557,6 +2766,7 @@ def build_empty_source_download_submission(
     source_id: int,
     scope: str,
     source: dict[str, object],
+    media_type: str | None = None,
 ) -> dict[str, object]:
     """构造“没有任何 tweet 命中当前范围”时的空响应结构。"""
 
@@ -2564,6 +2774,7 @@ def build_empty_source_download_submission(
         "scope": scope,
         "source_id": source_id,
         "source_url": str(source.get("source_url") or ""),
+        "media_type": media_type,
         "input_record_count": 0,
         "unique_tweet_count": 0,
         "duplicate_input_count": 0,
@@ -2719,10 +2930,17 @@ def fetch_source_download_candidates(
     scope: str,
     tweet_ids: list[str] | None = None,
     limit: int | None = None,
+    media_type: str | None = None,
 ) -> list[TweetRow]:
     """读取可用于来源驱动下载提交的推文记录。"""
 
-    sql, params = build_source_download_candidates_query(source_id, scope, tweet_ids=tweet_ids, limit=limit)
+    sql, params = build_source_download_candidates_query(
+        source_id,
+        scope,
+        tweet_ids=tweet_ids,
+        limit=limit,
+        media_type=media_type,
+    )
     with connect() as conn:
         with conn.cursor() as cur:
             cur.execute(sql, params)
@@ -2734,9 +2952,11 @@ def build_source_download_candidates_query(
     scope: str,
     tweet_ids: list[str] | None = None,
     limit: int | None = None,
+    media_type: str | None = None,
 ) -> tuple[str, dict[str, object]]:
     """构造来源下载提交各类范围使用的查询。"""
 
+    normalized_media_type = normalize_discovery_media_type(media_type)
     statement = (
         select(tweets)
         .select_from(
@@ -2750,10 +2970,34 @@ def build_source_download_candidates_query(
     )
     if scope == "all_unsubmitted":
         statement = statement.where(source_discovered_tweets.c.archive_run_id.is_(None))
-    elif scope == "failed":
+    elif scope in {"failed", "retry_failed"}:
         statement = statement.where(tweets.c.download_status.in_(("failed_retryable", "missing", "corrupt")))
     elif scope == "selected":
         statement = statement.where(source_discovered_tweets.c.tweet_id.in_(tweet_ids or []))
+    elif scope == "download_missing":
+        active_item_exists = (
+            select(archive_run_items.c.id)
+            .select_from(archive_run_items.join(archive_runs, archive_runs.c.id == archive_run_items.c.archive_run_id))
+            .where(
+                archive_runs.c.source_id == bindparam("source_id", source_id),
+                archive_run_items.c.tweet_id == source_discovered_tweets.c.tweet_id,
+                archive_run_items.c.status.in_(("pending", "blocked", "processing")),
+            )
+            .exists()
+        )
+        statement = statement.where(
+            ~active_item_exists,
+            or_(
+                tweets.c.download_status.is_(None),
+                tweets.c.download_status.not_in(("verified", "downloaded", "skipped")),
+            ),
+        )
+    elif scope in {"redownload_filter", "current_filter"}:
+        pass
+    if normalized_media_type:
+        statement = statement.where(
+            source_discovered_tweets.c.raw_payload["media_types"].op("?")(bindparam("media_type", normalized_media_type))
+        )
     if tweet_ids is not None and scope != "selected":
         statement = statement.where(source_discovered_tweets.c.tweet_id.in_(tweet_ids))
     if limit:

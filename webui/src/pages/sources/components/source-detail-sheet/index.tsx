@@ -19,6 +19,7 @@ import { ManualImport } from "./manual-import";
 import { ScanLogDialog } from "./scan-log-dialog";
 import { Badge } from "@/components/ui/badge";
 import { ExternalLink } from "lucide-react";
+import { DEFAULT_TWEET_FILTERS, type DownloadSubmitInput } from "../source-tweet-filters";
 
 type ScanMode = "history" | "latest_refresh" | "from_start";
 
@@ -29,12 +30,7 @@ type DetailActions = {
   pauseSession: (sourceId: number) => void;
   resumeSession: (sourceId: number) => void;
   submitDiscovered: (input: { sourceId: number; limit?: number }) => void;
-  submitDownload: (input: {
-    sourceId: number;
-    scope: "selected" | "all_unsubmitted" | "failed";
-    tweetIds?: string[];
-    limit?: number;
-  }) => Promise<ArchiveSubmission>;
+  submitDownload: (input: DownloadSubmitInput) => Promise<ArchiveSubmission>;
   pauseDownload: (runId: number) => void;
   resumeDownload: (runId: number) => Promise<ArchiveRunControl>;
   stopDownload: (runId: number) => void;
@@ -86,9 +82,10 @@ export function SourceDetailPanel({
 }) {
   const [activeTab, setActiveTab] = React.useState("tweets");
   const [logRun, setLogRun] = React.useState<SourceScanRun | null>(null);
+  const [tweetFilters, setTweetFilters] = React.useState(DEFAULT_TWEET_FILTERS);
   const persistedScanLimit = source ? preferredScanLimit(source, policy) : 20;
   const isDeleted = Boolean(source?.deleted_at);
-  const discoveredQuery = useSourceDiscovered(source?.id ?? null, activeTab === "tweets", isDeleted);
+  const discoveredQuery = useSourceDiscovered(source?.id ?? null, activeTab === "tweets", isDeleted, tweetFilters);
   const downloadsQuery = useSourceDownloads(source?.id ?? null, activeTab === "tweets", isDeleted);
   const scanRunsQuery = useSourceScanRuns(
     source?.id ?? null,
@@ -101,6 +98,7 @@ export function SourceDetailPanel({
 
   React.useEffect(() => {
     setActiveTab("tweets");
+    setTweetFilters(DEFAULT_TWEET_FILTERS);
   }, [source?.id]);
 
   React.useEffect(() => {
@@ -164,6 +162,8 @@ export function SourceDetailPanel({
                   error={discoveredQuery.error || downloadsQuery.error}
                   onLoadMore={() => discoveredQuery.fetchNextPage()}
                   statusLabel={statusLabel}
+                  filters={tweetFilters}
+                  onFiltersChange={setTweetFilters}
                   readonly={isDeleted}
                 />
               </TabsContent>

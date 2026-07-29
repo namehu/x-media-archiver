@@ -343,6 +343,24 @@ export type SourceDiscovery = {
   downloaded_media_bytes?: number | null;
 };
 
+export type SourceDiscoveryFacets = {
+  media: {
+    all: number;
+    video: number;
+    photo: number;
+  };
+  queue: {
+    unsubmitted: number;
+    submitted: number;
+  };
+  download: {
+    pending: number;
+    active: number;
+    completed: number;
+    failed: number;
+  };
+};
+
 type ArchiveSourceBase = {
   id: number;
   source_type: string;
@@ -403,7 +421,15 @@ export type ArchiveSourceDetail = ArchiveSourceBase & {
 export type ArchiveSource = ArchiveSourceDetail;
 
 export type SourcePageResponse = PageResponse<ArchiveSourceListItem>;
-export type SourceDiscoveryPageResponse = PageResponse<SourceDiscovery>;
+export type SourceDiscoveryPageResponse = PageResponse<SourceDiscovery> & {
+  unfiltered_total_count: number;
+  action_counts: {
+    all_unsubmitted: number;
+    missing: number;
+    failed: number;
+  };
+  facets?: SourceDiscoveryFacets | null;
+};
 export type SourceScanRunsPageResponse = PageResponse<SourceScanRun>;
 
 export type SourceDeleteResponse = {

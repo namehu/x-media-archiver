@@ -127,9 +127,20 @@ def archive_source_discovered(
     limit: int = Query(50, ge=1, le=200),
     offset: int = Query(0, ge=0),
     include_deleted: bool = False,
+    media_type: str | None = Query(None, pattern="^(video|photo)$"),
+    queue_state: str | None = Query(None, pattern="^(unsubmitted|submitted)$"),
+    download_state: str | None = Query(None, pattern="^(pending|active|completed|failed)$"),
 ) -> dict[str, object]:
     try:
-        return list_source_discovered_page(source_id, limit=limit, offset=offset, include_deleted=include_deleted)
+        return list_source_discovered_page(
+            source_id,
+            limit=limit,
+            offset=offset,
+            include_deleted=include_deleted,
+            media_type=media_type,
+            queue_state=queue_state,
+            download_state=download_state,
+        )
     except ValueError as exc:
         raise_api_error(exc)
 
@@ -154,6 +165,7 @@ def submit_archive_source_downloads(source_id: int, request: SourceDownloadReque
             request.scope,
             tweet_ids=request.tweet_ids,
             limit=request.limit,
+            media_type=request.media_type,
         )
     except ValueError as exc:
         raise_api_error(exc, default_status=409)

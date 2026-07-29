@@ -7,6 +7,7 @@ import {
   type SourceDiscoveryPageResponse,
   type SourceScanRunsPageResponse,
 } from "@/lib/api";
+import type { TweetFilters } from "../components/source-tweet-filters";
 
 export function useSourceDetail(sourceId: number | null, includeDeleted = false) {
   const deletedQuery = includeDeleted ? "?include_deleted=true" : "";
@@ -33,14 +34,25 @@ export function useSourceDownloads(sourceId: number | null, enabled: boolean, in
   });
 }
 
-export function useSourceDiscovered(sourceId: number | null, enabled: boolean, includeDeleted = false) {
+export function useSourceDiscovered(
+  sourceId: number | null,
+  enabled: boolean,
+  includeDeleted = false,
+  filters?: TweetFilters,
+) {
   const pageSize = 50;
   return useInfiniteQuery({
-    queryKey: ["source-discovered", sourceId, includeDeleted],
+    queryKey: ["source-discovered", sourceId, includeDeleted, filters],
     queryFn: ({ pageParam }) => {
-      const deletedParam = includeDeleted ? "&include_deleted=true" : "";
+      const search = new URLSearchParams({
+        limit: String(pageSize),
+        offset: String(pageParam),
+      });
+      if (includeDeleted) search.set("include_deleted", "true");
+      if (filters?.media && filters.media !== "all") search.set("media_type", filters.media);
+      if (filters?.download && filters.download !== "all") search.set("download_state", filters.download);
       return apiGet<SourceDiscoveryPageResponse>(
-        `/api/v1/sources/${sourceId}/discovered?limit=${pageSize}&offset=${pageParam}${deletedParam}`,
+        `/api/v1/sources/${sourceId}/discovered?${search.toString()}`,
       );
     },
     initialPageParam: 0,

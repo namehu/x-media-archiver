@@ -223,7 +223,7 @@ function SourceListItem({
         <div className="hidden grid-cols-4 gap-3 sm:grid">
           <ListMetric label="已发现 Tweet" value={source.discovered_tweet_count ?? source.discovered_count ?? 0} />
           <ListMetric label="扫描发现媒体" value={source.discovered_media_count ?? 0} />
-          <ListMetric label="未入队发现" value={source.unsubmitted_tweet_count ?? 0} warning={(source.unsubmitted_tweet_count ?? 0) > 0} />
+          <ListMetric label="待下载发现" value={source.unsubmitted_tweet_count ?? 0} warning={(source.unsubmitted_tweet_count ?? 0) > 0} />
           <ListMetric label="累计扫描批次" value={source.scan_batch_count ?? 0} />
         </div>
         <Badge tone={scanStatus.tone}>{scanStatus.label}</Badge>

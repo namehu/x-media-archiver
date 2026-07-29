@@ -189,6 +189,8 @@ GET /api/v1/archive-runs
 GET /api/v1/archive-runs/{run_id}
 GET /api/v1/sources
 GET /api/v1/sources/{source_id}
+GET /api/v1/sources/{source_id}/discovered
+GET /api/v1/sources/{source_id}/downloads
 GET /api/v1/events
 GET /api/v1/settings/download-policy
 GET /api/v1/health/detail
@@ -205,6 +207,7 @@ POST /api/v1/archive-runs
 POST /api/v1/archive-runs/{run_id}/retry
 POST /api/v1/sources
 POST /api/v1/sources/{source_id}/records
+POST /api/v1/sources/{source_id}/downloads
 POST /api/v1/sources/{source_id}/submit-discovered
 POST /api/v1/sources/{source_id}/status
 POST /api/v1/sources/{source_id}/pin
@@ -250,7 +253,7 @@ Sources
 
 Archive Queue 支持粘贴 URL 或选择本地 TXT/JSONL 文件（浏览器侧解析后提交）来创建结构化的数据库任务。Operations 可触发 requeue、recover-interrupted 与数据库快照 export。完整 backfill 与完整 verify 被隔离在 Maintenance 下，并要求显式确认磁盘扫描。媒体库和重复媒体页均支持显式勾选并批量永久删除最多 200 个媒体项；重复媒体页按完整 SHA-256 组分页，可为每组保留建议项并选择其余副本。删除会清理主文件、对应元数据、标准缩略图和派生视频预览图，保留 Tweet、来源和下载历史，将 Tweet 标记为 `missing`，并写入幂等删除审计。
 
-Sources 记录长期存在的 X/Twitter 来源，例如个人页、媒体页、likes、bookmarks、搜索页或手工集合。一个 source 可向同一 Archive Queue 提交发现的 tweet URL，同时保留 source-to-tweet 的可追溯关系。当前实现提供了可恢复的 source 模型、手动 discovered-URL 提交，以及用于 profile timeline 和用户媒体页的小批量 `gallery-dl` 扫描。source 扫描只记录 discovered tweets，不会自动提交到下载队列。准备下载受控批次时，需使用显式的 submit 动作。每次受控扫描会在 `archive_sources.cursor_state` 中记录其逻辑 batch window、重复/新增数量以及 cursor 诊断信息。
+Sources 记录长期存在的 X/Twitter 来源，例如个人页、媒体页、likes、bookmarks、搜索页或手工集合。一个 source 可向同一 Archive Queue 提交发现的 tweet URL，同时保留 source-to-tweet 的可追溯关系。当前实现提供了可恢复的 source 模型、手动 discovered-URL 提交，以及用于 profile timeline 和用户媒体页的小批量 `gallery-dl` 扫描。source 扫描只记录 discovered tweets，不会自动提交到下载队列。准备下载受控批次时，需使用显式的 submit 动作；发现列表可按媒体类型和下载状态服务端筛选，默认下载只提交当前筛选下尚未完成的 Tweet，已完成项不会重新下载。下载提交的 `media_type=video/photo` 是 Tweet 级范围筛选，图文混合 Tweet 会整体处理并下载全部媒体；强制重新下载当前筛选属于高级操作。每次受控扫描会在 `archive_sources.cursor_state` 中记录其逻辑 batch window、重复/新增数量以及 cursor 诊断信息。
 
 Sources 列表支持按最近更新或创建时间正/倒序排序；置顶来源会持久化保存，并始终位于普通来源之前。
 2026-05-27 的真实验证表明，数值区间不是深层媒体历史的高效延续机制。source collector 现已持久化 Twitter extractor 的原生 continuation cursor，并将其用于历史批次。扫描只做发现记录，绝不自动提交下载。每次 source scan 尝试，以及因下载进行中导致的每次 defer，都会写入 `source_scan_runs`，包含其 range、cursor 快照、计数、结果与错误摘要。Sources 详情页展示最近 20 次扫描事件与累计统计，使得停滞的 history scan 可在重启后脱离容器日志进行诊断。运行中的扫描会将完整的 `gallery-dl` 日志以 JSONL 操作日志流形式写入 `archive/logs/source-scan-logs/`；下载任务同样会把脱敏后的 `gallery-dl` / `yt-dlp` stdout 与 stderr 写入 `archive/logs/download-logs/`。数据库仅存储日志流 ID、相对路径、各级别计数器、最新进度等摘要字段。WebUI 的 source 日志面板、推文详情和 `Operations -> Logs` 通过 API 读取这些日志流；升级前已完成的下载任务仅保留错误摘要。

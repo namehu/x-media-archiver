@@ -98,10 +98,13 @@ class SourceSubmitDiscoveredRequest(BaseModel):
 
 
 class SourceDownloadRequest(BaseModel):
-    scope: str = Field(pattern="^(selected|all_unsubmitted|failed)$")
+    scope: str = Field(
+        pattern="^(selected|all_unsubmitted|failed|download_missing|retry_failed|redownload_filter|current_filter)$"
+    )
     tweet_ids: list[str] | None = None
     confirm_all: bool = False
     limit: int | None = Field(default=None, ge=1, le=5000)
+    media_type: str | None = Field(default=None, pattern="^(video|photo)$")
 
 
 class SourceHistoryScanRequest(BaseModel):

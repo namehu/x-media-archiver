@@ -14,14 +14,9 @@ import {
 } from "@/lib/debug-redaction";
 import { cn, formatDateTime } from "@/lib/utils";
 import type { DetailActions } from "./source-detail-sheet/scan-actions";
-import { ChevronDown, ChevronUp, FileQuestion, Film, Image, Images, LocateFixed, Pause, Play } from "lucide-react";
-
-type DownloadSubmitInput = {
-  sourceId: number;
-  scope: "selected" | "all_unsubmitted" | "failed";
-  tweetIds?: string[];
-  limit?: number;
-};
+import { ChevronDown, ChevronUp, FileQuestion, Film, Image, Images } from "lucide-react";
+import { DEFAULT_TWEET_FILTERS, type DownloadSubmitInput, type TweetFilters } from "./source-tweet-filters";
+import { SourceTweetsToolbar } from "./source-tweets-toolbar";
 
 type DownloadFollowMode = "following" | "paused";
 
@@ -57,6 +52,8 @@ export function SourceTweetsTab({
   onFollowModeChange,
   onFrontierTweetChange,
   onSubmitDownload,
+  filters,
+  onFiltersChange,
   readonly = false,
 }: {
   pages: SourceDiscoveryPageResponse[];
@@ -76,6 +73,8 @@ export function SourceTweetsTab({
   onFollowModeChange: (mode: DownloadFollowMode) => void;
   onFrontierTweetChange: (tweetId: string | null) => void;
   onSubmitDownload: (input: DownloadSubmitInput) => void;
+  filters: TweetFilters;
+  onFiltersChange: (filters: TweetFilters) => void;
   readonly?: boolean;
 }) {
   const virtuosoRef = React.useRef<VirtuosoHandle>(null);
@@ -123,7 +122,7 @@ export function SourceTweetsTab({
 
   React.useEffect(() => {
     setSelected(new Set());
-  }, [sourceId]);
+  }, [filters, sourceId]);
 
   const activeRunId = downloads?.active_run?.id ?? null;
   const currentTweetId = followRunId === activeRunId ? downloads?.current_tweet_id ?? null : null;
@@ -287,73 +286,52 @@ export function SourceTweetsTab({
   }
 
   if (tweets.length === 0) {
-    return <p className="py-4 text-sm text-fg-secondary">还没有发现记录。</p>;
+    const hasFilters =
+      filters.media !== "all" || filters.download !== "all";
+    return hasFilters ? (
+      <div className="flex min-h-24 items-center justify-center gap-3 border-y border-border-subtle text-sm text-fg-secondary">
+        <span>当前筛选没有结果</span>
+        <span className="h-3 w-px bg-border-strong" />
+          <Button type="button" size="sm" variant="secondary" onClick={() => onFiltersChange(DEFAULT_TWEET_FILTERS)}>
+            清除筛选
+          </Button>
+      </div>
+    ) : (
+      <p className="py-4 text-sm text-fg-secondary">还没有发现记录。</p>
+    );
   }
-
-  const hasSelection = selectedIds.length > 0;
 
   return (
     <div className="flex h-full min-h-0 flex-col gap-3">
-      <div className="flex shrink-0 flex-col gap-2">
-        <div
-          className={cn(
-            "flex flex-1 flex-wrap items-center justify-between gap-3 rounded-lg px-3 py-2 text-sm transition-colors",
-            hasSelection ? "bg-brand-soft/50 ring-1 ring-brand/20" : "bg-transparent",
-          )}
-        >
-          <div className="flex items-center gap-2">
-            <Checkbox
-              checked={selectableIds.length > 0 && selectedIds.length === selectableIds.length}
-              disabled={selectableIds.length === 0}
-              onCheckedChange={(checked) => setSelected(new Set(checked ? selectableIds : []))}
-            />
-            <span className={cn("font-medium transition-colors", hasSelection ? "text-brand" : "text-fg-secondary")}>
-              {hasSelection ? `已选择 ${selectedIds.length} 项` : "全选已加载可操作项"}
-            </span>
-          </div>
-
-          {!readonly && hasSelection && (
-            <div className="flex flex-wrap items-center gap-2 animate-in fade-in zoom-in-95 duration-200">
-              <Button
-                type="button"
-                size="sm"
-                disabled={!selectedQueueIds.length || actions.pending.download}
-                onClick={() => onSubmitDownload({ sourceId, scope: "selected", tweetIds: selectedQueueIds })}
-              >
-                下载选中 ({selectedQueueIds.length})
-              </Button>
-              <Button
-                type="button"
-                size="sm"
-                variant={selectedActiveIds.length ? "outline" : "ghost"}
-                className={
-                  selectedActiveIds.length ? "border-danger text-danger hover:bg-danger-soft hover:text-danger" : ""
-                }
-                disabled={!selectedActiveIds.length || selectedActiveRunIds.length !== 1 || actions.pending.download}
-                onClick={() =>
-                  actions.cancelDownloadItems({ runId: selectedActiveRunIds[0], tweetIds: selectedActiveIds })
-                }
-              >
-                取消选中
-              </Button>
-            </div>
-          )}
-        </div>
-        <div
-          data-testid="download-follow-controls"
-          className="flex h-8 shrink-0 items-center justify-end gap-2 overflow-x-auto px-3 text-sm whitespace-nowrap"
-        >
-          <DownloadFollowControls
-            activeRunId={activeRunId}
-            currentTweetId={downloads?.current_tweet_id ?? null}
-            followRunId={followRunId}
-            followMode={followMode}
-            onPause={() => onFollowModeChange("paused")}
-            onResume={handleResumeFollowing}
-            onLocateCurrent={handleLocateCurrent}
-          />
-        </div>
-      </div>
+      <SourceTweetsToolbar
+        sourceId={sourceId}
+        filters={filters}
+        onFiltersChange={onFiltersChange}
+        facets={pages[0]?.facets}
+        actionCounts={pages[0]?.action_counts}
+        filteredTotalCount={totalCount}
+        unfilteredTotalCount={pages[0]?.unfiltered_total_count ?? totalCount}
+        selectedCount={selectedIds.length}
+        selectableCount={selectableIds.length}
+        selectedQueueCount={selectedQueueIds.length}
+        selectedActiveCount={selectedActiveIds.length}
+        selectedActiveIds={selectedActiveIds}
+        selectedActiveRunIds={selectedActiveRunIds}
+        loadedQueueIds={tweets.filter((tweet) => canQueue(tweet)).map((tweet) => tweet.tweet_id)}
+        selectedQueueIds={selectedQueueIds}
+        onSelectAll={(checked) => setSelected(new Set(checked ? selectableIds : []))}
+        onClearSelection={() => setSelected(new Set())}
+        onSubmitDownload={onSubmitDownload}
+        actions={actions}
+        readonly={readonly}
+        activeRunId={activeRunId}
+        currentTweetId={downloads?.current_tweet_id ?? null}
+        followRunId={followRunId}
+        followMode={followMode}
+        onPauseFollow={() => onFollowModeChange("paused")}
+        onResumeFollow={handleResumeFollowing}
+        onLocateCurrent={handleLocateCurrent}
+      />
       <div
         className="min-h-0 flex-1"
         onWheelCapture={pauseFollowingForUserNavigation}
@@ -434,65 +412,6 @@ function mergeActiveRunItem(
   };
 }
 
-function DownloadFollowControls({
-  activeRunId,
-  currentTweetId,
-  followRunId,
-  followMode,
-  onPause,
-  onResume,
-  onLocateCurrent,
-}: {
-  activeRunId: number | null;
-  currentTweetId: string | null;
-  followRunId: number | null;
-  followMode: DownloadFollowMode;
-  onPause: () => void;
-  onResume: () => void;
-  onLocateCurrent: () => void;
-}) {
-  if (followRunId && followRunId !== activeRunId) {
-    return <Badge tone="secondary">等待 Run #{followRunId} 开始</Badge>;
-  }
-  if (followRunId && followRunId === activeRunId) {
-    return (
-      <div className="flex items-center gap-2">
-        <Badge tone={followMode === "following" ? "default" : "warning"}>
-          {followMode === "following" ? (currentTweetId ? "正在跟随" : "等待当前下载项") : "跟随已暂停"}
-        </Badge>
-        <Button
-          type="button"
-          size="sm"
-          variant="ghost"
-          onClick={followMode === "following" ? onPause : onResume}
-        >
-          {followMode === "following" ? (
-            <Pause data-icon="inline-start" />
-          ) : (
-            <Play data-icon="inline-start" />
-          )}
-          {followMode === "following" ? "暂停跟随" : "继续跟随"}
-        </Button>
-        {currentTweetId ? (
-          <Button type="button" size="sm" variant="ghost" onClick={onLocateCurrent}>
-            <LocateFixed data-icon="inline-start" />
-            定位当前项
-          </Button>
-        ) : null}
-      </div>
-    );
-  }
-  if (activeRunId && currentTweetId) {
-    return (
-      <Button type="button" size="sm" variant="ghost" onClick={onLocateCurrent}>
-        <LocateFixed data-icon="inline-start" />
-        定位当前项
-      </Button>
-    );
-  }
-  return null;
-}
-
 function canQueue(tweet: TweetRow) {
   if (tweet.active_item_status) return false;
   if (["verified", "downloaded", "skipped"].includes(String(tweet.download_status))) return false;
@@ -504,6 +423,7 @@ function canCancel(status?: string | null) {
 }
 
 function TweetDownloadProgress({ tweet }: { tweet: TweetRow }) {
+  if (!tweet.active_item_status && !tweet.archive_run_id) return null;
   const activeStatus = tweet.active_item_status;
   const downloaded = Number(tweet.downloaded_bytes || tweet.downloaded_media_bytes || 0);
   const total = Number(tweet.total_bytes || tweet.downloaded_media_bytes || 0);
@@ -512,7 +432,7 @@ function TweetDownloadProgress({ tweet }: { tweet: TweetRow }) {
   const message = tweet.progress_message || defaultProgressMessage(tweet);
 
   return (
-    <div data-download-progress className="flex h-[3.875rem] flex-col gap-1.5 pt-1 text-xs">
+    <div data-download-progress className="flex flex-col gap-1.5 pt-1 text-xs">
       <div className="flex h-4 min-w-0 items-center gap-2">
         <div className="flex min-w-0 flex-1 items-center gap-2">
           {tweet.cancel_requested ? <Badge tone="warning">取消请求中</Badge> : null}
@@ -559,7 +479,7 @@ function progressPercent(tweet: TweetRow, downloaded: number, total: number) {
 
 function defaultProgressMessage(tweet: TweetRow) {
   const status = tweet.active_item_status || tweet.download_status;
-  if (!tweet.active_item_status && !tweet.archive_run_id) return "还没有加入下载任务";
+  if (!tweet.active_item_status && !tweet.archive_run_id) return "等待下载";
   if (status === "blocked") return "等待前序下载任务完成";
   if (status === "pending") return "等待 worker 认领";
   if (status === "processing" || status === "downloading") return "下载器处理中";
@@ -734,27 +654,12 @@ function TweetListItem({
                 <span className="font-mono">{tweet.tweet_id}</span>
                 <span className="h-3 w-px bg-border-strong" />
                 <span>{formatDateTime(tweet.discovered_at)}</span>
-                <span className="h-3 w-px bg-border-strong" />
-                <span className="flex items-center gap-1">
-                  {tweet.active_run_id ? (
-                    <>
-                      <span className="relative flex h-2 w-2">
-                        <span className="absolute inline-flex h-full w-full animate-ping rounded-full bg-brand opacity-75"></span>
-                        <span className="relative inline-flex h-2 w-2 rounded-full bg-brand"></span>
-                      </span>
-                      下载 Run #{tweet.active_run_id}
-                    </>
-                  ) : tweet.archive_run_id ? (
-                    `历史 Run #${tweet.archive_run_id}`
-                  ) : (
-                    "未入队"
-                  )}
-                </span>
               </div>
               <TweetDownloadProgress tweet={tweet} />
             </div>
           </div>
           <div className="flex shrink-0 flex-col items-end gap-2 whitespace-nowrap text-center">
+            <RunStateBadge tweet={tweet} />
             <SourceTweetStatusBadge
               status={tweet.active_item_status || tweet.download_status}
               statusLabel={statusLabel}
@@ -815,10 +720,20 @@ function SourceTweetStatusBadge({
   );
 }
 
+function RunStateBadge({ tweet }: { tweet: TweetRow }) {
+  if (tweet.active_run_id) {
+    return <Badge tone="secondary">Run #{tweet.active_run_id}</Badge>;
+  }
+  if (canQueue(tweet)) {
+    return <Badge tone="secondary">待下载</Badge>;
+  }
+  return null;
+}
+
 function sourceTweetStatusDescription(status?: string | null) {
   switch (status) {
     case "pending":
-      return "尚未完成下载与文件校验；如未创建下载任务，可点击“下载”。";
+      return "尚未完成下载与文件校验；可点击“下载缺失项”补齐。";
     case "processing":
     case "downloading":
       return "下载任务正在处理，完成后会自动校验本地文件。";
@@ -839,6 +754,6 @@ function sourceTweetStatusDescription(status?: string | null) {
     case "corrupt":
       return "本地媒体文件与记录的校验值不一致。";
     default:
-      return "这是该 Tweet 当前的归档处理状态。";
+      return "这是该 Tweet 当前的下载状态。";
   }
 }

@@ -543,8 +543,41 @@ class SourceScanRunResponse(FlexibleResponse):
     created_at: datetime
 
 
+class SourceDiscoveryMediaFacetsResponse(FlexibleResponse):
+    all: int = 0
+    video: int = 0
+    photo: int = 0
+
+
+class SourceDiscoveryQueueFacetsResponse(FlexibleResponse):
+    unsubmitted: int = 0
+    submitted: int = 0
+
+
+class SourceDiscoveryDownloadFacetsResponse(FlexibleResponse):
+    pending: int = 0
+    active: int = 0
+    completed: int = 0
+    failed: int = 0
+
+
+class SourceDiscoveryFacetsResponse(FlexibleResponse):
+    media: SourceDiscoveryMediaFacetsResponse = Field(default_factory=SourceDiscoveryMediaFacetsResponse)
+    queue: SourceDiscoveryQueueFacetsResponse = Field(default_factory=SourceDiscoveryQueueFacetsResponse)
+    download: SourceDiscoveryDownloadFacetsResponse = Field(default_factory=SourceDiscoveryDownloadFacetsResponse)
+
+
+class SourceDiscoveryActionCountsResponse(FlexibleResponse):
+    all_unsubmitted: int = 0
+    missing: int = 0
+    failed: int = 0
+
+
 class SourceDiscoveryPageResponse(PageMetaResponse):
     rows: list[SourceDiscoveryResponse]
+    unfiltered_total_count: int = 0
+    action_counts: SourceDiscoveryActionCountsResponse = Field(default_factory=SourceDiscoveryActionCountsResponse)
+    facets: SourceDiscoveryFacetsResponse | None = None
 
 
 class SourceDownloadCountsResponse(FlexibleResponse):

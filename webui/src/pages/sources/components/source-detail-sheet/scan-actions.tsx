@@ -16,6 +16,7 @@ import { Input } from "@/components/ui/input";
 import { getActiveScanMode, scanModeLabel, sourceScanStatus } from "../../utils";
 import { ActionBlock } from "./action-block";
 import { ErrorLine } from "./error-line";
+import type { DownloadSubmitInput } from "../source-tweet-filters";
 
 type ScanMode = "history" | "latest_refresh" | "from_start";
 type PendingConfirmation = { action: "start"; mode: ScanMode; restart: boolean; limit: number } | { action: "stop" };
@@ -27,12 +28,7 @@ export type DetailActions = {
   pauseSession: (sourceId: number) => void;
   resumeSession: (sourceId: number) => void;
   submitDiscovered: (input: { sourceId: number; limit?: number }) => void;
-  submitDownload: (input: {
-    sourceId: number;
-    scope: "selected" | "all_unsubmitted" | "failed";
-    tweetIds?: string[];
-    limit?: number;
-  }) => Promise<ArchiveSubmission>;
+  submitDownload: (input: DownloadSubmitInput) => Promise<ArchiveSubmission>;
   pauseDownload: (runId: number) => void;
   resumeDownload: (runId: number) => Promise<ArchiveRunControl>;
   stopDownload: (runId: number) => void;
