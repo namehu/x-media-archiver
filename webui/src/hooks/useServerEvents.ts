@@ -61,6 +61,9 @@ const TOPIC_ALIASES: Record<string, string[]> = {
   logs: ["logs"],
 };
 
+const PROGRESS_INVALIDATE_INTERVAL_MS = 3000;
+let lastProgressInvalidateAt = 0;
+
 export function useServerEvents(topics: string[]): ServerEventsState {
   const queryClient = useQueryClient();
   const requestedTopics = topics.join(",");
@@ -126,6 +129,16 @@ function invalidateForEvent(queryClient: QueryClient, event: ServerEvent) {
   const eventType = event.type || event.event_type || "";
   const payload = event.payload || {};
 
+  if (eventType === "archive.run.progress") {
+    const now = Date.now();
+    if (now - lastProgressInvalidateAt >= PROGRESS_INVALIDATE_INTERVAL_MS) {
+      lastProgressInvalidateAt = now;
+      void queryClient.invalidateQueries({ queryKey: ["archive-runs"] });
+      void queryClient.invalidateQueries({ queryKey: ["source-downloads"] });
+    }
+    return;
+  }
+
   if (
     topic.startsWith("run") ||
     topic === "archive_runs" ||
@@ -136,13 +149,17 @@ function invalidateForEvent(queryClient: QueryClient, event: ServerEvent) {
     void queryClient.invalidateQueries({ queryKey: ["archive-runs"] });
     void queryClient.invalidateQueries(runId ? { queryKey: ["archive-run", runId], exact: true } : { queryKey: ["archive-run"] });
     void queryClient.invalidateQueries({ queryKey: ["source-downloads"] });
-    void queryClient.invalidateQueries({ queryKey: ["source-discovered"] });
+    if (shouldRefreshSourceDiscoveriesForRunEvent(eventType)) {
+      void queryClient.invalidateQueries({ queryKey: ["source-discovered"] });
+    }
     void queryClient.invalidateQueries({ queryKey: ["summary"] });
     void queryClient.invalidateQueries({ queryKey: ["health-detail"] });
-    void queryClient.invalidateQueries({ queryKey: ["media"] });
-    void queryClient.invalidateQueries({ queryKey: ["posts"] });
-    void queryClient.invalidateQueries({ queryKey: ["failures"] });
-    void queryClient.invalidateQueries({ queryKey: ["duplicates"] });
+    if (shouldRefreshLibraryForRunEvent(eventType)) {
+      void queryClient.invalidateQueries({ queryKey: ["media"] });
+      void queryClient.invalidateQueries({ queryKey: ["posts"] });
+      void queryClient.invalidateQueries({ queryKey: ["failures"] });
+      void queryClient.invalidateQueries({ queryKey: ["duplicates"] });
+    }
     return;
   }
 
@@ -188,6 +205,30 @@ function invalidateForEvent(queryClient: QueryClient, event: ServerEvent) {
     void queryClient.invalidateQueries({ queryKey: ["operation-log-streams"] });
     void queryClient.invalidateQueries(streamId ? { queryKey: ["operation-log", streamId] } : { queryKey: ["operation-log"] });
   }
+}
+
+function shouldRefreshSourceDiscoveriesForRunEvent(eventType: string) {
+  return [
+    "archive.run.submitted",
+    "archive.run.items_processed",
+    "archive.run.items_failed",
+    "archive.run.completed",
+    "archive.run.updated",
+    "archive.run.retried",
+    "archive.run.items_cancelled",
+    "archive.run.stopped",
+  ].includes(eventType);
+}
+
+function shouldRefreshLibraryForRunEvent(eventType: string) {
+  return [
+    "archive.run.items_processed",
+    "archive.run.items_failed",
+    "archive.run.completed",
+    "archive.run.updated",
+    "archive.run.retried",
+    "archive.run.stopped",
+  ].includes(eventType);
 }
 
 function expandTopics(topics: string[]) {
