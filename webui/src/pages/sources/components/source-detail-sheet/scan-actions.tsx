@@ -55,12 +55,14 @@ export function ScanActions({
   actions,
   scanFeedback,
   scanLimit,
+  hasDownloadQueueWork,
   onOpenLog,
 }: {
   source: ArchiveSourceDetail;
   actions: DetailActions;
   scanFeedback: Record<string, unknown> | null;
   scanLimit: number;
+  hasDownloadQueueWork: boolean;
   onOpenLog: (run: SourceScanRun) => void;
 }) {
   const [confirmation, setConfirmation] = React.useState<PendingConfirmation | null>(null);
@@ -103,6 +105,11 @@ export function ScanActions({
           {!isRunning && !isPaused ? <Badge tone={scanStatus.tone}>{scanStatus.label}</Badge> : null}
         </div>
         <p className="mt-3 text-xs text-fg-secondary">仅发现并记录 Tweet；不会自动提交下载。</p>
+        {hasDownloadQueueWork ? (
+          <p className="mt-2 rounded-md border border-warning/25 bg-warning/10 p-2 text-xs text-warning">
+            已有下载任务，扫描会等待下载完成后开始。
+          </p>
+        ) : null}
         {activeRun ? (
           <button
             type="button"
@@ -180,6 +187,7 @@ export function ScanActions({
       <ScanConfirmationDialog
         confirmation={confirmation}
         pending={actions.pending.history}
+        hasDownloadQueueWork={hasDownloadQueueWork}
         onConfirm={confirm}
         onLimitChange={(limit) =>
           setConfirmation((current) => (current?.action === "start" ? { ...current, limit } : current))
@@ -193,12 +201,14 @@ export function ScanActions({
 function ScanConfirmationDialog({
   confirmation,
   pending,
+  hasDownloadQueueWork,
   onConfirm,
   onLimitChange,
   onOpenChange,
 }: {
   confirmation: PendingConfirmation | null;
   pending: boolean;
+  hasDownloadQueueWork: boolean;
   onConfirm: () => void;
   onLimitChange: (limit: number) => void;
   onOpenChange: (open: boolean) => void;
@@ -208,11 +218,14 @@ function ScanConfirmationDialog({
   const limit = confirmation?.action === "start" ? confirmation.limit : 20;
   const modeLabel = mode ? scanModeLabel(mode) : "扫描";
   const title = isStop ? "停止扫描来源？" : `确认${modeLabel}？`;
+  const baseDescription = mode === "from_start"
+    ? `将从来源开头重新枚举，每批 ${limit} 条。此操作可能产生大量重复检查和新的扫描记录，但不会自动提交下载。`
+    : `将按当前 cursor 执行${modeLabel}，每批 ${limit} 条。扫描只发现并记录 Tweet，不会自动提交下载。`;
   const description = isStop
     ? "将不再调度后续扫描批次。已经启动的 gallery-dl 批次会自然结束，已保存的 cursor 和发现记录不会丢失。"
-    : mode === "from_start"
-      ? `将从来源开头重新枚举，每批 ${limit} 条。此操作可能产生大量重复检查和新的扫描记录，但不会自动提交下载。`
-      : `将按当前 cursor 执行${modeLabel}，每批 ${limit} 条。扫描只发现并记录 Tweet，不会自动提交下载。`;
+    : hasDownloadQueueWork
+      ? `${baseDescription} 已有下载任务，扫描会等待下载完成后开始。`
+      : baseDescription;
 
   return (
     <AlertDialog open={Boolean(confirmation)} onOpenChange={onOpenChange}>

@@ -35,6 +35,7 @@ from xarchiver.services.sources import (
     normalize_source_url,
     parse_gallery_dl_records,
     record_source_discoveries,
+    record_waiting_downloads_scan,
     recover_expired_source_scan_leases,
     scan_run_status,
     scan_source,
@@ -496,6 +497,23 @@ class SourceServiceTests(unittest.TestCase):
 
         update_state.assert_not_called()
 
+    def test_schedule_next_history_scan_applies_min_delay(self) -> None:
+        settings = SimpleNamespace(source_scan_sleep_min_seconds=0, source_scan_sleep_max_seconds=3)
+        with (
+            patch(
+                "xarchiver.services.sources.get_source",
+                return_value={
+                    "status": "active",
+                    "cursor_state": {"automation_enabled": True},
+                },
+            ),
+            patch("xarchiver.services.sources.random.uniform", return_value=1.5),
+            patch("xarchiver.services.sources.update_history_scan_state") as update_state,
+        ):
+            schedule_next_history_scan(1, settings, "waiting_downloads", min_delay_seconds=60)
+
+        update_state.assert_called_once_with(1, "waiting_downloads", delay_seconds=60)
+
 
 class SourceDiscoveryIntegrationTests(unittest.TestCase):
     tweet_id = "919900000000000001"
@@ -573,6 +591,32 @@ class SourceDiscoveryIntegrationTests(unittest.TestCase):
         self.assertEqual(row["scope_id"], scan_run_id)
         self.assertEqual(row["log_path"], source_scan_log_relative_path(int(source["id"]), scan_run_id))
         self.assertEqual(row["metadata"]["source_id"], int(source["id"]))
+
+    def test_record_waiting_downloads_scan_coalesces_continuous_wait(self) -> None:
+        source = create_source("profile", self.source_urls[2])
+        cursor_state = {
+            "active_scan_mode": "latest_refresh",
+            "scan_sessions": {"latest_refresh": {"next_start": 1, "limit": 20}},
+        }
+
+        record_waiting_downloads_scan(int(source["id"]), cursor_state, 20, trigger_type="latest_refresh")
+        record_waiting_downloads_scan(int(source["id"]), cursor_state, 20, trigger_type="latest_refresh")
+
+        with connect() as conn:
+            with conn.cursor() as cur:
+                cur.execute(
+                    """
+                    select count(*)::int as count, max(status) as status, max(trigger_type) as trigger_type
+                    from source_scan_runs
+                    where source_id = %s
+                    """,
+                    (source["id"],),
+                )
+                row = cur.fetchone()
+
+        self.assertEqual(row["count"], 1)
+        self.assertEqual(row["status"], "waiting_downloads")
+        self.assertEqual(row["trigger_type"], "latest_refresh")
 
     def test_create_source_rejects_duplicate_normalized_url(self) -> None:
         source = create_source("user_media", "http://twitter.com/sourcefixture/media/")

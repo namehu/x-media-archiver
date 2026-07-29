@@ -92,6 +92,7 @@ SCAN_MODE_TO_TRIGGER = {
 }
 LATEST_REFRESH_DUPLICATE_THRESHOLD = 5
 MIN_SOURCE_SCAN_LIMIT = 5
+DOWNLOAD_BUSY_SCAN_RETRY_MIN_SECONDS = 60
 logger = logging.getLogger(__name__)
 LEASE_SECONDS = 60
 HEARTBEAT_SECONDS = 20
@@ -1076,7 +1077,12 @@ def process_next_source_history_scan(settings: Settings, worker_id: str | None =
     if downloads_pending:
         # 来源扫描要给下载队列让路，避免发现速度长期快于媒体处理速度。
         record_waiting_downloads_scan(source_id, cursor_state, limit, trigger_type=trigger_type)
-        schedule_next_history_scan(source_id, settings, "waiting_downloads")
+        schedule_next_history_scan(
+            source_id,
+            settings,
+            "waiting_downloads",
+            min_delay_seconds=DOWNLOAD_BUSY_SCAN_RETRY_MIN_SECONDS,
+        )
         return {"source_id": source_id, "deferred": "download_queue_active"}
     try:
         result = scan_source(
@@ -1193,7 +1199,13 @@ def fetch_due_history_source() -> dict[str, object] | None:
             return dict(ArchiveSourceRow.model_validate(dict(row))) if row else None
 
 
-def schedule_next_history_scan(source_id: int, settings: Settings, state: str) -> None:
+def schedule_next_history_scan(
+    source_id: int,
+    settings: Settings,
+    state: str,
+    *,
+    min_delay_seconds: float | None = None,
+) -> None:
     """带随机抖动地安排下一次自动扫描。"""
 
     source = get_source(source_id)
@@ -1204,6 +1216,8 @@ def schedule_next_history_scan(source_id: int, settings: Settings, state: str) -
         min(settings.source_scan_sleep_min_seconds, settings.source_scan_sleep_max_seconds),
         max(settings.source_scan_sleep_min_seconds, settings.source_scan_sleep_max_seconds),
     )
+    if min_delay_seconds is not None:
+        delay = max(delay, min_delay_seconds)
     update_history_scan_state(source_id, state, delay_seconds=delay)
 
 
@@ -1414,6 +1428,48 @@ def record_waiting_downloads_scan(
     scan_range = build_active_scan_range(cursor_state, limit)
     with connect() as conn:
         with conn.cursor() as cur:
+            cur.execute(
+                """
+                with latest as (
+                    select id
+                    from source_scan_runs
+                    where source_id = %s
+                    order by created_at desc, id desc
+                    limit 1
+                )
+                update source_scan_runs r
+                set cursor_after = %s,
+                    finished_at = now()
+                from latest
+                where r.id = latest.id
+                  and r.status = 'waiting_downloads'
+                  and r.trigger_type = %s
+                  and r.range_start = %s
+                  and r.range_end = %s
+                  and r.requested_limit = %s
+                """,
+                (
+                    source_id,
+                    Jsonb(cursor_state),
+                    trigger_type,
+                    scan_range["start"],
+                    scan_range["end"],
+                    scan_range["limit"],
+                ),
+            )
+            if cur.rowcount:
+                conn.commit()
+                publish_event(
+                    "source_scans",
+                    "source.scan.waiting_downloads",
+                    {
+                        "source_id": source_id,
+                        "range": scan_range,
+                        "status": "waiting_downloads",
+                        "trigger_type": trigger_type,
+                    },
+                )
+                return
             cur.execute(
                 """
                 insert into source_scan_runs (

@@ -1,8 +1,8 @@
 import { useEffect, useState } from "react";
-import { useQueryClient } from "@tanstack/react-query";
+import { useQuery, useQueryClient } from "@tanstack/react-query";
 import { useSearchParams } from "react-router-dom";
 import { toast } from "sonner";
-import type { ArchiveSubmission } from "@/lib/api";
+import { apiGet, type ArchiveSubmission, type HealthDetail } from "@/lib/api";
 import { statusLabel } from "@/lib/formatters";
 import { CreateSource } from "./components/create-source";
 import { SourceDetailPanel } from "./components/source-detail-sheet";
@@ -32,8 +32,25 @@ export function SourcesPage() {
   const sourcesQuery = useSourcesQuery(sourceTypeFilter, sourceDeletedFilter, sortBy, sortDirection, offset);
   const detailQuery = useSourceDetail(selectedSourceId, includeDeletedDetail);
   const policyQuery = useDownloadPolicy();
+  const healthQuery = useQuery({
+    queryKey: ["health-detail"],
+    queryFn: () => apiGet<HealthDetail>("/api/v1/health/detail"),
+    enabled: detailSheetOpen,
+    refetchInterval: detailSheetOpen ? 15000 : false,
+  });
   const selected = detailQuery.data;
   const activeScanRun = selected?.active_scan_run;
+  const downloadQueue = healthQuery.data?.queue;
+  const hasDownloadQueueWork = Boolean(
+    downloadQueue &&
+      (
+        downloadQueue.pending_items +
+        downloadQueue.processing_items +
+        downloadQueue.retryable_failed_items +
+        downloadQueue.queued_runs +
+        downloadQueue.running_runs
+      ) > 0,
+  );
 
   const refresh = async (sourceId?: number) => {
     if (sourceId) setSelectedSourceId(sourceId);
@@ -144,6 +161,7 @@ export function SourcesPage() {
         }}
         source={selected}
         policy={policyQuery.data}
+        hasDownloadQueueWork={hasDownloadQueueWork}
         now={now}
         detailUpdatedAt={detailQuery.dataUpdatedAt}
         feedback={feedback}

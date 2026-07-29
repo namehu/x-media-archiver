@@ -60,6 +60,7 @@ export function SourceDetailPanel({
   onOpenChange,
   source,
   policy,
+  hasDownloadQueueWork,
   now,
   detailUpdatedAt,
   feedback,
@@ -72,6 +73,7 @@ export function SourceDetailPanel({
   onOpenChange: (open: boolean) => void;
   source?: ArchiveSourceDetail;
   policy?: DownloadPolicy;
+  hasDownloadQueueWork: boolean;
   now: number;
   detailUpdatedAt: number;
   feedback: ArchiveSubmission | null;
@@ -153,6 +155,7 @@ export function SourceDetailPanel({
                   now={now}
                   scanFeedback={scanFeedback}
                   scanLimit={persistedScanLimit}
+                  hasDownloadQueueWork={hasDownloadQueueWork}
                   onOpenLog={setLogRun}
                   pages={discoveredQuery.data?.pages ?? []}
                   downloads={downloadsQuery.data as SourceDownloadSummary | undefined}

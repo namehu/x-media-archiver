@@ -21,6 +21,7 @@ export function SourceTweetsContent({
   actions,
   scanFeedback,
   scanLimit,
+  hasDownloadQueueWork,
   onOpenLog,
   pages,
   downloads,
@@ -39,6 +40,7 @@ export function SourceTweetsContent({
   actions: DetailActions;
   scanFeedback: Record<string, unknown> | null;
   scanLimit: number;
+  hasDownloadQueueWork: boolean;
   onOpenLog: (run: SourceScanRun) => void;
   pages: SourceDiscoveryPageResponse[];
   downloads?: SourceDownloadSummary;
@@ -118,6 +120,7 @@ export function SourceTweetsContent({
               actions={actions}
               scanFeedback={scanFeedback}
               scanLimit={scanLimit}
+              hasDownloadQueueWork={hasDownloadQueueWork}
               onOpenLog={onOpenLog}
             />
             <SourceDownloadPanel
