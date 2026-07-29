@@ -114,13 +114,13 @@ def get_source_summary(cur) -> dict[str, object]:
     )
     history_enabled = int(cur.fetchone()["count"])
 
-    # 统计当前进行中的扫描运行数
+    # 统计真正执行中的扫描批次；waiting_downloads 只是历史等待记录，不代表活跃扫描进程。
     cur.execute(
         """
         select count(*)::int as count
         from source_scan_runs r
         join archive_sources s on s.id = r.source_id
-        where r.status in ('running', 'waiting_downloads')
+        where r.status = 'running'
           and s.deleted_at is null
         """
     )

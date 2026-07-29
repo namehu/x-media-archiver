@@ -115,6 +115,61 @@ class HealthServiceTests(unittest.TestCase):
         self.assertIn("db_pool", detail)
         self.assertEqual(set(detail["db_pool"]), {"active", "idle", "waiting", "min_size", "max_size"})
 
+    def test_active_scan_runs_counts_only_running_scans(self) -> None:
+        with connect() as conn:
+            with conn.cursor() as cur:
+                cur.execute(
+                    """
+                    insert into archive_sources (source_type, source_url)
+                    values ('profile', %s)
+                    returning id
+                    """,
+                    (self.source_url,),
+                )
+                source_id = int(cur.fetchone()["id"])
+                cur.execute(
+                    """
+                    insert into source_scan_runs (source_id, trigger_type, status, requested_limit)
+                    values
+                      (%s, 'latest_refresh', 'waiting_downloads', 20),
+                      (%s, 'latest_refresh', 'waiting_downloads', 20),
+                      (%s, 'latest_refresh', 'running', 20)
+                    """,
+                    (source_id, source_id, source_id),
+                )
+            conn.commit()
+
+        detail = get_health_detail()
+
+        self.assertEqual(detail["sources"]["active_scan_runs"], 1)
+
+    def test_active_scan_runs_ignores_waiting_downloads_only(self) -> None:
+        with connect() as conn:
+            with conn.cursor() as cur:
+                cur.execute(
+                    """
+                    insert into archive_sources (source_type, source_url)
+                    values ('profile', %s)
+                    returning id
+                    """,
+                    (self.source_url,),
+                )
+                source_id = int(cur.fetchone()["id"])
+                cur.execute(
+                    """
+                    insert into source_scan_runs (source_id, trigger_type, status, requested_limit)
+                    values
+                      (%s, 'latest_refresh', 'waiting_downloads', 20),
+                      (%s, 'latest_refresh', 'waiting_downloads', 20)
+                    """,
+                    (source_id, source_id),
+                )
+            conn.commit()
+
+        detail = get_health_detail()
+
+        self.assertEqual(detail["sources"]["active_scan_runs"], 0)
+
 
 if __name__ == "__main__":
     unittest.main()
