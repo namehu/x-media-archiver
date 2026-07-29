@@ -13,7 +13,7 @@ test.describe("Source download following", () => {
     const toolbarHeightBefore = await elementHeight(toolbar);
 
     await tweetCard(page, 0).getByRole("button", { name: "下载", exact: true }).click();
-    await expect(page.getByText("正在跟随", { exact: true })).toBeVisible();
+    await expect(toolbar.getByRole("button", { name: "暂停跟随", exact: true })).toBeVisible();
     await expect(tweetCard(page, 0)).toHaveAttribute("aria-current", "true");
 
     const scroller = sourceScroller(page);
@@ -40,14 +40,16 @@ test.describe("Source download following", () => {
     await page.setViewportSize({ width: 390, height: 844 });
     await mockSourceApis(page);
     await openSource(page);
+    const toolbar = page.getByTestId("download-follow-controls");
+    const toolbarHeightBefore = await elementHeight(toolbar);
 
     await tweetCard(page, 0).getByRole("button", { name: "下载", exact: true }).click();
-    await expect(page.getByText("正在跟随", { exact: true })).toBeVisible();
+    await expect(toolbar.getByRole("button", { name: "暂停跟随", exact: true })).toBeVisible();
     const scroller = sourceScroller(page);
     const pausedAt = await scrollTop(scroller);
 
     await tweetCard(page, 0).getByRole("button", { name: "展开", exact: true }).click();
-    await expect(page.getByText("跟随已暂停", { exact: true })).toBeVisible();
+    await expect(page.getByText("已暂停", { exact: true })).toBeVisible();
     await expect(page.getByTestId("download-current-item")).toContainText(tweetIds[3]);
     await page.waitForTimeout(350);
     expect(await scrollTop(scroller)).toBeLessThanOrEqual(pausedAt + 1);
@@ -64,7 +66,7 @@ test.describe("Source download following", () => {
     await page.getByRole("button", { name: "定位当前项", exact: true }).click();
     await expect.poll(() => scrollTop(scroller)).toBeLessThan(frontierScrollTop - 1);
     await expect(tweetCard(page, 1)).toHaveAttribute("aria-current", "true");
-    await expect(page.getByTestId("download-follow-controls")).toHaveCSS("height", "32px");
+    expect(await elementHeight(toolbar)).toBe(toolbarHeightBefore);
   });
 });
 
@@ -146,6 +148,7 @@ function sourceBase() {
     author_username: "follow_fixture",
     status: "active",
     is_pinned: false,
+    manual_order: 0,
     discovered_count: tweetIds.length,
     submitted_count: 0,
     discovered_tweet_count: tweetIds.length,

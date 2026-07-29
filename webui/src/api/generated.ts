@@ -433,6 +433,26 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/api/v1/sources/reorder": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Reorder Archive Sources
+         * @description 持久化正常来源列表中某个置顶分区内的手动排序。
+         */
+        post: operations["reorder_archive_sources_api_v1_sources_reorder_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/api/v1/sources/{source_id}": {
         parameters: {
             query?: never;
@@ -1269,6 +1289,11 @@ export interface components {
              * @default false
              */
             is_pinned: boolean;
+            /**
+             * Manual Order
+             * @default 0
+             */
+            manual_order: number;
             /** Label */
             label?: string | null;
             /** Author Username */
@@ -1346,6 +1371,11 @@ export interface components {
              * @default false
              */
             is_pinned: boolean;
+            /**
+             * Manual Order
+             * @default 0
+             */
+            manual_order: number;
             /** Label */
             label?: string | null;
             /** Author Username */
@@ -1421,6 +1451,11 @@ export interface components {
              * @default false
              */
             is_pinned: boolean;
+            /**
+             * Manual Order
+             * @default 0
+             */
+            manual_order: number;
             /** Label */
             label?: string | null;
             /** Author Username */
@@ -2622,6 +2657,11 @@ export interface components {
             /** Records */
             records: components["schemas"]["ArchiveRecord"][];
         };
+        /** SourceReorderRequest */
+        SourceReorderRequest: {
+            /** Source Ids */
+            source_ids: number[];
+        };
         /** SourceScanRequest */
         SourceScanRequest: {
             /**
@@ -3608,6 +3648,39 @@ export interface operations {
                 };
                 content: {
                     "application/json": components["schemas"]["ArchiveSourceResponse"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    reorder_archive_sources_api_v1_sources_reorder_post: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["SourceReorderRequest"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["WriteActionResponse"];
                 };
             };
             /** @description Validation Error */

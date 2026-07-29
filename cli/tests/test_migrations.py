@@ -37,6 +37,7 @@ class MigrationTests(unittest.TestCase):
                 "013_expand_operation_log_stream_scope.py",
                 "014_unique_source_urls.py",
                 "015_soft_delete_sources.py",
+                "016_add_source_manual_order.py",
             ],
         )
         upgrade.assert_called_once()
@@ -48,7 +49,7 @@ class MigrationTests(unittest.TestCase):
 
         with (
             patch("xarchiver.migrations.get_settings", return_value=settings),
-            patch("xarchiver.migrations.current_alembic_revision", return_value="015_soft_delete_sources"),
+            patch("xarchiver.migrations.current_alembic_revision", return_value="016_add_source_manual_order"),
             patch("xarchiver.migrations.command.upgrade") as upgrade,
         ):
             self.assertEqual(migrate(), [])
@@ -87,6 +88,7 @@ class MigrationTests(unittest.TestCase):
                 "013_expand_operation_log_stream_scope.py",
                 "014_unique_source_urls.py",
                 "015_soft_delete_sources.py",
+                "016_add_source_manual_order.py",
             ],
         )
 
@@ -268,6 +270,18 @@ class MigrationTests(unittest.TestCase):
         sql = captured_sql[0]
         self.assertIn("add column if not exists deleted_at timestamptz", sql)
         self.assertIn("idx_archive_sources_active_updated", sql)
+        self.assertIn("where deleted_at is null", sql)
+
+    def test_source_manual_order_revision_adds_column_and_active_index(self) -> None:
+        module = importlib.import_module("xarchiver.alembic.versions.016_add_source_manual_order")
+        captured_sql: list[str] = []
+
+        with patch.object(module.op, "execute", side_effect=captured_sql.append):
+            module.upgrade()
+
+        sql = captured_sql[0]
+        self.assertIn("add column if not exists manual_order integer not null default 0", sql)
+        self.assertIn("idx_archive_sources_active_manual_order", sql)
         self.assertIn("where deleted_at is null", sql)
 
 
