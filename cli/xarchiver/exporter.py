@@ -73,6 +73,7 @@ DUPLICATE_CSV_FIELDS = [
 
 IMAGE_EXTENSIONS = {"avif", "gif", "jpeg", "jpg", "png", "webp"}
 VIDEO_EXTENSIONS = {"m4v", "mov", "mp4", "webm"}
+FAILURE_TWEET_STATUSES = ("failed_retryable", "failed_permanent", "corrupt")
 
 
 def export_media_csv(
@@ -271,7 +272,7 @@ def build_failure_rows_query(limit: int | None = None, offset: int = 0) -> tuple
             latest_attempt.c.finished_at.label("latest_finished_at"),
         )
         .select_from(tweets.outerjoin(latest_attempt, true()))
-        .where(tweets.c.download_status.not_in(("downloaded", "verified", "skipped")))
+        .where(tweets.c.download_status.in_(FAILURE_TWEET_STATUSES))
         .order_by(tweets.c.updated_at.desc(), tweets.c.tweet_id.asc())
     )
     if limit is not None:
@@ -288,8 +289,9 @@ def count_failure_rows() -> int:
                 """
                 select count(*)::int as count
                 from tweets
-                where download_status not in ('downloaded', 'verified', 'skipped')
-                """
+                where download_status = any(%s)
+                """,
+                (list(FAILURE_TWEET_STATUSES),),
             )
             return int(cur.fetchone()["count"])
 

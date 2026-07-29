@@ -31,7 +31,7 @@ import {
 } from "../../lib/debug-redaction";
 
 const PAGE_SIZE = 100;
-const REQUEUE_STATUSES = ["failed_retryable", "missing", "corrupt", "failed_permanent"];
+const REQUEUE_STATUSES = ["failed_retryable", "corrupt", "failed_permanent"];
 
 export function FailuresPage() {
   const debugRedactionEnabled = useDebugRedactionEnabled();

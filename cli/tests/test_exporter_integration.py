@@ -4,11 +4,12 @@ import unittest
 from xarchiver.archive import ensure_archive_dirs
 from xarchiver.config import get_settings
 from xarchiver.db import connect
-from xarchiver.exporter import export_failures_csv
+from xarchiver.exporter import count_failure_rows, export_failures_csv, fetch_failure_rows
 
 
 class ExporterIntegrationTests(unittest.TestCase):
     tweet_id = "failure-fixture-1"
+    missing_tweet_id = "failure-fixture-missing"
 
     def setUp(self) -> None:
         self.settings = get_settings()
@@ -41,6 +42,13 @@ class ExporterIntegrationTests(unittest.TestCase):
                     """,
                     (self.tweet_id,),
                 )
+                cur.execute(
+                    """
+                    insert into tweets (tweet_id, url, download_status, last_error, retry_count)
+                    values (%s, %s, 'missing', 'file_missing', 0)
+                    """,
+                    (self.missing_tweet_id, f"https://x.com/test/status/{self.missing_tweet_id}"),
+                )
             conn.commit()
 
     def tearDown(self) -> None:
@@ -51,7 +59,7 @@ class ExporterIntegrationTests(unittest.TestCase):
     def cleanup_db(self) -> None:
         with connect() as conn:
             with conn.cursor() as cur:
-                cur.execute("delete from tweets where tweet_id = %s", (self.tweet_id,))
+                cur.execute("delete from tweets where tweet_id = any(%s)", ([self.tweet_id, self.missing_tweet_id],))
             conn.commit()
 
     def test_export_failures_csv_writes_latest_attempt(self) -> None:
@@ -65,6 +73,15 @@ class ExporterIntegrationTests(unittest.TestCase):
         self.assertEqual(row["tweet_status"], "failed_retryable")
         self.assertEqual(row["latest_engine"], "gallery-dl")
         self.assertEqual(row["latest_error_category"], "no_downloaded_files")
+        self.assertNotIn(self.missing_tweet_id, {row["tweet_id"] for row in rows})
+
+    def test_failure_rows_exclude_missing_status(self) -> None:
+        rows = fetch_failure_rows()
+        tweet_ids = {row.tweet_id for row in rows}
+
+        self.assertIn(self.tweet_id, tweet_ids)
+        self.assertNotIn(self.missing_tweet_id, tweet_ids)
+        self.assertEqual(count_failure_rows(), len(rows))
 
 
 if __name__ == "__main__":
