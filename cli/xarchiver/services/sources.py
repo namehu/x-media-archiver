@@ -621,7 +621,7 @@ def get_source(source_id: int, include_deleted: bool = False) -> dict[str, objec
 DISCOVERY_ACTIVE_SQL = "a.active_item_status in ('pending','blocked','processing')"
 DISCOVERY_COMPLETED_SQL = "t.download_status in ('verified','downloaded','skipped')"
 DISCOVERY_FAILED_SQL = (
-    "t.download_status in ('failed_retryable','failed_permanent','missing','corrupt') "
+    "t.download_status in ('failed_retryable','failed_permanent','corrupt') "
     "or a.active_item_status = 'failed_retryable'"
 )
 DISCOVERY_PENDING_SQL = (
@@ -2971,7 +2971,7 @@ def build_source_download_candidates_query(
     if scope == "all_unsubmitted":
         statement = statement.where(source_discovered_tweets.c.archive_run_id.is_(None))
     elif scope in {"failed", "retry_failed"}:
-        statement = statement.where(tweets.c.download_status.in_(("failed_retryable", "missing", "corrupt")))
+        statement = statement.where(tweets.c.download_status.in_(("failed_retryable", "corrupt")))
     elif scope == "selected":
         statement = statement.where(source_discovered_tweets.c.tweet_id.in_(tweet_ids or []))
     elif scope == "download_missing":

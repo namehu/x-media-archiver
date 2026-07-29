@@ -1249,6 +1249,44 @@ class SourceDiscoveryIntegrationTests(unittest.TestCase):
         self.assertEqual(result["submitted_count"], 0)
         self.assertEqual(result["tasks"]["queued_count"], 0)
 
+    def test_missing_discoveries_are_not_failed_downloads(self) -> None:
+        source = create_source("user_media", self.source_urls[0])
+        record_source_discoveries(
+            int(source["id"]),
+            [
+                {
+                    "tweet_id": self.tweet_ids[0],
+                    "url": f"https://x.com/sourcefixture/status/{self.tweet_ids[0]}",
+                    "author_username": "sourcefixture",
+                    "author_display_name": None,
+                    "text": "missing tweet",
+                    "published_at": None,
+                    "collected_at": None,
+                    "raw_import": {"media_count": 1},
+                }
+            ],
+        )
+        with connect() as conn:
+            with conn.cursor() as cur:
+                cur.execute(
+                    "update tweets set download_status = 'missing' where tweet_id = %s",
+                    (self.tweet_ids[0],),
+                )
+            conn.commit()
+
+        page = list_source_discovered_page(int(source["id"]))
+        failed_page = list_source_discovered_page(int(source["id"]), download_state="failed")
+        pending_page = list_source_discovered_page(int(source["id"]), download_state="pending")
+        retried = submit_source_downloads(int(source["id"]), "retry_failed")
+
+        self.assertEqual(page["action_counts"], {"all_unsubmitted": 1, "missing": 1, "failed": 0})
+        self.assertEqual(page["facets"]["download"]["failed"], 0)
+        self.assertEqual(page["facets"]["download"]["pending"], 1)
+        self.assertEqual(failed_page["total_count"], 0)
+        self.assertEqual(pending_page["total_count"], 1)
+        self.assertIsNone(retried["run_id"])
+        self.assertEqual(retried["submitted_count"], 0)
+
     def test_download_summary_only_aggregates_active_run_progress(self) -> None:
         source = create_source("user_media", self.source_urls[0])
         record_source_discoveries(
