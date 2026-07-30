@@ -1,6 +1,10 @@
 import type Artplayer from "artplayer";
 import { bindFullscreenWebHistory } from "./artplayer-fullscreen-history";
 
+type ArtplayerCleanupOptions = {
+  bindFullscreenHistory?: boolean;
+};
+
 /**
  * Creates the cleanup routine for an ArtPlayer instance mounted by React.
  *
@@ -8,9 +12,14 @@ import { bindFullscreenWebHistory } from "./artplayer-fullscreen-history";
  * in web fullscreen mode. The cleanup restores that state before destruction
  * and removes only the element created by this instance as a final safeguard.
  */
-export function createArtplayerCleanup(player: Artplayer, container: HTMLElement): () => void {
+export function createArtplayerCleanup(
+  player: Artplayer,
+  container: HTMLElement,
+  options: ArtplayerCleanupOptions = {},
+): () => void {
   const playerElement = container.querySelector<HTMLElement>(".art-video-player");
-  const unbindFullscreenHistory = bindFullscreenWebHistory(player);
+  const unbindFullscreenHistory =
+    options.bindFullscreenHistory === false ? () => undefined : bindFullscreenWebHistory(player);
   let destroyed = false;
 
   const stopPlayback = () => {

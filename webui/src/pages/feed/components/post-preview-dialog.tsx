@@ -311,7 +311,7 @@ function PreviewVideo({
       url: src,
       autoSize: true,
       fullscreen: true,
-      fullscreenWeb: true,
+      fullscreenWeb: false,
       setting: true,
       playbackRate: true,
       aspectRatio: true,
@@ -326,9 +326,21 @@ function PreviewVideo({
       ...(previewUrl ? { poster: previewUrl } : {}),
     });
 
-    const cleanupPlayer = createArtplayerCleanup(player, container);
+    const cleanupPlayer = createArtplayerCleanup(player, container, { bindFullscreenHistory: false });
     const playerVideo = player.video;
     let restoredPlaybackState = !initialState;
+    let disposing = false;
+
+    const enterLockedWebFullscreen = () => {
+      if (disposing || player.fullscreen || player.fullscreenWeb) return;
+      player.fullscreenWeb = true;
+    };
+
+    const restoreLockedWebFullscreen = () => {
+      window.requestAnimationFrame(enterLockedWebFullscreen);
+    };
+
+    enterLockedWebFullscreen();
 
     const updateDefaultTimeDisplay = () => {
       const timeElement = getArtplayerTimeElement(player);
@@ -388,6 +400,17 @@ function PreviewVideo({
     playerVideo.addEventListener("ratechange", writePausedState);
     playerVideo.addEventListener("seeked", writePausedState);
     playerVideo.addEventListener("ended", writePausedState);
+
+    player.on("fullscreenWeb", (enabled: boolean) => {
+      if (enabled || player.fullscreen) return;
+      restoreLockedWebFullscreen();
+    });
+
+    player.on("fullscreen", (enabled: boolean) => {
+      if (!enabled) {
+        restoreLockedWebFullscreen();
+      }
+    });
 
     // 监听 Artplayer 控制栏的显示与隐藏事件，同步外部 UI
     player.on("control", (show: boolean) => {
@@ -549,6 +572,7 @@ function PreviewVideo({
     }
 
     return () => {
+      disposing = true;
       const wasPlaying = !playerVideo.paused && !playerVideo.ended;
       writePlayerState({
         paused: wasPlaying ? false : playerVideo.paused,
