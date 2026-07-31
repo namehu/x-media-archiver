@@ -118,7 +118,11 @@ export function PostPreviewDialog({
         if (!open) handleClose();
       }}
     >
-      <DialogContent className="left-0 top-0 h-[100dvh] w-screen max-w-none translate-x-0 translate-y-0 overflow-hidden rounded-none border-0 bg-black p-0 [&>button]:hidden">
+      <DialogContent
+        className="left-0 top-0 h-[100dvh] w-screen max-w-none translate-x-0 translate-y-0 overflow-hidden rounded-none border-0 bg-black p-0 [&>button]:hidden"
+        onPointerDownOutside={(event) => event.preventDefault()}
+        onInteractOutside={(event) => event.preventDefault()}
+      >
         <DialogHeader className="sr-only">
           <DialogTitle>帖子媒体预览</DialogTitle>
           <DialogDescription>左右切换查看同一帖子的本地媒体。</DialogDescription>
