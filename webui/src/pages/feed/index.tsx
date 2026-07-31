@@ -57,6 +57,7 @@ export function FeedPage() {
   const filtersRef = useRef(filters);
   const submittedRef = useRef(submitted);
   const listStateRef = useRef<StateSnapshot | null>(restoreListState);
+  const previewResumeFrameRef = useRef<number | null>(null);
   const videoPlaybackStatesRef = useRef<Map<string, FeedVideoPlaybackState>>(
     new Map(restoredState?.videoPlaybackStates ?? []),
   );
@@ -138,6 +139,10 @@ export function FeedPage() {
 
   useEffect(
     () => () => {
+      if (previewResumeFrameRef.current !== null) {
+        window.cancelAnimationFrame(previewResumeFrameRef.current);
+        previewResumeFrameRef.current = null;
+      }
       saveFeedBrowseState(location.key, {
         filters: filtersRef.current,
         submittedFilters: submittedRef.current,
@@ -175,6 +180,26 @@ export function FeedPage() {
       videoPlaybackStatesRef.current.delete(`${post.tweet_id}:${media.id}`);
     }
   }, []);
+
+  const schedulePreviewResume = useCallback(
+    (videoId: string | null) => {
+      if (previewResumeFrameRef.current !== null) {
+        window.cancelAnimationFrame(previewResumeFrameRef.current);
+        previewResumeFrameRef.current = null;
+      }
+      if (!videoId) {
+        setActiveVideoId(null);
+        return;
+      }
+
+      previewResumeFrameRef.current = window.requestAnimationFrame(() => {
+        previewResumeFrameRef.current = null;
+        const videoState = getVideoState(videoId);
+        setActiveVideoId(videoState && !videoState.paused && !videoState.ended ? videoId : null);
+      });
+    },
+    [getVideoState],
+  );
 
   const resetListAndQuery = useCallback(
     (nextFilters: FeedFilters) => {
@@ -341,6 +366,10 @@ export function FeedPage() {
               getVideoState={getVideoState}
               updateVideoState={updateVideoState}
               onPreview={(post, index) => {
+                if (previewResumeFrameRef.current !== null) {
+                  window.cancelAnimationFrame(previewResumeFrameRef.current);
+                  previewResumeFrameRef.current = null;
+                }
                 const dialogEntry = createDialogHistoryEntry(location.state);
                 setActiveVideoId(null);
                 void navigate(
@@ -408,9 +437,8 @@ export function FeedPage() {
           const media = currentPreview?.post.media[currentPreview.index];
           const videoId =
             currentPreview && media?.media_type === "video" ? `${currentPreview.post.tweet_id}:${media.id}` : null;
-          const videoState = videoId ? getVideoState(videoId) : undefined;
           setPreview(null);
-          setActiveVideoId(videoId && videoState && !videoState.paused && !videoState.ended ? videoId : null);
+          schedulePreviewResume(videoId);
         }}
       />
       <PostDeleteDialog

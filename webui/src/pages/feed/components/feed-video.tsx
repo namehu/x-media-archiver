@@ -6,10 +6,16 @@ import {
   clampPlaybackTime,
   formatPlaybackCountdown,
   remainingPlaybackSeconds,
+  type FeedVideoPlaybackState,
   type FeedVideoPlaybackStateApi,
   type FeedVideoPlaybackSnapshot,
   videoPlaybackStateFromElement,
 } from "../video-playback-state";
+
+type RestoredPlaybackState = {
+  state: FeedVideoPlaybackState;
+  targetTime: number;
+};
 
 export function FeedVideo({
   media,
@@ -33,6 +39,7 @@ export function FeedVideo({
   const activeVideoIdRef = useRef(activeVideoId);
   const restoredForSrcRef = useRef<string | null>(null);
   const restoredStateUpdatedAtRef = useRef<number | null>(null);
+  const restoringStateRef = useRef(false);
   const suppressNextPauseStateRef = useRef(false);
   const [remainingSeconds, setRemainingSeconds] = useState<number | null>(null);
   const active = activeVideoId === videoId && !previewOpen;
@@ -41,40 +48,69 @@ export function FeedVideo({
     (snapshot: FeedVideoPlaybackSnapshot = {}) => {
       const video = videoRef.current;
       if (!video) return undefined;
+      const current = getVideoState(videoId);
+      const restoredForCurrentState =
+        restoredForSrcRef.current === (media.media_url ?? null) &&
+        restoredStateUpdatedAtRef.current === (current?.updatedAt ?? null);
+      const canReadElementState = !restoringStateRef.current && (!current || restoredForCurrentState);
       const state = updateVideoState(videoId, {
-        ...videoPlaybackStateFromElement(video),
+        ...(canReadElementState ? videoPlaybackStateFromElement(video) : {}),
         ...snapshot,
       });
-      restoredStateUpdatedAtRef.current = state.updatedAt;
+      if (canReadElementState) {
+        restoredForSrcRef.current = media.media_url ?? null;
+        restoredStateUpdatedAtRef.current = state.updatedAt;
+      }
       return state;
     },
-    [updateVideoState, videoId],
+    [getVideoState, media.media_url, updateVideoState, videoId],
   );
 
-  const restoreState = useCallback(() => {
+  const restoreState = useCallback((): RestoredPlaybackState | undefined => {
     const video = videoRef.current;
     const state = getVideoState(videoId);
-    if (!video || !state) return state;
-
-    video.muted = state.muted;
-    video.volume = clampVolume(state.volume);
-    video.playbackRate = state.playbackRate > 0 ? state.playbackRate : 1;
-
+    if (!video || !state) return undefined;
     const duration = Number.isFinite(video.duration) ? video.duration : state.duration;
     const targetTime = state.ended ? 0 : clampPlaybackTime(state.currentTime, duration);
-    if (Math.abs(video.currentTime - targetTime) > 0.25) {
-      video.currentTime = targetTime;
+
+    restoringStateRef.current = true;
+    try {
+      video.muted = state.muted;
+      video.volume = clampVolume(state.volume);
+      video.playbackRate = state.playbackRate > 0 ? state.playbackRate : 1;
+      if (Math.abs(video.currentTime - targetTime) > 0.25) {
+        video.currentTime = targetTime;
+      }
+      restoredForSrcRef.current = media.media_url ?? null;
+      restoredStateUpdatedAtRef.current = state.updatedAt;
+      setRemainingSeconds(getRemainingSeconds(video));
+      return { state, targetTime };
+    } finally {
+      restoringStateRef.current = false;
     }
-    restoredForSrcRef.current = media.media_url ?? null;
-    restoredStateUpdatedAtRef.current = state.updatedAt;
-    setRemainingSeconds(getRemainingSeconds(video));
-    return state;
   }, [getVideoState, media.media_url, videoId]);
 
   const refreshRemainingSeconds = useCallback(() => {
     const video = videoRef.current;
     setRemainingSeconds(video ? getRemainingSeconds(video) : null);
   }, []);
+
+  const patchDurationState = useCallback(() => {
+    const video = videoRef.current;
+    if (!video) return;
+    const current = getVideoState(videoId);
+    const restoredForCurrentState =
+      !current ||
+      (restoredForSrcRef.current === (media.media_url ?? null) &&
+        restoredStateUpdatedAtRef.current === current.updatedAt);
+    const state = updateVideoState(videoId, {
+      duration: Number.isFinite(video.duration) ? video.duration : null,
+    });
+    if (restoredForCurrentState) {
+      restoredForSrcRef.current = media.media_url ?? null;
+      restoredStateUpdatedAtRef.current = state.updatedAt;
+    }
+  }, [getVideoState, media.media_url, updateVideoState, videoId]);
 
   useEffect(() => {
     activeVideoIdRef.current = activeVideoId;
@@ -100,31 +136,55 @@ export function FeedVideo({
     const restoreWhenReady = () => {
       const state = getVideoState(videoId);
       if (
-        restoredForSrcRef.current === media.media_url &&
+        restoredForSrcRef.current === (media.media_url ?? null) &&
         restoredStateUpdatedAtRef.current === (state?.updatedAt ?? null)
       ) {
-        return;
+        return state;
       }
-      restoreState();
+      return restoreState()?.state;
+    };
+
+    const playWhenReady = () => {
+      if (active && media.media_url) {
+        void video.play().catch(() => undefined);
+      }
     };
 
     if (video.readyState >= 1) {
       restoreWhenReady();
+      playWhenReady();
     } else {
-      video.addEventListener("loadedmetadata", restoreWhenReady, { once: true });
+      const handleLoadedMetadata = () => {
+        restoreWhenReady();
+        patchDurationState();
+        refreshRemainingSeconds();
+        playWhenReady();
+      };
+      video.addEventListener("loadedmetadata", handleLoadedMetadata, { once: true });
+      if (active && media.media_url) {
+        video.load();
+      }
+      return () => {
+        video.removeEventListener("loadedmetadata", handleLoadedMetadata);
+      };
     }
 
-    if (active && media.media_url) {
-      void video.play().catch(() => undefined);
-    } else {
+    if (!active) {
       suppressNextPauseStateRef.current = previewOpen && !video.paused;
       video.pause();
     }
 
-    return () => {
-      video.removeEventListener("loadedmetadata", restoreWhenReady);
-    };
-  }, [active, getVideoState, media.media_url, previewOpen, restoreState, videoId]);
+    return undefined;
+  }, [
+    active,
+    getVideoState,
+    media.media_url,
+    patchDurationState,
+    previewOpen,
+    refreshRemainingSeconds,
+    restoreState,
+    videoId,
+  ]);
 
   useEffect(() => () => {
     captureState();
@@ -141,10 +201,9 @@ export function FeedVideo({
     }
 
     video.muted = false;
-    captureState({ muted: false, paused: false, ended: false });
+    updateVideoState(videoId, { muted: false, paused: false, ended: false });
     refreshRemainingSeconds();
     onActivate(videoId);
-    void video.play().catch(() => undefined);
   };
 
   const openPreview = () => {
@@ -200,7 +259,7 @@ export function FeedVideo({
           }}
           onLoadedMetadata={() => {
             restoreState();
-            captureState();
+            patchDurationState();
             refreshRemainingSeconds();
           }}
           onEnded={() => {
