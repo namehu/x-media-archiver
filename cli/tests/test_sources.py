@@ -1564,7 +1564,7 @@ class SourceDiscoveryIntegrationTests(unittest.TestCase):
         self.assertEqual(rows[self.tweet_ids[0]]["total_bytes"], 300)
         self.assertEqual(rows[self.tweet_ids[0]]["speed_bps"], 15)
         self.assertEqual(rows[self.tweet_ids[1]]["downloaded_bytes"], 250)
-        self.assertEqual(rows[self.tweet_ids[1]]["speed_bps"], 0)
+        self.assertEqual(rows[self.tweet_ids[1]]["speed_bps"], 25)
 
     def test_recover_expired_source_scan_lease_marks_run_failed(self) -> None:
         source = create_source("profile", self.source_urls[2])

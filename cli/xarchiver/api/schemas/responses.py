@@ -156,6 +156,78 @@ class HealthDetailResponse(FlexibleResponse):
     recent_errors: list[RecentErrorResponse]
 
 
+class RuntimeGlobalResponse(FlexibleResponse):
+    active_run_count: int = 0
+    active_item_count: int = 0
+    active_scan_count: int = 0
+    current_run_id: int | None = None
+    current_source_id: int | None = None
+    current_tweet_id: str | None = None
+    downloaded_bytes: int = 0
+    total_bytes: int | None = None
+    speed_bps: int | None = None
+
+
+class RuntimeRunResponse(FlexibleResponse):
+    id: int
+    trigger_type: str
+    source_id: int | None = None
+    input_path: str | None = None
+    status: str
+    blocked_by_run_id: int | None = None
+    control_state: dict[str, Any] | None = None
+    started_at: datetime | None = None
+    finished_at: datetime | None = None
+    result: dict[str, Any] | None = None
+    error_message: str | None = None
+    downloaded_bytes: int = 0
+    total_bytes: int | None = None
+    speed_bps: int | None = None
+    active_item_count: int = 0
+    job_id: int | None = None
+    current_tweet_id: str | None = None
+    job_status: str | None = None
+    last_progress_at: datetime | None = None
+
+
+class RuntimeItemResponse(FlexibleResponse):
+    id: int
+    archive_run_item_id: int
+    archive_run_id: int
+    source_id: int | None = None
+    archive_run_status: str | None = None
+    tweet_id: str
+    status: str
+    retry_count: int = 0
+    error_category: str | None = None
+    error_message: str | None = None
+    linked_item_id: int | None = None
+    cancel_requested: bool = False
+    downloaded_bytes: int = 0
+    total_bytes: int | None = None
+    speed_bps: int | None = None
+    progress_message: str | None = None
+    last_progress_at: datetime | None = None
+    last_attempt_at: datetime | None = None
+    next_attempt_at: datetime | None = None
+    created_at: datetime | None = None
+    updated_at: datetime | None = None
+
+
+class RuntimeSnapshotResponse(FlexibleResponse):
+    epoch: str
+    sequence: int
+    recent_window_seconds: int
+    worker: WorkerHealthResponse
+    queue: QueueHealthResponse
+    sources: SourceHealthResponse
+    global_: RuntimeGlobalResponse = Field(alias="global")
+    runs: list[RuntimeRunResponse] = Field(default_factory=list)
+    items: list[RuntimeItemResponse] = Field(default_factory=list)
+    scans: list[SourceScanRunResponse] = Field(default_factory=list)
+    recent_activity: list[dict[str, Any]] = Field(default_factory=list)
+
+
 class WriteActionResponse(FlexibleResponse):
     action: str
     status: str

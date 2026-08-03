@@ -7,6 +7,7 @@ import { Button } from "@/components/ui/button";
 import { Collapsible, CollapsibleContent, CollapsibleTrigger } from "@/components/ui/collapsible";
 import { getDebugRedactProps, useDebugRedactionEnabled } from "@/lib/debug-redaction";
 import { scanStatusLabel, scanTriggerLabel } from "@/lib/formatters";
+import { useRuntimeSource } from "@/lib/runtime-provider";
 import { cn, formatDateTime } from "@/lib/utils";
 import { formatElapsed, formatRunRange, scanStatusTone } from "../../utils";
 import { SourceTweetsTab } from "../source-tweets-tab";
@@ -124,6 +125,7 @@ export function SourceTweetsContent({
               onOpenLog={onOpenLog}
             />
             <SourceDownloadPanel
+              sourceId={source.id}
               downloads={downloads}
               actions={actions}
               statusLabel={statusLabel}
@@ -169,26 +171,40 @@ export function SourceTweetsContent({
 }
 
 function SourceDownloadPanel({
+  sourceId,
   downloads,
   actions,
   statusLabel,
   onResumeDownload,
 }: {
+  sourceId: number;
   downloads?: SourceDownloadSummary;
   actions: DetailActions;
   statusLabel: (status?: string | null) => string;
   onResumeDownload: (runId: number) => void;
 }) {
   const debugRedactionEnabled = useDebugRedactionEnabled();
-  const active = downloads?.active_run;
+  const runtimeSource = useRuntimeSource(sourceId);
+  const active =
+    downloads?.active_run ??
+    (runtimeSource.activeRunId
+      ? ({
+          id: runtimeSource.activeRunId,
+          status: runtimeSource.activeRunStatus || "running",
+          items: runtimeSource.activeItems,
+        } as unknown as SourceDownloadSummary["active_run"])
+      : null);
   const paused = downloads?.paused_runs ?? [];
   const blocked = downloads?.blocked_runs ?? [];
   const runningItem =
-    (downloads?.current_tweet_id
-      ? active?.items.find((item) => item.tweet_id === downloads.current_tweet_id)
+    runtimeSource.currentItem ??
+    ((runtimeSource.currentTweetId ?? downloads?.current_tweet_id)
+      ? active?.items.find((item) => item.tweet_id === (runtimeSource.currentTweetId ?? downloads?.current_tweet_id))
       : undefined) ?? active?.items.find((item) => item.status === "processing");
   const counts = downloads?.active_counts;
   const waitingCount = (counts?.pending_count ?? 0) + (counts?.blocked_count ?? 0);
+  const speedBps = runtimeSource.speedBps ?? downloads?.speed_bps;
+  const downloadedBytes = runtimeSource.downloadedBytes || downloads?.downloaded_bytes;
 
   return (
     <ActionBlock title="下载工作台" contentClassName="flex flex-1 flex-col justify-between gap-3 text-sm">
@@ -214,8 +230,8 @@ function SourceDownloadPanel({
               <span>失败 {counts?.failed_permanent_count ?? 0}</span>
             </>
           ) : null}
-          {downloads?.speed_bps ? <span>{formatBytes(downloads.speed_bps)}/s</span> : null}
-          {downloads?.downloaded_bytes ? <span>{formatBytes(downloads.downloaded_bytes)}</span> : null}
+          {speedBps ? <span>{formatBytes(speedBps)}/s</span> : null}
+          {downloadedBytes ? <span>{formatBytes(downloadedBytes)}</span> : null}
         </div>
         {runningItem ? (
           <p

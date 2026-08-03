@@ -165,6 +165,109 @@ Runtime Store 只保存有限生命周期状态：
 
 阶段一完成后，WebUI 即使没有 WebSocket，也应具备“全局可见 + 行级进度 + 断线降级”的下载器体验。
 
+### 阶段一流程架构图
+
+阶段一的核心分工是：DB / REST 继续提供持久化事实，`/api/v1/events` 只推运行态增量，`/api/v1/runtime/snapshot` 负责首连和异常恢复，前端用 Zustand Runtime Store 做细粒度投影，React Query 只在初始快照、终态收敛和降级场景中请求 REST。
+
+```mermaid
+flowchart LR
+  subgraph backend["Backend / FastAPI"]
+    worker["Downloader / Scanner / Queue Service"]
+    db[("Postgres\n持久化事实源")]
+    broker["EventBroker\nprocess epoch + global sequence"]
+    snapshot["GET /api/v1/runtime/snapshot\nactive + recent runtime only"]
+    events["GET /api/v1/events\nSSE full subscription"]
+    rest["REST fact APIs\nsources / discovered / downloads / health"]
+
+    worker -->|"write durable state"| db
+    worker -->|"publish throttled progress\nand terminal events"| broker
+    db --> snapshot
+    broker --> snapshot
+    broker --> events
+    db --> rest
+  end
+
+  subgraph frontend["Frontend / WebUI"]
+    provider["RuntimeProvider\none SSE connection per tab"]
+    guard["event parser\nobject shape + epoch + sequence guard"]
+    sync["snapshot sync\nsingle-flight + buffered replay"]
+    store[("Zustand Runtime Store\nruns / items / scans / global / connection")]
+    invalidator["query invalidator\nonly boundary events"]
+    queries["React Query\nREST page snapshots"]
+    fallback["fallback polling gate\noffline / reconnecting / stale"]
+    overlay["row overlay composer\nREST row + runtime item"]
+
+    provider -->|"open EventSource"| events
+    provider -->|"initial / reconnect / epoch change / gap / stale"| sync
+    events --> guard
+    guard -->|"progress / active patch"| store
+    guard -->|"epoch change / sequence gap"| sync
+    guard -->|"completed / failed / cancelled / submitted"| invalidator
+    invalidator --> queries
+    sync -->|"GET snapshot"| snapshot
+    sync -->|"replace runtime\nthen replay buffered events"| store
+    fallback -->|"connection unhealthy only"| queries
+    queries --> overlay
+    store --> overlay
+  end
+
+  subgraph ui["UI Consumers"]
+    topbar["AppLayout\nconnection + global speed + current item"]
+    sourceDetail["Sources Detail\ncurrent row progress + panel summary"]
+    queuePage["Archive Queue / Dashboard\nruntime status labels"]
+
+    store --> topbar
+    overlay --> sourceDetail
+    store --> queuePage
+  end
+
+  rest --> queries
+```
+
+关键约束：
+
+- `archive.run.progress`、`operation.log.appended` 等高频事件只 patch Runtime Store，不触发 Sources / discovered / health 的 REST 刷新。
+- 完成、失败、暂停、恢复、提交等边界事件先 patch runtime，再 invalidate 受影响的 REST query，让数据库快照完成最终收敛。
+- 来源详情页在 SSE `connected` 时不固定轮询；只有 `offline`、`reconnecting`、`stale` 时才启用降级轮询。
+- Runtime Store 只保存 active / recent 运行态，不接管完整列表、分页、筛选和历史事实。
+
+snapshot 水位与事件回放流程：
+
+```mermaid
+sequenceDiagram
+  participant FE as RuntimeProvider
+  participant SSE as /api/v1/events
+  participant API as runtime snapshot API
+  participant Broker as EventBroker
+  participant DB as Postgres
+  participant Store as Zustand Runtime Store
+
+  FE->>SSE: open EventSource
+  FE->>API: GET /api/v1/runtime/snapshot
+  API->>Broker: read watermark(epoch, sequence S)
+  API->>DB: aggregate active / recent runtime
+  API-->>FE: snapshot(epoch, sequence S, state)
+  FE->>Store: replace runtime with snapshot
+
+  SSE-->>FE: event(epoch, sequence S + 1)
+  FE->>Store: apply patch when epoch matches and sequence advances
+
+  SSE-->>FE: event(epoch, sequence S + 3)
+  FE->>FE: detect sequence gap
+  FE->>API: GET /api/v1/runtime/snapshot
+  API->>Broker: read watermark(epoch, sequence N)
+  API->>DB: aggregate active / recent runtime
+  SSE-->>FE: buffer same-epoch events while snapshot is in-flight
+  API-->>FE: snapshot(epoch, sequence N, state)
+  FE->>Store: replace runtime with snapshot
+  FE->>Store: replay buffered events with sequence > N
+
+  Broker-->>SSE: API process restarted with new epoch
+  SSE-->>FE: event(new epoch, sequence 1)
+  FE->>Store: discard old runtime projection
+  FE->>API: GET /api/v1/runtime/snapshot
+```
+
 ### 阶段二：WebSocket Runtime Channel
 
 目标是在阶段一边界稳定后，引入双向 runtime channel，承载 snapshot、patch、event 与 command。

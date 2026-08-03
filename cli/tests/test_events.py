@@ -37,6 +37,8 @@ class EventBrokerTests(unittest.TestCase):
 
         self.assertIn(f"id: {event.id}\n", text)
         self.assertIn("event: archive.run.submitted\n", text)
+        self.assertIn(f'"sequence":{event.id}', text)
+        self.assertIn(f'"epoch":"{event.epoch}"', text)
         self.assertIn('"topic":"archive_runs"', text)
         self.assertIn('"run_id":9', text)
 

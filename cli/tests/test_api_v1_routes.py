@@ -511,6 +511,7 @@ class V1RouterSmokeTests(unittest.TestCase):
         self.assertIn("/api/v1/library/posts", paths)
         self.assertIn("/api/v1/actions/verify", paths)
         self.assertIn("/api/v1/health/detail", paths)
+        self.assertIn("/api/v1/runtime/snapshot", paths)
         self.assertIn("/api/v1/settings/cookies", paths)
         self.assertIn("/api/v1/auth/session", paths)
 

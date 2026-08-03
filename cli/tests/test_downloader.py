@@ -18,6 +18,7 @@ from xarchiver.downloader import (
     fetch_download_candidates,
     finish_job,
     flush_download_log_entries,
+    flush_pending_download_progress,
     format_sleep_range,
     handle_gallery_dl_progress_event,
     parse_downloader_progress,
@@ -324,8 +325,10 @@ class DownloaderTests(unittest.TestCase):
                     candidate_tweets,
                     {"123": 10},
                 )
+                flush_pending_download_progress(state, state_lock, 1, candidate_tweets, {"123": 10})
 
         self.assertEqual(state.completed_bytes_by_tweet, {"123": 7})
+        self.assertEqual(mark_progress.call_count, 2)
         self.assertEqual(
             mark_progress.call_args.args[4],
             {"123": {"downloaded_bytes": 10, "speed_bps": 2}},

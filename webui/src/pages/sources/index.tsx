@@ -1,9 +1,10 @@
 import { useEffect, useMemo, useState } from "react";
-import { useQuery, useQueryClient } from "@tanstack/react-query";
+import { useQueryClient } from "@tanstack/react-query";
 import { useSearchParams } from "react-router-dom";
 import { toast } from "sonner";
-import { apiGet, type ArchiveSubmission, type HealthDetail } from "@/lib/api";
+import type { ArchiveSubmission } from "@/lib/api";
 import { statusLabel } from "@/lib/formatters";
+import { useRuntime } from "@/lib/runtime-provider";
 import { CreateSource } from "./components/create-source";
 import { SourceDetailPanel } from "./components/source-detail-sheet";
 import { SourcesList } from "./components/sources-list";
@@ -26,20 +27,14 @@ export function SourcesPage() {
   const [createResetKey, setCreateResetKey] = useState(0);
   const [createDialogOpen, setCreateDialogOpen] = useState(false);
   const [detailSheetOpen, setDetailSheetOpen] = useState(false);
+  const downloadQueue = useRuntime((state) => state.queue);
 
   const includeDeletedDetail = sourceDeletedFilter !== "active";
   const sourcesQuery = useSourcesQuery(sourceTypeFilter, sourceDeletedFilter, sortBy, sortDirection);
   const detailQuery = useSourceDetail(selectedSourceId, includeDeletedDetail);
   const policyQuery = useDownloadPolicy();
-  const healthQuery = useQuery({
-    queryKey: ["health-detail"],
-    queryFn: () => apiGet<HealthDetail>("/api/v1/health/detail"),
-    enabled: detailSheetOpen,
-    refetchInterval: detailSheetOpen ? 15000 : false,
-  });
   const selected = detailQuery.data;
   const activeScanRun = selected?.active_scan_run;
-  const downloadQueue = healthQuery.data?.queue;
   const hasDownloadQueueWork = Boolean(
     downloadQueue &&
       (

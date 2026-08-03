@@ -470,6 +470,53 @@ export type SourceDownloadSummary = {
   speed_bps?: number | null;
 };
 
+export type RuntimeConnectionStatus = "connecting" | "connected" | "reconnecting" | "resyncing" | "stale" | "offline";
+
+export type RuntimeRun = ArchiveRun & {
+  downloaded_bytes?: number | null;
+  total_bytes?: number | null;
+  speed_bps?: number | null;
+  active_item_count?: number | null;
+  job_id?: number | null;
+  current_tweet_id?: string | null;
+  job_status?: string | null;
+  last_progress_at?: string | null;
+};
+
+export type RuntimeItem = ArchiveRunItem & {
+  archive_run_item_id: number;
+  archive_run_id: number;
+  source_id?: number | null;
+  archive_run_status?: string | null;
+  lastSequence?: number;
+};
+
+export type RuntimeGlobal = {
+  active_run_count: number;
+  active_item_count: number;
+  active_scan_count: number;
+  current_run_id?: number | null;
+  current_source_id?: number | null;
+  current_tweet_id?: string | null;
+  downloaded_bytes: number;
+  total_bytes?: number | null;
+  speed_bps?: number | null;
+};
+
+export type RuntimeSnapshot = {
+  epoch: string;
+  sequence: number;
+  recent_window_seconds: number;
+  worker: HealthDetail["worker"];
+  queue: HealthDetail["queue"];
+  sources: HealthDetail["sources"];
+  global: RuntimeGlobal;
+  runs: RuntimeRun[];
+  items: RuntimeItem[];
+  scans: SourceScanRun[];
+  recent_activity: Array<Record<string, unknown>>;
+};
+
 export type ArchiveRunControl = {
   run_id: number;
   status: string;

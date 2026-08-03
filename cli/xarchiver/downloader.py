@@ -70,6 +70,7 @@ GALLERY_DL_OUTPUT_MODE = {
     "progress-total": f"{GALLERY_DL_PROGRESS_PREFIX}progress|{{0}}|{{1}}|{{2}}|{{3}}\n",
 }
 DOWNLOAD_LOG_BATCH_SIZE = 100
+PROGRESS_THROTTLE_SECONDS = 0.75
 
 
 @dataclass
@@ -85,6 +86,12 @@ class DownloadProgressState:
     last_fallback_scan_at: float | None = None
     completed_bytes_by_tweet: dict[str, int] = field(default_factory=dict)
     completed_paths: set[Path] = field(default_factory=set)
+    last_progress_flush_at: float | None = None
+    last_progress_flush_tweet_id: str | None = None
+    flushed_progress_item_ids: set[int] = field(default_factory=set)
+    pending_progress_by_tweet: dict[str, dict[str, int]] = field(default_factory=dict)
+    pending_progress_message: str | None = None
+    pending_current_tweet_id: str | None = None
 
 
 def download(
@@ -265,6 +272,7 @@ def download(
             downloaded_bytes=0,
             total_bytes=0,
             speed_bps=0,
+            apply_to_all_items=True,
         )
 
         mark_attempts(
@@ -342,6 +350,7 @@ def download(
             f"下载失败: {category}",
             downloaded_bytes=0,
             speed_bps=0,
+            apply_to_all_items=True,
         )
         finish_job(job_id, "failed", 0, len(tweets), category)
         log_download_event(
@@ -635,6 +644,7 @@ def mark_run_items_progress(
     downloaded_bytes: int | None = None,
     total_bytes: int | None = None,
     speed_bps: int | None = None,
+    apply_to_all_items: bool = False,
 ) -> None:
     """把批量进度摘要回写到 archive_run_items 与 download_jobs。"""
 
@@ -643,47 +653,56 @@ def mark_run_items_progress(
     tweet_ids = [tweet["tweet_id"] for tweet in candidate_tweets]
     current_tweet_id = tweet_ids[0] if tweet_ids else None
     item_ids = [run_item_ids[tweet_id] for tweet_id in tweet_ids if run_item_ids and tweet_id in run_item_ids]
-    progress_item_id = item_ids[0] if item_ids else None
+    event_payload: dict[str, object]
     with connect() as conn:
         with conn.cursor() as cur:
             if item_ids:
-                cur.execute(
-                    """
-                    update archive_run_items
-                    set downloaded_bytes = case
-                          when %s::bigint is null then downloaded_bytes
-                          when id = %s then %s
-                          else 0
-                        end,
-                        total_bytes = case
-                          when %s::bigint is null then total_bytes
-                          when id = %s then %s
-                          else 0
-                        end,
-                        speed_bps = case
-                          when %s::bigint is null then speed_bps
-                          when id = %s then %s
-                          else 0
-                        end,
-                        progress_message = %s,
-                        last_progress_at = now(),
-                        updated_at = now()
-                    where id = any(%s)
-                    """,
-                    (
-                        downloaded_bytes,
-                        progress_item_id,
-                        downloaded_bytes,
-                        total_bytes,
-                        progress_item_id,
-                        total_bytes,
-                        speed_bps,
-                        progress_item_id,
-                        speed_bps,
-                        message,
-                        item_ids,
-                    ),
-                )
+                if downloaded_bytes is None and total_bytes is None and speed_bps is None:
+                    cur.execute(
+                        """
+                        update archive_run_items
+                        set progress_message = %s,
+                            last_progress_at = now(),
+                            updated_at = now()
+                        where id = any(%s)
+                        """,
+                        (message, item_ids),
+                    )
+                else:
+                    numeric_item_ids = item_ids if apply_to_all_items else item_ids[:1]
+                    if not apply_to_all_items and len(item_ids) > 1:
+                        cur.execute(
+                            """
+                            update archive_run_items
+                            set progress_message = %s,
+                                last_progress_at = now(),
+                                updated_at = now()
+                            where id = any(%s)
+                            """,
+                            (message, item_ids),
+                        )
+                    cur.execute(
+                        """
+                        update archive_run_items
+                        set downloaded_bytes = case when %s::bigint is null then downloaded_bytes else %s end,
+                            total_bytes = case when %s::bigint is null then total_bytes else %s end,
+                            speed_bps = case when %s::bigint is null then speed_bps else %s end,
+                            progress_message = %s,
+                            last_progress_at = now(),
+                            updated_at = now()
+                        where id = any(%s)
+                        """,
+                        (
+                            downloaded_bytes,
+                            downloaded_bytes,
+                            total_bytes,
+                            total_bytes,
+                            speed_bps,
+                            speed_bps,
+                            message,
+                            numeric_item_ids,
+                        ),
+                    )
             cur.execute(
                 """
                 update download_jobs
@@ -697,18 +716,24 @@ def mark_run_items_progress(
                 """,
                 (current_tweet_id, downloaded_bytes, total_bytes, speed_bps, message, job_id),
             )
+            event_payload = build_run_items_event_payload(
+                cur,
+                item_ids,
+                job_id=job_id,
+                extra={
+                    "tweet_ids": tweet_ids,
+                    "current_tweet_id": current_tweet_id,
+                    "progress_message": message,
+                    "downloaded_bytes": downloaded_bytes,
+                    "total_bytes": total_bytes,
+                    "speed_bps": speed_bps,
+                },
+            )
         conn.commit()
     publish_event(
         "archive_runs",
         "archive.run.progress",
-        {
-            "job_id": job_id,
-            "tweet_ids": tweet_ids,
-            "progress_message": message,
-            "downloaded_bytes": downloaded_bytes,
-            "total_bytes": total_bytes,
-            "speed_bps": speed_bps,
-        },
+        event_payload,
     )
 
 
@@ -757,8 +782,6 @@ def mark_run_items_tweet_progress(
     """按 tweet 粒度回写一次进度采样，并发布整批进度事件。"""
     if not candidate_tweets or not progress_by_tweet:
         return
-    tweet_ids = [tweet["tweet_id"] for tweet in candidate_tweets]
-    item_ids = [run_item_ids[tweet_id] for tweet_id in tweet_ids if run_item_ids and tweet_id in run_item_ids]
     rows = [
         (
             progress.get("downloaded_bytes"),
@@ -773,27 +796,16 @@ def mark_run_items_tweet_progress(
     total_values = [progress["total_bytes"] for progress in progress_by_tweet.values() if progress.get("total_bytes", 0) > 0]
     total_bytes = sum(total_values) if total_values else None
     speed_bps = sum(progress.get("speed_bps", 0) for progress in progress_by_tweet.values())
+    event_payload: dict[str, object]
     with connect() as conn:
         with conn.cursor() as cur:
-            if item_ids:
-                cur.execute(
-                    """
-                    update archive_run_items
-                    set speed_bps = 0,
-                        progress_message = %s,
-                        last_progress_at = now(),
-                        updated_at = now()
-                    where id = any(%s)
-                    """,
-                    (message, item_ids),
-                )
             if rows:
                 cur.executemany(
                     """
                     update archive_run_items
                     set downloaded_bytes = coalesce(%s, downloaded_bytes),
                         total_bytes = coalesce(%s, total_bytes),
-                        speed_bps = coalesce(%s, 0),
+                        speed_bps = coalesce(%s, speed_bps),
                         progress_message = %s,
                         last_progress_at = now(),
                         updated_at = now()
@@ -814,20 +826,225 @@ def mark_run_items_tweet_progress(
                 """,
                 (current_tweet_id, downloaded_bytes, total_bytes, speed_bps, message, job_id),
             )
+            event_payload = build_run_items_event_payload(
+                cur,
+                [int(row[3]) for row in rows],
+                job_id=job_id,
+                extra={
+                    "tweet_ids": list(progress_by_tweet),
+                    "current_tweet_id": current_tweet_id,
+                    "progress_message": message,
+                    "downloaded_bytes": downloaded_bytes,
+                    "total_bytes": total_bytes,
+                    "speed_bps": speed_bps,
+                },
+            )
         conn.commit()
     publish_event(
         "archive_runs",
         "archive.run.progress",
-        {
-            "job_id": job_id,
-            "tweet_ids": list(progress_by_tweet),
-            "current_tweet_id": current_tweet_id,
-            "progress_message": message,
-            "downloaded_bytes": downloaded_bytes,
-            "total_bytes": total_bytes,
-            "speed_bps": speed_bps,
-        },
+        event_payload,
     )
+
+
+def record_download_progress(
+    state: DownloadProgressState,
+    state_lock: Lock,
+    job_id: int,
+    candidate_tweets: list[dict[str, str]],
+    run_item_ids: dict[str, int] | None,
+    message: str,
+    progress_by_tweet: dict[str, dict[str, int]],
+    current_tweet_id: str | None = None,
+    force: bool = False,
+) -> None:
+    """记录一次采样，并在共享节流窗口允许时写库和 publish。"""
+
+    if not progress_by_tweet:
+        return
+    with state_lock:
+        now = time.monotonic()
+        for tweet_id, progress in progress_by_tweet.items():
+            pending = state.pending_progress_by_tweet.setdefault(tweet_id, {})
+            for key, value in progress.items():
+                pending[key] = value
+        state.pending_progress_message = message
+        if current_tweet_id:
+            state.pending_current_tweet_id = current_tweet_id
+
+        pending_item_ids = {
+            run_item_ids[tweet_id]
+            for tweet_id in state.pending_progress_by_tweet
+            if run_item_ids and tweet_id in run_item_ids
+        }
+        has_first_progress = bool(pending_item_ids - state.flushed_progress_item_ids)
+        item_switched = (
+            bool(current_tweet_id)
+            and state.last_progress_flush_tweet_id is not None
+            and current_tweet_id != state.last_progress_flush_tweet_id
+        )
+        interval_elapsed = (
+            state.last_progress_flush_at is None
+            or now - state.last_progress_flush_at >= PROGRESS_THROTTLE_SECONDS
+        )
+        if not (force or has_first_progress or item_switched or interval_elapsed):
+            return
+
+        flush_progress = {
+            tweet_id: dict(progress)
+            for tweet_id, progress in state.pending_progress_by_tweet.items()
+        }
+        flush_message = state.pending_progress_message or message
+        flush_current_tweet_id = state.pending_current_tweet_id or current_tweet_id
+        state.pending_progress_by_tweet.clear()
+        state.pending_progress_message = None
+        state.pending_current_tweet_id = None
+        state.last_progress_flush_at = now
+        if flush_current_tweet_id:
+            state.last_progress_flush_tweet_id = flush_current_tweet_id
+        state.flushed_progress_item_ids.update(pending_item_ids)
+
+    mark_run_items_tweet_progress(
+        job_id,
+        candidate_tweets,
+        run_item_ids,
+        flush_message,
+        flush_progress,
+        current_tweet_id=flush_current_tweet_id,
+    )
+
+
+def flush_pending_download_progress(
+    state: DownloadProgressState,
+    state_lock: Lock,
+    job_id: int,
+    candidate_tweets: list[dict[str, str]],
+    run_item_ids: dict[str, int] | None,
+) -> None:
+    """强制 flush 已被节流合并的最后一次采样。"""
+
+    with state_lock:
+        if not state.pending_progress_by_tweet:
+            return
+        progress_by_tweet = {
+            tweet_id: dict(progress)
+            for tweet_id, progress in state.pending_progress_by_tweet.items()
+        }
+        message = state.pending_progress_message or "下载器处理中"
+        current_tweet_id = state.pending_current_tweet_id
+        item_ids = {
+            run_item_ids[tweet_id]
+            for tweet_id in state.pending_progress_by_tweet
+            if run_item_ids and tweet_id in run_item_ids
+        }
+        state.pending_progress_by_tweet.clear()
+        state.pending_progress_message = None
+        state.pending_current_tweet_id = None
+        state.last_progress_flush_at = time.monotonic()
+        if current_tweet_id:
+            state.last_progress_flush_tweet_id = current_tweet_id
+        state.flushed_progress_item_ids.update(item_ids)
+
+    mark_run_items_tweet_progress(
+        job_id,
+        candidate_tweets,
+        run_item_ids,
+        message,
+        progress_by_tweet,
+        current_tweet_id=current_tweet_id,
+    )
+
+
+def build_run_items_event_payload(
+    cur,
+    item_ids: list[int],
+    job_id: int,
+    extra: dict[str, object] | None = None,
+) -> dict[str, object]:
+    """构造前端 runtime overlay 可直接消费的 run/item 事件载荷。"""
+
+    payload: dict[str, object] = {"job_id": job_id}
+    if extra:
+        payload.update(extra)
+    rows: list[dict[str, object]] = []
+    if item_ids:
+        cur.execute(
+            """
+            select i.id,
+                   i.id as archive_run_item_id,
+                   i.archive_run_id,
+                   r.source_id,
+                   r.status as archive_run_status,
+                   i.tweet_id,
+                   i.status,
+                   i.retry_count,
+                   i.error_category,
+                   i.error_message,
+                   i.linked_item_id,
+                   i.cancel_requested,
+                   i.downloaded_bytes,
+                   i.total_bytes,
+                   i.speed_bps,
+                   i.progress_message,
+                   i.last_progress_at,
+                   i.last_attempt_at,
+                   i.next_attempt_at,
+                   i.created_at,
+                   i.updated_at
+            from archive_run_items i
+            join archive_runs r on r.id = i.archive_run_id
+            where i.id = any(%s)
+            order by i.id
+            """,
+            (item_ids,),
+        )
+        rows = [dict(row) for row in cur.fetchall()]
+    elif job_id:
+        cur.execute(
+            """
+            select r.id as archive_run_id, r.source_id, r.status as archive_run_status
+            from download_jobs j
+            join archive_runs r on r.id = j.archive_run_id
+            where j.id = %s
+            """,
+            (job_id,),
+        )
+        row = cur.fetchone()
+        if row:
+            payload.update(dict(row))
+
+    if rows:
+        first = rows[0]
+        run_id = int(first["archive_run_id"])
+        payload.update(
+            {
+                "run_id": run_id,
+                "archive_run_id": run_id,
+                "source_id": first.get("source_id"),
+                "run": {
+                    "id": run_id,
+                    "source_id": first.get("source_id"),
+                    "status": first.get("archive_run_status"),
+                    "speed_bps": payload.get("speed_bps"),
+                },
+                "items": rows,
+            }
+        )
+    else:
+        payload.setdefault("items", [])
+        archive_run_id = payload.get("archive_run_id")
+        if archive_run_id is not None:
+            payload.setdefault("run_id", archive_run_id)
+            payload.setdefault(
+                "run",
+                {
+                    "id": archive_run_id,
+                    "source_id": payload.get("source_id"),
+                    "status": payload.get("archive_run_status"),
+                    "speed_bps": payload.get("speed_bps"),
+                },
+            )
+    return payload
 
 
 def fetch_media_sizes(tweet_ids: list[str]) -> dict[str, int]:
@@ -902,7 +1119,9 @@ def run_command_with_progress(
                     progress_state.native_progress_seen = True
                     progress_state.last_native_progress_at = time.monotonic()
                     progress_state.current_tweet_id = tweet_id
-                mark_run_items_tweet_progress(
+                record_download_progress(
+                    progress_state,
+                    state_lock,
                     job_id,
                     candidate_tweets,
                     run_item_ids,
@@ -976,7 +1195,9 @@ def run_command_with_progress(
                 progress_state.previous_bytes = current_file_bytes
                 progress_state.previous_sample_at = current_at
             if downloaded_bytes or speed_bps:
-                mark_run_items_tweet_progress(
+                record_download_progress(
+                    progress_state,
+                    state_lock,
                     job_id,
                     candidate_tweets,
                     run_item_ids,
@@ -1019,7 +1240,9 @@ def run_command_with_progress(
                 (tweet_id for tweet_id in tweet_ids if progress_by_tweet[tweet_id]["speed_bps"] > 0),
                 None,
             )
-            mark_run_items_tweet_progress(
+            record_download_progress(
+                progress_state,
+                state_lock,
                 job_id,
                 candidate_tweets,
                 run_item_ids,
@@ -1035,6 +1258,7 @@ def run_command_with_progress(
     return_code = process.wait()
     stdout_thread.join(timeout=1)
     stderr_thread.join(timeout=1)
+    flush_pending_download_progress(progress_state, state_lock, job_id, candidate_tweets, run_item_ids)
     flush_download_log_entries(log_stream_id, pending_log_entries, log_buffer_lock)
     return subprocess.CompletedProcess(command, return_code, "".join(stdout_chunks), "".join(stderr_chunks))
 
@@ -1120,6 +1344,10 @@ def handle_gallery_dl_progress_event(
         tweet_id, path = resolved
         if event_type == "start":
             with state_lock:
+                previous_tweet_id = state.current_tweet_id
+            if previous_tweet_id and previous_tweet_id != tweet_id:
+                flush_pending_download_progress(state, state_lock, job_id, candidate_tweets, run_item_ids)
+            with state_lock:
                 state.current_tweet_id = tweet_id
                 state.current_path = path
                 state.previous_bytes = 0
@@ -1138,7 +1366,9 @@ def handle_gallery_dl_progress_event(
                 state.current_path = None
                 state.previous_bytes = 0
                 state.previous_sample_at = None
-            mark_run_items_tweet_progress(
+            record_download_progress(
+                state,
+                state_lock,
                 job_id,
                 candidate_tweets,
                 run_item_ids,
@@ -1150,6 +1380,7 @@ def handle_gallery_dl_progress_event(
                     }
                 },
                 current_tweet_id=tweet_id,
+                force=True,
             )
             return
         with state_lock:
@@ -1172,7 +1403,9 @@ def handle_gallery_dl_progress_event(
             state.completed_bytes_by_tweet.get(tweet_id, 0)
             + int(event.get("downloaded_bytes") or 0)
         )
-    mark_run_items_tweet_progress(
+    record_download_progress(
+        state,
+        state_lock,
         job_id,
         candidate_tweets,
         run_item_ids,

@@ -17,10 +17,15 @@ from fastapi import APIRouter, Header, HTTPException, Request
 from fastapi.responses import StreamingResponse
 
 from xarchiver.api.deps import parse_event_topics, resolve_archive_file
-from xarchiver.api.schemas import DownloadPolicyResponse, HealthDetailResponse
+from xarchiver.api.schemas import (
+    DownloadPolicyResponse,
+    HealthDetailResponse,
+    RuntimeSnapshotResponse,
+)
 from xarchiver.config import get_settings
 from xarchiver.core.events import event_broker, format_sse_event
 from xarchiver.services.health import get_health_detail
+from xarchiver.services.runtime import get_runtime_snapshot
 
 router = APIRouter(tags=["misc"])
 
@@ -152,6 +157,13 @@ def health_detail() -> dict[str, object]:
     """返回比 `/health` 更详细的诊断信息。"""
 
     return get_health_detail()
+
+
+@router.get("/runtime/snapshot", response_model=RuntimeSnapshotResponse)
+def runtime_snapshot() -> dict[str, object]:
+    """返回 WebUI 运行态快照，用于 SSE 首连、重连和 gap 收敛。"""
+
+    return get_runtime_snapshot()
 
 
 @router.get("/media-file/{relative_path:path}")

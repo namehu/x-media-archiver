@@ -7,6 +7,7 @@ from __future__ import annotations
 
 import json
 import logging
+import uuid
 from collections.abc import Iterable
 from dataclasses import dataclass
 from datetime import UTC, datetime
@@ -22,6 +23,7 @@ class ArchiveEvent:
     """一条可广播的归档事件。"""
 
     id: int
+    epoch: str
     topic: str
     type: str
     payload: dict[str, Any]
@@ -75,6 +77,7 @@ class EventBroker:
 
     def __init__(self, max_queue_size: int = 100) -> None:
         self._max_queue_size = max_queue_size
+        self._epoch = uuid.uuid4().hex
         self._lock = Lock()
         self._next_id = 1
         self._subscriptions: set[EventSubscription] = set()
@@ -99,6 +102,7 @@ class EventBroker:
 
         event = ArchiveEvent(
             id=self._allocate_id(),
+            epoch=self._epoch,
             topic=topic,
             type=event_type,
             payload=json_safe_payload(payload or {}),
@@ -109,6 +113,12 @@ class EventBroker:
         for subscription in subscriptions:
             subscription.put(event)
         return event
+
+    def watermark(self) -> tuple[str, int]:
+        """返回当前进程事件 epoch 与已分配的全局 sequence 水位。"""
+
+        with self._lock:
+            return self._epoch, self._next_id - 1
 
     def _allocate_id(self) -> int:
         """分配单调递增的事件 ID。"""
@@ -158,6 +168,8 @@ def format_sse_event(event: ArchiveEvent) -> str:
     data = json.dumps(
         {
             "id": event.id,
+            "sequence": event.id,
+            "epoch": event.epoch,
             "topic": event.topic,
             "type": event.type,
             "payload": event.payload,
