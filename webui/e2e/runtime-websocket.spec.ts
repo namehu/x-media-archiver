@@ -270,6 +270,113 @@ test("ignores late message, close, and timeout callbacks from a replaced WebSock
   expect(result.callbacksBeforeStop).toEqual({ reconnects: 0, closeCodes: [] });
 });
 
+test("defers closing a connecting WebSocket until its handshake completes", async ({ page }) => {
+  await page.goto("/");
+
+  const result = await page.evaluate(async () => {
+    const OriginalWebSocket = window.WebSocket;
+    const instances: FakeWebSocket[] = [];
+
+    class FakeWebSocket {
+      static readonly CONNECTING = 0;
+      static readonly OPEN = 1;
+      static readonly CLOSING = 2;
+      static readonly CLOSED = 3;
+
+      readyState = FakeWebSocket.CONNECTING;
+      closeCalls: Array<{ code?: number; reason?: string }> = [];
+      openListeners: Array<() => void> = [];
+      onmessage: ((event: { data: string }) => void) | null = null;
+      onclose: ((event: { code: number }) => void) | null = null;
+
+      constructor(_url: string) {
+        instances.push(this);
+      }
+
+      addEventListener(type: string, listener: () => void) {
+        if (type === "open") this.openListeners.push(listener);
+      }
+
+      close(code?: number, reason?: string) {
+        this.closeCalls.push({ code, reason });
+        this.readyState = FakeWebSocket.CLOSING;
+      }
+
+      emitOpen() {
+        this.readyState = FakeWebSocket.OPEN;
+        for (const listener of this.openListeners.splice(0)) listener();
+      }
+
+      emit(value: Record<string, unknown>) {
+        this.onmessage?.({ data: JSON.stringify(value) });
+      }
+    }
+
+    Object.defineProperty(window, "WebSocket", { configurable: true, value: FakeWebSocket });
+    try {
+      const moduleUrl = `${window.location.origin}/src/lib/runtime-transport.ts`;
+      const { RuntimeTransportController } = await import(/* @vite-ignore */ moduleUrl);
+      const controller = new RuntimeTransportController({
+        onStatus: () => undefined,
+        onWebSocketEnvelope: () => undefined,
+        onReconnect: () => undefined,
+        onClose: () => undefined,
+      });
+
+      controller.start();
+      const websocket = instances[0];
+      controller.stop();
+      const closeCallsBeforeOpen = [...websocket.closeCalls];
+      websocket.emitOpen();
+
+      const resumedController = new RuntimeTransportController({
+        onStatus: () => undefined,
+        onWebSocketEnvelope: () => undefined,
+        onReconnect: () => undefined,
+        onClose: () => undefined,
+      });
+      resumedController.start();
+      const healthyWebsocket = instances[1];
+      healthyWebsocket.emitOpen();
+      healthyWebsocket.emit({
+        protocol: 1,
+        type: "runtime.snapshot",
+        epoch: "epoch-resume-test",
+        sequence: 1,
+        connection_sequence: 1,
+        sent_at: "2026-08-10T00:00:00Z",
+        payload: {},
+      });
+      const resume = () =>
+        (resumedController as unknown as { handleResume: () => void }).handleResume();
+      const instancesBeforeHealthyResume = instances.length;
+      resume();
+      const instancesAfterHealthyResume = instances.length;
+      healthyWebsocket.readyState = FakeWebSocket.CLOSED;
+      resume();
+      const instancesAfterClosedResume = instances.length;
+      resumedController.stop();
+
+      return {
+        closeCallsBeforeOpen,
+        closeCallsAfterOpen: websocket.closeCalls,
+        instancesBeforeHealthyResume,
+        instancesAfterHealthyResume,
+        instancesAfterClosedResume,
+      };
+    } finally {
+      Object.defineProperty(window, "WebSocket", { configurable: true, value: OriginalWebSocket });
+    }
+  });
+
+  expect(result.closeCallsBeforeOpen).toEqual([]);
+  expect(result.closeCallsAfterOpen).toEqual([
+    { code: 1000, reason: "runtime_provider_unmounted" },
+  ]);
+  expect(result.instancesAfterHealthyResume).toBe(result.instancesBeforeHealthyResume);
+  expect(result.instancesAfterClosedResume).toBe(result.instancesBeforeHealthyResume + 1);
+});
+
 async function mockApis(
   page: Page,
   hooks: {

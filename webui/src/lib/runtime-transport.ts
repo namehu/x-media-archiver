@@ -60,7 +60,7 @@ export class RuntimeTransportController {
     const websocket = this.websocket;
     this.websocket = null;
     this.readyWebSocket = null;
-    websocket?.close(1000, "runtime_provider_unmounted");
+    if (websocket) this.closeWebSocket(websocket, 1000, "runtime_provider_unmounted");
     this.activeTransport = null;
   }
 
@@ -73,7 +73,7 @@ export class RuntimeTransportController {
     const websocket = this.websocket;
     this.websocket = null;
     this.readyWebSocket = null;
-    websocket?.close(1012, "runtime_resync");
+    if (websocket) this.closeWebSocket(websocket, 1012, "runtime_resync");
     if (!probe && this.activeTransport === "websocket") {
       this.activeTransport = null;
       this.callbacks.onStatus("reconnecting", "websocket");
@@ -169,6 +169,20 @@ export class RuntimeTransportController {
     this.scheduleReconnect();
   }
 
+  private closeWebSocket(websocket: WebSocket, code: number, reason: string) {
+    if (websocket.readyState === WebSocket.CONNECTING) {
+      websocket.addEventListener(
+        "open",
+        () => {
+          if (websocket.readyState === WebSocket.OPEN) websocket.close(code, reason);
+        },
+        { once: true },
+      );
+      return;
+    }
+    if (websocket.readyState === WebSocket.OPEN) websocket.close(code, reason);
+  }
+
   private activatePolling() {
     if (this.stopped) return;
     this.clearTimer("connect");
@@ -198,7 +212,13 @@ export class RuntimeTransportController {
   }
 
   private handleResume = () => {
-    if (!this.stopped) this.reconnectNow();
+    if (this.stopped) return;
+    const websocket = this.websocket;
+    if (
+      websocket &&
+      (websocket.readyState === WebSocket.CONNECTING || websocket.readyState === WebSocket.OPEN)
+    ) return;
+    this.reconnectNow();
   };
 
   private handleVisibility = () => {
