@@ -11,61 +11,31 @@ export type ServerEvent = {
   created_at?: string;
 };
 
-export const SERVER_EVENT_TYPES = [
-  "run.created",
-  "run.running",
-  "run.updated",
-  "run.items_updated",
-  "run.items_failed",
-  "source.created",
-  "source.deleted",
-  "source.restored",
-  "source.updated",
-  "source.history",
-  "source.scan",
-  "source.discovered",
-  "source.submitted",
-  "source.pin_changed",
-  "source.reordered",
-  "worker.lock",
-  "archive.run.submitted",
-  "archive.run.processing",
-  "archive.run.items_processed",
-  "archive.run.items_failed",
-  "archive.run.progress",
-  "archive.run.completed",
-  "archive.run.updated",
-  "archive.run.retried",
-  "archive.run.paused",
-  "archive.run.resumed",
-  "archive.run.stopped",
-  "archive.run.items_cancelled",
-  "archive.run.unblocked",
-  "source.status_changed",
-  "source.history_scan.started",
-  "source.history_scan.stopped",
-  "source.scan_session.started",
-  "source.scan_session.stopped",
-  "source.scan.started",
-  "source.scan.completed",
-  "source.scan.discovered",
-  "source.scan.failed",
-  "source.scan.log",
-  "source.scan.waiting_downloads",
-  "source.discovered.submitted",
-  "source.download.submitted",
-  "operation.log.appended",
-  "library.media_deleted",
-];
+const RUNTIME_PERSISTENT_QUERY_ROOTS = new Set([
+  "summary",
+  "media",
+  "posts",
+  "tweet",
+  "failures",
+  "duplicates",
+  "sources",
+  "source",
+  "source-downloads",
+  "source-discovered",
+  "source-scan-runs",
+  "archive-runs",
+  "archive-run",
+  "health-detail",
+]);
 
-export function parseServerEvent(message: MessageEvent): ServerEvent {
-  try {
-    const value = JSON.parse(String(message.data || "{}")) as unknown;
-    if (value && typeof value === "object") return value as ServerEvent;
-  } catch (_error) {
-    return {};
-  }
-  return {};
+export function invalidateRuntimePersistentQueries(queryClient: QueryClient) {
+  return queryClient.invalidateQueries({
+    predicate: (query) => {
+      const root = query.queryKey[0];
+      return typeof root === "string" && RUNTIME_PERSISTENT_QUERY_ROOTS.has(root);
+    },
+    refetchType: "active",
+  });
 }
 
 export function invalidateForEvent(queryClient: QueryClient, event: ServerEvent) {
@@ -73,14 +43,7 @@ export function invalidateForEvent(queryClient: QueryClient, event: ServerEvent)
   const eventType = event.type || event.event_type || "";
   const payload = event.payload || {};
 
-  if (eventType === "archive.run.progress") {
-    return;
-  }
-
-  if (eventType === "source.scan.log") {
-    const streamId = numberFromPayload(payload, "log_stream_id", "stream_id", "id");
-    void queryClient.invalidateQueries({ queryKey: ["operation-log-streams"] });
-    void queryClient.invalidateQueries(streamId ? { queryKey: ["operation-log", streamId] } : { queryKey: ["operation-log"] });
+  if (eventType === "archive.run.progress" || eventType === "source.scan.log" || eventType.startsWith("operation.log.")) {
     return;
   }
 
@@ -142,7 +105,7 @@ export function invalidateForEvent(queryClient: QueryClient, event: ServerEvent)
       markDeletedPostsInCache(queryClient, deletedTweetIds);
     }
     void queryClient.invalidateQueries({ queryKey: ["media"] });
-    if (eventType !== "library.media_deleted") {
+    if (eventType !== "library.media_deleted" || !deletedTweetIds.length) {
       void queryClient.invalidateQueries({ queryKey: ["posts"] });
     }
     void queryClient.invalidateQueries({ queryKey: ["tweet"] });
@@ -152,11 +115,38 @@ export function invalidateForEvent(queryClient: QueryClient, event: ServerEvent)
     void queryClient.invalidateQueries({ queryKey: ["source-discovered"] });
   }
 
-  if (topic === "logs" || eventType.startsWith("operation.log.")) {
-    const streamId = numberFromPayload(payload, "stream_id", "id");
-    void queryClient.invalidateQueries({ queryKey: ["operation-log-streams"] });
-    void queryClient.invalidateQueries(streamId ? { queryKey: ["operation-log", streamId] } : { queryKey: ["operation-log"] });
-  }
+}
+
+export function createEventInvalidationScheduler(queryClient: QueryClient, delayMs = 250) {
+  const pending = new Map<string, ServerEvent>();
+  let timer: number | null = null;
+  const flush = () => {
+    timer = null;
+    const events = [...pending.values()];
+    pending.clear();
+    for (const event of events) invalidateForEvent(queryClient, event);
+  };
+  return {
+    schedule(event: ServerEvent) {
+      const eventType = event.type || event.event_type || "";
+      if (eventType === "archive.run.progress" || eventType === "source.scan.log" || eventType.startsWith("operation.log.")) return;
+      const payload = event.payload || {};
+      const identity = [
+        event.topic || "",
+        eventType,
+        stringFromPayload(payload, "operation_id") ||
+          numberFromPayload(payload, "run_id", "archive_run_id", "source_id", "scan_run_id") ||
+          "",
+      ].join(":");
+      pending.set(identity, mergeScheduledEvents(pending.get(identity), event));
+      if (timer === null) timer = window.setTimeout(flush, delayMs);
+    },
+    dispose() {
+      if (timer !== null) window.clearTimeout(timer);
+      timer = null;
+      pending.clear();
+    },
+  };
 }
 
 function shouldRefreshSourceDiscoveriesForRunEvent(eventType: string) {
@@ -227,6 +217,30 @@ function stringArrayFromPayload(payload: Record<string, unknown>, key: string) {
   const value = payload[key];
   if (!Array.isArray(value)) return [];
   return value.filter((item): item is string => typeof item === "string" && item.length > 0);
+}
+
+function stringFromPayload(payload: Record<string, unknown>, key: string) {
+  const value = payload[key];
+  return typeof value === "string" && value.trim() ? value : null;
+}
+
+function mergeScheduledEvents(current: ServerEvent | undefined, next: ServerEvent): ServerEvent {
+  if (!current) return next;
+  const currentPayload = current.payload || {};
+  const nextPayload = next.payload || {};
+  const tweetIds = [...new Set([
+    ...stringArrayFromPayload(currentPayload, "tweet_ids"),
+    ...stringArrayFromPayload(nextPayload, "tweet_ids"),
+  ])];
+  return {
+    ...current,
+    ...next,
+    payload: {
+      ...currentPayload,
+      ...nextPayload,
+      ...(tweetIds.length ? { tweet_ids: tweetIds } : {}),
+    },
+  };
 }
 
 function markDeletedPostsInCache(queryClient: QueryClient, tweetIds: string[]) {

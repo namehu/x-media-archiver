@@ -1,48 +1,66 @@
 /**
- * 运行时状态 Provider（SSE 事件流 + 快照回退）
+ * 运行时状态 Provider（WebSocket 增量 + REST 快照回退）
  *
- * 通过 EventSource 订阅后端事件流，维护归档运行时的全量状态
- * （worker / queue / sources / runs / items / scans / global 汇总指标）。
- *
- * 核心机制：
- * - 事件按 epoch + sequence 单调递增，用于检测连接切换、序列空洞与丢事件；
- * - 检测到空洞 / epoch 变化 / 长时间无事件时，回退拉取全量快照；
- * - 快照在途期间到达的事件先进入缓冲队列，快照返回后按序列重放，避免丢失；
- * - 每条 item 记录 lastSequence，用于去重并防止旧事件覆盖新状态。
+ * WebSocket 首帧快照后接收有序增量；连接不可用时定期拉取完整快照。
+ * 任意时刻只允许其中一种 transport 写入 store，避免双通道竞态。
  */
 import { useCallback, useEffect, useMemo, useRef, type ReactNode } from "react";
 import { useQueryClient } from "@tanstack/react-query";
 import { create } from "zustand";
 import {
   apiGet,
-  apiUrl,
   type RuntimeGlobal,
   type RuntimeItem,
   type RuntimeRun,
   type RuntimeSnapshot,
   type SourceScanRun,
 } from "./api";
-import { invalidateForEvent, parseServerEvent, SERVER_EVENT_TYPES, type ServerEvent } from "./server-events";
+import {
+  createEventInvalidationScheduler,
+  invalidateRuntimePersistentQueries,
+  type ServerEvent,
+} from "./server-events";
+import {
+  RuntimeTransportController,
+  type RuntimeTransportKind,
+  type RuntimeWsEnvelope,
+} from "./runtime-transport";
 
 /**
  * 连接状态：
- * - connecting    建立 SSE 连接中
+ * - connecting    建立 WebSocket 连接中
  * - connected     已连接且心跳正常
- * - reconnecting  SSE 断开，浏览器自动重连中
+ * - reconnecting  WebSocket 断开，等待重连
  * - resyncing     正在拉取全量快照
  * - stale         超过阈值未收到事件，等待重新同步
- * - offline       快照拉取失败 / 环境不支持 EventSource
+ * - offline       WebSocket 与快照当前均不可用
  */
 export type RuntimeConnectionStatus = "connecting" | "connected" | "reconnecting" | "resyncing" | "stale" | "offline";
 
 /** 连接元信息：最近事件 / 最近快照时间戳，用于陈旧判定 */
 type RuntimeConnection = {
   status: RuntimeConnectionStatus;
+  transport: RuntimeTransportKind;
   lastEventAt?: number;
   lastSnapshotAt?: number;
 };
 
-/** Provider 对外暴露的运行时状态（事件流增量 + 快照全量合并后的最终形态） */
+export type RuntimeDiagnostics = {
+  startedAt: number;
+  transport: RuntimeTransportKind;
+  messagesReceived: number;
+  messageRatePerMinute: number;
+  bytesReceived: number;
+  stateCommits: number;
+  reconnects: number;
+  snapshots: number;
+  drops: number;
+  resyncs: number;
+  lastCloseCode: number | null;
+  lastMessageAt?: number;
+};
+
+/** Provider 对外暴露的运行时状态（WS 增量 + 快照全量合并后的最终形态） */
 type RuntimeState = {
   /** 服务端 epoch：变化即视为连接重建，需重新快照 */
   epoch?: string;
@@ -68,6 +86,7 @@ type RuntimeState = {
   activeItemIdByTweetId: Record<string, number>;
   /** 来源扫描 run 索引 */
   scansById: Record<number, SourceScanRun>;
+  diagnostics: RuntimeDiagnostics;
 };
 
 /** useRuntimeSource 派生的单来源视图：按 tweet 去重的条目、活动条目与下载进度汇总 */
@@ -105,12 +124,15 @@ const TERMINAL_ITEM_STATUSES = new Set([
 ]);
 /** 进行中的 run 状态：计入 active_run_count */
 const ACTIVE_RUN_STATUSES = new Set(["queued", "running", "paused", "blocked"]);
+const ACTIVE_SCAN_STATUSES = new Set(["running", "waiting_downloads"]);
 /** 事件陈旧阈值：connected 状态下超过该时长无事件则触发重新快照 */
-const STALE_THRESHOLD_MS = 30_000;
+const STALE_THRESHOLD_MS = 45_000;
 /** 快照最小间隔：对快照请求做节流，避免高频打爆后端 */
 const SNAPSHOT_MIN_INTERVAL_MS = 2_000;
-/** 快照在途期间事件缓冲上限：超过则标记溢出，快照后再次拉取补全 */
-const SNAPSHOT_BUFFER_LIMIT = 500;
+/** WS 不可用时的全量快照轮询间隔。 */
+const SNAPSHOT_POLL_INTERVAL_MS = 5_000;
+/** 持久事实查询的降级收敛上限，使用 trailing throttle 防止事件高峰制造请求风暴。 */
+const PERSISTENT_QUERY_CONVERGENCE_INTERVAL_MS = 15_000;
 
 /** 全局指标的空兜底值 */
 const emptyGlobal: RuntimeGlobal = {
@@ -126,51 +148,77 @@ const emptyGlobal: RuntimeGlobal = {
 const initialRuntimeState: RuntimeState = {
   sequence: 0,
   recentWindowSeconds: 120,
-  connection: { status: "connecting" },
+  connection: { status: "connecting", transport: "websocket" },
   global: emptyGlobal,
   runsById: {},
   itemsById: {},
   activeItemIdByTweetId: {},
   scansById: {},
+  diagnostics: {
+    startedAt: Date.now(),
+    transport: "websocket",
+    messagesReceived: 0,
+    messageRatePerMinute: 0,
+    bytesReceived: 0,
+    stateCommits: 0,
+    reconnects: 0,
+    snapshots: 0,
+    drops: 0,
+    resyncs: 0,
+    lastCloseCode: null,
+  },
 };
 
 const useRuntimeStore = create<RuntimeState>(() => initialRuntimeState);
 
 export function RuntimeProvider({ children }: { children: ReactNode }) {
   const queryClient = useQueryClient();
-  // snapshotInFlightRef：标记快照是否在途，在途期间事件一律进缓冲
   const snapshotInFlightRef = useRef(false);
-  // snapshotTimerRef / lastSnapshotStartedAtRef：快照节流定时器与上次发起时间
   const snapshotTimerRef = useRef<number | null>(null);
   const lastSnapshotStartedAtRef = useRef(0);
-  // bufferedEventsRef / bufferOverflowRef：快照在途期间的事件缓冲与溢出标记
-  const bufferedEventsRef = useRef<ServerEvent[]>([]);
-  const bufferOverflowRef = useRef(false);
+  const persistentQueryTimerRef = useRef<number | null>(null);
+  const lastPersistentQueryConvergenceAtRef = useRef(0);
+  const transportRef = useRef<RuntimeTransportController | null>(null);
+  const lastWsConnectionSequenceRef = useRef(0);
+  const hasAppliedWebSocketSnapshotRef = useRef(false);
+  const convergePersistentQueriesOnNextWebSocketSnapshotRef = useRef(false);
+  const invalidationScheduler = useMemo(() => createEventInvalidationScheduler(queryClient), [queryClient]);
 
-  /** 更新连接状态（保留其他字段，patch 做部分覆盖） */
-  const setConnection = useCallback((status: RuntimeConnectionStatus, patch: Partial<RuntimeConnection> = {}) => {
+  const setConnection = useCallback((status: RuntimeConnectionStatus, transport?: RuntimeTransportKind, patch: Partial<RuntimeConnection> = {}) => {
     useRuntimeStore.setState((current) => ({
       ...current,
-      connection: { ...current.connection, ...patch, status },
+      connection: { ...current.connection, ...patch, status, transport: transport ?? current.connection.transport },
+      diagnostics: {
+        ...current.diagnostics,
+        transport: transport ?? current.diagnostics.transport,
+        stateCommits: current.diagnostics.stateCommits + 1,
+      },
     }));
   }, []);
 
-  /** 缓冲快照在途期间到达的事件；超过上限只标记溢出，不再追加 */
-  const bufferEvent = useCallback((event: ServerEvent) => {
-    if (bufferedEventsRef.current.length >= SNAPSHOT_BUFFER_LIMIT) {
-      bufferOverflowRef.current = true;
+  const convergePersistentQueries = useCallback(() => {
+    persistentQueryTimerRef.current = null;
+    lastPersistentQueryConvergenceAtRef.current = Date.now();
+    void invalidateRuntimePersistentQueries(queryClient);
+  }, [queryClient]);
+
+  const schedulePersistentQueryConvergence = useCallback(() => {
+    if (persistentQueryTimerRef.current !== null) return;
+    const waitMs = Math.max(
+      0,
+      PERSISTENT_QUERY_CONVERGENCE_INTERVAL_MS -
+        (Date.now() - lastPersistentQueryConvergenceAtRef.current),
+    );
+    if (waitMs === 0) {
+      convergePersistentQueries();
       return;
     }
-    bufferedEventsRef.current.push(event);
-  }, []);
+    persistentQueryTimerRef.current = window.setTimeout(convergePersistentQueries, waitMs);
+  }, [convergePersistentQueries]);
 
-  /**
-   * 请求全量快照（带最小间隔节流，避免并发与高频请求）。
-   * reason：触发原因；immediate：跳过节流立即执行。
-   * 成功后将缓冲事件按序列重放；失败则置为 offline。
-   */
   const requestSnapshot = useCallback(
-    (reason: "connect" | "gap" | "epoch" | "stale" | "manual" | "buffer-overflow", immediate = false) => {
+    (reason: "polling" | "manual", immediate = false) => {
+      if (transportRef.current?.active === "websocket") return;
       if (snapshotInFlightRef.current) return;
       const now = Date.now();
       const waitMs = immediate ? 0 : Math.max(0, SNAPSHOT_MIN_INTERVAL_MS - (now - lastSnapshotStartedAtRef.current));
@@ -185,135 +233,207 @@ export function RuntimeProvider({ children }: { children: ReactNode }) {
 
       snapshotInFlightRef.current = true;
       lastSnapshotStartedAtRef.current = now;
-      setConnection("resyncing");
+      const activeTransport = transportRef.current?.active ?? "polling";
+      if (!useRuntimeStore.getState().connection.lastSnapshotAt) {
+        setConnection("resyncing", activeTransport);
+      }
       void apiGet<RuntimeSnapshot>("/api/v1/runtime/snapshot")
         .then((snapshot) => {
-          // 取出快照在途期间缓冲的事件：仅保留同 epoch 且序列号晚于快照的，按序列升序重放
-          const buffered = bufferedEventsRef.current
-            .filter((event) => event.epoch === snapshot.epoch && eventSequence(event) > snapshot.sequence)
-            .sort((a, b) => eventSequence(a) - eventSequence(b));
-          bufferedEventsRef.current = [];
-          const hadOverflow = bufferOverflowRef.current;
-          bufferOverflowRef.current = false;
+          const currentTransport = transportRef.current?.active ?? "polling";
+          if (currentTransport === "websocket") return;
+          const shouldConvergeQueries = snapshotRequiresPersistentQueryConvergence(
+            useRuntimeStore.getState(),
+            snapshot,
+          );
           const syncedAt = Date.now();
           useRuntimeStore.setState((current) => {
-            let next = replaceRuntimeWithSnapshot(current, snapshot);
-            for (const event of buffered) {
-              next = applyRuntimeEvent(next, event);
-            }
+            const next = replaceRuntimeWithSnapshot(current, snapshot);
             return {
               ...next,
               connection: {
                 ...next.connection,
                 status: "connected",
+                transport: "polling",
                 lastEventAt: syncedAt,
                 lastSnapshotAt: syncedAt,
               },
+              diagnostics: {
+                ...next.diagnostics,
+                transport: "polling",
+                snapshots: next.diagnostics.snapshots + 1,
+                stateCommits: next.diagnostics.stateCommits + 1,
+              },
             };
           });
-          if (hadOverflow) {
-            window.setTimeout(() => requestSnapshot("buffer-overflow"), SNAPSHOT_MIN_INTERVAL_MS);
-          }
+          if (shouldConvergeQueries) schedulePersistentQueryConvergence();
         })
         .catch(() => {
-          setConnection("offline");
+          if (transportRef.current?.active !== "websocket") {
+            setConnection("offline", "polling");
+          }
         })
         .finally(() => {
           snapshotInFlightRef.current = false;
         });
     },
-    [setConnection],
+    [schedulePersistentQueryConvergence, setConnection],
   );
 
-  /**
-   * SSE 消息入口：先更新连接心跳并失效相关 React Query 缓存，
-   * 再按 epoch / sequence 规则决定「直接应用、缓冲待快照回退」还是「丢弃重复事件」。
-   */
-  const handleMessage = useCallback(
-    (message: MessageEvent) => {
-      const event = parseServerEvent(message);
-      const sequence = eventSequence(event);
-      const epoch = event.epoch;
+  const handleWebSocketEnvelope = useCallback(
+    (envelope: RuntimeWsEnvelope, byteLength: number) => {
       const now = Date.now();
+      if (envelope.type === "runtime.snapshot") {
+        lastWsConnectionSequenceRef.current = envelope.connection_sequence;
+        const snapshot = envelope.payload as unknown as RuntimeSnapshot;
+        if (!snapshot.epoch || !Array.isArray(snapshot.items) || !Array.isArray(snapshot.runs)) {
+          transportRef.current?.reconnectNow();
+          return;
+        }
+        const shouldConvergeQueries =
+          !hasAppliedWebSocketSnapshotRef.current ||
+          convergePersistentQueriesOnNextWebSocketSnapshotRef.current ||
+          snapshotRequiresPersistentQueryConvergence(useRuntimeStore.getState(), snapshot);
+        useRuntimeStore.setState((current) => {
+          const next = replaceRuntimeWithSnapshot(current, snapshot);
+          return {
+            ...next,
+            connection: { status: "connected", transport: "websocket", lastEventAt: now, lastSnapshotAt: now },
+            diagnostics: {
+              ...recordMessageDiagnostics(next.diagnostics, "websocket", byteLength),
+              snapshots: next.diagnostics.snapshots + 1,
+            },
+          };
+        });
+        hasAppliedWebSocketSnapshotRef.current = true;
+        convergePersistentQueriesOnNextWebSocketSnapshotRef.current = false;
+        if (shouldConvergeQueries) schedulePersistentQueryConvergence();
+        return;
+      }
+
+      const currentEpoch = useRuntimeStore.getState().epoch;
+      if (currentEpoch && envelope.epoch && currentEpoch !== envelope.epoch) {
+        transportRef.current?.reconnectNow();
+        return;
+      }
+      const previousConnectionSequence = lastWsConnectionSequenceRef.current;
+      if (previousConnectionSequence && envelope.connection_sequence !== previousConnectionSequence + 1) {
+        useRuntimeStore.setState((current) => ({
+          ...current,
+          connection: { ...current.connection, status: "resyncing", transport: "websocket" },
+          diagnostics: {
+            ...current.diagnostics,
+            drops: current.diagnostics.drops + 1,
+            resyncs: current.diagnostics.resyncs + 1,
+            stateCommits: current.diagnostics.stateCommits + 1,
+          },
+        }));
+        transportRef.current?.reconnectNow();
+        return;
+      }
+      lastWsConnectionSequenceRef.current = envelope.connection_sequence;
+
+      if (envelope.type === "runtime.patch") {
+        useRuntimeStore.setState((current) => {
+          const next = applyRuntimePatch(current, envelope);
+          return {
+            ...next,
+            connection: { ...next.connection, status: "connected", transport: "websocket", lastEventAt: now },
+            diagnostics: recordMessageDiagnostics(next.diagnostics, "websocket", byteLength),
+          };
+        });
+        return;
+      }
+      if (envelope.type === "runtime.invalidate") {
+        const events = Array.isArray(envelope.payload.events) ? envelope.payload.events : [];
+        for (const event of events) invalidationScheduler.schedule(event as ServerEvent);
+      }
+      const resyncRequired = envelope.type === "system.resync_required";
+      const queueOverflow = resyncRequired && envelope.payload.reason === "outbound_queue_overflow";
       useRuntimeStore.setState((current) => ({
         ...current,
-        connection: { ...current.connection, status: "connected", lastEventAt: now },
+        sequence: Math.max(current.sequence, envelope.sequence || 0),
+        connection: {
+          ...current.connection,
+          status: resyncRequired ? "resyncing" : "connected",
+          transport: "websocket",
+          lastEventAt: now,
+        },
+        diagnostics: {
+          ...recordMessageDiagnostics(current.diagnostics, "websocket", byteLength),
+          drops: current.diagnostics.drops + (queueOverflow ? 1 : 0),
+          resyncs: current.diagnostics.resyncs + (resyncRequired ? 1 : 0),
+        },
       }));
-      invalidateForEvent(queryClient, event);
-
-      if (!epoch || !sequence) return;
-      const current = useRuntimeStore.getState();
-      if (snapshotInFlightRef.current) {
-        bufferEvent(event);
-        return;
-      }
-      if (!current.epoch || epoch !== current.epoch) {
-        bufferEvent(event);
-        requestSnapshot("epoch", true);
-        return;
-      }
-      if (sequence > current.sequence + 1) {
-        bufferEvent(event);
-        requestSnapshot("gap");
-        return;
-      }
-      if (sequence <= current.sequence) return;
-      useRuntimeStore.setState((value) => applyRuntimeEvent(value, event));
     },
-    [bufferEvent, queryClient, requestSnapshot],
+    [invalidationScheduler, schedulePersistentQueryConvergence],
   );
 
   useEffect(() => {
-    if (typeof EventSource === "undefined") {
-      setConnection("offline");
-      requestSnapshot("manual", true);
-      return undefined;
-    }
-
-    let closed = false;
-    setConnection("connecting");
-    // 建立 SSE 事件流；onopen 即发起首次全量快照，onerror 标记重连中
-    const eventSource = new EventSource(apiUrl("/api/v1/events"), { withCredentials: true });
-    eventSource.onopen = () => {
-      if (closed) return;
-      setConnection("connected", { lastEventAt: Date.now() });
-      requestSnapshot("connect", true);
-    };
-    eventSource.onerror = () => {
-      if (!closed) setConnection("reconnecting");
-    };
-    eventSource.onmessage = handleMessage;
-    for (const eventType of SERVER_EVENT_TYPES) {
-      eventSource.addEventListener(eventType, handleMessage);
-    }
-
+    const controller = new RuntimeTransportController({
+      onStatus: (status, transport) => {
+        if (status === "reconnecting" && hasAppliedWebSocketSnapshotRef.current) {
+          convergePersistentQueriesOnNextWebSocketSnapshotRef.current = true;
+        }
+        setConnection(status, transport);
+        if (status === "offline" && transport === "polling") {
+          schedulePersistentQueryConvergence();
+          requestSnapshot("manual", true);
+        }
+      },
+      onWebSocketEnvelope: handleWebSocketEnvelope,
+      onReconnect: () => {
+        if (hasAppliedWebSocketSnapshotRef.current) {
+          convergePersistentQueriesOnNextWebSocketSnapshotRef.current = true;
+        }
+        useRuntimeStore.setState((current) => ({
+          ...current,
+          diagnostics: { ...current.diagnostics, reconnects: current.diagnostics.reconnects + 1 },
+        }));
+      },
+      onClose: (code) => {
+        useRuntimeStore.setState((current) => ({
+          ...current,
+          diagnostics: { ...current.diagnostics, lastCloseCode: code },
+        }));
+      },
+    });
+    transportRef.current = controller;
+    controller.start();
     return () => {
-      closed = true;
-      eventSource.close();
+      controller.stop();
+      if (transportRef.current === controller) transportRef.current = null;
     };
-  }, [handleMessage, requestSnapshot, setConnection]);
+  }, [handleWebSocketEnvelope, requestSnapshot, schedulePersistentQueryConvergence, setConnection]);
 
-  // 心跳检查：connected 状态下超过 STALE_THRESHOLD_MS 无事件则标记 stale 并触发重新快照
+  useEffect(() => {
+    const timer = window.setInterval(() => {
+      if (transportRef.current?.active === "polling") requestSnapshot("polling");
+    }, SNAPSHOT_POLL_INTERVAL_MS);
+    return () => window.clearInterval(timer);
+  }, [requestSnapshot]);
+
   useEffect(() => {
     const timer = window.setInterval(() => {
       const current = useRuntimeStore.getState();
-      if (current.connection.status !== "connected") return;
+      if (current.connection.status !== "connected" || current.connection.transport !== "websocket") return;
       const lastEventAt = current.connection.lastEventAt;
       if (lastEventAt && Date.now() - lastEventAt > STALE_THRESHOLD_MS) {
-        setConnection("stale");
-        requestSnapshot("stale");
+        setConnection("stale", current.connection.transport);
+        transportRef.current?.reconnectNow();
       }
     }, 5000);
     return () => window.clearInterval(timer);
-  }, [requestSnapshot, setConnection]);
+  }, [setConnection]);
 
-  // 卸载时清理快照节流定时器
-  useEffect(
-    () => () => {
+  useEffect(() => {
+    const diagnosticsTimer = window.setInterval(persistRuntimeDiagnostics, 10_000);
+    return () => {
       if (snapshotTimerRef.current !== null) window.clearTimeout(snapshotTimerRef.current);
-    },
-    [],
-  );
+      if (persistentQueryTimerRef.current !== null) window.clearTimeout(persistentQueryTimerRef.current);
+      window.clearInterval(diagnosticsTimer);
+      invalidationScheduler.dispose();
+    };
+  }, [invalidationScheduler]);
 
   return <>{children}</>;
 }
@@ -326,7 +446,13 @@ export function useRuntime<T>(selector: (state: RuntimeState) => T): T {
 /** 只读取连接状态 */
 export function useRuntimeConnection() {
   const status = useRuntimeStore((state) => state.connection.status);
-  return useMemo(() => ({ status }), [status]);
+  const transport = useRuntimeStore((state) => state.connection.transport);
+  return useMemo(() => ({ status, transport }), [status, transport]);
+}
+
+/** 读取不含业务 payload 的有界运行时诊断计数。 */
+export function useRuntimeDiagnostics() {
+  return useRuntimeStore((state) => state.diagnostics);
 }
 
 /**
@@ -384,12 +510,6 @@ function emptyRuntimeSourceState(): RuntimeSourceState {
   };
 }
 
-/** 取事件序列号：优先 sequence，其次 id；非法值兜底为 0 */
-function eventSequence(event: ServerEvent) {
-  const sequence = event.sequence ?? event.id ?? 0;
-  return typeof sequence === "number" && Number.isFinite(sequence) ? sequence : 0;
-}
-
 /** 用快照整体重建状态：重建全部索引 map，保留已有连接信息 */
 function replaceRuntimeWithSnapshot(current: RuntimeState, snapshot: RuntimeSnapshot): RuntimeState {
   const runsById: Record<number, RuntimeRun> = {};
@@ -423,23 +543,42 @@ function replaceRuntimeWithSnapshot(current: RuntimeState, snapshot: RuntimeSnap
   };
 }
 
-/** 增量应用单个事件：浅拷贝并合并 run / item，做序列去重与终态保护，最后重算 global */
-function applyRuntimeEvent(current: RuntimeState, event: ServerEvent): RuntimeState {
-  const sequence = eventSequence(event);
-  const payload = event.payload || {};
-  const runsById = { ...current.runsById };
-  const itemsById = { ...current.itemsById };
-  const activeItemIdByTweetId = { ...current.activeItemIdByTweetId };
+/** 按实体合并 runtime patch；未变化的索引保持引用不变。 */
+function applyRuntimePatch(current: RuntimeState, envelope: RuntimeWsEnvelope): RuntimeState {
+  const payload = envelope.payload || {};
+  const sequence = envelope.sequence || 0;
+  const runValues = Array.isArray(payload.runs) ? payload.runs : [];
+  const itemValues = Array.isArray(payload.items) ? payload.items : [];
+  const scanValues = Array.isArray(payload.scans) ? payload.scans : [];
 
-  const run = normalizeRuntimeRun(payload.run);
-  if (run) runsById[run.id] = { ...runsById[run.id], ...run };
+  let runsById = current.runsById;
+  let itemsById = current.itemsById;
+  let activeItemIdByTweetId = current.activeItemIdByTweetId;
+  let scansById = current.scansById;
+  let runsChanged = false;
+  let itemsChanged = false;
+  let scansChanged = false;
 
-  const items = Array.isArray(payload.items) ? payload.items : [];
-  for (const value of items) {
+  for (const value of runValues) {
+    const run = normalizeRuntimeRun(value);
+    if (!run) continue;
+    if (!runsChanged) {
+      runsById = { ...runsById };
+      runsChanged = true;
+    }
+    runsById[run.id] = mergeDefined(runsById[run.id], run);
+  }
+
+  for (const value of itemValues) {
     const item = normalizeRuntimeItem(value, sequence);
     if (!item) continue;
     const existing = itemsById[item.id];
     if (existing?.lastSequence && sequence <= existing.lastSequence) continue;
+    if (!itemsChanged) {
+      itemsById = { ...itemsById };
+      activeItemIdByTweetId = { ...activeItemIdByTweetId };
+      itemsChanged = true;
+    }
     if (existing && TERMINAL_ITEM_STATUSES.has(existing.status) && !TERMINAL_ITEM_STATUSES.has(item.status)) {
       itemsById[item.id] = { ...existing, lastSequence: sequence };
       continue;
@@ -448,14 +587,43 @@ function applyRuntimeEvent(current: RuntimeState, event: ServerEvent): RuntimeSt
     indexActiveItem(activeItemIdByTweetId, itemsById[item.id]);
   }
 
-  const next = {
+  for (const value of scanValues) {
+    const scan = normalizeRuntimeScan(value);
+    if (!scan) continue;
+    if (!scansChanged) {
+      scansById = { ...scansById };
+      scansChanged = true;
+    }
+    scansById[scan.id] = mergeDefined(scansById[scan.id], scan);
+  }
+
+  const worker = isRecord(payload.worker) ? { ...current.worker, ...payload.worker } as RuntimeState["worker"] : current.worker;
+  const queue = isRecord(payload.queue) ? { ...current.queue, ...payload.queue } as RuntimeState["queue"] : current.queue;
+  const suppliedGlobal = isRecord(payload.global)
+    ? ({ ...current.global, ...payload.global } as RuntimeGlobal)
+    : current.global;
+  let next: RuntimeState = {
     ...current,
+    epoch: envelope.epoch || current.epoch,
     sequence: Math.max(current.sequence, sequence),
+    worker,
+    queue,
+    global: suppliedGlobal,
     runsById,
     itemsById,
     activeItemIdByTweetId,
+    scansById,
   };
-  return { ...next, global: recomputeGlobal(next) };
+  if (runsChanged || itemsChanged || scansChanged) next = { ...next, global: recomputeGlobal(next) };
+  return next;
+}
+
+function snapshotRequiresPersistentQueryConvergence(
+  current: RuntimeState,
+  snapshot: RuntimeSnapshot,
+) {
+  if (!current.epoch) return false;
+  return current.epoch !== snapshot.epoch || snapshot.sequence > current.sequence;
 }
 
 /** 归一化 run 载荷；缺少合法 id 视为非法输入返回 null */
@@ -465,6 +633,14 @@ function normalizeRuntimeRun(value: unknown): RuntimeRun | null {
   const id = numberValue(record.id);
   if (!id) return null;
   return record as RuntimeRun;
+}
+
+/** 归一化稀疏 scan patch；完整字段在 snapshot 中补齐。 */
+function normalizeRuntimeScan(value: unknown): SourceScanRun | null {
+  if (!isRecord(value)) return null;
+  const id = numberValue(value.id ?? value.scan_run_id ?? value.source_scan_run_id);
+  if (!id) return null;
+  return { ...value, id } as SourceScanRun;
 }
 
 /** 归一化 item 载荷：补齐 id / archive_run_id / tweet_id / status / lastSequence；缺任一关键字段返回 null */
@@ -514,20 +690,29 @@ function recomputeGlobal(runtime: RuntimeState): RuntimeGlobal {
   const activeItems = items.filter((item) => ACTIVE_ITEM_STATUSES.has(item.status));
   const runs = Object.values(runtime.runsById);
   const activeRuns = runs.filter((run) => ACTIVE_RUN_STATUSES.has(run.status));
+  const scans = Object.values(runtime.scansById);
+  const activeScans = scans.filter((scan) => ACTIVE_SCAN_STATUSES.has(scan.status));
   const currentItem =
-    activeItems.find((item) => item.status === "processing") ??
     activeItems.find((item) => item.tweet_id === runtime.global.current_tweet_id) ??
+    activeItems.find((item) => item.status === "processing") ??
     activeItems[0];
-  const speedBps = sumNumbers(activeItems.map((item) => item.speed_bps).filter((value) => value && value > 0));
+  const currentRun = activeRuns.find((run) => run.id === currentItem?.archive_run_id) ?? activeRuns[0];
+  const speedBps = sumNumbers(
+    activeItems
+      .filter((item) => item.status === "processing")
+      .map((item) => item.speed_bps)
+      .filter((value) => value && value > 0),
+  );
   const downloadedBytes = sumNumbers(activeItems.map((item) => item.downloaded_bytes));
   const totalBytes = sumNumbers(activeItems.map((item) => item.total_bytes).filter((value) => value && value > 0));
   return {
     ...runtime.global,
     active_run_count: activeRuns.length,
     active_item_count: activeItems.length,
-    current_run_id: currentItem?.archive_run_id ?? runtime.global.current_run_id ?? null,
-    current_source_id: currentItem?.source_id ?? runtime.global.current_source_id ?? null,
-    current_tweet_id: currentItem?.tweet_id ?? runtime.global.current_tweet_id ?? null,
+    active_scan_count: activeScans.length,
+    current_run_id: currentItem?.archive_run_id ?? currentRun?.id ?? null,
+    current_source_id: currentItem?.source_id ?? currentRun?.source_id ?? null,
+    current_tweet_id: currentItem?.tweet_id ?? null,
     downloaded_bytes: downloadedBytes,
     total_bytes: totalBytes || null,
     speed_bps: speedBps || null,
@@ -542,6 +727,51 @@ function numberValue(value: unknown) {
     if (Number.isFinite(parsed)) return parsed;
   }
   return null;
+}
+
+function isRecord(value: unknown): value is Record<string, unknown> {
+  return Boolean(value) && typeof value === "object" && !Array.isArray(value);
+}
+
+function recordMessageDiagnostics(
+  current: RuntimeDiagnostics,
+  transport: RuntimeTransportKind,
+  byteLength: number,
+): RuntimeDiagnostics {
+  const now = Date.now();
+  recentMessageTimestamps.push(now);
+  while (recentMessageTimestamps[0] < now - 60_000) recentMessageTimestamps.shift();
+  if (recentMessageTimestamps.length > RECENT_MESSAGE_SAMPLE_LIMIT) {
+    recentMessageTimestamps.splice(0, recentMessageTimestamps.length - RECENT_MESSAGE_SAMPLE_LIMIT);
+  }
+  return {
+    ...current,
+    transport,
+    messagesReceived: current.messagesReceived + 1,
+    messageRatePerMinute: recentMessageTimestamps.length,
+    bytesReceived: current.bytesReceived + Math.max(0, byteLength),
+    stateCommits: current.stateCommits + 1,
+    lastMessageAt: now,
+  };
+}
+
+const RUNTIME_DIAGNOSTICS_STORAGE_KEY = "xma.runtime-diagnostics.v1";
+const RUNTIME_DIAGNOSTICS_SAMPLE_LIMIT = 60;
+const RECENT_MESSAGE_SAMPLE_LIMIT = 6000;
+const recentMessageTimestamps: number[] = [];
+
+/** 最近十分钟仅保存固定数量的计数快照，不记录事件 payload。 */
+function persistRuntimeDiagnostics() {
+  try {
+    const diagnostics = useRuntimeStore.getState().diagnostics;
+    const stored = window.localStorage.getItem(RUNTIME_DIAGNOSTICS_STORAGE_KEY);
+    const samples = stored ? JSON.parse(stored) as unknown : [];
+    const bounded = Array.isArray(samples) ? samples.slice(-(RUNTIME_DIAGNOSTICS_SAMPLE_LIMIT - 1)) : [];
+    bounded.push({ at: Date.now(), ...diagnostics });
+    window.localStorage.setItem(RUNTIME_DIAGNOSTICS_STORAGE_KEY, JSON.stringify(bounded));
+  } catch (_error) {
+    // 隐私模式或存储配额不足时，诊断仍保留在当前内存状态。
+  }
 }
 
 /** 求和：忽略 null / undefined / 非有限数字 */

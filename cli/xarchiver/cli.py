@@ -505,6 +505,8 @@ def serve_command(
         port=port or settings.api_port,
         reload=reload,
         workers=1,
+        proxy_headers=True,
+        forwarded_allow_ips=settings.forwarded_allow_ips,
     )
 
 

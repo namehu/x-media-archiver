@@ -12,7 +12,7 @@ import type { TweetFilters } from "../components/source-tweet-filters";
 
 export function useSourceDetail(sourceId: number | null, includeDeleted = false) {
   const runtimeConnection = useRuntimeConnection();
-  const shouldFallbackPoll = shouldUseRuntimePollingFallback(runtimeConnection.status);
+  const shouldFallbackPoll = shouldUseRuntimePollingFallback(runtimeConnection.status, runtimeConnection.transport);
   const deletedQuery = includeDeleted ? "?include_deleted=true" : "";
   return useQuery({
     queryKey: ["source", sourceId, includeDeleted],
@@ -30,7 +30,7 @@ export function useSourceDetail(sourceId: number | null, includeDeleted = false)
 export function useSourceDownloads(sourceId: number | null, enabled: boolean, includeDeleted = false) {
   const runtimeConnection = useRuntimeConnection();
   const deletedQuery = includeDeleted ? "?include_deleted=true" : "";
-  const shouldFallbackPoll = shouldUseRuntimePollingFallback(runtimeConnection.status);
+  const shouldFallbackPoll = shouldUseRuntimePollingFallback(runtimeConnection.status, runtimeConnection.transport);
   return useQuery({
     queryKey: ["source-downloads", sourceId, includeDeleted],
     queryFn: () => apiGet<SourceDownloadSummary>(`/api/v1/sources/${sourceId}/downloads${deletedQuery}`),
@@ -46,7 +46,7 @@ export function useSourceDiscovered(
   filters?: TweetFilters,
 ) {
   const runtimeConnection = useRuntimeConnection();
-  const shouldFallbackPoll = shouldUseRuntimePollingFallback(runtimeConnection.status);
+  const shouldFallbackPoll = shouldUseRuntimePollingFallback(runtimeConnection.status, runtimeConnection.transport);
   const pageSize = 50;
   return useInfiniteQuery({
     queryKey: ["source-discovered", sourceId, includeDeleted, filters],
@@ -74,7 +74,7 @@ export function useSourceDiscovered(
 
 export function useSourceScanRuns(sourceId: number | null, enabled: boolean, hasActiveScan: boolean, includeDeleted = false) {
   const runtimeConnection = useRuntimeConnection();
-  const shouldFallbackPoll = shouldUseRuntimePollingFallback(runtimeConnection.status);
+  const shouldFallbackPoll = shouldUseRuntimePollingFallback(runtimeConnection.status, runtimeConnection.transport);
   const pageSize = 20;
   return useInfiniteQuery({
     queryKey: ["source-scan-runs", sourceId, includeDeleted],
@@ -101,6 +101,6 @@ export function useDownloadPolicy() {
   });
 }
 
-function shouldUseRuntimePollingFallback(status: string) {
-  return status === "offline" || status === "reconnecting" || status === "stale";
+function shouldUseRuntimePollingFallback(status: string, transport: string) {
+  return transport === "polling" || status === "offline" || status === "reconnecting" || status === "stale";
 }

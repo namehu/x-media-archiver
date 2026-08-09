@@ -12,9 +12,11 @@ import re
 import shutil
 import subprocess
 import time
+from collections import deque
 from dataclasses import dataclass, field
 from pathlib import Path
-from threading import Lock, Thread
+from queue import Empty, Full, Queue
+from threading import Event, Lock, Thread
 
 from sqlalchemy import and_, bindparam, func, literal_column, or_, select
 from sqlalchemy.sql import ColumnElement
@@ -28,6 +30,7 @@ from xarchiver.core.errors import (
     classify_x_error,
 )
 from xarchiver.core.events import publish_event
+from xarchiver.core.subprocesses import stop_process_group
 from xarchiver.db import connect
 from xarchiver.media import backfill_media_assets
 from xarchiver.row_models import DownloadCandidateRow, IdRow
@@ -70,6 +73,13 @@ GALLERY_DL_OUTPUT_MODE = {
     "progress-total": f"{GALLERY_DL_PROGRESS_PREFIX}progress|{{0}}|{{1}}|{{2}}|{{3}}\n",
 }
 DOWNLOAD_LOG_BATCH_SIZE = 100
+DOWNLOAD_LOG_QUEUE_SIZE = 1000
+DOWNLOAD_LOG_QUEUE_PUT_TIMEOUT_SECONDS = 0.1
+DOWNLOAD_PROCESS_STOP_TIMEOUT_SECONDS = 5.0
+DOWNLOAD_READER_DRAIN_TIMEOUT_SECONDS = 10.0
+DOWNLOAD_READER_JOIN_TIMEOUT_SECONDS = 5.0
+DOWNLOAD_STDOUT_TAIL_CHARS = 16_384
+DOWNLOAD_STDERR_TAIL_CHARS = 65_536
 PROGRESS_THROTTLE_SECONDS = 0.75
 
 
@@ -92,6 +102,37 @@ class DownloadProgressState:
     pending_progress_by_tweet: dict[str, dict[str, int]] = field(default_factory=dict)
     pending_progress_message: str | None = None
     pending_current_tweet_id: str | None = None
+
+
+class TextTailBuffer:
+    """Keep a bounded text tail without retaining the full subprocess output."""
+
+    def __init__(self, max_chars: int):
+        self.max_chars = max_chars
+        self.chunks: deque[str] = deque()
+        self.char_count = 0
+
+    def append(self, value: str) -> None:
+        if len(value) >= self.max_chars:
+            self.chunks.clear()
+            tail = value[-self.max_chars :]
+            self.chunks.append(tail)
+            self.char_count = len(tail)
+            return
+        self.chunks.append(value)
+        self.char_count += len(value)
+        while self.char_count > self.max_chars and self.chunks:
+            overflow = self.char_count - self.max_chars
+            first = self.chunks[0]
+            if len(first) <= overflow:
+                self.chunks.popleft()
+                self.char_count -= len(first)
+                continue
+            self.chunks[0] = first[overflow:]
+            self.char_count -= overflow
+
+    def getvalue(self) -> str:
+        return "".join(self.chunks)
 
 
 def download(
@@ -1081,186 +1122,249 @@ def run_command_with_progress(
         stdout=subprocess.PIPE,
         stderr=subprocess.PIPE,
         text=True,
+        start_new_session=True,
     )
-    stdout_chunks: list[str] = []
-    stderr_chunks: list[str] = []
+    stdout_chunks = TextTailBuffer(DOWNLOAD_STDOUT_TAIL_CHARS)
+    stderr_chunks = TextTailBuffer(DOWNLOAD_STDERR_TAIL_CHARS)
     progress_state = DownloadProgressState(last_fallback_scan_at=time.monotonic())
     state_lock = Lock()
-    log_buffer_lock = Lock()
-    pending_log_entries: list[dict[str, object]] = []
+    pending_log_entries: Queue[dict[str, object]] = Queue(maxsize=DOWNLOAD_LOG_QUEUE_SIZE)
+    reader_errors: Queue[tuple[str, BaseException]] = Queue(maxsize=2)
+    stop_readers = Event()
     tweet_ids = [tweet["tweet_id"] for tweet in candidate_tweets]
     tweet_id_set = set(tweet_ids)
 
-    def read_stream(stream, chunks: list[str], stream_name: str) -> None:
+    def read_stream(stream, chunks: TextTailBuffer, stream_name: str) -> None:
         """读取 stdout/stderr，并从中抽取下载进度信号。"""
 
         if stream is None:
             return
-        for chunk in stream:
-            chunks.append(chunk)
-            ready_entries = queue_download_log_entry(
-                pending_log_entries,
-                log_buffer_lock,
-                level=download_output_log_level(engine, stream_name, chunk),
-                component=f"{engine}.{stream_name}",
-                message=chunk.rstrip("\r\n") or f"{stream_name} 输出空行",
-                raw=chunk,
-            )
-            if ready_entries and log_stream_id is not None:
-                append_operation_log_entries(log_stream_id, ready_entries)
-            if engine == "yt-dlp":
-                progress = parse_downloader_progress(chunk)
-                if not progress:
+        try:
+            for chunk in stream:
+                if stop_readers.is_set():
+                    break
+                chunks.append(chunk)
+                if log_stream_id is not None and not queue_download_log_entry(
+                    pending_log_entries,
+                    stop_readers,
+                    level=download_output_log_level(engine, stream_name, chunk),
+                    component=f"{engine}.{stream_name}",
+                    message=chunk.rstrip("\r\n") or f"{stream_name} 输出空行",
+                    raw=chunk,
+                ):
+                    break
+                if engine == "yt-dlp":
+                    progress = parse_downloader_progress(chunk)
+                    if not progress:
+                        continue
+                    tweet_id = str(progress["tweet_id"])
+                    if tweet_id not in tweet_id_set:
+                        continue
+                    with state_lock:
+                        progress_state.native_progress_seen = True
+                        progress_state.last_native_progress_at = time.monotonic()
+                        progress_state.current_tweet_id = tweet_id
+                    record_download_progress(
+                        progress_state,
+                        state_lock,
+                        job_id,
+                        candidate_tweets,
+                        run_item_ids,
+                        f"{engine} 下载中",
+                        {
+                            tweet_id: {
+                                "downloaded_bytes": int(progress["downloaded_bytes"]),
+                                "total_bytes": int(progress["total_bytes"]),
+                                "speed_bps": int(progress["speed_bps"]),
+                            }
+                        },
+                        current_tweet_id=tweet_id,
+                    )
                     continue
-                tweet_id = str(progress["tweet_id"])
-                if tweet_id not in tweet_id_set:
+                event = parse_gallery_dl_progress(chunk)
+                if not event:
                     continue
-                with state_lock:
-                    progress_state.native_progress_seen = True
-                    progress_state.last_native_progress_at = time.monotonic()
-                    progress_state.current_tweet_id = tweet_id
-                record_download_progress(
+                handle_gallery_dl_progress_event(
+                    event,
+                    settings.archive_dir,
+                    tweet_id_set,
                     progress_state,
                     state_lock,
                     job_id,
                     candidate_tweets,
                     run_item_ids,
-                    f"{engine} 下载中",
-                    {
-                        tweet_id: {
-                            "downloaded_bytes": int(progress["downloaded_bytes"]),
-                            "total_bytes": int(progress["total_bytes"]),
-                            "speed_bps": int(progress["speed_bps"]),
-                        }
-                    },
-                    current_tweet_id=tweet_id,
                 )
-                continue
-            event = parse_gallery_dl_progress(chunk)
-            if not event:
-                continue
-            handle_gallery_dl_progress_event(
-                event,
-                settings.archive_dir,
-                tweet_id_set,
-                progress_state,
-                state_lock,
-                job_id,
-                candidate_tweets,
-                run_item_ids,
-            )
+        except Exception as exc:
+            try:
+                reader_errors.put_nowait((stream_name, exc))
+            except Full:
+                pass
+            stop_readers.set()
 
     stdout_thread = Thread(target=read_stream, args=(process.stdout, stdout_chunks, "stdout"), daemon=True)
     stderr_thread = Thread(target=read_stream, args=(process.stderr, stderr_chunks, "stderr"), daemon=True)
-    stdout_thread.start()
-    stderr_thread.start()
-
     fallback_previous_by_tweet = {tweet_id: 0 for tweet_id in tweet_ids}
     fallback_sampled = False
     fallback_interval = max(
         0.0,
         float(getattr(settings, "downloader_progress_fallback_interval_seconds", 10.0)),
     )
-    while process.poll() is None:
-        time.sleep(1)
-        flush_download_log_entries(log_stream_id, pending_log_entries, log_buffer_lock)
-        current_at = time.monotonic()
-        with state_lock:
-            native_progress_seen = progress_state.native_progress_seen
-            last_native_progress_at = progress_state.last_native_progress_at
-            current_tweet_id = progress_state.current_tweet_id
-            current_path = progress_state.current_path
-            previous_bytes = progress_state.previous_bytes
-            previous_sample_at = progress_state.previous_sample_at
-            completed_bytes = progress_state.completed_bytes_by_tweet.get(current_tweet_id or "", 0)
-            last_fallback_scan_at = progress_state.last_fallback_scan_at
-        # 当原生进度暂时不可用时，回退到采样当前下载文件大小。
-        if current_tweet_id and current_path:
-            if (
-                last_native_progress_at is not None
-                and current_at - last_native_progress_at < 2.0
+    reader_drain_timed_out = False
+    primary_error: BaseException | None = None
+    try:
+        stdout_thread.start()
+        stderr_thread.start()
+        while process.poll() is None:
+            time.sleep(1)
+            raise_download_reader_error(reader_errors)
+            flush_download_log_entries(log_stream_id, pending_log_entries)
+            raise_download_reader_error(reader_errors)
+            current_at = time.monotonic()
+            with state_lock:
+                native_progress_seen = progress_state.native_progress_seen
+                last_native_progress_at = progress_state.last_native_progress_at
+                current_tweet_id = progress_state.current_tweet_id
+                current_path = progress_state.current_path
+                previous_bytes = progress_state.previous_bytes
+                previous_sample_at = progress_state.previous_sample_at
+                completed_bytes = progress_state.completed_bytes_by_tweet.get(current_tweet_id or "", 0)
+                last_fallback_scan_at = progress_state.last_fallback_scan_at
+            # 当原生进度暂时不可用时，回退到采样当前下载文件大小。
+            if current_tweet_id and current_path:
+                if (
+                    last_native_progress_at is not None
+                    and current_at - last_native_progress_at < 2.0
+                ):
+                    continue
+                current_file_bytes = sample_current_download_path(current_path)
+                if current_file_bytes is None:
+                    continue
+                elapsed = max(current_at - (previous_sample_at or current_at), 0.001)
+                speed_bps = (
+                    max(0, int((current_file_bytes - previous_bytes) / elapsed))
+                    if previous_sample_at is not None
+                    else 0
+                )
+                downloaded_bytes = completed_bytes + current_file_bytes
+                with state_lock:
+                    progress_state.previous_bytes = current_file_bytes
+                    progress_state.previous_sample_at = current_at
+                if downloaded_bytes or speed_bps:
+                    record_download_progress(
+                        progress_state,
+                        state_lock,
+                        job_id,
+                        candidate_tweets,
+                        run_item_ids,
+                        f"{engine} 下载中（文件采样）",
+                        {
+                            current_tweet_id: {
+                                "downloaded_bytes": downloaded_bytes,
+                                "speed_bps": speed_bps,
+                            }
+                        },
+                        current_tweet_id=current_tweet_id,
+                    )
+                continue
+            # 如果下载器从未输出原生进度，再退回到周期性扫描 archive 目录估算。
+            if native_progress_seen:
+                continue
+            if not should_run_fallback_scan(
+                last_fallback_scan_at,
+                current_at,
+                fallback_interval,
             ):
                 continue
-            current_file_bytes = sample_current_download_path(current_path)
-            if current_file_bytes is None:
-                continue
-            elapsed = max(current_at - (previous_sample_at or current_at), 0.001)
-            speed_bps = (
-                max(0, int((current_file_bytes - previous_bytes) / elapsed))
-                if previous_sample_at is not None
-                else 0
-            )
-            downloaded_bytes = completed_bytes + current_file_bytes
-            with state_lock:
-                progress_state.previous_bytes = current_file_bytes
-                progress_state.previous_sample_at = current_at
-            if downloaded_bytes or speed_bps:
+            current_by_tweet = estimate_downloaded_bytes_by_tweet(settings.archive_dir, tweet_ids)
+            elapsed = max(current_at - (last_fallback_scan_at or current_at), 0.001)
+            progress_by_tweet = {
+                tweet_id: {
+                    "downloaded_bytes": current_by_tweet[tweet_id],
+                    "speed_bps": max(
+                        0,
+                        int(
+                            (current_by_tweet[tweet_id] - fallback_previous_by_tweet[tweet_id])
+                            / elapsed
+                        ),
+                    ) if fallback_sampled else 0,
+                }
+                for tweet_id in tweet_ids
+            }
+            if any(progress["downloaded_bytes"] or progress["speed_bps"] for progress in progress_by_tweet.values()):
+                current_tweet_id = next(
+                    (tweet_id for tweet_id in tweet_ids if progress_by_tweet[tweet_id]["speed_bps"] > 0),
+                    None,
+                )
                 record_download_progress(
                     progress_state,
                     state_lock,
                     job_id,
                     candidate_tweets,
                     run_item_ids,
-                    f"{engine} 下载中（文件采样）",
-                    {
-                        current_tweet_id: {
-                            "downloaded_bytes": downloaded_bytes,
-                            "speed_bps": speed_bps,
-                        }
-                    },
+                    f"{engine} 下载中（估算）",
+                    progress_by_tweet,
                     current_tweet_id=current_tweet_id,
                 )
-            continue
-        # 如果下载器从未输出原生进度，再退回到周期性扫描 archive 目录估算。
-        if native_progress_seen:
-            continue
-        if not should_run_fallback_scan(
-            last_fallback_scan_at,
-            current_at,
-            fallback_interval,
-        ):
-            continue
-        current_by_tweet = estimate_downloaded_bytes_by_tweet(settings.archive_dir, tweet_ids)
-        elapsed = max(current_at - (last_fallback_scan_at or current_at), 0.001)
-        progress_by_tweet = {
-            tweet_id: {
-                "downloaded_bytes": current_by_tweet[tweet_id],
-                "speed_bps": max(
-                    0,
-                    int(
-                        (current_by_tweet[tweet_id] - fallback_previous_by_tweet[tweet_id])
-                        / elapsed
-                    ),
-                ) if fallback_sampled else 0,
-            }
-            for tweet_id in tweet_ids
-        }
-        if any(progress["downloaded_bytes"] or progress["speed_bps"] for progress in progress_by_tweet.values()):
-            current_tweet_id = next(
-                (tweet_id for tweet_id in tweet_ids if progress_by_tweet[tweet_id]["speed_bps"] > 0),
-                None,
-            )
-            record_download_progress(
-                progress_state,
-                state_lock,
-                job_id,
-                candidate_tweets,
-                run_item_ids,
-                f"{engine} 下载中（估算）",
-                progress_by_tweet,
-                current_tweet_id=current_tweet_id,
-            )
-        fallback_previous_by_tweet = current_by_tweet
-        fallback_sampled = True
-        with state_lock:
-            progress_state.last_fallback_scan_at = current_at
+            fallback_previous_by_tweet = current_by_tweet
+            fallback_sampled = True
+            with state_lock:
+                progress_state.last_fallback_scan_at = current_at
 
-    return_code = process.wait()
-    stdout_thread.join(timeout=1)
-    stderr_thread.join(timeout=1)
-    flush_pending_download_progress(progress_state, state_lock, job_id, candidate_tweets, run_item_ids)
-    flush_download_log_entries(log_stream_id, pending_log_entries, log_buffer_lock)
-    return subprocess.CompletedProcess(command, return_code, "".join(stdout_chunks), "".join(stderr_chunks))
+        return_code = process.wait()
+        drain_deadline = time.monotonic() + DOWNLOAD_READER_DRAIN_TIMEOUT_SECONDS
+        while stdout_thread.is_alive() or stderr_thread.is_alive() or not pending_log_entries.empty():
+            raise_download_reader_error(reader_errors)
+            if not pending_log_entries.empty():
+                flush_download_log_entries(log_stream_id, pending_log_entries)
+            remaining = drain_deadline - time.monotonic()
+            if remaining <= 0:
+                reader_drain_timed_out = True
+                raise RuntimeError("downloader_reader_drain_timeout")
+            join_timeout = min(0.05, remaining)
+            stdout_thread.join(timeout=join_timeout)
+            stderr_thread.join(timeout=join_timeout)
+        raise_download_reader_error(reader_errors)
+        flush_pending_download_progress(progress_state, state_lock, job_id, candidate_tweets, run_item_ids)
+        return subprocess.CompletedProcess(
+            command,
+            return_code,
+            stdout_chunks.getvalue(),
+            stderr_chunks.getvalue(),
+        )
+    except BaseException as exc:
+        primary_error = exc
+        raise
+    finally:
+        stop_readers.set()
+        stop_process_group(
+            process,
+            timeout_seconds=DOWNLOAD_PROCESS_STOP_TIMEOUT_SECONDS,
+            include_process_group=reader_drain_timed_out or process.poll() is None,
+        )
+        for stream in (process.stdout, process.stderr):
+            close = getattr(stream, "close", None)
+            if not callable(close):
+                continue
+            try:
+                close()
+            except (OSError, ValueError):
+                logger.warning("Failed to close downloader output pipe", exc_info=True)
+        for thread in (stdout_thread, stderr_thread):
+            if thread.ident is not None:
+                thread.join(timeout=DOWNLOAD_READER_JOIN_TIMEOUT_SECONDS)
+                if thread.is_alive():
+                    logger.error("Downloader reader thread did not stop: %s", thread.name)
+        try:
+            while not pending_log_entries.empty():
+                flush_download_log_entries(log_stream_id, pending_log_entries)
+        except Exception as exc:
+            if primary_error is None:
+                raise
+            primary_error.add_note(f"pending downloader log flush failed: {exc!r}")
+            logger.error(
+                "Failed to flush pending downloader logs while handling an earlier error",
+                exc_info=True,
+            )
 
 
 def parse_downloader_progress(line: str) -> dict[str, int | str] | None:
@@ -1668,42 +1772,53 @@ def append_download_log(
 
 
 def queue_download_log_entry(
-    pending_entries: list[dict[str, object]],
-    lock: Lock,
+    pending_entries: Queue[dict[str, object]],
+    stop_event: Event,
     *,
     level: str,
     component: str,
     message: str,
     raw: str,
-) -> list[dict[str, object]]:
-    """从下载器读取线程积累输出，交由主循环批量落盘。"""
+) -> bool:
+    """Boundedly queue downloader output for the main thread to persist."""
 
-    with lock:
-        pending_entries.append(
-            {"level": level, "component": component, "message": message, "raw": raw}
-        )
-        if len(pending_entries) < DOWNLOAD_LOG_BATCH_SIZE:
-            return []
-        entries = pending_entries[:]
-        pending_entries.clear()
-    return entries
+    entry = {"level": level, "component": component, "message": message, "raw": raw}
+    while not stop_event.is_set():
+        try:
+            pending_entries.put(entry, timeout=DOWNLOAD_LOG_QUEUE_PUT_TIMEOUT_SECONDS)
+            return True
+        except Full:
+            continue
+    return False
 
 
 def flush_download_log_entries(
     log_stream_id: int | None,
-    pending_entries: list[dict[str, object]],
-    lock: Lock,
+    pending_entries: Queue[dict[str, object]],
 ) -> int:
     """批量持久化已读取的下载器输出，并合并为一次日志事件。"""
 
     if log_stream_id is None:
         return 0
-    with lock:
-        entries = pending_entries[:]
-        pending_entries.clear()
+    entries: list[dict[str, object]] = []
+    for _ in range(DOWNLOAD_LOG_BATCH_SIZE):
+        try:
+            entries.append(pending_entries.get_nowait())
+        except Empty:
+            break
     if not entries:
         return 0
     return len(append_operation_log_entries(log_stream_id, entries))
+
+
+def raise_download_reader_error(
+    reader_errors: Queue[tuple[str, BaseException]],
+) -> None:
+    try:
+        stream_name, error = reader_errors.get_nowait()
+    except Empty:
+        return
+    raise RuntimeError(f"downloader_{stream_name}_reader_failed") from error
 
 
 def download_output_log_level(engine: str, stream_name: str, line: str) -> str:

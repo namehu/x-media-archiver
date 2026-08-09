@@ -247,6 +247,7 @@ export type ArchiveSubmission = {
 
 export type SourceScanRun = {
   id: number;
+  source_id?: number | null;
   trigger_type: "history_worker" | "manual_next" | "latest_refresh" | "from_start_repair";
   status:
     | "running"
@@ -515,6 +516,35 @@ export type RuntimeSnapshot = {
   items: RuntimeItem[];
   scans: SourceScanRun[];
   recent_activity: Array<Record<string, unknown>>;
+};
+
+export type RuntimeTransportDiagnostics = {
+  broker: {
+    epoch: string;
+    sequence: number;
+    published_events: number;
+    published_by_type: Record<string, number>;
+    sse_connections: number;
+    ws_connections: number;
+    queue_high_water: number;
+    dropped_events: number;
+  };
+  websocket: {
+    active_connections: number;
+    accepted_connections: number;
+    messages_sent: number;
+    bytes_sent: number;
+    snapshots_sent: number;
+    patches_sent: number;
+    invalidations_sent: number;
+    heartbeats_sent: number;
+    resyncs_sent: number;
+    queue_overflows: number;
+    dropped_events: number;
+    auth_rejections: number;
+    origin_rejections: number;
+    send_errors: number;
+  };
 };
 
 export type ArchiveRunControl = {

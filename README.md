@@ -361,12 +361,14 @@ SOURCE_SCAN_HTTP_RETRIES=2
 STUCK_TIMEOUT_MINUTES=120
 API_HOST=0.0.0.0
 API_PORT=18000
+FORWARDED_ALLOW_IPS=127.0.0.1,172.18.0.0/16
 AUTH_MODE=password
-AUTH_COOKIE_SECURE=false
+AUTH_COOKIE_SECURE=auto
 AUTH_SESSION_TTL_HOURS=168
+RUNTIME_WS_ENABLED=true
 ```
 
-生产环境只支持 WebUI 与 API 同源部署，必须经 HTTPS 反向代理访问并设置 `AUTH_COOKIE_SECURE=true`。只有明确保持本机隔离时才可设置 `AUTH_MODE=disabled`；禁用后所有 Web/API 路由均不再要求登录。
+生产环境只支持 WebUI 与 API 同源部署，公网入口必须经过 HTTPS 反向代理。通用生产模板强制 `AUTH_COOKIE_SECURE=true`，避免代理协议头配置错误时静默下发非 Secure Cookie；只有仓库提供的 Traefik 混合入口叠加文件会单独覆盖成 `auto`，以兼容 HTTPS 域名与受限的内网 HTTP IP。反向代理实际连接到 Uvicorn 时使用的 IP 或 CIDR 必须列入 `FORWARDED_ALLOW_IPS`；Docker 宿主机反代通常表现为 Compose 网络网关，而不是 `127.0.0.1`，否则所有用户会共享该网关的登录限流键。Traefik 动态容器网络的配置见部署文档。只有明确保持本机隔离时才可设置 `AUTH_MODE=disabled`；禁用后所有 Web/API 路由均不再要求登录。
 
 `QUEUE_BATCH_SIZE` 限制 API worker 每次领取多少条 queued tweet。下载器的 sleep 设置会透传到 `gallery-dl` / `yt-dlp`，避免大批量任务对 X/Twitter 发起紧密的连续请求。下载进度优先读取下载器原生输出，其次只采样当前明确文件；只有两者都不可用时才递归扫描媒体目录。`DOWNLOADER_PROGRESS_FALLBACK_INTERVAL_SECONDS` 控制该兜底扫描间隔，默认 10 秒，设置为 `0` 可禁用。`SOURCE_SCAN_BATCH_SIZE` 与 `SOURCE_SCAN_SLEEP_*` 用于单独控制历史 source 发现（与下载分离）。`SOURCE_SCAN_HTTP_TIMEOUT_SECONDS` 和 `SOURCE_SCAN_HTTP_RETRIES` 收敛单次扫描请求的网络等待；gallery-dl 即使在重试耗尽后返回 0，扫描器也会根据错误日志将该批标记为 `network_error`，且不会推进 cursor。
 

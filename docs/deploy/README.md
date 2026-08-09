@@ -1,6 +1,6 @@
 # x-media-archiver 生产部署手册
 
-最后更新：2026-05-29
+最后更新：2026-08-09
 
 本手册是 x-media-archiver 生产环境的统一操作指南。**推荐用预构建镜像部署**：一个自包含镜像同时含 FastAPI 后端与构建好的 WebUI（同源 serve），服务器只需 `docker pull` + 一份 compose 即可启动，并支持随镜像附带 Postgres 或接外部 Supabase。手册同时保留从源码运行的开发路径。
 
@@ -101,13 +101,23 @@ Web/API 默认启用单管理员鉴权。首次启动时，日志会输出 `One-
 docker compose --env-file .env.production -f docker-compose.prod.yml logs app
 ```
 
-先配置 HTTPS 反向代理，再通过最终同源地址（例如 `https://archive.example.com`）打开 WebUI，填写该令牌、管理员用户名和不少于 12 个字符的密码。生产默认 `AUTH_COOKIE_SECURE=true`，不要通过 `http://127.0.0.1:18000` 完成初始化，否则浏览器不会保存 Secure 会话 Cookie。令牌仅保存在当前进程中，容器重启会生成新令牌，初始化成功后立即失效。忘记密码时从可信终端运行以下命令，交互式输入新密码；所有浏览器会话会被撤销：
+先配置反向代理，再通过最终同源地址打开 WebUI，填写该令牌、管理员用户名和不少于 12 个字符的密码。通用生产模板默认 `AUTH_COOKIE_SECURE=true`，即使代理协议头配置错误也不会下发非 Secure Cookie；只有按 2.6 节启用 Traefik 混合入口时才由叠加文件覆盖成 `auto`。令牌仅保存在当前进程中，容器重启会生成新令牌，初始化成功后立即失效。忘记密码时从可信终端运行以下命令，交互式输入新密码；所有浏览器会话会被撤销：
 
 ```bash
 docker compose --env-file .env.production -f docker-compose.prod.yml run --rm app auth reset-password
 ```
 
 compose 仍默认把端口绑定到 `127.0.0.1`。生产仅支持 WebUI 与 API 同源部署；公网访问必须经过 HTTPS 反向代理，保留原始 Host，并对 `/api/v1/auth/login` 增加代理层限流；不要直接发布容器端口。当前服务按单 Uvicorn 进程设计，不要自行增加多 worker，否则进程内 setup token 与登录限流状态无法共享。
+
+开发与生产 Compose 的 app 服务均保持 `init: true`。该 init 进程负责回收 gallery-dl 异常清理时被托管的后代进程；不要在 NAS 编排界面转换配置时删除这一项，否则长时间运行后可能积累 zombie 进程。
+
+`FORWARDED_ALLOW_IPS` 匹配的是 Uvicorn 看到的直接上游，不是浏览器 IP。宿主机反向代理经 Docker 端口映射访问 app 时，该地址通常是 Compose 网络网关。部署后检查 app 所在网络，并把 `.env.production` 中示例的 `172.18.0.0/16` 换成实际代理 IP 或受控网络 CIDR：
+
+```bash
+docker network inspect <compose-project>_default
+```
+
+当前仓库开发环境通常为 `172.18.0.0/16`、网关 `172.18.0.1`。Uvicorn 支持逗号分隔的 IP/CIDR；固定宿主机代理可只信任精确网关 IP，动态容器代理才需要信任受控 CIDR。配置错误时 `X-Forwarded-For` 会被忽略，所有浏览器都会以同一个 Docker 网关参与应用层登录限流。不要为省事在通用部署中设置 `*`。
 
 ### 2.4 升级版本
 
@@ -127,6 +137,36 @@ docker compose --env-file .env.production -f docker-compose.prod.yml run --rm ap
 docker compose --env-file .env.production -f docker-compose.prod.yml run --rm app verify --full
 docker compose --env-file .env.production -f docker-compose.prod.yml run --rm app export --format csv --status all
 ```
+
+### 2.6 飞牛 NAS + Traefik（可选）
+
+仓库提供 [`docker-compose.traefik.yml`](../../docker-compose.traefik.yml) 作为生产 compose 的叠加文件。先让 app 加入 Traefik 已存在的外部网络，并在 `.env.production` 配置域名、内网入口和白名单：
+
+```env
+TRAEFIK_NETWORK=traefik
+TRAEFIK_FORWARDED_ALLOW_IPS=*
+TRAEFIK_AUTH_COOKIE_SECURE=auto
+TRAEFIK_WEB_ENTRYPOINT=web
+TRAEFIK_WEBSECURE_ENTRYPOINT=websecure
+TRAEFIK_CERT_RESOLVER=letsencrypt
+XMA_PUBLIC_HOST=archive.example.com
+XMA_LAN_HOST=192.168.1.10
+XMA_LAN_CIDR=192.168.1.0/24
+RUNTIME_WS_ENABLED=true
+AUTH_COOKIE_SECURE=true
+```
+
+```bash
+docker compose --env-file .env.production \
+  -f docker-compose.prod.yml \
+  -f docker-compose.traefik.yml up -d
+```
+
+[Traefik 原生支持 WebSocket](https://doc.traefik.io/traefik/master/user-guides/websocket/)，会自动完成 Upgrade；不要额外添加 `Connection` 或 `Upgrade` header middleware。HTTPS 域名走 `websecure + TLS`；内网 IP/主机名走 `web`，并由 `XMA_LAN_CIDR` 对应的 `IPAllowList` 限制。应用会用代理透传的 `Host` 校验 WS `Origin`，并用可信的 `X-Forwarded-Proto` 判断 Cookie 是否添加 Secure，因此不要改写 Host 或删除转发协议头。
+
+Traefik 容器地址由 Docker 动态分配，因此该叠加文件通过 `TRAEFIK_FORWARDED_ALLOW_IPS=*` 覆盖应用的通用明确代理列表。这个覆盖只在 app 端口继续绑定宿主机 `127.0.0.1`、Docker 网络成员受控且外部流量只能经 Traefik 进入时成立；若代理有固定地址，应改为逗号分隔的明确 IP。不要在 app 端口直接暴露公网时使用 `*`。
+
+Traefik 叠加文件通过 `TRAEFIK_AUTH_COOKIE_SECURE=auto` 覆盖通用生产值，从而同时支持 HTTPS/WSS 域名和家庭内网 HTTP/WS IP：两种 Host 各自持有独立会话，HTTPS Cookie 不会降级发送到 HTTP。内网 HTTP 的账号密码和该 IP 自己的会话仍是明文，只能用于 HTTP router 无法从 WAN 到达且 CIDR 白名单实际生效的可信家庭网络。`RUNTIME_WS_ENABLED=false` 可作为紧急回滚开关，前端会直接使用 REST runtime snapshot 轮询。
 
 ---
 
@@ -363,12 +403,14 @@ DATABASE_URL=...            # Postgres 连接串
 ARCHIVE_DIR=/app/archive    # 容器内归档根目录
 COOKIE_FILE=/app/secrets/cookies.txt # WebUI 未配置 cookies 时的兼容回退
 API_PORT=18000              # API 监听与发布端口；容器内 API_HOST 固定为 0.0.0.0
+FORWARDED_ALLOW_IPS=127.0.0.1,172.18.0.0/16 # 替换为 Uvicorn 实际看到的代理 IP/CIDR
 AUTH_MODE=password          # 默认启用；仅可信本机部署可显式改为 disabled
-AUTH_COOKIE_SECURE=true     # 生产 HTTPS 必须为 true；本地 HTTP 开发设为 false
+AUTH_COOKIE_SECURE=true     # 通用生产默认强制 Secure；Traefik 混合入口见 2.6
 AUTH_SESSION_TTL_HOURS=168  # 浏览器会话固定有效期
+RUNTIME_WS_ENABLED=true     # 关闭后 WebUI 自动退回 REST runtime snapshot 轮询
 ```
 
-`/health` 始终匿名供 Docker healthcheck 使用。其余 `/api/v1/*`、SSE、媒体文件与 API 文档均要求登录。生产不支持跨源 Cookie/CORS 部署；CLI 直接复用数据库 services，拥有容器执行权限的运维人员不受 Web 登录限制。
+`/health` 始终匿名供 Docker healthcheck 使用。其余 `/api/v1/*`、SSE、WebSocket、媒体文件与 API 文档均要求登录。生产不支持跨源 Cookie/CORS 部署；CLI 直接复用数据库 services，拥有容器执行权限的运维人员不受 Web 登录限制。
 
 ### 8.2 下载与重试
 
@@ -397,7 +439,7 @@ OPERATION_LOG_MAX_BYTES=10485760 # 单个任务日志流 JSONL 文件大小上�
 ```
 
 `SOURCE_SCAN_*` 只影响来源发现，不影响下载队列。调高 sleep 区间可降低触发 X/Twitter 限流的风险，代价是吞吐下降。
-来源扫描的详细日志写入 `ARCHIVE_DIR/logs/source-scan-logs/`；下载任务会把脱敏后的下载器 stdout/stderr 写入 `ARCHIVE_DIR/logs/download-logs/`。数据库只保存日志流索引和摘要，单条日志流使用 `OPERATION_LOG_MAX_BYTES` 限制大小。
+来源扫描的详细日志写入 `ARCHIVE_DIR/logs/source-scan-logs/`；下载任务会把脱敏后的下载器 stdout/stderr 写入 `ARCHIVE_DIR/logs/download-logs/`。数据库只保存日志流索引和摘要，单条日志流使用 `OPERATION_LOG_MAX_BYTES` 限制大小。进程异常退出若留下部分 JSON 或部分 UTF-8 尾行，下一次追加会自动恢复到最后一条完整记录并写入告警；文件中间损坏不会自动截断，需要人工检查存储介质或备份。
 
 ---
 
@@ -472,6 +514,8 @@ docker compose --env-file .env.production -f docker-compose.prod.yml run --rm ap
 ```text
 GET /health               基础存活检查（镜像 HEALTHCHECK 即用此端点）
 GET /api/v1/health/detail 详情，含 db_pool（active / idle / waiting）等
+GET /api/v1/runtime/diagnostics Runtime WS/SSE 有界计数，不含消息正文
+WS  /api/v1/runtime/ws     只读 snapshot/patch/heartbeat 通道；每 60 秒发送有界 snapshot
 ```
 
 数据库连接由 `psycopg_pool` 连接池管理（`min_size=2, max_size=10`）。连接被中断时连接池会自动重建，不会级联失败。compose 中 `app` 与 `postgres` 均设 `restart: unless-stopped`。
@@ -529,7 +573,10 @@ CI 会构建后端镜像、运行后端 ruff lint、在重置后的测试库上�
 - [ ] 外部库连接串使用 Direct 或 Session pooler，迁移/备份未走 Transaction pooler（端口 6543）。
 - [ ] 如启用 `verify-full`，根证书放在 `secrets/prod-supabase.cer` 且未提交。
 - [ ] 已通过启动日志的一次性令牌初始化管理员，默认密码已安全保存。
-- [ ] 公网访问使用 HTTPS，`AUTH_COOKIE_SECURE=true`，反向代理保留 Host 并对登录接口限流。
+- [ ] 公网访问使用 HTTPS；通用生产保持 `AUTH_COOKIE_SECURE=true`，且代理协议头仅从 `FORWARDED_ALLOW_IPS` 接受。
+- [ ] 只有启用受限 LAN HTTP 的 Traefik 混合入口才设置 `TRAEFIK_AUTH_COOKIE_SECURE=auto`。
+- [ ] 如保留 LAN HTTP，HTTP router 只允许家庭内网 CIDR，并已接受该入口的登录凭据与会话为局域网明文流量。
+- [ ] Traefik 保留 Host，WS Origin 校验通过，应用与数据库未向 WAN 直接发布端口。
 - [ ] API 端口未直接暴露公网；远程访问经过反向代理或隧道。
 - [ ] 数据库逻辑备份保存在仓库之外，本地 `archive/` 已单独备份。
 - [ ] 恢复演练在可丢弃库上完成，未指向唯一的媒体数据副本。

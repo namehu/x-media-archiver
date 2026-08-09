@@ -1,12 +1,14 @@
 import { Link } from "react-router-dom";
-import { Activity, AlertTriangle, Lock, Wrench } from "lucide-react";
+import { Activity, AlertTriangle, Gauge, Lock, Radio, RefreshCw, ServerCog, Wrench } from "lucide-react";
 import type { HealthDetail } from "../../../lib/api";
 import { Badge } from "../../../components/ui/badge";
 import { Card, CardContent, CardHeader, CardTitle } from "../../../components/ui/card";
 import { EmptyState } from "../../../components/ui/empty-state";
 import { ErrorState } from "../../../components/ui/error-state";
 import { StatCard } from "../../../components/ui/stat-card";
-import { formatDateTime } from "../../../lib/utils";
+import { useRuntimeDiagnostics } from "../../../lib/runtime-provider";
+import { formatBytes, formatDateTime } from "../../../lib/utils";
+import { useRuntimeTransportDiagnostics } from "../hooks/useSystemHealth";
 import { formatError, stringOrNumber, textValue } from "../utils";
 
 type SystemStatusTabProps = {
@@ -16,11 +18,18 @@ type SystemStatusTabProps = {
 };
 
 export function SystemStatusTab({ health, isError, onRetry }: SystemStatusTabProps) {
+  const clientRuntime = useRuntimeDiagnostics();
+  const transportQuery = useRuntimeTransportDiagnostics();
   const queue = health?.queue;
   const sources = health?.sources;
   const worker = health?.worker;
   const latestRun = queue?.latest_run;
   const latestScan = sources?.latest_scan;
+  const serverRuntime = transportQuery.data;
+  const transportLabel = {
+    websocket: "WebSocket",
+    polling: "REST 轮询",
+  }[clientRuntime.transport];
 
   if (isError) return <ErrorState title="系统状态不可用" onRetry={onRetry} />;
 
@@ -31,6 +40,36 @@ export function SystemStatusTab({ health, isError, onRetry }: SystemStatusTabPro
         <StatCard label="队列积压" value={(queue?.pending_items ?? 0) + (queue?.processing_items ?? 0)} detail={`待处理 ${queue?.pending_items ?? 0} · 处理中 ${queue?.processing_items ?? 0}`} icon={<Wrench className="h-4 w-4" />} tone={(queue?.pending_items ?? 0) ? "warning" : "brand"} />
         <StatCard label="来源扫描" value={sources?.active_scan_runs ?? 0} detail={`后台启用 ${sources?.history_enabled_sources ?? 0}`} icon={<Activity className="h-4 w-4" />} />
         <StatCard label="最近错误" value={health?.recent_errors.length ?? 0} icon={<AlertTriangle className="h-4 w-4" />} tone={health?.recent_errors.length ? "danger" : "success"} />
+      </div>
+
+      <div className="grid gap-4 md:grid-cols-2 xl:grid-cols-4">
+        <StatCard
+          label="Runtime 通道"
+          value={transportLabel}
+          detail={`最后关闭码 ${clientRuntime.lastCloseCode ?? "-"}`}
+          icon={<Radio className="h-4 w-4" />}
+          tone={clientRuntime.transport === "websocket" ? "success" : "warning"}
+        />
+        <StatCard
+          label="客户端消息速率"
+          value={`${clientRuntime.messageRatePerMinute}/分钟`}
+          detail={`${clientRuntime.messagesReceived} 条 · ${formatBytes(clientRuntime.bytesReceived)} · ${clientRuntime.stateCommits} 次提交`}
+          icon={<Gauge className="h-4 w-4" />}
+        />
+        <StatCard
+          label="连接恢复"
+          value={clientRuntime.reconnects}
+          detail={`snapshot ${clientRuntime.snapshots} · resync ${clientRuntime.resyncs} · drop ${clientRuntime.drops}`}
+          icon={<RefreshCw className="h-4 w-4" />}
+          tone={clientRuntime.resyncs || clientRuntime.drops ? "warning" : "brand"}
+        />
+        <StatCard
+          label="服务端 WS"
+          value={serverRuntime?.websocket.active_connections ?? "-"}
+          detail={`队列峰值 ${serverRuntime?.broker.queue_high_water ?? "-"} · drop ${serverRuntime?.websocket.dropped_events ?? "-"} · ${formatBytes(serverRuntime?.websocket.bytes_sent)}`}
+          icon={<ServerCog className="h-4 w-4" />}
+          tone={(serverRuntime?.websocket.dropped_events ?? 0) > 0 ? "warning" : "success"}
+        />
       </div>
 
       <div className="grid gap-4 xl:grid-cols-[1fr_1fr_1.1fr]">

@@ -12,7 +12,10 @@ import random
 import re
 import shutil
 import subprocess
+import time
+from collections import deque
 from pathlib import Path
+from queue import Empty, Full, Queue
 from threading import Event, Thread
 from typing import Any
 from urllib.parse import urlparse, urlunparse
@@ -34,6 +37,7 @@ from sqlalchemy.sql import ColumnElement, Select
 from xarchiver.config import Settings, get_settings
 from xarchiver.core.errors import ErrorCategory, category_value, classify_x_error
 from xarchiver.core.events import publish_event
+from xarchiver.core.subprocesses import stop_process_group
 from xarchiver.db import connect
 from xarchiver.downloader import prepare_cookies
 from xarchiver.importer import extract_tweet_id, upsert_tweets
@@ -50,7 +54,7 @@ from xarchiver.row_models import (
     TweetRow,
 )
 from xarchiver.services.operation_logs import (
-    append_operation_log_entry,
+    append_operation_log_entries,
     close_operation_log_stream,
     create_operation_log_stream,
     parse_gallery_dl_log_level,
@@ -97,6 +101,14 @@ DOWNLOAD_BUSY_SCAN_RETRY_MIN_SECONDS = 60
 logger = logging.getLogger(__name__)
 LEASE_SECONDS = 60
 HEARTBEAT_SECONDS = 20
+SOURCE_SCAN_LOG_BATCH_SIZE = 100
+SOURCE_SCAN_LOG_FLUSH_SECONDS = 1.0
+SOURCE_SCAN_LOG_QUEUE_SIZE = 1000
+SOURCE_SCAN_LOG_QUEUE_PUT_TIMEOUT_SECONDS = 0.1
+SOURCE_SCAN_PROCESS_STOP_TIMEOUT_SECONDS = 5.0
+SOURCE_SCAN_READER_JOIN_TIMEOUT_SECONDS = 5.0
+SOURCE_SCAN_READER_DRAIN_TIMEOUT_SECONDS = 10.0
+SOURCE_SCAN_STDERR_TAIL_LINES = 2000
 
 
 class WorkerLeaseLost(RuntimeError):
@@ -1524,6 +1536,7 @@ def record_waiting_downloads_scan(
                   and r.range_start = %s
                   and r.range_end = %s
                   and r.requested_limit = %s
+                returning r.id
                 """,
                 (
                     source_id,
@@ -1535,12 +1548,14 @@ def record_waiting_downloads_scan(
                 ),
             )
             if cur.rowcount:
+                scan_run_id = int(cur.fetchone()["id"])
                 conn.commit()
                 publish_event(
                     "source_scans",
                     "source.scan.waiting_downloads",
                     {
                         "source_id": source_id,
+                        "scan_run_id": scan_run_id,
                         "range": scan_range,
                         "status": "waiting_downloads",
                         "trigger_type": trigger_type,
@@ -1554,6 +1569,7 @@ def record_waiting_downloads_scan(
                     requested_limit, cursor_before, cursor_after, started_at, finished_at
                 )
                 values (%s, %s, 'waiting_downloads', %s, %s, %s, %s, %s, now(), now())
+                returning id
                 """,
                 (
                     source_id,
@@ -1565,11 +1581,18 @@ def record_waiting_downloads_scan(
                     Jsonb(cursor_state),
                 ),
             )
+            scan_run_id = int(cur.fetchone()["id"])
         conn.commit()
     publish_event(
         "source_scans",
         "source.scan.waiting_downloads",
-        {"source_id": source_id, "range": scan_range, "status": "waiting_downloads", "trigger_type": trigger_type},
+        {
+            "source_id": source_id,
+            "scan_run_id": scan_run_id,
+            "range": scan_range,
+            "status": "waiting_downloads",
+            "trigger_type": trigger_type,
+        },
     )
 
 
@@ -1939,40 +1962,169 @@ def run_gallery_dl_streaming(command: list[str], scan_run_id: int, worker_id: st
         stderr=subprocess.PIPE,
         text=True,
         bufsize=1,
+        start_new_session=True,
     )
     stdout_chunks: list[str] = []
-    stderr_chunks: list[str] = []
+    stderr_chunks: deque[str] = deque(maxlen=SOURCE_SCAN_STDERR_TAIL_LINES)
+    pending_logs: Queue[dict[str, object]] = Queue(maxsize=SOURCE_SCAN_LOG_QUEUE_SIZE)
+    reader_errors: Queue[tuple[str, BaseException]] = Queue(maxsize=2)
+    pending_logs_ready = Event()
+    stop_readers = Event()
 
     def read_stdout() -> None:
-        assert process.stdout is not None
-        for chunk in process.stdout:
-            stdout_chunks.append(chunk)
+        try:
+            assert process.stdout is not None
+            for chunk in process.stdout:
+                if stop_readers.is_set():
+                    break
+                stdout_chunks.append(chunk)
+        except Exception as exc:
+            try:
+                reader_errors.put_nowait(("stdout", exc))
+            except Full:
+                pass
+            stop_readers.set()
+            pending_logs_ready.set()
 
     def read_stderr() -> None:
-        assert process.stderr is not None
-        for line in process.stderr:
-            stderr_chunks.append(line)
-            append_source_scan_log(
-                scan_run_id,
-                parse_gallery_dl_log_level(line),
-                "gallery-dl",
-                line,
-                worker_id=worker_id,
-            )
+        try:
+            assert process.stderr is not None
+            for line in process.stderr:
+                stderr_chunks.append(line)
+                entry = {
+                    "level": parse_gallery_dl_log_level(line),
+                    "component": "gallery-dl",
+                    "message": line,
+                    "raw": line,
+                }
+                while not stop_readers.is_set():
+                    try:
+                        pending_logs.put(
+                            entry,
+                            timeout=SOURCE_SCAN_LOG_QUEUE_PUT_TIMEOUT_SECONDS,
+                        )
+                    except Full:
+                        continue
+                    if pending_logs.qsize() >= SOURCE_SCAN_LOG_BATCH_SIZE:
+                        pending_logs_ready.set()
+                    break
+                if stop_readers.is_set():
+                    break
+        except Exception as exc:
+            try:
+                reader_errors.put_nowait(("stderr", exc))
+            except Full:
+                pass
+            stop_readers.set()
+            pending_logs_ready.set()
+
+    def raise_reader_error() -> None:
+        try:
+            stream_name, error = reader_errors.get_nowait()
+        except Empty:
+            return
+        raise RuntimeError(f"gallery_dl_{stream_name}_reader_failed") from error
+
+    def flush_pending_logs() -> bool:
+        entries: list[dict[str, object]] = []
+        for _ in range(SOURCE_SCAN_LOG_BATCH_SIZE):
+            try:
+                entries.append(pending_logs.get_nowait())
+            except Empty:
+                break
+        if not entries:
+            return False
+        if not pending_logs.empty():
+            pending_logs_ready.set()
+        append_source_scan_logs(scan_run_id, entries, worker_id=worker_id)
+        return True
 
     stdout_thread = Thread(target=read_stdout, name="source-scan-gallery-dl-stdout", daemon=True)
     stderr_thread = Thread(target=read_stderr, name="source-scan-gallery-dl-stderr", daemon=True)
-    stdout_thread.start()
-    stderr_thread.start()
-    return_code = process.wait()
-    stdout_thread.join(timeout=5)
-    stderr_thread.join(timeout=5)
-    append_source_scan_log(scan_run_id, "info", "gallery-dl", f"gallery-dl 已退出，退出码为 {return_code}。", worker_id=worker_id)
-    return subprocess.CompletedProcess(
-        args=command,
-        returncode=return_code,
-        stdout="".join(stdout_chunks),
-        stderr="".join(stderr_chunks),
+    reader_drain_timed_out = False
+    primary_error: BaseException | None = None
+    try:
+        stdout_thread.start()
+        stderr_thread.start()
+        while process.poll() is None:
+            pending_logs_ready.wait(timeout=SOURCE_SCAN_LOG_FLUSH_SECONDS)
+            pending_logs_ready.clear()
+            raise_reader_error()
+            flush_pending_logs()
+            raise_reader_error()
+        return_code = process.wait()
+        drain_deadline = time.monotonic() + SOURCE_SCAN_READER_DRAIN_TIMEOUT_SECONDS
+        while stdout_thread.is_alive() or stderr_thread.is_alive() or not pending_logs.empty():
+            raise_reader_error()
+            if not pending_logs.empty():
+                flush_pending_logs()
+            remaining = drain_deadline - time.monotonic()
+            if remaining <= 0:
+                reader_drain_timed_out = True
+                raise RuntimeError("gallery_dl_reader_drain_timeout")
+            join_timeout = min(0.05, remaining)
+            stdout_thread.join(timeout=join_timeout)
+            stderr_thread.join(timeout=join_timeout)
+        raise_reader_error()
+        append_source_scan_log(
+            scan_run_id,
+            "info",
+            "gallery-dl",
+            f"gallery-dl 已退出，退出码为 {return_code}。",
+            worker_id=worker_id,
+        )
+        return subprocess.CompletedProcess(
+            args=command,
+            returncode=return_code,
+            stdout="".join(stdout_chunks),
+            stderr="".join(stderr_chunks),
+        )
+    except BaseException as exc:
+        primary_error = exc
+        raise
+    finally:
+        stop_readers.set()
+        _stop_gallery_dl_process(
+            process,
+            include_process_group=reader_drain_timed_out or process.poll() is None,
+        )
+        for stream in (process.stdout, process.stderr):
+            close = getattr(stream, "close", None)
+            if not callable(close):
+                continue
+            try:
+                close()
+            except (OSError, ValueError):
+                logger.warning("Failed to close gallery-dl output pipe", exc_info=True)
+        for thread in (stdout_thread, stderr_thread):
+            if thread.ident is not None:
+                thread.join(timeout=SOURCE_SCAN_READER_JOIN_TIMEOUT_SECONDS)
+                if thread.is_alive():
+                    logger.error("gallery-dl reader thread did not stop: %s", thread.name)
+        try:
+            while not pending_logs.empty():
+                flush_pending_logs()
+        except Exception as exc:
+            if primary_error is None:
+                raise
+            primary_error.add_note(f"pending source scan log flush failed: {exc!r}")
+            logger.error(
+                "Failed to flush pending source scan logs while handling an earlier error",
+                exc_info=True,
+            )
+
+
+def _stop_gallery_dl_process(
+    process: subprocess.Popen[str],
+    *,
+    include_process_group: bool = False,
+) -> None:
+    """终止仍在运行的 gallery-dl，并在超时后强制回收。"""
+
+    stop_process_group(
+        process,
+        timeout_seconds=SOURCE_SCAN_PROCESS_STOP_TIMEOUT_SECONDS,
+        include_process_group=include_process_group,
     )
 
 
@@ -1987,21 +2139,51 @@ def append_source_scan_log(
 ) -> None:
     """追加扫描日志，并把末尾进度同步到 ``source_scan_runs``。"""
 
-    text = redact_sensitive_text(message).strip()
-    if not text:
+    append_source_scan_logs(
+        scan_run_id,
+        [
+            {
+                "level": level,
+                "component": component,
+                "message": message,
+                "raw": message,
+                "exception": exception,
+            }
+        ],
+        worker_id=worker_id,
+    )
+
+
+def append_source_scan_logs(
+    scan_run_id: int,
+    entries: list[dict[str, object]],
+    *,
+    worker_id: str | None = None,
+) -> None:
+    """批量追加扫描日志，并以最后一行更新扫描进度。"""
+
+    prepared: list[dict[str, object]] = []
+    for entry in entries:
+        text = redact_sensitive_text(str(entry.get("message") or "")).strip()
+        if not text:
+            continue
+        raw = entry.get("raw")
+        prepared.append(
+            {
+                "level": str(entry.get("level") or "info"),
+                "component": str(entry.get("component") or "gallery-dl"),
+                "message": text[-500:],
+                "raw": str(raw) if raw is not None else None,
+                "context": {"scan_run_id": scan_run_id, "worker_id": worker_id},
+                "exception": entry.get("exception"),
+            }
+        )
+    if not prepared:
         return
-    progress = text[-500:]
+    progress = str(prepared[-1]["message"])
     log_stream_id = fetch_source_scan_log_stream_id(scan_run_id)
     if log_stream_id:
-        append_operation_log_entry(
-            log_stream_id,
-            level,
-            component,
-            progress,
-            raw=message,
-            context={"scan_run_id": scan_run_id, "worker_id": worker_id},
-            exception=exception,
-        )
+        append_operation_log_entries(log_stream_id, prepared)
     with connect() as conn:
         with conn.cursor() as cur:
             cur.execute(
@@ -2019,7 +2201,12 @@ def append_source_scan_log(
     publish_event(
         "source_scans",
         "source.scan.log",
-        {"scan_run_id": scan_run_id, "progress_message": progress, "log_stream_id": log_stream_id},
+        {
+            "scan_run_id": scan_run_id,
+            "progress_message": progress,
+            "log_stream_id": log_stream_id,
+            "entry_count": len(prepared),
+        },
     )
 
 

@@ -8,6 +8,7 @@ from __future__ import annotations
 
 import asyncio
 import mimetypes
+import time
 from collections.abc import Iterator
 from pathlib import Path
 from queue import Empty
@@ -21,15 +22,19 @@ from xarchiver.api.schemas import (
     DownloadPolicyResponse,
     HealthDetailResponse,
     RuntimeSnapshotResponse,
+    RuntimeTransportDiagnosticsResponse,
 )
 from xarchiver.config import get_settings
-from xarchiver.core.events import event_broker, format_sse_event
+from xarchiver.core.events import event_broker, format_sse_event, format_sse_heartbeat
+from xarchiver.core.runtime_channel import get_runtime_transport_diagnostics
+from xarchiver.services.auth import SESSION_COOKIE, authenticate_session
 from xarchiver.services.health import get_health_detail
 from xarchiver.services.runtime import get_runtime_snapshot
 
 router = APIRouter(tags=["misc"])
 
 MEDIA_CHUNK_SIZE = 64 * 1024
+SSE_SESSION_RECHECK_SECONDS = 300.0
 
 
 class ByteRange(NamedTuple):
@@ -110,15 +115,27 @@ async def events(request: Request, topics: str | None = None) -> StreamingRespon
     """建立 SSE 长连接，持续推送归档事件。"""
 
     subscription = event_broker.subscribe(parse_event_topics(topics))
+    settings = get_settings()
+    token = request.cookies.get(SESSION_COOKIE)
 
     async def event_stream():
+        next_auth_check_at = time.monotonic() + SSE_SESSION_RECHECK_SECONDS
         try:
             yield ": connected\n\n"
             while not await request.is_disconnected():
+                now = time.monotonic()
+                if settings.auth_mode != "disabled" and now >= next_auth_check_at:
+                    try:
+                        current_user = await asyncio.to_thread(authenticate_session, token)
+                    except Exception:
+                        break
+                    if current_user is None:
+                        break
+                    next_auth_check_at = now + SSE_SESSION_RECHECK_SECONDS
                 try:
                     event = await asyncio.to_thread(subscription.get, 15.0)
                 except Empty:
-                    yield ": keepalive\n\n"
+                    yield format_sse_heartbeat(*event_broker.watermark())
                     continue
                 yield format_sse_event(event)
         finally:
@@ -161,9 +178,16 @@ def health_detail() -> dict[str, object]:
 
 @router.get("/runtime/snapshot", response_model=RuntimeSnapshotResponse)
 def runtime_snapshot() -> dict[str, object]:
-    """返回 WebUI 运行态快照，用于 SSE 首连、重连和 gap 收敛。"""
+    """返回 WebUI 运行态快照，用于首连、重连和轮询降级收敛。"""
 
     return get_runtime_snapshot()
+
+
+@router.get("/runtime/diagnostics", response_model=RuntimeTransportDiagnosticsResponse)
+def runtime_diagnostics() -> dict[str, object]:
+    """返回有界的 runtime 传输计数，不包含事件正文。"""
+
+    return get_runtime_transport_diagnostics()
 
 
 @router.get("/media-file/{relative_path:path}")

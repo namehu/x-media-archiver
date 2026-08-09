@@ -226,7 +226,7 @@ flowchart LR
 
 关键约束：
 
-- `archive.run.progress`、`operation.log.appended` 等高频事件只 patch Runtime Store，不触发 Sources / discovered / health 的 REST 刷新。
+- `archive.run.progress` 只 patch Runtime Store；`operation.log.appended` 不进入根级 runtime channel。两者都不触发 Sources / discovered / health 的 REST 刷新。
 - 完成、失败、暂停、恢复、提交等边界事件先 patch runtime，再 invalidate 受影响的 REST query，让数据库快照完成最终收敛。
 - 来源详情页在 SSE `connected` 时不固定轮询；只有 `offline`、`reconnecting`、`stale` 时才启用降级轮询。
 - Runtime Store 只保存 active / recent 运行态，不接管完整列表、分页、筛选和历史事实。
@@ -268,64 +268,51 @@ sequenceDiagram
   FE->>API: GET /api/v1/runtime/snapshot
 ```
 
-### 阶段二：WebSocket Runtime Channel
+### 阶段二：只读 WebSocket Runtime Channel（已实现）
 
-目标是在阶段一边界稳定后，引入双向 runtime channel，承载 snapshot、patch、event 与 command。
+阶段二先验证只读传输层，不在同一轮引入命令语义。扫描、下载、暂停等写操作继续走现有 REST service；`command.*`、命令幂等和 `client_command_id` 留到只读通道在手机与 Traefik 环境稳定后再评估。
 
 新增接口：
 
 ```text
-GET /api/v1/runtime/ws
+WS  /api/v1/runtime/ws
+GET /api/v1/runtime/diagnostics
 ```
 
-服务端到前端消息：
+协议版本为 `1`，每条消息同时携带 broker 全局 `sequence` 与连接局部 `connection_sequence`：
 
-```text
-snapshot
-  完整运行态。连接成功、重连恢复、sequence 不连续时发送。
-
-patch
-  下载、扫描、worker、队列的增量变化。支持 batch。
-
-event
-  面向 activity feed / toast / 日志入口的人类可读事件摘要。
-
-command.accepted / command.rejected / command.completed / command.failed
-  命令回执。
+```json
+{
+  "protocol": 1,
+  "type": "runtime.patch",
+  "epoch": "process-epoch",
+  "sequence": 1024,
+  "connection_sequence": 8,
+  "sent_at": "2026-08-09T12:00:00Z",
+  "payload": {}
+}
 ```
 
-前端到服务端消息：
+服务端消息：
 
-```text
-command
-  带 client_command_id 的控制命令。
-```
+- `runtime.snapshot`：首帧、resync 后以及每 60 秒一次的完整运行态。周期快照按服务端 500 items / 100 runs / 50 scans 与 120 秒 recent window 重建 Store，防止长连接累计历史终态。
+- `runtime.patch`：200ms 窗口内按 run/item/scan 合并的增量。
+- `runtime.invalidate`：终态和资源边界事件对应的紧凑 REST 失效提示。
+- `system.heartbeat`：15 秒应用层心跳。
+- `system.resync_required`：连接队列溢出或 epoch 变化，随后发送新 snapshot。
+- `system.error`：不含敏感信息的通道错误。
 
-首批 WS command：
+连接必须先订阅 broker，再读取 snapshot；发出 snapshot 后只消费高于 snapshot 水位的缓冲事件。每个连接使用异步有界队列，最多保留 256 个原始事件或约 1 MiB；溢出时放弃普通增量并重新快照，不做持久 replay。
 
-- `source.scan.start`
-- `source.scan_session.pause`
-- `source.scan_session.resume`
-- `source.scan_session.stop`
-- `source.download.submit`
-- `archive.run.pause`
-- `archive.run.resume`
-- `archive.run.stop`
-- `archive.run.items.cancel`
+WS handler 显式读取 `xma_session` 并复用 `authenticate_session`，不能依赖只处理 HTTP scope 的 `BaseHTTPMiddleware`。握手还必须校验 `Origin` 与 `Host`；未认证或非法 Origin 使用 `1008`，临时不可用使用 `1013`。连接每 5 分钟复核 session，退出登录、过期或密码修改后关闭。保留的兼容 SSE 端点也执行相同的周期复核，但不再参与根级 Runtime Store 降级。
 
-命令命名必须对齐现有 service 边界。例如现有扫描暂停、恢复、停止是来源扫描会话级操作，而不是单个 scan run 级操作，因此命令名使用 `source.scan_session.*`。
+前端只在首帧 snapshot 成功应用后把 WS 标记为 connected。重连采用 `1、2、4、8、15、30` 秒并附加抖动；连续三次失败或单次 5 秒未收到 snapshot 时启用每 5 秒一次的 REST runtime snapshot 轮询。轮询期间每 60 秒探测 WS，收到新 snapshot 后原子切换并停止轮询。任何时刻只有一种 transport 可以写入 Runtime Store。首次成功应用的 WS snapshot 必须无条件收敛一次当前活跃的持久事实查询，覆盖页面查询先完成、数据变化发生在 WS 订阅前的启动竞态。进入 polling 时也立即收敛一次；之后 snapshot 出现 epoch 变化或 sequence 前跳时，以 15 秒 trailing throttle 失效当前活跃的 summary、library/feed、failures、duplicates、sources 与 archive queries，不能按每条 progress 触发查询。只要连接曾成功应用过 WS snapshot，后续任意重连的首帧 snapshot 都必须执行一次同样的持久查询收敛，即使 snapshot sequence 与已应用 patch 相同；否则连接在 `runtime.patch` 与同 sequence 的 `runtime.invalidate` 之间断开时会永久漏掉失效通知。
 
-REST 写接口必须保留，并与 WS command 调用同一批 service 或同一层 command handler。不得让 WS 绕过现有鉴权、写锁、错误映射和审计语义。
+每条连接的 ready 状态必须绑定到具体 WebSocket 实例。快速重连、页面恢复或 polling 探测替换连接后，旧实例的 `message`、`close` 和连接超时回调都不得修改 transport、sequence 或 Runtime Store；回调入口必须先确认该实例仍是 controller 当前持有的 socket。
 
-WebSocket handler 必须显式做鉴权与 Origin 校验：
+扫描日志与 runtime 分离：gallery-dl stderr 最多每秒或累计 100 行批量落盘；每批只更新一次扫描摘要并发布一次扫描进度。来源扫描和正式下载器必须共用有界 subprocess 生命周期：reader 只解析输出并向有界队列入队，主线程是 operation log 的唯一 writer；reader 内进度写入、输出读取或解析异常必须通过 error queue 回到主线程。异常清理时先停止进程组和 reader，再尽力排空已经入队的诊断日志，同时保留最初异常作为任务失败原因。下载器返回值只保留固定大小的 stdout/stderr 尾部，不能随长任务输出无限增长。批量日志持久化、进度写入、扫描摘要写入或最终日志写入抛错时，owner 必须在 `finally` 中 terminate 下载器进程组，等待超时后 kill，并关闭管道、回收 stdout/stderr reader，不能遗留继续请求 X 的子进程。正常退出后的 reader 与待写队列也必须在 10 秒统一 deadline 内 drain 完成；超时按任务失败处理，不得返回可能缺少 JSON 尾部的结果。开发与生产容器都必须启用 `init: true`，由 init/subreaper 回收进程组强杀后被托管的孙进程。operation log 文件追加发生在数据库行锁内：每次 append 先比较文件实际大小和 DB `byte_size`，发现崩溃窗口漂移就以 JSONL 为事实源重建统计；如果只有最后一条 JSON 或 UTF-8 记录不完整，则截到最后一条完整记录并写入恢复告警，中间记录损坏必须报错且不能改写文件；commit 前的文件或 SQL 异常在事务仍持锁时把文件截回写入前偏移；`commit()` 异常因结果可能不确定，不得 truncate，而应保留 JSONL 文件，退出原连接后重新取得行锁并重建 `line_count`、`byte_size`、级别统计和末条摘要。`operation.log.appended` 不进入 WS runtime 投影，日志详情仍通过 REST 查询。React Query invalidate 以 250ms 业务域窗口去重，progress 和日志事件不触发 REST 查询。删除类事件必须保留 `operation_id` 作为去重身份；同一身份的 `tweet_ids` 取并集，缺少 tweet 列表时退回 query invalidation。
 
-- 当前 HTTP 鉴权使用 `BaseHTTPMiddleware`，只处理 HTTP scope，不能保护 WebSocket 握手。
-- WS handler 必须读取 `SESSION_COOKIE` 并调用与 HTTP 相同的 session 校验逻辑。
-- 认证失败或 Origin 不合法时关闭连接，close code 使用 `1008`。
-- Origin 校验必须复用 HTTP 写请求的同源与本地开发白名单语义。
-- `auth_mode=disabled` 时才允许跳过鉴权，但仍应记录警告日志。
-
-WS 稳定后，前端优先使用 WS runtime channel。SSE 可保留为兼容或降级通道；REST 降级轮询继续作为长连接不可用时的兜底。
+飞牛 NAS 的 Traefik 配置见 `docker-compose.traefik.yml` 与 `docs/deploy/README.md`。Traefik 原生处理 WebSocket Upgrade，不添加自定义 Upgrade header；应用依赖透传 Host 做同源校验，并依赖可信的转发协议判断 Cookie Secure。通用生产模板保持 `AUTH_COOKIE_SECURE=true`；只有 Traefik 混合入口通过 `TRAEFIK_AUTH_COOKIE_SECURE=auto` 同时支持 HTTPS/WSS 域名和受限的 HTTP/WS 内网 IP。`RUNTIME_WS_ENABLED=false` 时前端自动回退 REST runtime snapshot 轮询。
 
 ## 4. 协议与一致性规则
 
@@ -343,7 +330,7 @@ WS 稳定后，前端优先使用 WS runtime channel。SSE 可保留为兼容或
 }
 ```
 
-前端只应用同 epoch 内 sequence 更新的消息。发现 epoch 变化、sequence 不连续、乱序或 patch 无法匹配当前 snapshot 时，进入 `resyncing` 并请求 snapshot。
+阶段一 SSE 客户端通过全局 sequence 检测空洞；当前根级 Runtime Store 不再消费 SSE。WS 使用 `connection_sequence` 检查当前连接内的连续性，并保留全局 sequence 作为 snapshot 水位坐标。发现 epoch 变化、连接序号不连续或 patch 无法匹配当前 snapshot 时，重建 WS 并由首帧 snapshot 收敛。
 
 原因：
 
@@ -508,7 +495,7 @@ GET /api/v1/runtime/snapshot
 AND source detail panel is open
 ```
 
-`staleThreshold` 第一版建议 30 秒。进入 `stale` 后启用 `/downloads` 降级轮询，收到新事件或 snapshot 成功后退出。
+`staleThreshold` 当前取 45 秒，覆盖两个 15 秒 heartbeat 周期并留出移动网络抖动余量。进入 `stale` 后启用 `/downloads` 降级轮询，收到新事件或 snapshot 成功后退出。
 
 不要把降级轮询唯一绑定到 runtime 的 `hasActiveDownload`。断线期间 runtime 可能过期，无法发现新开始的下载。第一版按“来源详情面板打开且连接非健康”轮询；后续可用最近一次 `/downloads` 快照中的 `active_run`、`processing_count` 或 `pending_count` 做进一步降频。
 
@@ -566,15 +553,27 @@ SSE 后端实现也有当前容量限制：每个订阅通过 `asyncio.to_thread
 - 多 tab 同时打开时不会因 topic gap 或重复 resync 造成 snapshot 风暴；每个 tab 内 snapshot 请求保持单飞和限流。
 - 无 SSE 时页面仍可通过 REST 正确操作，只是实时性降低。
 
-阶段二验收：
+阶段二只读通道验收：
 
 - WS 连接成功后收到 runtime snapshot。
 - 未登录或 Origin 非法时，WS 握手必须失败或立即 close(1008)，不得建立命令通道。
 - WS patch 可更新全局摘要和 Sources 行级 overlay。
-- WS command 有 pending、accepted/rejected、业务状态事件的完整反馈。
-- REST command 与 WS command 调用同一业务路径，错误语义一致。
+- WS 健康连接每 60 秒收到有界 snapshot，窗口外终态会从 Store 清理，Map 不随运行时长无限增长。
+- WS 队列溢出后发送 `system.resync_required` 与新 snapshot，不持续堆积历史事件。
+- WS 失败后可切到 REST snapshot 轮询，轮询期间会周期探测并原子恢复 WS；全程只有一种 transport 写 Runtime Store。
+- REST polling 与断线重连 snapshot 能在 15 秒有界窗口内收敛当前活跃的持久查询，不因 progress 或日志逐条发起 HTTP 请求。
+- 页面持久查询先完成、首个 WS snapshot 后到达时，该 snapshot 会触发一次查询收敛，不保留订阅前的旧缓存。
+- `runtime.patch` 后、同 sequence 的 `runtime.invalidate` 前断线时，重连首帧即使仍是相同 sequence，也会触发持久查询收敛。
+- 快速替换 WS 后，旧连接迟到的 snapshot/patch 不会重新激活 transport、覆盖 Store 或制造 connection sequence gap。
+- gallery-dl 运行期间日志批量写入失败时，子进程按 terminate、超时 kill 的顺序回收，输出 reader 与管道均被清理。
+- gallery-dl 退出后 reader drain 超时会使扫描失败，不会返回截断的 JSON；真实 POSIX 进程组强杀后不会在容器 PID 1 下遗留 zombie。
+- operation log 的 commit 前失败会在持锁期间回滚文件；commit 结果不确定时保留文件并重建数据库元数据，不删除其他批次日志。
+- operation log 尾部出现部分 JSON 或部分 UTF-8 时，下一批 append 会保留完整记录、写入恢复告警并继续；中间损坏不会被静默截断。
+- 正式下载器的日志 flush、reader 读取或进度写入失败时，异常会回到 owner 并触发同样的进程组、管道和线程清理；异常前已入队的诊断日志仍会排空，stdout/stderr 内存占用保持固定上界，日志文件/DB 漂移会在下一批 append 前自愈。
+- 250ms 内多个 `library.media_deleted` 事件不会互相覆盖，所有 tweet 的 Feed 缓存均被更新或失效。
+- `operation.log.appended` 不进入 WS runtime patch，扫描日志压力不会按行触发 HTTP 查询。
 - 断线重连后 snapshot 覆盖 runtime，不依赖断线期间事件补偿。
-- 多 tab 同时发送命令时不会创建重复运行任务或造成 UI 假成功。
+- Traefik 重启、应用容器重启、移动端切后台和锁屏恢复后均可重新收敛。
 
 ## 8. 实施顺序建议
 
@@ -585,8 +584,8 @@ SSE 后端实现也有当前容量限制：每个订阅通过 `asyncio.to_thread
 5. 改 Sources 详情列表为 REST row + overlay 渲染。
 6. 收敛 `/downloads` 与 `health/detail` 的固定轮询，并实现 offline/reconnecting/stale 降级规则。
 7. 做断线、重连、容器重启、多 tab 和终态 REST 收敛的手工验收。
-8. 阶段一稳定后，再新增 WS runtime channel。
-9. 先让 WS 只读推送 snapshot/patch，补齐 WS 鉴权和 Origin 校验，最后再迁移 command。
+8. 阶段一稳定后，新增只读 WS runtime channel、鉴权、Origin 校验和 REST snapshot 自动降级。（已实现）
+9. 在手机与 Traefik 环境通过长时间验收后，再单独设计并迁移 command。
 
 第一版不要实现完整任务中心、完整历史实时化或事件持久化。最小可用切面是：
 

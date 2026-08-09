@@ -9,8 +9,9 @@ from unittest.mock import patch
 import psycopg
 from fastapi import HTTPException, Request, Response
 from fastapi.responses import JSONResponse
+from uvicorn.middleware.proxy_headers import ProxyHeadersMiddleware
 
-from xarchiver.api.middleware import AuthMiddleware
+from xarchiver.api.middleware import AuthMiddleware, valid_origin
 from xarchiver.api.v1 import auth as auth_routes
 from xarchiver.services import auth
 
@@ -113,6 +114,11 @@ class AuthServiceTests(unittest.TestCase):
 
 
 class AuthMiddlewareTests(unittest.TestCase):
+    def test_local_dev_origin_is_only_allowed_for_loopback_backend(self):
+        self.assertTrue(valid_origin("http://127.0.0.1:5173", "127.0.0.1:18000"))
+        self.assertFalse(valid_origin("http://127.0.0.1:5173", "archive.internal"))
+        self.assertTrue(valid_origin("https://archive.example", "archive.example"))
+
     def make_request(self, path, method="GET", headers=None):
         raw_headers = [(key.lower().encode(), value.encode()) for key, value in (headers or {}).items()]
         return Request(
@@ -317,11 +323,54 @@ class LoginRateLimitTests(unittest.TestCase):
         self.assertNotIn("expired-client", auth_routes._failed_logins)
         self.assertIn("current-client", auth_routes._failed_logins)
 
+    def test_trusted_proxy_cidr_preserves_distinct_client_rate_limit_keys(self):
+        keys = []
+
+        async def app(scope, _receive, send):
+            keys.append(auth_routes._login_key(Request(scope)))
+            await send({"type": "http.response.start", "status": 204, "headers": []})
+            await send({"type": "http.response.body", "body": b""})
+
+        middleware = ProxyHeadersMiddleware(
+            app,
+            trusted_hosts="127.0.0.1,172.18.0.0/16",
+        )
+
+        async def call(client_ip):
+            scope = {
+                "type": "http",
+                "method": "POST",
+                "scheme": "http",
+                "path": "/api/v1/auth/login",
+                "query_string": b"",
+                "headers": [
+                    (b"host", b"archive.example"),
+                    (b"x-forwarded-for", client_ip.encode()),
+                    (b"x-forwarded-proto", b"https"),
+                ],
+                "client": ("172.18.0.1", 12345),
+                "server": ("172.18.0.2", 18000),
+            }
+
+            async def receive():
+                return {"type": "http.request", "body": b"", "more_body": False}
+
+            async def send(_message):
+                return None
+
+            await middleware(scope, receive, send)
+
+        asyncio.run(call("192.168.1.10"))
+        asyncio.run(call("192.168.1.11"))
+
+        self.assertEqual(keys, ["192.168.1.10", "192.168.1.11"])
+
     def test_session_cookie_uses_secure_browser_flags(self):
         response = Response()
-        settings = SimpleNamespace(auth_cookie_secure=True, auth_session_ttl_hours=168)
+        request = self._cookie_request("https")
+        settings = SimpleNamespace(auth_cookie_secure="auto", auth_session_ttl_hours=168)
         with patch("xarchiver.api.v1.auth.get_settings", return_value=settings):
-            auth_routes._set_session_cookie(response, "plain-browser-token")
+            auth_routes._set_session_cookie(request, response, "plain-browser-token")
 
         cookie = response.headers["set-cookie"]
         self.assertIn("xma_session=plain-browser-token", cookie)
@@ -329,6 +378,41 @@ class LoginRateLimitTests(unittest.TestCase):
         self.assertIn("Secure", cookie)
         self.assertIn("SameSite=strict", cookie)
         self.assertIn("Max-Age=604800", cookie)
+
+    def test_auto_cookie_policy_allows_restricted_lan_http_session(self):
+        response = Response()
+        request = self._cookie_request("http")
+        settings = SimpleNamespace(auth_cookie_secure="auto", auth_session_ttl_hours=168)
+        with patch("xarchiver.api.v1.auth.get_settings", return_value=settings):
+            auth_routes._set_session_cookie(request, response, "lan-browser-token")
+
+        self.assertNotIn("Secure", response.headers["set-cookie"])
+
+    def test_explicit_cookie_policy_overrides_request_scheme(self):
+        request = self._cookie_request("http")
+        settings = SimpleNamespace(auth_cookie_secure="true", auth_session_ttl_hours=168)
+        with patch("xarchiver.api.v1.auth.get_settings", return_value=settings):
+            self.assertTrue(auth_routes._session_cookie_secure(request))
+
+        settings.auth_cookie_secure = "false"
+        request = self._cookie_request("https")
+        with patch("xarchiver.api.v1.auth.get_settings", return_value=settings):
+            self.assertFalse(auth_routes._session_cookie_secure(request))
+
+    @staticmethod
+    def _cookie_request(scheme: str) -> Request:
+        return Request(
+            {
+                "type": "http",
+                "method": "POST",
+                "scheme": scheme,
+                "path": "/api/v1/auth/login",
+                "query_string": b"",
+                "headers": [(b"host", b"archive.example")],
+                "client": ("127.0.0.1", 12345),
+                "server": ("archive.example", 443 if scheme == "https" else 80),
+            }
+        )
 
 
 if __name__ == "__main__":

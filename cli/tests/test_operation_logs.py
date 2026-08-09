@@ -6,6 +6,8 @@ from unittest.mock import patch
 
 from xarchiver.db import connect
 from xarchiver.services.operation_logs import (
+    _read_operation_log_file_stats,
+    _reconcile_operation_log_stream,
     append_operation_log_entries,
     append_operation_log_entry,
     close_operation_log_stream,
@@ -87,6 +89,250 @@ class OperationLogServiceTests(unittest.TestCase):
         self.assertEqual([entry["message"] for entry in result["entries"]], ["one", "two"])
         publish.assert_called_once()
         self.assertEqual(publish.call_args.args[2]["entry_count"], 2)
+
+    def test_uncertain_commit_preserves_file_and_reconciles_instead_of_truncating(self) -> None:
+        class FakeCursor:
+            def __enter__(self):
+                return self
+
+            def __exit__(self, *_args):
+                return None
+
+            def execute(self, _sql, _params=None):
+                return None
+
+            def fetchone(self):
+                return {
+                    "id": 91,
+                    "scope_type": "source_scan",
+                    "scope_id": 9005,
+                    "log_path": "logs/source-scan-logs/source-1/rollback.jsonl",
+                    "line_count": 1,
+                    "byte_size": len(b"existing\n"),
+                    "level_counts": {"info": 1},
+                    "is_truncated": False,
+                }
+
+        class FailingCommitConnection:
+            def __enter__(self):
+                return self
+
+            def __exit__(self, *_args):
+                return None
+
+            def cursor(self):
+                return FakeCursor()
+
+            def commit(self):
+                raise RuntimeError("database commit failed")
+
+        with TemporaryDirectory() as tmpdir:
+            archive_dir = Path(tmpdir)
+            path = archive_dir / "logs/source-scan-logs/source-1/rollback.jsonl"
+            path.parent.mkdir(parents=True)
+            path.write_bytes(b"existing\n")
+            settings = SimpleNamespace(archive_dir=archive_dir, operation_log_max_bytes=10_000)
+            with (
+                patch("xarchiver.services.operation_logs.connect", return_value=FailingCommitConnection()),
+                patch("xarchiver.services.operation_logs.get_settings", return_value=settings),
+                patch("xarchiver.services.operation_logs._reconcile_operation_log_stream") as reconcile,
+                patch("xarchiver.services.operation_logs.publish_event") as publish,
+                self.assertRaisesRegex(RuntimeError, "database commit failed"),
+            ):
+                append_operation_log_entries(
+                    91,
+                    [{"level": "error", "component": "gallery-dl", "message": "new entry"}],
+                )
+
+            self.assertTrue(path.read_bytes().startswith(b"existing\n"))
+            self.assertIn(b"new entry", path.read_bytes())
+            reconcile.assert_called_once_with(91)
+            publish.assert_not_called()
+
+    def test_reconcile_rebuilds_stream_metadata_from_log_file(self) -> None:
+        with TemporaryDirectory() as tmpdir:
+            archive_dir = Path(tmpdir)
+            settings = SimpleNamespace(archive_dir=archive_dir, operation_log_max_bytes=10_000)
+            with patch("xarchiver.services.operation_logs.get_settings", return_value=settings):
+                stream_id = create_operation_log_stream(
+                    "source_scan",
+                    9006,
+                    "logs/source-scan-logs/source-1/reconcile.jsonl",
+                    {"source_id": 1, "test_case": "operation_logs"},
+                )
+                append_operation_log_entries(
+                    stream_id,
+                    [
+                        {"level": "info", "component": "gallery-dl", "message": "one"},
+                        {"level": "error", "component": "gallery-dl", "message": "two"},
+                    ],
+                )
+                path = archive_dir / "logs/source-scan-logs/source-1/reconcile.jsonl"
+                with connect() as conn:
+                    with conn.cursor() as cur:
+                        cur.execute(
+                            """
+                            update operation_log_streams
+                            set line_count = 0,
+                                byte_size = 0,
+                                level_counts = '{}'::jsonb,
+                                last_level = null,
+                                last_message = null
+                            where id = %s
+                            """,
+                            (stream_id,),
+                        )
+                    conn.commit()
+
+                _reconcile_operation_log_stream(stream_id)
+                file_size = path.stat().st_size
+
+                with connect() as conn:
+                    with conn.cursor() as cur:
+                        cur.execute(
+                            """
+                            select line_count, byte_size, level_counts, last_level, last_message
+                            from operation_log_streams
+                            where id = %s
+                            """,
+                            (stream_id,),
+                        )
+                        row = cur.fetchone()
+
+        self.assertEqual(row["line_count"], 2)
+        self.assertEqual(row["byte_size"], file_size)
+        self.assertEqual(row["level_counts"], {"info": 1, "error": 1})
+        self.assertEqual(row["last_level"], "error")
+        self.assertEqual(row["last_message"], "two")
+
+    def test_append_repairs_file_size_drift_before_writing_next_batch(self) -> None:
+        with TemporaryDirectory() as tmpdir:
+            archive_dir = Path(tmpdir)
+            settings = SimpleNamespace(archive_dir=archive_dir, operation_log_max_bytes=10_000)
+            with patch("xarchiver.services.operation_logs.get_settings", return_value=settings):
+                stream_id = create_operation_log_stream(
+                    "source_scan",
+                    9007,
+                    "logs/source-scan-logs/source-1/self-heal.jsonl",
+                    {"source_id": 1, "test_case": "operation_logs"},
+                )
+                append_operation_log_entry(stream_id, "info", "gallery-dl", "committed")
+                path = archive_dir / "logs/source-scan-logs/source-1/self-heal.jsonl"
+                with path.open("ab") as handle:
+                    handle.write(
+                        b'{"timestamp":"2026-08-09T12:00:00Z","level":"warning",'
+                        b'"component":"gallery-dl","message":"crash-window"}\n'
+                    )
+
+                append_operation_log_entry(stream_id, "error", "gallery-dl", "after-restart")
+                with connect() as conn:
+                    with conn.cursor() as cur:
+                        cur.execute(
+                            """
+                            select line_count, byte_size, level_counts, last_level, last_message
+                            from operation_log_streams
+                            where id = %s
+                            """,
+                            (stream_id,),
+                        )
+                        row = cur.fetchone()
+                file_size = path.stat().st_size
+
+        self.assertEqual(row["line_count"], 3)
+        self.assertEqual(row["byte_size"], file_size)
+        self.assertEqual(row["level_counts"], {"info": 1, "warning": 1, "error": 1})
+        self.assertEqual(row["last_level"], "error")
+        self.assertEqual(row["last_message"], "after-restart")
+
+    def test_append_recovers_partial_json_tail_before_writing_next_batch(self) -> None:
+        with TemporaryDirectory() as tmpdir:
+            archive_dir = Path(tmpdir)
+            settings = SimpleNamespace(archive_dir=archive_dir, operation_log_max_bytes=10_000)
+            with patch("xarchiver.services.operation_logs.get_settings", return_value=settings):
+                stream_id = create_operation_log_stream(
+                    "source_scan",
+                    9008,
+                    "logs/source-scan-logs/source-1/partial-json.jsonl",
+                    {"source_id": 1, "test_case": "operation_logs"},
+                )
+                append_operation_log_entry(stream_id, "info", "gallery-dl", "committed")
+                path = archive_dir / "logs/source-scan-logs/source-1/partial-json.jsonl"
+                with path.open("ab") as handle:
+                    handle.write(b'{"level":"warning","message":"unfinished')
+
+                _reconcile_operation_log_stream(stream_id)
+                with connect() as conn:
+                    with conn.cursor() as cur:
+                        cur.execute(
+                            """
+                            select line_count, byte_size, level_counts, last_level,
+                                   last_message, is_truncated
+                            from operation_log_streams
+                            where id = %s
+                            """,
+                            (stream_id,),
+                        )
+                        recovered_row = cur.fetchone()
+                recovered_file_size = path.stat().st_size
+                append_operation_log_entry(stream_id, "error", "gallery-dl", "after-recovery")
+                result = read_operation_log_entries(stream_id, limit=10)
+
+        self.assertEqual(recovered_row["line_count"], 2)
+        self.assertEqual(recovered_row["byte_size"], recovered_file_size)
+        self.assertEqual(recovered_row["level_counts"], {"info": 1, "warning": 1})
+        self.assertEqual(recovered_row["last_level"], "warning")
+        self.assertEqual(
+            recovered_row["last_message"],
+            "操作日志尾部存在未完成记录，已恢复到最后一条完整记录。",
+        )
+        self.assertFalse(recovered_row["is_truncated"])
+        self.assertEqual(
+            [entry["message"] for entry in result["entries"]],
+            [
+                "committed",
+                "操作日志尾部存在未完成记录，已恢复到最后一条完整记录。",
+                "after-recovery",
+            ],
+        )
+
+    def test_append_recovers_partial_utf8_tail_before_writing_next_batch(self) -> None:
+        with TemporaryDirectory() as tmpdir:
+            archive_dir = Path(tmpdir)
+            settings = SimpleNamespace(archive_dir=archive_dir, operation_log_max_bytes=10_000)
+            with patch("xarchiver.services.operation_logs.get_settings", return_value=settings):
+                stream_id = create_operation_log_stream(
+                    "source_scan",
+                    9009,
+                    "logs/source-scan-logs/source-1/partial-utf8.jsonl",
+                    {"source_id": 1, "test_case": "operation_logs"},
+                )
+                append_operation_log_entry(stream_id, "info", "gallery-dl", "committed")
+                path = archive_dir / "logs/source-scan-logs/source-1/partial-utf8.jsonl"
+                with path.open("ab") as handle:
+                    handle.write(b'{"level":"warning","message":"\xe4\xb8')
+
+                append_operation_log_entry(stream_id, "error", "gallery-dl", "after-recovery")
+                result = read_operation_log_entries(stream_id, limit=10)
+                recovered_text = path.read_text(encoding="utf-8")
+
+        self.assertEqual(result["entries"][-2]["level"], "warning")
+        self.assertEqual(result["entries"][-1]["message"], "after-recovery")
+        self.assertIn("after-recovery", recovered_text)
+
+    def test_log_repair_rejects_middle_corruption_without_modifying_file(self) -> None:
+        with TemporaryDirectory() as tmpdir:
+            path = Path(tmpdir) / "corrupt-middle.jsonl"
+            original = (
+                b'{"level":"info","message":"one"}\n'
+                b'{not-json}\n'
+                b'{"level":"info","message":"three"}\n'
+            )
+            path.write_bytes(original)
+
+            with self.assertRaisesRegex(ValueError, "invalid_operation_log_entry"):
+                _read_operation_log_file_stats(path)
+
+            self.assertEqual(path.read_bytes(), original)
 
     def test_missing_log_file_returns_unavailable_without_losing_stream(self) -> None:
         with TemporaryDirectory() as tmpdir:

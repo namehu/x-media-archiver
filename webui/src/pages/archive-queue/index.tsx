@@ -51,7 +51,7 @@ const eventLabels: Record<string, string> = {
 export function ArchiveQueuePage() {
   const queryClient = useQueryClient();
   const events = useServerEvents(["archive_runs", "worker"]);
-  const shouldFallbackPoll = shouldUseRuntimePollingFallback(events.status);
+  const shouldFallbackPoll = shouldUseRuntimePollingFallback(events.status, events.transport);
   const [urls, setUrls] = useState("");
   const [selectedRunId, setSelectedRunId] = useState<number | null>(null);
   const [feedback, setFeedback] = useState<ArchiveSubmission | null>(null);
@@ -134,6 +134,12 @@ export function ArchiveQueuePage() {
       : events.status === "connecting" || events.status === "reconnecting" || events.status === "resyncing"
         ? "connecting"
         : "closed";
+  const runtimeStatusLabel =
+    events.transport === "polling"
+      ? events.status === "connected"
+        ? "REST 快照轮询中"
+        : "REST 快照暂不可用"
+      : eventLabels[events.status] ?? "离线";
   const hasActiveFilters = activeTab !== "all" || tweetFilter.trim();
 
   return (
@@ -143,7 +149,7 @@ export function ArchiveQueuePage() {
           <h1 className="text-2xl font-bold tracking-tight text-fg-primary">归档队列</h1>
           <p className="mt-1 text-sm text-fg-secondary">提交归档批次 · 批次 · 批次详情</p>
         </div>
-        <LiveIndicator state={liveState} label={eventLabels[events.status] ?? "离线"} />
+        <LiveIndicator state={liveState} label={runtimeStatusLabel} />
       </section>
 
       <section className="grid gap-4 xl:grid-cols-[1.25fr_0.75fr]">
@@ -750,8 +756,8 @@ function hasFailure(run: ArchiveRunDetail) {
   return run.items.some((item) => item.status === "failed_permanent");
 }
 
-function shouldUseRuntimePollingFallback(status: string) {
-  return status === "offline" || status === "reconnecting" || status === "stale";
+function shouldUseRuntimePollingFallback(status: string, transport: string) {
+  return transport === "polling" || status === "offline" || status === "reconnecting" || status === "stale";
 }
 
 function RunSummary({ run }: { run: ArchiveRunDetail }) {

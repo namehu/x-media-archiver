@@ -156,6 +156,11 @@ class HealthDetailResponse(FlexibleResponse):
     recent_errors: list[RecentErrorResponse]
 
 
+class RuntimeTransportDiagnosticsResponse(FlexibleResponse):
+    broker: dict[str, Any]
+    websocket: dict[str, int]
+
+
 class RuntimeGlobalResponse(FlexibleResponse):
     active_run_count: int = 0
     active_item_count: int = 0

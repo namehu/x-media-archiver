@@ -38,13 +38,14 @@ export function DashboardPage() {
         </div>
         <LiveIndicator
           state={
-            events.status === "connected"
+            events.transport === "websocket" && events.status === "connected"
               ? "open"
-              : events.status === "connecting" || events.status === "reconnecting" || events.status === "resyncing"
+              : events.transport === "websocket" &&
+                  (events.status === "connecting" || events.status === "reconnecting" || events.status === "resyncing")
                 ? "connecting"
                 : "closed"
           }
-          label={eventLabel(events.status)}
+          label={eventLabel(events.status, events.transport)}
         />
       </section>
 
@@ -107,7 +108,7 @@ export function DashboardPage() {
         <Card>
           <CardHeader>
             <CardTitle>实时事件</CardTitle>
-            <CardDescription>由 SSE 事件与轮询摘要合成。</CardDescription>
+            <CardDescription>由 WebSocket 事件与 REST 摘要合成。</CardDescription>
           </CardHeader>
           <CardContent className="space-y-3">
             {model.feed.map((item) => (
@@ -166,7 +167,10 @@ export function DashboardPage() {
   );
 }
 
-function eventLabel(status: string) {
+function eventLabel(status: string, transport: "websocket" | "polling") {
+  if (transport === "polling") {
+    return status === "connected" ? "REST 快照轮询" : "REST 快照轮询不可用";
+  }
   switch (status) {
     case "connected":
       return "实时事件已连接";

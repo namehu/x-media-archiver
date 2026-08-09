@@ -29,10 +29,11 @@
 
 1. CLI / API / WebUI 共享数据库队列模型。
 2. `/api/v1/*` 成为唯一业务 API 路径，旧 `/api/*` 业务兼容层已移除。
-3. WebUI 已接入分页、筛选、SSE 刷新、健康状态、Toast、交互系统和 OpenAPI generated types。
+3. WebUI 已接入分页、筛选、根级 Runtime Store、只读 WebSocket/REST 快照降级、健康状态、Toast、交互系统和 OpenAPI generated types。
 4. API 层已有统一错误响应、主要 response model、JSON 结构化日志和 `X-Request-ID`。
 5. Archive Queue、Sources、Library、Failures、Duplicates 等主页面已完成规模化基础。
-6. E2E 当前明确不作为近期任务；主链路继续使用手工验收。
+6. Runtime 阶段一 SSE 与阶段二只读 WebSocket 已实现；WS command 尚未引入。
+7. E2E 当前明确不作为近期任务；主链路继续使用手工验收。
 
 保持不做：
 
@@ -108,10 +109,11 @@
 优先级：中。
 理由：当前下载、扫描状态依赖页面级轮询和 SSE invalidate，长期需要收敛为全局运行态投影，支持任意页面感知下载和扫描状态。
 
-- [ ] 按 `docs/architecture/runtime-realtime-evolution.md` 阶段一改造 SSE、Runtime Store 和行级 overlay。
-- [ ] 降低 Sources 详情页 `/downloads` 与 `health/detail` 的固定轮询频率。
-- [ ] 验证断线、容器重启、多 tab、终态 REST 收敛等场景。
-- [ ] 阶段一稳定后，再评估 WebSocket runtime channel 与 WS command。
+- [x] 按 `docs/architecture/runtime-realtime-evolution.md` 完成阶段一 SSE、Runtime Store 和行级 overlay。
+- [x] 降低 Sources 详情页 `/downloads` 与 `health/detail` 的固定轮询频率。
+- [x] 实现只读 WebSocket runtime channel、周期有界 snapshot、REST snapshot 自动降级、持久查询收敛、诊断计数和 Traefik 部署模板。
+- [ ] 在真实手机和飞牛 NAS 上验证长扫描、锁屏恢复、Traefik/应用重启与终态 REST 收敛。
+- [ ] 只读通道稳定后，再评估 WS command、命令幂等与 `client_command_id`。
 
 ### G. 工程约束
 

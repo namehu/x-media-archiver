@@ -35,6 +35,7 @@ from xarchiver.api.v1 import (
     log_streams,
     maintenance,
     misc,
+    runtime_ws,
     settings,
     sources,
 )
@@ -138,6 +139,7 @@ def create_app() -> FastAPI:
     app.include_router(actions.router, prefix="/api/v1")
     app.include_router(maintenance.router, prefix="/api/v1")
     app.include_router(misc.router, prefix="/api/v1")
+    app.include_router(runtime_ws.router, prefix="/api/v1")
     app.include_router(settings.router, prefix="/api/v1")
 
     mount_webui(app)

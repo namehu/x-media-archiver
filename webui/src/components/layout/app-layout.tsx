@@ -73,7 +73,7 @@ export function AppLayout() {
   const events = useServerEvents(["archive_runs", "sources", "source_scans", "worker", "logs", "library"]);
   const runtimeSpeedBps = useRuntime((state) => state.global.speed_bps);
   const runtimeCurrentTweetId = useRuntime((state) => state.global.current_tweet_id);
-  const shouldFallbackPoll = shouldUseRuntimePollingFallback(events.status);
+  const shouldFallbackPoll = shouldUseRuntimePollingFallback(events.status, events.transport);
   const healthQuery = useQuery({
     queryKey: ["health-detail"],
     queryFn: () => apiGet<HealthDetail>("/api/v1/health/detail"),
@@ -119,6 +119,12 @@ export function AppLayout() {
     stale: "实时事件无新消息，启用降级刷新",
     offline: "实时事件离线，使用轮询刷新",
   };
+  const runtimeStatusLabel =
+    events.transport === "polling"
+      ? events.status === "connected"
+        ? "REST 快照轮询中"
+        : "REST 快照暂不可用"
+      : eventLabel[events.status] ?? "离线";
 
   const commands = useMemo<CommandPaletteItem[]>(
     () => [
@@ -214,7 +220,7 @@ export function AppLayout() {
                     ? "connecting"
                     : "closed"
               }
-              label={eventLabel[events.status] ?? "离线"}
+              label={runtimeStatusLabel}
               compactOnMobile
             />
             <Badge
@@ -321,8 +327,8 @@ function formatBytes(value?: number | null) {
   return `${size.toFixed(index === 0 ? 0 : 1)} ${units[index]}`;
 }
 
-function shouldUseRuntimePollingFallback(status: string) {
-  return status === "offline" || status === "reconnecting" || status === "stale";
+function shouldUseRuntimePollingFallback(status: string, transport: string) {
+  return transport === "polling" || status === "offline" || status === "reconnecting" || status === "stale";
 }
 
 function Navigation({ onNavigate, showBrand = true }: { onNavigate?: () => void; showBrand?: boolean }) {

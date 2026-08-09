@@ -1,0 +1,38 @@
+# Optional production override for an existing Traefik deployment.
+# Traefik handles WebSocket Upgrade automatically; no custom Upgrade headers are needed.
+
+services:
+  app:
+    environment:
+      FORWARDED_ALLOW_IPS: ${TRAEFIK_FORWARDED_ALLOW_IPS:-*}
+      AUTH_COOKIE_SECURE: ${TRAEFIK_AUTH_COOKIE_SECURE:-auto}
+    networks:
+      - default
+      - traefik
+    labels:
+      - "traefik.enable=true"
+      - "traefik.docker.network=${TRAEFIK_NETWORK:?set TRAEFIK_NETWORK}"
+      - "traefik.http.services.xma.loadbalancer.server.port=18000"
+
+      - "traefik.http.routers.xma-public.rule=Host(`${XMA_PUBLIC_HOST:?set XMA_PUBLIC_HOST}`)"
+      - "traefik.http.routers.xma-public.entrypoints=${TRAEFIK_WEBSECURE_ENTRYPOINT:-websecure}"
+      - "traefik.http.routers.xma-public.tls=true"
+      - "traefik.http.routers.xma-public.tls.certresolver=${TRAEFIK_CERT_RESOLVER:?set TRAEFIK_CERT_RESOLVER}"
+      - "traefik.http.routers.xma-public.service=xma"
+
+      - "traefik.http.routers.xma-public-http.rule=Host(`${XMA_PUBLIC_HOST:?set XMA_PUBLIC_HOST}`)"
+      - "traefik.http.routers.xma-public-http.entrypoints=${TRAEFIK_WEB_ENTRYPOINT:-web}"
+      - "traefik.http.routers.xma-public-http.middlewares=xma-https-redirect"
+      - "traefik.http.routers.xma-public-http.service=xma"
+      - "traefik.http.middlewares.xma-https-redirect.redirectscheme.scheme=https"
+
+      - "traefik.http.routers.xma-lan.rule=Host(`${XMA_LAN_HOST:?set XMA_LAN_HOST}`)"
+      - "traefik.http.routers.xma-lan.entrypoints=${TRAEFIK_WEB_ENTRYPOINT:-web}"
+      - "traefik.http.routers.xma-lan.middlewares=xma-lan-only"
+      - "traefik.http.routers.xma-lan.service=xma"
+      - "traefik.http.middlewares.xma-lan-only.ipallowlist.sourcerange=${XMA_LAN_CIDR:?set XMA_LAN_CIDR}"
+
+networks:
+  traefik:
+    external: true
+    name: ${TRAEFIK_NETWORK:?set TRAEFIK_NETWORK}
