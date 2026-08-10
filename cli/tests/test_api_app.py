@@ -11,7 +11,7 @@ from fastapi.responses import JSONResponse
 from starlette.exceptions import HTTPException as StarletteHTTPException
 
 from xarchiver.api import schemas
-from xarchiver.api.app import create_app
+from xarchiver.api.app import choose_network_work, create_app
 from xarchiver.api.deps import (
     execute_write_action,
     parse_event_topics,
@@ -28,6 +28,13 @@ from xarchiver.core.lock_manager import lock_manager
 
 
 class ApiAppTests(unittest.TestCase):
+    def test_network_work_alternates_when_scan_and_download_are_ready(self) -> None:
+        self.assertEqual(choose_network_work(True, True, "source"), "download")
+        self.assertEqual(choose_network_work(True, True, "download"), "source")
+        self.assertEqual(choose_network_work(True, False, "download"), "source")
+        self.assertEqual(choose_network_work(False, True, "source"), "download")
+        self.assertIsNone(choose_network_work(False, False, "source"))
+
     def test_execute_write_action_wraps_result(self) -> None:
         result = execute_write_action("verify", lambda: {"checked": 1})
 
@@ -128,6 +135,8 @@ class ApiAppTests(unittest.TestCase):
         self.assertIn("WriteActionResponse", component_names)
         self.assertIn("DownloadPolicyResponse", component_names)
         self.assertIn("HealthDetailResponse", component_names)
+        self.assertIn("SourceBulkTaskResponse", component_names)
+        self.assertIn("SourceSchedulePolicyResponse", component_names)
 
     def test_openapi_uses_concrete_page_and_archive_result_schemas(self) -> None:
         components = create_app().openapi()["components"]["schemas"]

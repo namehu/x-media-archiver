@@ -1,4 +1,4 @@
-export { ApiError, apiDelete, apiGet, apiPost, apiRequest, apiUrl } from "../api/client";
+export { ApiError, apiDelete, apiGet, apiPatch, apiPost, apiPut, apiRequest, apiUrl } from "../api/client";
 
 export type Summary = {
   tweet_status_counts: Record<string, number>;
@@ -378,6 +378,17 @@ type ArchiveSourceBase = {
   unsubmitted_tweet_count?: number | null;
   scan_batch_count?: number | null;
   latest_discovered_at?: string | null;
+  latest_tweet_published_at?: string | null;
+  last_scan_at?: string | null;
+  last_success_at?: string | null;
+  last_error_at?: string | null;
+  pending_download_count?: number | null;
+  processing_download_count?: number | null;
+  failed_download_count?: number | null;
+  schedule_enabled?: boolean;
+  schedule_next_run_at?: string | null;
+  schedule_policy_label?: string | null;
+  active_bulk_task_item_status?: string | null;
   last_seen_tweet_id?: string | null;
   newest_seen_tweet_id?: string | null;
   oldest_seen_tweet_id?: string | null;
@@ -433,6 +444,75 @@ export type SourceDiscoveryPageResponse = PageResponse<SourceDiscovery> & {
   facets?: SourceDiscoveryFacets | null;
 };
 export type SourceScanRunsPageResponse = PageResponse<SourceScanRun>;
+
+export type SourceBulkTaskType = "refresh_latest" | "download_missing" | "refresh_and_download_new";
+
+export type SourceBulkTaskItem = {
+  id: number;
+  task_id: number;
+  source_id: number;
+  position: number;
+  wave_index: number;
+  status: "queued" | "scanning" | "waiting_download" | "downloading" | "succeeded" | "skipped" | "failed" | "cancelled";
+  scan_run_ids: number[];
+  archive_run_id?: number | null;
+  discovered_count: number;
+  new_tweet_count: number;
+  submitted_count: number;
+  skip_reason?: string | null;
+  error_category?: string | null;
+  error_message?: string | null;
+  label?: string | null;
+  author_username?: string | null;
+  started_at?: string | null;
+  finished_at?: string | null;
+  created_at: string;
+  updated_at: string;
+};
+
+export type SourceBulkTask = {
+  id: number;
+  task_type: SourceBulkTaskType;
+  trigger_type: "manual" | "scheduled" | "retry";
+  status: "queued" | "running" | "pausing" | "paused" | "blocked" | "completed" | "completed_with_issues" | "cancelled";
+  schedule_policy_id?: number | null;
+  source_filter: Record<string, unknown>;
+  options: Record<string, unknown>;
+  total_count: number;
+  error_category?: string | null;
+  error_message?: string | null;
+  counts: Record<string, number>;
+  settled_count: number;
+  progress: number;
+  items?: SourceBulkTaskItem[];
+  started_at?: string | null;
+  finished_at?: string | null;
+  created_at: string;
+  updated_at: string;
+};
+
+export type SourceBulkTasksPageResponse = PageResponse<SourceBulkTask>;
+
+export type SourceSchedulePolicy = {
+  id: number;
+  label: string;
+  action: "refresh_latest" | "refresh_and_download_new";
+  frequency_kind: "interval" | "daily" | "weekly";
+  interval_minutes?: number | null;
+  local_time?: string | null;
+  weekday?: number | null;
+  timezone: string;
+  jitter_seconds: number;
+  max_downloads_per_source: number;
+  max_downloads_per_task: number;
+  enabled: boolean;
+  next_run_at?: string | null;
+  last_run_at?: string | null;
+  source_count: number;
+  source_ids?: number[];
+  created_at: string;
+  updated_at: string;
+};
 
 export type SourceDeleteResponse = {
   source_id: number;

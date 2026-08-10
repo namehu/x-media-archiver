@@ -16,9 +16,12 @@ from sqlalchemy import (
     Integer,
     and_,
     bindparam,
+    case,
     exists,
     func,
+    or_,
     select,
+    update,
 )
 from sqlalchemy.sql import ColumnElement, Select
 
@@ -323,7 +326,7 @@ def fetch_tweet_statuses(tweet_ids: list[str]) -> dict[str, str]:
 
 
 def has_pending_download_work() -> bool:
-    """判断队列里是否还有可运行的归档条目。"""
+    """判断队列里是否还有未收敛的归档条目，包括暂停或阻塞项。"""
 
     with connect() as conn:
         with conn.cursor() as cur:
@@ -336,6 +339,48 @@ def has_pending_download_work() -> bool:
                 """
             )
             return bool(cur.fetchone()["pending"])
+
+
+def has_runnable_download_work(retry_limit: int = 3) -> bool:
+    """判断是否存在当前可由 worker 领取的下载条目。"""
+
+    runnable_item = (
+        select(archive_run_items.c.id)
+        .select_from(
+            archive_run_items.join(
+                archive_runs,
+                archive_runs.c.id == archive_run_items.c.archive_run_id,
+            )
+        )
+        .where(
+            archive_runs.c.status.in_({"queued", "running"}),
+            archive_run_items.c.retry_count < retry_limit,
+            or_(
+                archive_run_items.c.status == "pending",
+                and_(
+                    archive_run_items.c.status == "failed_retryable",
+                    or_(
+                        archive_run_items.c.next_attempt_at.is_(None),
+                        archive_run_items.c.next_attempt_at <= func.now(),
+                    ),
+                ),
+                and_(
+                    archive_run_items.c.status == "processing",
+                    or_(
+                        archive_run_items.c.lease_expires_at.is_(None),
+                        archive_run_items.c.lease_expires_at < func.now(),
+                    ),
+                ),
+            ),
+        )
+        .limit(1)
+    )
+    statement = select(exists(runnable_item).label("runnable"))
+    with connect() as conn:
+        with conn.cursor() as cur:
+            sql, params = compile_query(statement)
+            cur.execute(sql, params)
+            return bool(cur.fetchone()["runnable"])
 
 
 def process_next_queued_run(settings: Settings, worker_id: str | None = None) -> dict[str, object] | None:
@@ -399,7 +444,7 @@ def claim_next_items(
                     and r.status in ('queued', 'running')
                     and i.retry_count < %s
                     and (i.next_attempt_at is null or i.next_attempt_at <= now())
-                  order by i.created_at asc, i.id asc
+                  order by r.last_dispatched_at asc nulls first, r.started_at asc, i.created_at asc, i.id asc
                   for update skip locked
                   limit 1
                 ),
@@ -436,10 +481,23 @@ def claim_next_items(
             rows = [ArchiveClaimedItemRow.model_validate(dict(row)) for row in cur.fetchall()]
             if rows:
                 run_id = int(rows[0]["archive_run_id"])
-                cur.execute(
-                    "update archive_runs set status = 'running', finished_at = null where id = %s and status = 'queued'",
-                    (run_id,),
+                statement = (
+                    update(archive_runs)
+                    .where(
+                        archive_runs.c.id == run_id,
+                        archive_runs.c.status.in_({"queued", "running"}),
+                    )
+                    .values(
+                        status=case(
+                            (archive_runs.c.status == "queued", "running"),
+                            else_=archive_runs.c.status,
+                        ),
+                        finished_at=None,
+                        last_dispatched_at=func.now(),
+                    )
                 )
+                sql, params = compile_query(statement)
+                cur.execute(sql, params)
         conn.commit()
     if rows:
         payload = build_archive_run_event_payload(
@@ -1122,12 +1180,12 @@ def retry_run(run_id: int) -> dict[str, object]:
 
 
 def pause_run(run_id: int) -> dict[str, object]:
-    """暂停 queued/running 状态的运行，阻止后续继续领新任务。"""
+    """暂停 queued/running/blocked 状态的运行，阻止后续继续领新任务。"""
 
     run = get_run(run_id)
     if run is None:
         raise ValueError("archive_run_not_found")
-    if run.status not in {"queued", "running"}:
+    if run.status not in {"queued", "running", "blocked"}:
         return {"run_id": run_id, "status": run.status, "affected_count": 0}
     with connect() as conn:
         with conn.cursor() as cur:
@@ -1137,7 +1195,7 @@ def pause_run(run_id: int) -> dict[str, object]:
                 set status = 'paused',
                     control_state = control_state || %s,
                     finished_at = null
-                where id = %s and status in ('queued', 'running')
+                where id = %s and status in ('queued', 'running', 'blocked')
                 """,
                 (Jsonb({"pause_requested": True}), run_id),
             )
@@ -1168,7 +1226,7 @@ def resume_run(run_id: int) -> dict[str, object]:
                     last_progress_at = now(),
                     updated_at = now()
                 where archive_run_id = %s
-                  and status = 'pending'
+                  and status in ('pending', 'blocked')
                 """,
                 (item_status, run_id),
             )

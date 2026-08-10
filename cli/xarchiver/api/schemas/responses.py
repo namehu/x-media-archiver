@@ -6,7 +6,7 @@
 
 from __future__ import annotations
 
-from datetime import datetime
+from datetime import datetime, time
 from typing import Any
 
 from pydantic import BaseModel, ConfigDict, Field
@@ -565,6 +565,16 @@ class ArchiveSourceListResponse(ArchiveSourceResponse):
     discovered_media_count: int = 0
     scan_batch_count: int = 0
     latest_discovered_at: datetime | None = None
+    latest_tweet_published_at: datetime | None = None
+    last_success_at: datetime | None = None
+    last_error_at: datetime | None = None
+    pending_download_count: int = 0
+    processing_download_count: int = 0
+    failed_download_count: int = 0
+    schedule_enabled: bool = False
+    schedule_next_run_at: datetime | None = None
+    schedule_policy_label: str | None = None
+    active_bulk_task_item_status: str | None = None
 
 
 class SourceDiscoveryResponse(FlexibleResponse):
@@ -704,6 +714,75 @@ class ArchiveSourceDetailResponse(ArchiveSourceListResponse):
 class SourceDeleteResponse(FlexibleResponse):
     source_id: int
     deleted_at: datetime
+
+
+class SourceBulkTaskItemResponse(FlexibleResponse):
+    id: int
+    task_id: int
+    source_id: int
+    position: int
+    wave_index: int
+    status: str
+    scan_run_ids: list[int] = Field(default_factory=list)
+    archive_run_id: int | None = None
+    discovered_count: int = 0
+    new_tweet_count: int = 0
+    submitted_count: int = 0
+    skip_reason: str | None = None
+    error_category: str | None = None
+    error_message: str | None = None
+    label: str | None = None
+    author_username: str | None = None
+    started_at: datetime | None = None
+    finished_at: datetime | None = None
+    created_at: datetime
+    updated_at: datetime
+
+
+class SourceBulkTaskResponse(FlexibleResponse):
+    id: int
+    task_type: str
+    trigger_type: str
+    status: str
+    schedule_policy_id: int | None = None
+    source_filter: dict[str, Any] = Field(default_factory=dict)
+    options: dict[str, Any] = Field(default_factory=dict)
+    total_count: int
+    error_category: str | None = None
+    error_message: str | None = None
+    counts: dict[str, int] = Field(default_factory=dict)
+    settled_count: int = 0
+    progress: float = 0
+    items: list[SourceBulkTaskItemResponse] = Field(default_factory=list)
+    started_at: datetime | None = None
+    finished_at: datetime | None = None
+    created_at: datetime
+    updated_at: datetime
+
+
+class SourceBulkTasksPageResponse(PageMetaResponse):
+    rows: list[SourceBulkTaskResponse]
+
+
+class SourceSchedulePolicyResponse(FlexibleResponse):
+    id: int
+    label: str
+    action: str
+    frequency_kind: str
+    interval_minutes: int | None = None
+    local_time: time | None = None
+    weekday: int | None = None
+    timezone: str
+    jitter_seconds: int
+    max_downloads_per_source: int
+    max_downloads_per_task: int
+    enabled: bool
+    next_run_at: datetime | None = None
+    last_run_at: datetime | None = None
+    source_count: int = 0
+    source_ids: list[int] = Field(default_factory=list)
+    created_at: datetime
+    updated_at: datetime
 
 
 # 操作日志相关响应

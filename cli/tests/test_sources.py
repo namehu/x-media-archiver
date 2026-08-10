@@ -1150,7 +1150,13 @@ class SourceDiscoveryIntegrationTests(unittest.TestCase):
         self.assertEqual(row["text"], "second")
 
     def test_list_sources_page_supports_filters_offset_and_total_count(self) -> None:
-        baseline = list_sources_page(status="paused", source_type="user_media", limit=1, offset=0)["total_count"]
+        baseline = list_sources_page(
+            status="paused",
+            source_type="user_media",
+            search="sourcefixture",
+            limit=1,
+            offset=0,
+        )["total_count"]
         first = create_source("user_media", self.source_urls[0])
         second = create_source("user_media", self.source_urls[1])
         create_source("profile", self.source_urls[2])
@@ -1166,13 +1172,76 @@ class SourceDiscoveryIntegrationTests(unittest.TestCase):
                 )
             conn.commit()
 
-        page = list_sources_page(status="paused", source_type="user_media", limit=1, offset=1)
+        page = list_sources_page(
+            status="paused",
+            source_type="user_media",
+            search="sourcefixture",
+            limit=1,
+            offset=1,
+        )
 
         self.assertEqual(page["count"], 1)
         self.assertEqual(page["total_count"], baseline + 2)
         self.assertEqual(page["limit"], 1)
         self.assertEqual(page["offset"], 1)
         self.assertEqual([row["id"] for row in page["rows"]], [first["id"]])
+
+    def test_source_operational_filters_and_aggregate_sorts_compile(self) -> None:
+        for operational_filter in ["due", "waiting_download", "running", "error", "scheduled"]:
+            page = list_sources_page(operational_filter=operational_filter, limit=1)
+            self.assertGreaterEqual(page["total_count"], 0)
+        for sort_by in [
+            "latest_tweet_published_at",
+            "last_success_at",
+            "unsubmitted_tweet_count",
+            "pending_download_count",
+            "schedule_next_run_at",
+        ]:
+            page = list_sources_page(sort_by=sort_by, limit=1)
+            self.assertLessEqual(page["count"], 1)
+
+    def test_source_failed_download_count_only_uses_latest_tweet_item(self) -> None:
+        source = create_source("user_media", self.source_urls[0])
+        record_source_discoveries(
+            int(source["id"]),
+            [
+                {
+                    "tweet_id": self.tweet_id,
+                    "url": f"https://x.com/sourcefixture/status/{self.tweet_id}",
+                    "author_username": "sourcefixture",
+                    "author_display_name": None,
+                    "text": None,
+                    "published_at": None,
+                    "collected_at": None,
+                    "raw_import": {},
+                }
+            ],
+        )
+        first = submit_source_downloads(int(source["id"]), "download_missing")
+        with connect() as conn:
+            with conn.cursor() as cur:
+                cur.execute(
+                    "update archive_run_items set status = 'failed_permanent' where archive_run_id = %s",
+                    (first["run_id"],),
+                )
+                cur.execute("update archive_runs set status = 'completed_with_failures' where id = %s", (first["run_id"],))
+            conn.commit()
+        second = submit_source_downloads(int(source["id"]), "download_missing")
+        with connect() as conn:
+            with conn.cursor() as cur:
+                cur.execute(
+                    "update archive_run_items set status = 'verified' where archive_run_id = %s",
+                    (second["run_id"],),
+                )
+                cur.execute("update archive_runs set status = 'completed' where id = %s", (second["run_id"],))
+            conn.commit()
+
+        page = list_sources_page(search="sourcefixture", limit=10)
+        row = next(item for item in page["rows"] if item["id"] == source["id"])
+        error_page = list_sources_page(search="sourcefixture", operational_filter="error", limit=10)
+
+        self.assertEqual(row["failed_download_count"], 0)
+        self.assertNotIn(source["id"], [item["id"] for item in error_page["rows"]])
 
     def test_sources_sorting_uses_pin_manual_order_and_created_at_fallback(self) -> None:
         first = create_source("user_media", self.source_urls[0])

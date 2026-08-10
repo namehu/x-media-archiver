@@ -8,7 +8,12 @@ import {
   type SourceDeleteResponse,
   type SourcePageResponse,
 } from "@/lib/api";
-import { sourceQueryString, type SourceDeletedFilter, type SourceSortBy } from "../utils";
+import {
+  sourceQueryString,
+  type SourceDeletedFilter,
+  type SourceOperationalFilter,
+  type SourceSortBy,
+} from "../utils";
 
 export const SOURCES_PAGE_SIZE = 50;
 
@@ -17,12 +22,23 @@ export function useSourcesQuery(
   deletedFilter: SourceDeletedFilter,
   sortBy: SourceSortBy,
   sortDirection: "asc" | "desc",
+  searchText: string,
+  operationalFilter: SourceOperationalFilter,
 ) {
   return useInfiniteQuery({
-    queryKey: ["sources", typeFilter, deletedFilter, sortBy, sortDirection],
+    queryKey: ["sources", typeFilter, deletedFilter, sortBy, sortDirection, searchText, operationalFilter],
     queryFn: ({ pageParam }) =>
       apiGet<SourcePageResponse>(
-        `/api/v1/sources?${sourceQueryString(typeFilter, deletedFilter, sortBy, sortDirection, SOURCES_PAGE_SIZE, pageParam)}`,
+        `/api/v1/sources?${sourceQueryString(
+          typeFilter,
+          deletedFilter,
+          sortBy,
+          sortDirection,
+          searchText,
+          operationalFilter,
+          SOURCES_PAGE_SIZE,
+          pageParam,
+        )}`,
       ),
     initialPageParam: 0,
     getNextPageParam: (lastPage) => {

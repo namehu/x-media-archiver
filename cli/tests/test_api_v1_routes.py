@@ -18,6 +18,8 @@ from xarchiver.api.schemas import (
     DuplicatesPageResponse,
     MediaDeleteRequest,
     PostFeedPageResponse,
+    SourceBulkTaskCreateRequest,
+    SourceBulkTaskRetryRequest,
     SourceCreateRequest,
     SourceDeleteRequest,
     SourceDiscoveryPageResponse,
@@ -53,6 +55,16 @@ class V1RouterSmokeTests(unittest.TestCase):
             for route in iter_app_routes(self.app)
             if "DELETE" in getattr(route, "methods", set())
         }
+        self.patch_paths = {
+            route.path: route.endpoint
+            for route in iter_app_routes(self.app)
+            if "PATCH" in getattr(route, "methods", set())
+        }
+        self.put_paths = {
+            route.path: route.endpoint
+            for route in iter_app_routes(self.app)
+            if "PUT" in getattr(route, "methods", set())
+        }
 
     # ── Route registration ─────────────────────────────────────────────────────
 
@@ -71,6 +83,10 @@ class V1RouterSmokeTests(unittest.TestCase):
             "/api/v1/sources/{source_id}",
             "/api/v1/sources/{source_id}/discovered",
             "/api/v1/sources/{source_id}/scan-runs",
+            "/api/v1/source-bulk-tasks",
+            "/api/v1/source-bulk-tasks/{task_id}",
+            "/api/v1/source-schedule-policies",
+            "/api/v1/source-schedule-policies/{policy_id}",
             "/api/v1/events",
             "/api/v1/settings/download-policy",
             "/api/v1/settings/cookies",
@@ -98,6 +114,10 @@ class V1RouterSmokeTests(unittest.TestCase):
             "/api/v1/sources/{source_id}/scan-sessions/resume",
             "/api/v1/sources/{source_id}/scan-sessions/stop",
             "/api/v1/sources/{source_id}/history-scan/stop",
+            "/api/v1/source-bulk-tasks",
+            "/api/v1/source-bulk-tasks/{task_id}/control",
+            "/api/v1/source-bulk-tasks/{task_id}/retry",
+            "/api/v1/source-schedule-policies",
             "/api/v1/actions/verify",
             "/api/v1/actions/requeue",
             "/api/v1/actions/recover-interrupted",
@@ -118,6 +138,55 @@ class V1RouterSmokeTests(unittest.TestCase):
         self.assertIn("/api/v1/settings/cookies", self.delete_paths)
         self.assertIn("/api/v1/library/media", self.delete_paths)
         self.assertIn("/api/v1/sources/{source_id}", self.delete_paths)
+        self.assertIn("/api/v1/source-schedule-policies/{policy_id}", self.delete_paths)
+
+    def test_v1_source_task_update_routes_registered(self):
+        self.assertIn("/api/v1/source-schedule-policies/{policy_id}", self.patch_paths)
+        self.assertIn("/api/v1/source-schedule-policies/{policy_id}/sources", self.put_paths)
+
+    def test_v1_source_bulk_task_creation_delegates_frozen_selection(self):
+        result = {"id": 41, "status": "queued"}
+        request = SourceBulkTaskCreateRequest(task_type="refresh_latest", source_ids=[2, 3])
+        with patch(
+            "xarchiver.api.v1.source_tasks.create_source_bulk_task",
+            return_value=result,
+        ) as create:
+            response = self.post_paths["/api/v1/source-bulk-tasks"](request)
+
+        self.assertEqual(response, result)
+        create.assert_called_once_with(
+            "refresh_latest",
+            source_ids=[2, 3],
+            source_filter=None,
+            options={"confirm_large_download": False},
+        )
+
+    def test_v1_source_bulk_task_rejects_internal_options(self):
+        with self.assertRaises(ValueError):
+            SourceBulkTaskCreateRequest(
+                task_type="download_missing",
+                source_ids=[2, 3],
+                options={"wave_size": 50, "manual_confirm_threshold": 999999},
+            )
+
+    def test_v1_source_bulk_task_rejects_unknown_filter_fields(self):
+        with self.assertRaises(ValueError):
+            SourceBulkTaskCreateRequest(
+                task_type="refresh_latest",
+                source_filter={"source_type": "user_media", "wave_size": 50},
+            )
+
+    def test_v1_source_bulk_task_retry_forwards_confirmation(self):
+        result = {"id": 42, "status": "queued"}
+        request = SourceBulkTaskRetryRequest(confirm_large_download=True)
+        with patch(
+            "xarchiver.api.v1.source_tasks.retry_source_bulk_task",
+            return_value=result,
+        ) as retry:
+            response = self.post_paths["/api/v1/source-bulk-tasks/{task_id}/retry"](41, request)
+
+        self.assertEqual(response, result)
+        retry.assert_called_once_with(41, confirm_large_download=True)
 
     def test_v1_media_delete_rejects_unconfirmed(self):
         with self.assertRaises(HTTPException) as ctx:

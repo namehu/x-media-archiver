@@ -37,6 +37,7 @@ from xarchiver.api.v1 import (
     misc,
     runtime_ws,
     settings,
+    source_tasks,
     sources,
 )
 from xarchiver.config import get_settings
@@ -44,7 +45,15 @@ from xarchiver.core.errors import ArchiverError, error_response_payload
 from xarchiver.core.lock_manager import lock_manager
 from xarchiver.db import close_pool, open_pool
 from xarchiver.services.auth import initialize_setup_token
-from xarchiver.services.queue import count_expired_archive_item_leases, process_next_queued_run
+from xarchiver.services.queue import (
+    count_expired_archive_item_leases,
+    has_runnable_download_work,
+    process_next_queued_run,
+)
+from xarchiver.services.source_bulk_tasks import (
+    advance_source_bulk_tasks,
+    has_due_source_scan,
+)
 from xarchiver.services.sources import (
     process_next_source_history_scan,
     recover_expired_source_scan_leases,
@@ -78,8 +87,7 @@ async def app_lifespan(_: FastAPI):
             },
         )
     workers = [
-        Thread(target=queue_worker_loop, args=(worker_id,), name="archive-queue-worker", daemon=True),
-        Thread(target=source_worker_loop, args=(worker_id,), name="source-scan-worker", daemon=True),
+        Thread(target=network_worker_loop, args=(worker_id,), name="archive-network-worker", daemon=True),
     ]
     for worker in workers:
         worker.start()
@@ -135,6 +143,7 @@ def create_app() -> FastAPI:
     app.include_router(library.router, prefix="/api/v1")
     app.include_router(archive_runs.router, prefix="/api/v1")
     app.include_router(sources.router, prefix="/api/v1")
+    app.include_router(source_tasks.router, prefix="/api/v1")
     app.include_router(log_streams.router, prefix="/api/v1")
     app.include_router(actions.router, prefix="/api/v1")
     app.include_router(maintenance.router, prefix="/api/v1")
@@ -181,30 +190,46 @@ def make_worker_id() -> str:
     return f"{socket.gethostname()}-{os.getpid()}-{uuid.uuid4().hex[:8]}"
 
 
-def queue_worker_loop(worker_id: str | None = None) -> None:
-    """后台归档队列 worker 的主循环。"""
+def network_worker_loop(worker_id: str | None = None) -> None:
+    """公平调度来源扫描与下载，避免两个外部网络子进程并发。"""
 
     worker_id = worker_id or make_worker_id()
+    last_kind = "source"
     while not stop_worker.wait(2):
         try:
             if lock_manager.locked("global"):
                 continue
-            process_next_queued_run(get_settings(), worker_id=worker_id)
-        except Exception:
-            logger.exception("Queue worker iteration failed.")
-
-
-def source_worker_loop(worker_id: str | None = None) -> None:
-    """后台来源扫描 worker 的主循环。"""
-
-    worker_id = worker_id or make_worker_id()
-    while not stop_worker.wait(2):
-        try:
-            if lock_manager.locked("global"):
+            settings = get_settings()
+            advance_source_bulk_tasks(settings)
+            source_due = has_due_source_scan()
+            download_due = has_runnable_download_work(settings.retry_limit)
+            next_kind = choose_network_work(source_due, download_due, last_kind)
+            if next_kind is None:
                 continue
-            process_next_source_history_scan(get_settings(), worker_id=worker_id)
+            if next_kind == "source":
+                process_next_source_history_scan(
+                    settings,
+                    worker_id=worker_id,
+                    allow_during_downloads=True,
+                )
+            else:
+                process_next_queued_run(settings, worker_id=worker_id)
+            last_kind = next_kind
+            advance_source_bulk_tasks(settings)
         except Exception:
-            logger.exception("Source scan worker iteration failed.")
+            logger.exception("Network worker iteration failed.")
+
+
+def choose_network_work(source_due: bool, download_due: bool, last_kind: str) -> str | None:
+    """选择下一类外部网络工作；两类同时到期时严格交替。"""
+
+    if source_due and download_due:
+        return "download" if last_kind == "source" else "source"
+    if source_due:
+        return "source"
+    if download_due:
+        return "download"
+    return None
 
 
 app = create_app()
