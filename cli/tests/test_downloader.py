@@ -1,7 +1,9 @@
+import subprocess
 import tempfile
 import unittest
 from pathlib import Path
-from threading import Lock
+from queue import Queue
+from threading import Event, Lock
 from types import SimpleNamespace
 from unittest.mock import patch
 
@@ -9,6 +11,7 @@ from xarchiver.core.errors import ErrorCategory, classify_x_error
 from xarchiver.db import connect
 from xarchiver.downloader import (
     DownloadProgressState,
+    TextTailBuffer,
     build_command,
     classify_error,
     create_job,
@@ -18,6 +21,7 @@ from xarchiver.downloader import (
     fetch_download_candidates,
     finish_job,
     flush_download_log_entries,
+    flush_pending_download_progress,
     format_sleep_range,
     handle_gallery_dl_progress_event,
     parse_downloader_progress,
@@ -26,6 +30,7 @@ from xarchiver.downloader import (
     prepare_cookies,
     queue_download_log_entry,
     resolve_gallery_dl_progress_path,
+    run_command_with_progress,
     sample_current_download_path,
     should_run_fallback_scan,
     validate_cookie_file,
@@ -33,6 +38,16 @@ from xarchiver.downloader import (
 
 
 class DownloaderTests(unittest.TestCase):
+    def test_text_tail_buffer_keeps_only_configured_tail(self) -> None:
+        buffer = TextTailBuffer(5)
+
+        buffer.append("abc")
+        buffer.append("def")
+        self.assertEqual(buffer.getvalue(), "bcdef")
+
+        buffer.append("123456")
+        self.assertEqual(buffer.getvalue(), "23456")
+
     def test_validate_cookie_file_reports_missing_for_yt_dlp(self) -> None:
         self.assertEqual(validate_cookie_file("yt-dlp", Path("missing-cookies.txt")), "cookie_missing")
 
@@ -70,17 +85,227 @@ class DownloaderTests(unittest.TestCase):
         self.assertEqual(download_output_log_level("gallery-dl", "stderr", "[warning] retry"), "warning")
 
     def test_download_log_buffer_batches_stdout_and_stderr(self) -> None:
-        pending: list[dict[str, object]] = []
-        lock = Lock()
-        queue_download_log_entry(pending, lock, level="info", component="yt-dlp.stdout", message="out", raw="out\n")
-        queue_download_log_entry(pending, lock, level="error", component="yt-dlp.stderr", message="err", raw="err\n")
+        pending: Queue[dict[str, object]] = Queue()
+        stop_event = Event()
+        queue_download_log_entry(pending, stop_event, level="info", component="yt-dlp.stdout", message="out", raw="out\n")
+        queue_download_log_entry(pending, stop_event, level="error", component="yt-dlp.stderr", message="err", raw="err\n")
 
         with patch("xarchiver.downloader.append_operation_log_entries", return_value=[{}, {}]) as append:
-            written = flush_download_log_entries(11, pending, lock)
+            written = flush_download_log_entries(11, pending)
 
         self.assertEqual(written, 2)
-        self.assertEqual(pending, [])
+        self.assertTrue(pending.empty())
         self.assertEqual([item["component"] for item in append.call_args.args[1]], ["yt-dlp.stdout", "yt-dlp.stderr"])
+
+    def test_downloader_log_flush_failure_stops_process_and_closes_pipes(self) -> None:
+        class FakePipe:
+            def __init__(self, lines):
+                self.lines = lines
+                self.started = Event()
+                self.closed = False
+
+            def __iter__(self):
+                self.started.set()
+                return iter(self.lines)
+
+            def close(self):
+                self.closed = True
+
+        class FakeProcess:
+            def __init__(self):
+                self.stdout = FakePipe(["plain downloader output\n"])
+                self.stderr = FakePipe([])
+                self.terminated = False
+                self.killed = False
+
+            def poll(self):
+                self.stdout.started.wait(timeout=0.2)
+                return -9 if self.killed else -15 if self.terminated else None
+
+            def terminate(self):
+                self.terminated = True
+
+            def kill(self):
+                self.killed = True
+
+            def wait(self, timeout=None):
+                if self.poll() is None:
+                    raise subprocess.TimeoutExpired("downloader", timeout)
+                return self.poll()
+
+        process = FakeProcess()
+        settings = SimpleNamespace(
+            archive_dir=Path("/tmp/archive"),
+            downloader_progress_fallback_interval_seconds=0,
+        )
+        with (
+            patch("xarchiver.downloader.subprocess.Popen", return_value=process),
+            patch("xarchiver.downloader.time.sleep"),
+            patch(
+                "xarchiver.downloader.append_operation_log_entries",
+                side_effect=RuntimeError("download log failed"),
+            ),
+            self.assertRaisesRegex(RuntimeError, "download log failed"),
+        ):
+            run_command_with_progress(
+                ["yt-dlp", "url"],
+                settings,
+                11,
+                [{"tweet_id": "1"}],
+                None,
+                "yt-dlp",
+                log_stream_id=91,
+            )
+
+        self.assertTrue(process.terminated)
+        self.assertTrue(process.stdout.closed)
+        self.assertTrue(process.stderr.closed)
+
+    def test_downloader_reader_failure_is_raised_and_stops_process(self) -> None:
+        class FakePipe:
+            def __init__(self, lines):
+                self.lines = lines
+                self.started = Event()
+                self.closed = False
+
+            def __iter__(self):
+                self.started.set()
+                return iter(self.lines)
+
+            def close(self):
+                self.closed = True
+
+        class FakeProcess:
+            def __init__(self):
+                self.stdout = FakePipe(["xarchiver-progress:1|downloading|10|100|100|5\n"])
+                self.stderr = FakePipe([])
+                self.terminated = False
+
+            def poll(self):
+                self.stdout.started.wait(timeout=0.2)
+                return -15 if self.terminated else None
+
+            def terminate(self):
+                self.terminated = True
+
+            def kill(self):
+                self.terminated = True
+
+            def wait(self, timeout=None):
+                if self.poll() is None:
+                    raise subprocess.TimeoutExpired("downloader", timeout)
+                return -15
+
+        process = FakeProcess()
+        settings = SimpleNamespace(
+            archive_dir=Path("/tmp/archive"),
+            downloader_progress_fallback_interval_seconds=0,
+        )
+        with (
+            patch("xarchiver.downloader.subprocess.Popen", return_value=process),
+            patch("xarchiver.downloader.time.sleep"),
+            patch("xarchiver.downloader.append_operation_log_entries", return_value=[{}]) as append_logs,
+            patch(
+                "xarchiver.downloader.record_download_progress",
+                side_effect=RuntimeError("progress write failed"),
+            ),
+            self.assertRaisesRegex(RuntimeError, "downloader_stdout_reader_failed") as error,
+        ):
+            run_command_with_progress(
+                ["yt-dlp", "url"],
+                settings,
+                11,
+                [{"tweet_id": "1"}],
+                None,
+                "yt-dlp",
+                log_stream_id=92,
+            )
+
+        self.assertIsInstance(error.exception.__cause__, RuntimeError)
+        self.assertTrue(
+            any(
+                entry["message"].startswith("xarchiver-progress:1|")
+                for call in append_logs.call_args_list
+                for entry in call.args[1]
+            )
+        )
+        self.assertTrue(process.terminated)
+        self.assertTrue(process.stdout.closed)
+        self.assertTrue(process.stderr.closed)
+
+    def test_downloader_reader_failure_remains_primary_when_final_log_flush_fails(self) -> None:
+        reader_failed = Event()
+
+        class FakePipe:
+            def __init__(self, lines):
+                self.lines = lines
+                self.closed = False
+
+            def __iter__(self):
+                return iter(self.lines)
+
+            def close(self):
+                self.closed = True
+
+        class FakeProcess:
+            def __init__(self):
+                self.stdout = FakePipe(["xarchiver-progress:1|downloading|10|100|100|5\n"])
+                self.stderr = FakePipe([])
+                self.terminated = False
+
+            def poll(self):
+                reader_failed.wait(timeout=0.2)
+                return -15 if self.terminated else None
+
+            def terminate(self):
+                self.terminated = True
+
+            def kill(self):
+                self.terminated = True
+
+            def wait(self, timeout=None):
+                if self.poll() is None:
+                    raise subprocess.TimeoutExpired("downloader", timeout)
+                return -15
+
+        def fail_progress(*_args, **_kwargs):
+            reader_failed.set()
+            raise RuntimeError("progress write failed")
+
+        process = FakeProcess()
+        settings = SimpleNamespace(
+            archive_dir=Path("/tmp/archive"),
+            downloader_progress_fallback_interval_seconds=0,
+        )
+        with (
+            patch("xarchiver.downloader.subprocess.Popen", return_value=process),
+            patch(
+                "xarchiver.downloader.time.sleep",
+                side_effect=lambda _seconds: Event().wait(timeout=0.02),
+            ),
+            patch(
+                "xarchiver.downloader.append_operation_log_entries",
+                side_effect=RuntimeError("final log flush failed"),
+            ),
+            patch("xarchiver.downloader.record_download_progress", side_effect=fail_progress),
+            self.assertRaisesRegex(RuntimeError, "downloader_stdout_reader_failed") as error,
+        ):
+            run_command_with_progress(
+                ["yt-dlp", "url"],
+                settings,
+                11,
+                [{"tweet_id": "1"}],
+                None,
+                "yt-dlp",
+                log_stream_id=93,
+            )
+
+        self.assertIsInstance(error.exception.__cause__, RuntimeError)
+        self.assertIn("progress write failed", str(error.exception.__cause__))
+        self.assertTrue(
+            any("pending downloader log flush failed" in note for note in error.exception.__notes__)
+        )
+        self.assertTrue(process.terminated)
 
     def test_create_and_finish_job_manage_log_stream_lifecycle(self) -> None:
         with tempfile.TemporaryDirectory() as tmp:
@@ -324,8 +549,10 @@ class DownloaderTests(unittest.TestCase):
                     candidate_tweets,
                     {"123": 10},
                 )
+                flush_pending_download_progress(state, state_lock, 1, candidate_tweets, {"123": 10})
 
         self.assertEqual(state.completed_bytes_by_tweet, {"123": 7})
+        self.assertEqual(mark_progress.call_count, 2)
         self.assertEqual(
             mark_progress.call_args.args[4],
             {"123": {"downloaded_bytes": 10, "speed_bps": 2}},

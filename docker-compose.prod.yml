@@ -34,6 +34,7 @@ services:
     # Replace with docker.io/<your-dockerhub-user>/x-media-archiver, or pin a
     # specific version tag (e.g. :1.0.0) instead of :latest.
     image: ghcr.io/namehu/x-media-archiver:latest
+    init: true
     env_file:
       - .env.production
     ports:

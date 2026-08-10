@@ -50,7 +50,7 @@ def session(request: Request) -> dict[str, object]:
 
 
 @router.post("/setup", response_model=AuthSessionResponse)
-def setup(response: Response, payload: AuthSetupRequest) -> dict[str, object]:
+def setup(request: Request, response: Response, payload: AuthSetupRequest) -> dict[str, object]:
     """使用一次性 setup token 初始化管理员账号。"""
 
     if _db_call(get_admin) is not None:
@@ -63,7 +63,7 @@ def setup(response: Response, payload: AuthSetupRequest) -> dict[str, object]:
         if code == "admin_already_initialized":
             status_code = status.HTTP_409_CONFLICT
         raise HTTPException(status_code=status_code, detail=code) from exc
-    _set_session_cookie(response, _db_call(create_session))
+    _set_session_cookie(request, response, _db_call(create_session))
     return {"status": "authenticated", "auth_mode": "password", "user": admin}
 
 
@@ -80,7 +80,7 @@ def login(request: Request, response: Response, payload: AuthLoginRequest) -> di
         raise HTTPException(status_code=status.HTTP_401_UNAUTHORIZED, detail="invalid_credentials")
     admin, token = authenticated
     _clear_failures(key)
-    _set_session_cookie(response, token)
+    _set_session_cookie(request, response, token)
     return {"status": "authenticated", "auth_mode": "password", "user": admin}
 
 
@@ -94,25 +94,29 @@ def logout(request: Request, response: Response) -> None:
     response.delete_cookie(
         SESSION_COOKIE,
         path="/",
-        secure=get_settings().auth_cookie_secure,
+        secure=_session_cookie_secure(request),
         samesite="strict",
     )
 
 
 @router.post("/password", response_model=AuthSessionResponse)
-def update_password(response: Response, payload: AuthPasswordRequest) -> dict[str, object]:
+def update_password(
+    request: Request,
+    response: Response,
+    payload: AuthPasswordRequest,
+) -> dict[str, object]:
     """校验旧密码后更新管理员密码。"""
 
     try:
         _db_call(change_password, payload.current_password, payload.new_password)
     except AuthError as exc:
         raise HTTPException(status_code=status.HTTP_401_UNAUTHORIZED, detail="invalid_credentials") from exc
-    _set_session_cookie(response, _db_call(create_session))
+    _set_session_cookie(request, response, _db_call(create_session))
     admin = _db_call(get_admin)
     return {"status": "authenticated", "auth_mode": "password", "user": {"username": admin.username}}
 
 
-def _set_session_cookie(response: Response, token: str) -> None:
+def _set_session_cookie(request: Request, response: Response, token: str) -> None:
     """把认证会话写入浏览器 Cookie。"""
 
     settings = get_settings()
@@ -121,10 +125,21 @@ def _set_session_cookie(response: Response, token: str) -> None:
         token,
         max_age=settings.auth_session_ttl_hours * 60 * 60,
         httponly=True,
-        secure=settings.auth_cookie_secure,
+        secure=_session_cookie_secure(request),
         samesite="strict",
         path="/",
     )
+
+
+def _session_cookie_secure(request: Request) -> bool:
+    """按配置与可信代理解析后的请求协议决定 Cookie Secure 标记。"""
+
+    policy = get_settings().auth_cookie_secure
+    if policy == "true":
+        return True
+    if policy == "false":
+        return False
+    return request.url.scheme == "https"
 
 
 def _db_call(function, *args):

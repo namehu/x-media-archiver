@@ -37,8 +37,15 @@ export function DashboardPage() {
           <p className="mt-1 text-sm text-fg-secondary">归档队列、媒体库与来源扫描的实时总览。</p>
         </div>
         <LiveIndicator
-          state={events.status === "connected" ? "open" : events.status === "connecting" ? "connecting" : "closed"}
-          label={events.status === "connected" ? "实时事件已连接" : events.status === "connecting" ? "正在连接实时事件" : "实时事件离线，使用轮询刷新"}
+          state={
+            events.transport === "websocket" && events.status === "connected"
+              ? "open"
+              : events.transport === "websocket" &&
+                  (events.status === "connecting" || events.status === "reconnecting" || events.status === "resyncing")
+                ? "connecting"
+                : "closed"
+          }
+          label={eventLabel(events.status, events.transport)}
         />
       </section>
 
@@ -101,7 +108,7 @@ export function DashboardPage() {
         <Card>
           <CardHeader>
             <CardTitle>实时事件</CardTitle>
-            <CardDescription>由 SSE 事件与轮询摘要合成。</CardDescription>
+            <CardDescription>由 WebSocket 事件与 REST 摘要合成。</CardDescription>
           </CardHeader>
           <CardContent className="space-y-3">
             {model.feed.map((item) => (
@@ -158,6 +165,26 @@ export function DashboardPage() {
       </section>
     </div>
   );
+}
+
+function eventLabel(status: string, transport: "websocket" | "polling") {
+  if (transport === "polling") {
+    return status === "connected" ? "REST 快照轮询" : "REST 快照轮询不可用";
+  }
+  switch (status) {
+    case "connected":
+      return "实时事件已连接";
+    case "connecting":
+      return "正在连接实时事件";
+    case "reconnecting":
+      return "实时事件正在重连";
+    case "resyncing":
+      return "正在同步运行态快照";
+    case "stale":
+      return "实时事件无新消息，使用降级刷新";
+    default:
+      return "实时事件离线，使用轮询刷新";
+  }
 }
 
 function buildDashboardModel(data: Summary) {

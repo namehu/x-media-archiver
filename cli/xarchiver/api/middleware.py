@@ -83,15 +83,23 @@ def _is_protected_path(path: str) -> bool:
 def _valid_origin(request: Request) -> bool:
     """校验写请求的 Origin 是否与当前后端同源或位于本地开发白名单。"""
 
-    origin = request.headers.get("origin")
+    return valid_origin(request.headers.get("origin"), request.headers.get("host", ""))
+
+
+def valid_origin(origin: str | None, request_host: str) -> bool:
+    """校验 HTTP/WS 共用的同源规则。"""
+
     if not origin:
         return False
     parsed = urlsplit(origin)
     if not parsed.scheme or not parsed.netloc:
         return False
-    request_host = request.headers.get("host", "").lower()
+    request_host = request_host.lower()
     origin = f"{parsed.scheme.lower()}://{parsed.netloc.lower()}"
-    return parsed.netloc.lower() == request_host or origin in LOCAL_DEV_ORIGINS
+    if parsed.netloc.lower() == request_host:
+        return True
+    request_hostname = urlsplit(f"//{request_host}").hostname
+    return request_hostname in {"127.0.0.1", "localhost", "::1"} and origin in LOCAL_DEV_ORIGINS
 
 
 def _auth_error(status_code: int, code: str) -> JSONResponse:

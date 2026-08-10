@@ -1,4 +1,11 @@
+import os
+import signal
+import subprocess
+import sys
+import time
 import unittest
+from pathlib import Path
+from threading import Event
 from types import SimpleNamespace
 from unittest.mock import patch
 
@@ -11,6 +18,7 @@ from xarchiver.downloader import (
 )
 from xarchiver.services.queue import claim_next_items
 from xarchiver.services.sources import (
+    _stop_gallery_dl_process,
     build_active_scan_range,
     build_gallery_dl_scan_url,
     build_scan_range,
@@ -38,6 +46,7 @@ from xarchiver.services.sources import (
     record_waiting_downloads_scan,
     recover_expired_source_scan_leases,
     reorder_sources,
+    run_gallery_dl_streaming,
     scan_run_status,
     scan_source,
     schedule_next_history_scan,
@@ -52,6 +61,295 @@ from xarchiver.services.sources import (
 
 
 class SourceServiceTests(unittest.TestCase):
+    def test_gallery_dl_stderr_is_flushed_in_bounded_batches(self) -> None:
+        class FakeProcess:
+            stdout = ["result\n"]
+            stderr = [f"[info] line {index}\n" for index in range(150)]
+
+            def poll(self):
+                return 0
+
+            def wait(self):
+                return 0
+
+        with (
+            patch("xarchiver.services.sources.subprocess.Popen", return_value=FakeProcess()),
+            patch("xarchiver.services.sources.append_source_scan_log") as append_one,
+            patch("xarchiver.services.sources.append_source_scan_logs") as append_batch,
+        ):
+            result = run_gallery_dl_streaming(["gallery-dl", "url"], 17, "worker-1")
+
+        self.assertEqual(result.returncode, 0)
+        self.assertEqual(result.stdout, "result\n")
+        self.assertEqual([len(call.args[1]) for call in append_batch.call_args_list], [100, 50])
+        self.assertEqual(append_one.call_count, 2)
+
+    def test_gallery_dl_is_killed_and_pipes_are_closed_when_log_flush_fails(self) -> None:
+        class FakePipe:
+            def __init__(self, lines):
+                self.lines = lines
+                self.closed = False
+
+            def __iter__(self):
+                return iter(self.lines)
+
+            def close(self):
+                self.closed = True
+
+        class FakeProcess:
+            def __init__(self):
+                self.stdout = FakePipe(["result\n"])
+                self.stderr = FakePipe([f"[info] line {index}\n" for index in range(1100)])
+                self.terminate_called = False
+                self.kill_called = False
+
+            def poll(self):
+                return -9 if self.kill_called else None
+
+            def terminate(self):
+                self.terminate_called = True
+
+            def kill(self):
+                self.kill_called = True
+
+            def wait(self, timeout=None):
+                if not self.kill_called:
+                    raise subprocess.TimeoutExpired("gallery-dl", timeout)
+                return -9
+
+        process = FakeProcess()
+        with (
+            patch("xarchiver.services.sources.subprocess.Popen", return_value=process),
+            patch("xarchiver.services.sources.SOURCE_SCAN_PROCESS_STOP_TIMEOUT_SECONDS", 0.01),
+            patch("xarchiver.services.sources.append_source_scan_log"),
+            patch(
+                "xarchiver.services.sources.append_source_scan_logs",
+                side_effect=RuntimeError("log persistence failed"),
+            ),
+            self.assertRaisesRegex(RuntimeError, "log persistence failed"),
+        ):
+            run_gallery_dl_streaming(["gallery-dl", "url"], 17, "worker-1")
+
+        self.assertTrue(process.terminate_called)
+        self.assertTrue(process.kill_called)
+        self.assertTrue(process.stdout.closed)
+        self.assertTrue(process.stderr.closed)
+
+    def test_gallery_dl_reader_drain_timeout_fails_instead_of_returning_partial_output(self) -> None:
+        class BlockingPipe:
+            def __init__(self):
+                self.closed = False
+                self.closed_event = Event()
+
+            def __iter__(self):
+                return self
+
+            def __next__(self):
+                self.closed_event.wait()
+                raise StopIteration
+
+            def close(self):
+                self.closed = True
+                self.closed_event.set()
+
+        class FakeProcess:
+            def __init__(self):
+                self.stdout = BlockingPipe()
+                self.stderr = []
+
+            def poll(self):
+                return 0
+
+            def wait(self):
+                return 0
+
+        process = FakeProcess()
+        with (
+            patch("xarchiver.services.sources.subprocess.Popen", return_value=process),
+            patch("xarchiver.services.sources.SOURCE_SCAN_READER_DRAIN_TIMEOUT_SECONDS", 0.01),
+            patch("xarchiver.services.sources.append_source_scan_log"),
+            patch("xarchiver.services.sources.append_source_scan_logs"),
+            self.assertRaisesRegex(RuntimeError, "gallery_dl_reader_drain_timeout"),
+        ):
+            run_gallery_dl_streaming(["gallery-dl", "url"], 17, "worker-1")
+
+        self.assertTrue(process.stdout.closed)
+
+    def test_gallery_dl_reader_failure_preserves_queued_diagnostics_and_stops_process(self) -> None:
+        class FailingPipe:
+            def __init__(self):
+                self.closed = False
+                self.started = Event()
+
+            def __iter__(self):
+                self.started.set()
+                yield "[twitter][error] diagnostic before reader failure\n"
+                raise RuntimeError("source pipe failed")
+
+            def close(self):
+                self.closed = True
+
+        class EmptyPipe:
+            def __init__(self):
+                self.closed = False
+
+            def __iter__(self):
+                return iter(())
+
+            def close(self):
+                self.closed = True
+
+        class FakeProcess:
+            def __init__(self):
+                self.stdout = EmptyPipe()
+                self.stderr = FailingPipe()
+                self.terminated = False
+
+            def poll(self):
+                self.stderr.started.wait(timeout=0.2)
+                return -15 if self.terminated else None
+
+            def terminate(self):
+                self.terminated = True
+
+            def kill(self):
+                self.terminated = True
+
+            def wait(self, timeout=None):
+                if self.poll() is None:
+                    raise subprocess.TimeoutExpired("gallery-dl", timeout)
+                return -15
+
+        process = FakeProcess()
+        with (
+            patch("xarchiver.services.sources.subprocess.Popen", return_value=process),
+            patch("xarchiver.services.sources.append_source_scan_logs") as append_logs,
+            self.assertRaisesRegex(RuntimeError, "gallery_dl_stderr_reader_failed") as error,
+        ):
+            run_gallery_dl_streaming(["gallery-dl", "url"], 17, "worker-1")
+
+        self.assertIsInstance(error.exception.__cause__, RuntimeError)
+        self.assertTrue(
+            any(
+                "diagnostic before reader failure" in str(entry["message"])
+                for call in append_logs.call_args_list
+                for entry in call.args[1]
+            )
+        )
+        self.assertTrue(process.terminated)
+        self.assertTrue(process.stdout.closed)
+        self.assertTrue(process.stderr.closed)
+
+    def test_gallery_dl_stdout_reader_failure_rejects_partial_scan_output(self) -> None:
+        reader_started = Event()
+
+        class FailingStdout:
+            def __init__(self):
+                self.closed = False
+
+            def __iter__(self):
+                reader_started.set()
+                yield '{"tweet_id":"partial"}\n'
+                raise RuntimeError("stdout pipe failed")
+
+            def close(self):
+                self.closed = True
+
+        class EmptyPipe:
+            def __init__(self):
+                self.closed = False
+
+            def __iter__(self):
+                return iter(())
+
+            def close(self):
+                self.closed = True
+
+        class FakeProcess:
+            def __init__(self):
+                self.stdout = FailingStdout()
+                self.stderr = EmptyPipe()
+                self.terminated = False
+
+            def poll(self):
+                reader_started.wait(timeout=0.2)
+                return -15 if self.terminated else None
+
+            def terminate(self):
+                self.terminated = True
+
+            def kill(self):
+                self.terminated = True
+
+            def wait(self, timeout=None):
+                if self.poll() is None:
+                    raise subprocess.TimeoutExpired("gallery-dl", timeout)
+                return -15
+
+        process = FakeProcess()
+        with (
+            patch("xarchiver.services.sources.subprocess.Popen", return_value=process),
+            patch("xarchiver.services.sources.append_source_scan_log"),
+            self.assertRaisesRegex(RuntimeError, "gallery_dl_stdout_reader_failed") as error,
+        ):
+            run_gallery_dl_streaming(["gallery-dl", "url"], 17, "worker-1")
+
+        self.assertIsInstance(error.exception.__cause__, RuntimeError)
+        self.assertIn("stdout pipe failed", str(error.exception.__cause__))
+        self.assertTrue(process.terminated)
+        self.assertTrue(process.stdout.closed)
+        self.assertTrue(process.stderr.closed)
+
+    @unittest.skipUnless(os.name == "posix" and Path("/proc").exists(), "requires Linux /proc")
+    def test_gallery_dl_process_group_cleanup_reaps_descendants_with_container_init(self) -> None:
+        script = """
+import signal
+import subprocess
+import sys
+import time
+
+signal.signal(signal.SIGTERM, signal.SIG_IGN)
+child = subprocess.Popen([
+    sys.executable,
+    "-c",
+    "import signal,time; signal.signal(signal.SIGTERM, signal.SIG_IGN); time.sleep(60)",
+])
+print(child.pid, flush=True)
+time.sleep(60)
+"""
+        process = subprocess.Popen(
+            [sys.executable, "-c", script],
+            stdout=subprocess.PIPE,
+            stderr=subprocess.DEVNULL,
+            text=True,
+            start_new_session=True,
+        )
+        assert process.stdout is not None
+        child_pid = int(process.stdout.readline().strip())
+        try:
+            with patch(
+                "xarchiver.services.sources.SOURCE_SCAN_PROCESS_STOP_TIMEOUT_SECONDS",
+                0.5,
+            ):
+                _stop_gallery_dl_process(process, include_process_group=True)
+
+            deadline = time.monotonic() + 2
+            while Path(f"/proc/{child_pid}").exists() and time.monotonic() < deadline:
+                time.sleep(0.05)
+            self.assertIsNotNone(process.poll())
+            self.assertFalse(Path(f"/proc/{child_pid}").exists())
+        finally:
+            try:
+                os.killpg(process.pid, signal.SIGKILL)
+            except ProcessLookupError:
+                pass
+            process.stdout.close()
+            try:
+                process.wait(timeout=1)
+            except subprocess.TimeoutExpired:
+                process.kill()
+                process.wait(timeout=1)
+
     def test_normalize_source_type_rejects_unknown_type(self) -> None:
         with self.assertRaisesRegex(ValueError, "invalid_source_type"):
             normalize_source_type("timeline")
@@ -1564,7 +1862,7 @@ class SourceDiscoveryIntegrationTests(unittest.TestCase):
         self.assertEqual(rows[self.tweet_ids[0]]["total_bytes"], 300)
         self.assertEqual(rows[self.tweet_ids[0]]["speed_bps"], 15)
         self.assertEqual(rows[self.tweet_ids[1]]["downloaded_bytes"], 250)
-        self.assertEqual(rows[self.tweet_ids[1]]["speed_bps"], 0)
+        self.assertEqual(rows[self.tweet_ids[1]]["speed_bps"], 25)
 
     def test_recover_expired_source_scan_lease_marks_run_failed(self) -> None:
         source = create_source("profile", self.source_urls[2])

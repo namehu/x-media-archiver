@@ -8,7 +8,7 @@ from starlette.responses import StreamingResponse
 
 from xarchiver.api.app import create_app
 from xarchiver.api.deps import parse_event_topics
-from xarchiver.core.events import EventBroker, format_sse_event
+from xarchiver.core.events import EventBroker, format_sse_event, format_sse_heartbeat
 
 
 class EventBrokerTests(unittest.TestCase):
@@ -37,8 +37,50 @@ class EventBrokerTests(unittest.TestCase):
 
         self.assertIn(f"id: {event.id}\n", text)
         self.assertIn("event: archive.run.submitted\n", text)
+        self.assertIn(f'"sequence":{event.id}', text)
+        self.assertIn(f'"epoch":"{event.epoch}"', text)
         self.assertIn('"topic":"archive_runs"', text)
         self.assertIn('"run_id":9', text)
+
+    def test_sse_heartbeat_is_visible_to_event_source(self) -> None:
+        text = format_sse_heartbeat("epoch-1", 12)
+
+        self.assertIn("event: system.heartbeat\n", text)
+        self.assertIn('"epoch":"epoch-1"', text)
+        self.assertIn('"sequence":12', text)
+
+
+class AsyncEventBrokerTests(unittest.IsolatedAsyncioTestCase):
+    async def test_async_subscription_is_bounded_and_marks_overflow(self) -> None:
+        broker = EventBroker()
+        subscription = broker.subscribe_async(max_queue_size=2)
+        try:
+            broker.publish("archive_runs", "run.updated", {"run_id": 1})
+            broker.publish("archive_runs", "run.updated", {"run_id": 2})
+            broker.publish("archive_runs", "run.updated", {"run_id": 3})
+            await asyncio.sleep(0)
+
+            self.assertTrue(subscription.consume_overflowed())
+            self.assertEqual((await subscription.get(timeout=0.1)).payload["run_id"], 3)
+            diagnostics = subscription.diagnostics()
+            self.assertEqual(diagnostics["queue_high_water"], 2)
+            self.assertEqual(diagnostics["dropped_events"], 2)
+        finally:
+            subscription.close()
+
+    async def test_async_subscription_rejects_single_event_over_byte_limit(self) -> None:
+        broker = EventBroker()
+        subscription = broker.subscribe_async(max_queue_bytes=200)
+        try:
+            broker.publish("archive_runs", "run.updated", {"message": "x" * 1000})
+            await asyncio.sleep(0)
+
+            self.assertTrue(subscription.consume_overflowed())
+            with self.assertRaises(TimeoutError):
+                await subscription.get(timeout=0.01)
+            self.assertEqual(subscription.diagnostics()["dropped_events"], 1)
+        finally:
+            subscription.close()
 
 
 class EventRouteTests(unittest.TestCase):

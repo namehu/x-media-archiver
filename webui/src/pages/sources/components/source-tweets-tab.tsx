@@ -1,6 +1,7 @@
 import { Virtuoso, type VirtuosoHandle } from "react-virtuoso";
 import * as React from "react";
 import type { ArchiveRunItem, SourceDiscoveryPageResponse, SourceDownloadSummary } from "@/lib/api";
+import { useRuntimeSource } from "@/lib/runtime-provider";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Checkbox } from "@/components/ui/checkbox";
@@ -77,6 +78,7 @@ export function SourceTweetsTab({
   onFiltersChange: (filters: TweetFilters) => void;
   readonly?: boolean;
 }) {
+  const runtimeSource = useRuntimeSource(sourceId);
   const virtuosoRef = React.useRef<VirtuosoHandle>(null);
   const loadMoreRequestedRef = React.useRef(false);
   const pendingAutoScrollRef = React.useRef<{ tweetId: string; index: number } | null>(null);
@@ -86,10 +88,21 @@ export function SourceTweetsTab({
   const pendingExplicitLocateRef = React.useRef<string | null>(null);
   const skipNextAutoScrollRef = React.useRef(false);
   const prefersReducedMotion = usePrefersReducedMotion();
-  const activeItemsByTweet = React.useMemo(
-    () => new Map((downloads?.active_run?.items ?? []).map((item) => [item.tweet_id, item])),
-    [downloads?.active_run?.items],
-  );
+  const activeItemsByTweet = React.useMemo(() => {
+    const items = new Map<string, OverlayRunItem>();
+    for (const item of downloads?.active_run?.items ?? []) {
+      items.set(item.tweet_id, {
+        ...item,
+        archive_run_id: downloads?.active_run?.id,
+        archive_run_status: downloads?.active_run?.status,
+      });
+    }
+    for (const [tweetId, item] of runtimeSource.itemsByTweetId) {
+      const current = items.get(tweetId);
+      if (!current || item.id >= current.id) items.set(tweetId, item);
+    }
+    return items;
+  }, [downloads?.active_run, runtimeSource.itemsByTweetId]);
   const tweets = React.useMemo(
     () =>
       pages
@@ -124,8 +137,9 @@ export function SourceTweetsTab({
     setSelected(new Set());
   }, [filters, sourceId]);
 
-  const activeRunId = downloads?.active_run?.id ?? null;
-  const currentTweetId = followRunId === activeRunId ? downloads?.current_tweet_id ?? null : null;
+  const activeRunId = runtimeSource.activeRunId ?? downloads?.active_run?.id ?? null;
+  const currentDownloadTweetId = runtimeSource.currentTweetId ?? downloads?.current_tweet_id ?? null;
+  const currentTweetId = followRunId === activeRunId ? currentDownloadTweetId : null;
 
   React.useEffect(() => {
     if (!isFetchingNextPage) loadMoreRequestedRef.current = false;
@@ -232,7 +246,7 @@ export function SourceTweetsTab({
   }, [scrollToTweet, tweets]);
 
   const handleLocateCurrent = React.useCallback(() => {
-    const tweetId = downloads?.current_tweet_id;
+    const tweetId = currentDownloadTweetId;
     if (!activeRunId || !tweetId) return;
     skipNextAutoScrollRef.current = frontierTweetId !== tweetId;
     onFollowRun(activeRunId);
@@ -246,7 +260,7 @@ export function SourceTweetsTab({
     }
   }, [
     activeRunId,
-    downloads?.current_tweet_id,
+    currentDownloadTweetId,
     frontierTweetId,
     hasNextPage,
     isFetchingNextPage,
@@ -325,7 +339,7 @@ export function SourceTweetsTab({
         actions={actions}
         readonly={readonly}
         activeRunId={activeRunId}
-        currentTweetId={downloads?.current_tweet_id ?? null}
+        currentTweetId={currentDownloadTweetId}
         followRunId={followRunId}
         followMode={followMode}
         onPauseFollow={() => onFollowModeChange("paused")}
@@ -351,7 +365,7 @@ export function SourceTweetsTab({
               tweet={tweet}
               sourceId={sourceId}
               selected={selected.has(tweet.tweet_id)}
-              isCurrentDownload={tweet.tweet_id === downloads?.current_tweet_id && activeRunId !== null}
+              isCurrentDownload={tweet.tweet_id === currentDownloadTweetId && activeRunId !== null}
               onSelectionChange={(checked) => {
                 setSelected((current) => {
                   const next = new Set(current);
@@ -389,20 +403,25 @@ export function SourceTweetsTab({
 }
 
 type TweetRow = SourceDiscoveryPageResponse["rows"][number];
+type OverlayRunItem = ArchiveRunItem & {
+  archive_run_id?: number | null;
+  archive_run_status?: string | null;
+  source_id?: number | null;
+};
 
 function mergeActiveRunItem(
   tweet: TweetRow,
   downloads?: SourceDownloadSummary,
-  item?: ArchiveRunItem,
+  item?: OverlayRunItem,
 ): TweetRow {
   const activeRun = downloads?.active_run;
-  if (!activeRun || !item) return tweet;
+  if (!item) return tweet;
   return {
     ...tweet,
-    active_run_id: activeRun.id,
+    active_run_id: item.archive_run_id ?? activeRun?.id ?? null,
     active_item_id: item.id,
     active_item_status: item.status,
-    active_run_status: activeRun.status,
+    active_run_status: item.archive_run_status ?? activeRun?.status ?? null,
     cancel_requested: item.cancel_requested,
     downloaded_bytes: item.downloaded_bytes,
     total_bytes: item.total_bytes,
@@ -413,8 +432,9 @@ function mergeActiveRunItem(
 }
 
 function canQueue(tweet: TweetRow) {
-  if (tweet.active_item_status) return false;
+  if (tweet.active_item_status && canCancel(tweet.active_item_status)) return false;
   if (["verified", "downloaded", "skipped"].includes(String(tweet.download_status))) return false;
+  if (["verified", "downloaded", "skipped_verified", "linked_pending"].includes(String(tweet.active_item_status))) return false;
   return true;
 }
 

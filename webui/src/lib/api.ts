@@ -247,6 +247,7 @@ export type ArchiveSubmission = {
 
 export type SourceScanRun = {
   id: number;
+  source_id?: number | null;
   trigger_type: "history_worker" | "manual_next" | "latest_refresh" | "from_start_repair";
   status:
     | "running"
@@ -468,6 +469,82 @@ export type SourceDownloadSummary = {
   downloaded_bytes: number;
   total_bytes?: number | null;
   speed_bps?: number | null;
+};
+
+export type RuntimeConnectionStatus = "connecting" | "connected" | "reconnecting" | "resyncing" | "stale" | "offline";
+
+export type RuntimeRun = ArchiveRun & {
+  downloaded_bytes?: number | null;
+  total_bytes?: number | null;
+  speed_bps?: number | null;
+  active_item_count?: number | null;
+  job_id?: number | null;
+  current_tweet_id?: string | null;
+  job_status?: string | null;
+  last_progress_at?: string | null;
+};
+
+export type RuntimeItem = ArchiveRunItem & {
+  archive_run_item_id: number;
+  archive_run_id: number;
+  source_id?: number | null;
+  archive_run_status?: string | null;
+  lastSequence?: number;
+};
+
+export type RuntimeGlobal = {
+  active_run_count: number;
+  active_item_count: number;
+  active_scan_count: number;
+  current_run_id?: number | null;
+  current_source_id?: number | null;
+  current_tweet_id?: string | null;
+  downloaded_bytes: number;
+  total_bytes?: number | null;
+  speed_bps?: number | null;
+};
+
+export type RuntimeSnapshot = {
+  epoch: string;
+  sequence: number;
+  recent_window_seconds: number;
+  worker: HealthDetail["worker"];
+  queue: HealthDetail["queue"];
+  sources: HealthDetail["sources"];
+  global: RuntimeGlobal;
+  runs: RuntimeRun[];
+  items: RuntimeItem[];
+  scans: SourceScanRun[];
+  recent_activity: Array<Record<string, unknown>>;
+};
+
+export type RuntimeTransportDiagnostics = {
+  broker: {
+    epoch: string;
+    sequence: number;
+    published_events: number;
+    published_by_type: Record<string, number>;
+    sse_connections: number;
+    ws_connections: number;
+    queue_high_water: number;
+    dropped_events: number;
+  };
+  websocket: {
+    active_connections: number;
+    accepted_connections: number;
+    messages_sent: number;
+    bytes_sent: number;
+    snapshots_sent: number;
+    patches_sent: number;
+    invalidations_sent: number;
+    heartbeats_sent: number;
+    resyncs_sent: number;
+    queue_overflows: number;
+    dropped_events: number;
+    auth_rejections: number;
+    origin_rejections: number;
+    send_errors: number;
+  };
 };
 
 export type ArchiveRunControl = {

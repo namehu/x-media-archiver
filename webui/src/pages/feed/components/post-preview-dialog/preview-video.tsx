@@ -1,4 +1,5 @@
-import { useEffect, useRef, useState } from "react";
+import { useEffect, useRef, useState, type ReactNode } from "react";
+import { createPortal } from "react-dom";
 import Artplayer from "artplayer";
 import { createArtplayerCleanup } from "@/lib/artplayer-lifecycle";
 import {
@@ -10,6 +11,10 @@ import {
   type FeedVideoPlaybackSnapshot,
   type FeedVideoPlaybackStateApi,
 } from "../../video-playback-state";
+import {
+  createPreviewVideoOverlayPlugin,
+  type PreviewVideoOverlayPluginApi,
+} from "./preview-video-overlay-plugin";
 
 const LONG_PRESS_DELAY_MS = 280;
 const LONG_PRESS_RATE = 2;
@@ -26,14 +31,15 @@ export function PreviewVideo({
   getVideoState,
   updateVideoState,
   onControlToggle,
+  overlay,
 }: {
   src: string;
   previewUrl?: string | null;
   active: boolean;
   videoId: string;
   onControlToggle?: React.Dispatch<React.SetStateAction<boolean>>;
+  overlay?: ReactNode;
 } & FeedVideoPlaybackStateApi) {
-  const wrapperRef = useRef<HTMLDivElement>(null);
   const containerRef = useRef<HTMLDivElement>(null);
   const longPressTimerRef = useRef<number | null>(null);
   const restorePlaybackRateRef = useRef<number | null>(null);
@@ -59,15 +65,18 @@ export function PreviewVideo({
         duration: number;
       }
   >(null);
+  const [overlayTarget, setOverlayTarget] = useState<HTMLElement | null>(null);
 
   useEffect(() => {
-    const wrapper = wrapperRef.current;
     const container = containerRef.current;
-    if (!active || !src || !wrapper || !container) {
+    if (!active || !src || !container) {
       return undefined;
     }
 
     const initialState = getVideoState(videoId);
+    let disposing = false;
+    let overlayPluginApi: PreviewVideoOverlayPluginApi | null = null;
+    const overlayPlugin = createPreviewVideoOverlayPlugin(setOverlayTarget);
     const player = new Artplayer({
       container,
       url: src,
@@ -85,17 +94,55 @@ export function PreviewVideo({
         preload: "auto",
         playsInline: true,
       },
+      plugins: [
+        (art) => {
+          const api = overlayPlugin(art);
+          overlayPluginApi = api;
+          if (disposing) api.destroy();
+          return api;
+        },
+      ],
       ...(previewUrl ? { poster: previewUrl } : {}),
     });
 
     const cleanupPlayer = createArtplayerCleanup(player, container, { bindFullscreenHistory: false });
     const playerVideo = player.video;
+    const interactionSurface = player.template.$player;
+    interactionSurface.style.pointerEvents = "auto";
     let restoredPlaybackState = !initialState;
-    let disposing = false;
+    let chromeVisibleBeforePointerDown = true;
+
+    const isPlayerChromeVisible = () =>
+      interactionSurface.classList.contains("art-control-show") ||
+      interactionSurface.classList.contains("art-hover");
+
+    const syncPreviewChromeVisibility = () => {
+      onControlToggle?.(isPlayerChromeVisible());
+    };
+
+    // Artplayer renders its bottom controls from both of these root classes.
+    // Mirror the rendered state so the plugin overlay cannot drift out of sync.
+    const controlVisibilityObserver = new MutationObserver(syncPreviewChromeVisibility);
+    controlVisibilityObserver.observe(interactionSurface, {
+      attributes: true,
+      attributeFilter: ["class"],
+    });
+
+    const keepFullWebPlayerAccessible = () => {
+      if (player.fullscreenWeb && interactionSurface.getAttribute("aria-hidden") === "true") {
+        interactionSurface.removeAttribute("aria-hidden");
+      }
+    };
+    const accessibilityObserver = new MutationObserver(keepFullWebPlayerAccessible);
+    accessibilityObserver.observe(interactionSurface, {
+      attributes: true,
+      attributeFilter: ["aria-hidden"],
+    });
 
     const enterLockedWebFullscreen = () => {
       if (disposing || player.fullscreen || player.fullscreenWeb) return;
       player.fullscreenWeb = true;
+      queueMicrotask(keepFullWebPlayerAccessible);
     };
 
     const restoreLockedWebFullscreen = () => {
@@ -174,11 +221,10 @@ export function PreviewVideo({
       }
     });
 
-    player.on("control", (show: boolean) => {
-      if (onControlToggle) {
-        onControlToggle(show);
-      }
-    });
+    const handlePlayerChromeChange = () => syncPreviewChromeVisibility();
+    player.on("control", handlePlayerChromeChange);
+    player.on("hover", handlePlayerChromeChange);
+    syncPreviewChromeVisibility();
 
     const syncTimer = window.setInterval(writePausedState, 250);
 
@@ -212,9 +258,24 @@ export function PreviewVideo({
         ),
       );
 
+    const captureGesturePointer = (pointerId: number) => {
+      if (interactionSurface.hasPointerCapture(pointerId)) return;
+
+      try {
+        interactionSurface.setPointerCapture(pointerId);
+      } catch {
+        // Ignore browsers that reject capture after the active pointer ended.
+      }
+    };
+
     const handlePointerDown = (event: PointerEvent) => {
       if (event.button !== -1 && event.button !== 0) return;
       if (isInteractiveTarget(event.target)) return;
+
+      chromeVisibleBeforePointerDown = isPlayerChromeVisible();
+      // Wake Artplayer itself immediately. Updating only React state would show
+      // the top overlay while leaving the native bottom controls hidden.
+      player.controls.show = true;
 
       gestureRef.current = {
         pointerId: event.pointerId,
@@ -225,11 +286,8 @@ export function PreviewVideo({
         seekActive: false,
       };
 
-      try {
-        wrapper.setPointerCapture(event.pointerId);
-      } catch {
-        // Ignore browsers that reject pointer capture for synthetic sequences.
-      }
+      // Keep ordinary taps on the video so Artplayer can emit its click/control
+      // events. Capture only after a long-press or horizontal seek is active.
 
       clearLongPressTimer();
       longPressTimerRef.current = window.setTimeout(() => {
@@ -243,10 +301,21 @@ export function PreviewVideo({
           return;
         }
 
+        captureGesturePointer(event.pointerId);
         restorePlaybackRateRef.current = player.playbackRate;
         player.playbackRate = LONG_PRESS_RATE;
         setGestureOverlay({ type: "long-press", label: `${LONG_PRESS_RATE}x 长按快进` });
       }, LONG_PRESS_DELAY_MS);
+    };
+
+    const handlePlayerClick = (event: MouseEvent) => {
+      if (isInteractiveTarget(event.target)) return;
+
+      // Artplayer's mobile click handler toggles the controls, while desktop
+      // only shows them. Apply one consistent toggle after its own handler and
+      // guarantee that the first tap after auto-hide always wakes the controls.
+      player.controls.show = !chromeVisibleBeforePointerDown;
+      syncPreviewChromeVisibility();
     };
 
     const handlePointerMove = (event: PointerEvent) => {
@@ -261,6 +330,7 @@ export function PreviewVideo({
 
       if (!currentGesture.seekActive && movedFarEnough) {
         currentGesture.seekActive = true;
+        captureGesturePointer(event.pointerId);
         clearLongPressTimer();
         stopFastForward();
       } else if (!currentGesture.seekActive && movedToCancelHold) {
@@ -272,7 +342,7 @@ export function PreviewVideo({
       const duration = Number.isFinite(player.duration) ? player.duration : 0;
       if (duration <= 0) return;
 
-      const wrapperWidth = Math.max(wrapper.clientWidth, 1);
+      const wrapperWidth = Math.max(interactionSurface.clientWidth, 1);
       const seekWindow = Math.min(Math.max(duration * 0.25, SEEK_WINDOW_MIN_SECONDS), SEEK_WINDOW_MAX_SECONDS);
       const deltaTime = clampRange((deltaX / wrapperWidth) * seekWindow, -seekWindow, seekWindow);
       const targetTime = clampTime(currentGesture.startTime + deltaTime, duration);
@@ -314,16 +384,17 @@ export function PreviewVideo({
         setGestureOverlay(null);
       }
 
-      if (pointerId !== undefined && wrapper.hasPointerCapture(pointerId)) {
-        wrapper.releasePointerCapture(pointerId);
+      if (pointerId !== undefined && interactionSurface.hasPointerCapture(pointerId)) {
+        interactionSurface.releasePointerCapture(pointerId);
       }
     };
 
-    wrapper.addEventListener("pointerdown", handlePointerDown, true);
-    wrapper.addEventListener("pointermove", handlePointerMove, true);
-    wrapper.addEventListener("pointerup", finishGesture, true);
-    wrapper.addEventListener("pointercancel", finishGesture, true);
-    wrapper.addEventListener("lostpointercapture", finishGesture, true);
+    interactionSurface.addEventListener("pointerdown", handlePointerDown, true);
+    interactionSurface.addEventListener("pointermove", handlePointerMove, true);
+    interactionSurface.addEventListener("pointerup", finishGesture, true);
+    interactionSurface.addEventListener("pointercancel", finishGesture, true);
+    interactionSurface.addEventListener("lostpointercapture", finishGesture, true);
+    interactionSurface.addEventListener("click", handlePlayerClick);
 
     if (!initialState || !initialState.ended) {
       void player.play().catch(() => undefined);
@@ -349,12 +420,18 @@ export function PreviewVideo({
       playerVideo.removeEventListener("ratechange", writePausedState);
       playerVideo.removeEventListener("seeked", writePausedState);
       playerVideo.removeEventListener("ended", writePausedState);
-      wrapper.removeEventListener("pointerdown", handlePointerDown, true);
-      wrapper.removeEventListener("pointermove", handlePointerMove, true);
-      wrapper.removeEventListener("pointerup", finishGesture, true);
-      wrapper.removeEventListener("pointercancel", finishGesture, true);
-      wrapper.removeEventListener("lostpointercapture", finishGesture, true);
+      interactionSurface.removeEventListener("pointerdown", handlePointerDown, true);
+      interactionSurface.removeEventListener("pointermove", handlePointerMove, true);
+      interactionSurface.removeEventListener("pointerup", finishGesture, true);
+      interactionSurface.removeEventListener("pointercancel", finishGesture, true);
+      interactionSurface.removeEventListener("lostpointercapture", finishGesture, true);
+      interactionSurface.removeEventListener("click", handlePlayerClick);
+      player.off("control", handlePlayerChromeChange);
+      player.off("hover", handlePlayerChromeChange);
+      controlVisibilityObserver.disconnect();
+      accessibilityObserver.disconnect();
       resetGestureState();
+      overlayPluginApi?.destroy();
       cleanupPlayer();
     };
   }, [active, getVideoState, onControlToggle, previewUrl, src, updateVideoState, videoId]);
@@ -370,23 +447,28 @@ export function PreviewVideo({
   }
 
   return (
-    <div
-      ref={wrapperRef}
-      className="swiper-no-swiping relative flex size-full touch-none select-none items-center justify-center bg-black"
-    >
+    <div className="swiper-no-swiping pointer-events-none relative flex size-full touch-none select-none items-center justify-center bg-black">
       <div
         ref={containerRef}
         className="tweet-video-player flex size-full items-center justify-center overflow-hidden bg-black"
       />
-      {gestureOverlay ? (
-        <div className="pointer-events-none absolute inset-x-4 top-4 flex justify-center">
-          <div className="rounded-full border border-white/15 bg-black/70 px-4 py-2 text-sm font-medium text-white shadow-lg backdrop-blur">
-            {gestureOverlay.type === "long-press"
-              ? gestureOverlay.label
-              : formatSeekOverlay(gestureOverlay.delta, gestureOverlay.targetTime, gestureOverlay.duration)}
-          </div>
-        </div>
-      ) : null}
+      {overlayTarget
+        ? createPortal(
+            <>
+              {overlay}
+              {gestureOverlay ? (
+                <div className="pointer-events-none absolute inset-x-4 top-4 flex justify-center">
+                  <div className="rounded-full border border-white/15 bg-black/70 px-4 py-2 text-sm font-medium text-white shadow-lg backdrop-blur">
+                    {gestureOverlay.type === "long-press"
+                      ? gestureOverlay.label
+                      : formatSeekOverlay(gestureOverlay.delta, gestureOverlay.targetTime, gestureOverlay.duration)}
+                  </div>
+                </div>
+              ) : null}
+            </>,
+            overlayTarget,
+          )
+        : null}
     </div>
   );
 }

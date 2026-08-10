@@ -42,12 +42,16 @@ const TAB_TO_QUERY: Record<QueueTab, { status: string; failedOnly: boolean }> = 
 const eventLabels: Record<string, string> = {
   connected: "实时事件已连接",
   connecting: "正在连接实时事件",
+  reconnecting: "实时事件正在重连",
+  resyncing: "正在同步运行态快照",
+  stale: "实时事件无新消息，使用降级刷新",
   offline: "实时事件离线，使用轮询刷新",
 };
 
 export function ArchiveQueuePage() {
   const queryClient = useQueryClient();
   const events = useServerEvents(["archive_runs", "worker"]);
+  const shouldFallbackPoll = shouldUseRuntimePollingFallback(events.status, events.transport);
   const [urls, setUrls] = useState("");
   const [selectedRunId, setSelectedRunId] = useState<number | null>(null);
   const [feedback, setFeedback] = useState<ArchiveSubmission | null>(null);
@@ -71,13 +75,13 @@ export function ArchiveQueuePage() {
       apiGet<ArchiveRunPageResponse>(
         `/api/v1/archive-runs?${runQueryString(activeQuery.status, tweetFilter, activeQuery.failedOnly, PAGE_SIZE, offset)}`,
       ),
-    refetchInterval: 15000,
+    refetchInterval: shouldFallbackPoll ? 15000 : false,
   });
   const detailQuery = useQuery({
     queryKey: ["archive-run", selectedRunId],
     queryFn: () => apiGet<ArchiveRunDetail>(`/api/v1/archive-runs/${selectedRunId}`),
     enabled: selectedRunId !== null,
-    refetchInterval: 15000,
+    refetchInterval: shouldFallbackPoll ? 15000 : false,
   });
 
   const queueModel = useMemo(() => buildQueueModel(runsQuery.data?.rows ?? []), [runsQuery.data?.rows]);
@@ -124,7 +128,18 @@ export function ArchiveQueuePage() {
   const submitUrls = () => {
     if (canSubmit) submitMutation.mutate(validRecords);
   };
-  const liveState = events.status === "connected" ? "open" : events.status === "connecting" ? "connecting" : "closed";
+  const liveState =
+    events.status === "connected"
+      ? "open"
+      : events.status === "connecting" || events.status === "reconnecting" || events.status === "resyncing"
+        ? "connecting"
+        : "closed";
+  const runtimeStatusLabel =
+    events.transport === "polling"
+      ? events.status === "connected"
+        ? "REST 快照轮询中"
+        : "REST 快照暂不可用"
+      : eventLabels[events.status] ?? "离线";
   const hasActiveFilters = activeTab !== "all" || tweetFilter.trim();
 
   return (
@@ -134,7 +149,7 @@ export function ArchiveQueuePage() {
           <h1 className="text-2xl font-bold tracking-tight text-fg-primary">归档队列</h1>
           <p className="mt-1 text-sm text-fg-secondary">提交归档批次 · 批次 · 批次详情</p>
         </div>
-        <LiveIndicator state={liveState} label={eventLabels[events.status] ?? "离线"} />
+        <LiveIndicator state={liveState} label={runtimeStatusLabel} />
       </section>
 
       <section className="grid gap-4 xl:grid-cols-[1.25fr_0.75fr]">
@@ -739,6 +754,10 @@ function runQueryString(status: string, tweetId: string, failedOnly: boolean, li
 
 function hasFailure(run: ArchiveRunDetail) {
   return run.items.some((item) => item.status === "failed_permanent");
+}
+
+function shouldUseRuntimePollingFallback(status: string, transport: string) {
+  return transport === "polling" || status === "offline" || status === "reconnecting" || status === "stale";
 }
 
 function RunSummary({ run }: { run: ArchiveRunDetail }) {

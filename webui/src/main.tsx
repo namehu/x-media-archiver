@@ -8,6 +8,7 @@ import { Toaster } from "./components/ui/toaster";
 import { TooltipProvider } from "./components/ui/tooltip";
 import { applyTheme, getStoredTheme, ThemeProvider } from "./lib/theme";
 import { AuthGate } from "./lib/auth";
+import { RuntimeProvider } from "./lib/runtime-provider";
 import { isTweetDetailPath } from "./lib/debug-redaction";
 import {
   buildDebuggerSearch,
@@ -124,7 +125,9 @@ ReactDOM.createRoot(document.getElementById("root")!).render(
       <QueryClientProvider client={queryClient}>
         <TooltipProvider>
           <AuthGate>
-            <RouterProvider router={router} />
+            <RuntimeProvider>
+              <RouterProvider router={router} />
+            </RuntimeProvider>
           </AuthGate>
           <Toaster />
         </TooltipProvider>

@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import json
+import logging
 import re
 import traceback
 from datetime import UTC, datetime
@@ -19,6 +20,7 @@ from xarchiver.row_models import IdRow
 VALID_LOG_LEVELS = {"debug", "info", "warning", "error", "critical"}
 DEFAULT_LOG_READ_LIMIT = 200
 MAX_LOG_READ_LIMIT = 1000
+logger = logging.getLogger(__name__)
 SENSITIVE_PATTERNS = (
     (re.compile(r"(auth_token=)[^\s;&]+", re.IGNORECASE), r"\1[redacted]"),
     (re.compile(r"(ct0=)[^\s;&]+", re.IGNORECASE), r"\1[redacted]"),
@@ -111,82 +113,147 @@ def append_operation_log_entries(stream_id: int, entries: list[dict[str, Any]]) 
     if not prepared_entries:
         return []
 
-    with connect() as conn:
-        with conn.cursor() as cur:
-            cur.execute(
-                """
-                select id, scope_type, scope_id, log_path, line_count, byte_size,
-                       level_counts, is_truncated
-                from operation_log_streams
-                where id = %s
-                for update
-                """,
-                (stream_id,),
-            )
-            row = cur.fetchone()
-            if row is None:
-                return []
-            if row["is_truncated"]:
-                return []
+    commit_attempted = False
+    try:
+        with connect() as conn:
+            path: Path | None = None
+            previous_file_size: int | None = None
+            try:
+                with conn.cursor() as cur:
+                    cur.execute(
+                        """
+                        select id, scope_type, scope_id, log_path, line_count, byte_size,
+                               level_counts, is_truncated
+                        from operation_log_streams
+                        where id = %s
+                        for update
+                        """,
+                        (stream_id,),
+                    )
+                    row = cur.fetchone()
+                    if row is None:
+                        return []
+                    path = resolve_operation_log_path(str(row["log_path"]))
+                    current_size = int(row["byte_size"] or 0)
+                    actual_size = path.stat().st_size if path.exists() else 0
+                    repaired_stats: dict[str, Any] | None = None
+                    if actual_size != current_size:
+                        repaired_stats = _read_operation_log_file_stats(path)
+                        cur.execute(
+                            """
+                            update operation_log_streams
+                            set line_count = %s,
+                                byte_size = %s,
+                                level_counts = %s,
+                                last_level = %s,
+                                last_message = %s,
+                                last_log_at = case when %s > 0 then now() else null end,
+                                is_truncated = %s
+                            where id = %s
+                            """,
+                            (
+                                repaired_stats["line_count"],
+                                repaired_stats["byte_size"],
+                                Jsonb(repaired_stats["level_counts"]),
+                                repaired_stats["last_level"],
+                                repaired_stats["last_message"],
+                                repaired_stats["line_count"],
+                                repaired_stats["is_truncated"],
+                                stream_id,
+                            ),
+                        )
+                    current_size = int(
+                        repaired_stats["byte_size"] if repaired_stats else row["byte_size"] or 0
+                    )
+                    current_line_count = int(
+                        repaired_stats["line_count"] if repaired_stats else row["line_count"] or 0
+                    )
+                    current_level_counts = dict(
+                        repaired_stats["level_counts"] if repaired_stats else row["level_counts"] or {}
+                    )
+                    already_truncated = bool(
+                        repaired_stats["is_truncated"] if repaired_stats else row["is_truncated"]
+                    )
+                    if already_truncated:
+                        if repaired_stats is not None:
+                            commit_attempted = True
+                            conn.commit()
+                        return []
 
-            current_size = int(row["byte_size"] or 0)
-            max_bytes = int(get_settings().operation_log_max_bytes)
-            accepted_entries: list[dict[str, Any]] = []
-            encoded_entries: list[bytes] = []
-            encoded_size = 0
-            is_truncated = False
-            for entry in prepared_entries:
-                encoded = (json.dumps(entry, ensure_ascii=False, default=str, separators=(",", ":")) + "\n").encode("utf-8")
-                if current_size + encoded_size + len(encoded) <= max_bytes:
-                    accepted_entries.append(entry)
-                    encoded_entries.append(encoded)
-                    encoded_size += len(encoded)
-                    continue
-                # 达到体积上限后，只补一条告警并停止接收当前批剩余输出。
-                warning = build_log_entry("warning", "xarchiver", f"操作日志达到 {max_bytes} 字节后已截断。")
-                accepted_entries.append(warning)
-                encoded_entries.append(
-                    (json.dumps(warning, ensure_ascii=False, default=str, separators=(",", ":")) + "\n").encode("utf-8")
-                )
-                is_truncated = True
-                break
-            if not accepted_entries:
-                return []
+                    max_bytes = int(get_settings().operation_log_max_bytes)
+                    accepted_entries: list[dict[str, Any]] = []
+                    encoded_entries: list[bytes] = []
+                    encoded_size = 0
+                    is_truncated = False
+                    for entry in prepared_entries:
+                        encoded = (json.dumps(entry, ensure_ascii=False, default=str, separators=(",", ":")) + "\n").encode("utf-8")
+                        if current_size + encoded_size + len(encoded) <= max_bytes:
+                            accepted_entries.append(entry)
+                            encoded_entries.append(encoded)
+                            encoded_size += len(encoded)
+                            continue
+                        # 达到体积上限后，只补一条告警并停止接收当前批剩余输出。
+                        warning = build_log_entry("warning", "xarchiver", f"操作日志达到 {max_bytes} 字节后已截断。")
+                        accepted_entries.append(warning)
+                        encoded_entries.append(
+                            (json.dumps(warning, ensure_ascii=False, default=str, separators=(",", ":")) + "\n").encode("utf-8")
+                        )
+                        is_truncated = True
+                        break
+                    if not accepted_entries:
+                        return []
 
-            path = resolve_operation_log_path(str(row["log_path"]))
-            path.parent.mkdir(parents=True, exist_ok=True)
-            with path.open("ab") as handle:
-                handle.writelines(encoded_entries)
+                    path.parent.mkdir(parents=True, exist_ok=True)
+                    with path.open("a+b") as handle:
+                        handle.seek(0, 2)
+                        previous_file_size = handle.tell()
+                        handle.writelines(encoded_entries)
 
-            line_count = int(row["line_count"] or 0) + len(accepted_entries)
-            byte_size = current_size + encoded_size + (len(encoded_entries[-1]) if is_truncated else 0)
-            level_counts = dict(row["level_counts"] or {})
-            for entry in accepted_entries:
-                level_counts[entry["level"]] = int(level_counts.get(entry["level"], 0)) + 1
-            last_entry = accepted_entries[-1]
-            cur.execute(
-                """
-                update operation_log_streams
-                set line_count = %s,
-                    byte_size = %s,
-                    level_counts = %s,
-                    last_level = %s,
-                    last_message = %s,
-                    last_log_at = now(),
-                    is_truncated = %s
-                where id = %s
-                """,
-                (
-                    line_count,
-                    byte_size,
-                    Jsonb(level_counts),
-                    last_entry["level"],
-                    last_entry["message"],
-                    is_truncated,
+                    line_count = current_line_count + len(accepted_entries)
+                    byte_size = current_size + encoded_size + (len(encoded_entries[-1]) if is_truncated else 0)
+                    level_counts = current_level_counts
+                    for entry in accepted_entries:
+                        level_counts[entry["level"]] = int(level_counts.get(entry["level"], 0)) + 1
+                    last_entry = accepted_entries[-1]
+                    cur.execute(
+                        """
+                        update operation_log_streams
+                        set line_count = %s,
+                            byte_size = %s,
+                            level_counts = %s,
+                            last_level = %s,
+                            last_message = %s,
+                            last_log_at = now(),
+                            is_truncated = %s
+                        where id = %s
+                        """,
+                        (
+                            line_count,
+                            byte_size,
+                            Jsonb(level_counts),
+                            last_entry["level"],
+                            last_entry["message"],
+                            is_truncated,
+                            stream_id,
+                        ),
+                    )
+                commit_attempted = True
+                conn.commit()
+            except BaseException:
+                if not commit_attempted and path is not None and previous_file_size is not None:
+                    _truncate_operation_log_file(path, previous_file_size)
+                raise
+    except BaseException:
+        if commit_attempted:
+            try:
+                _reconcile_operation_log_stream(stream_id)
+            except Exception:
+                logger.critical(
+                    "Failed to reconcile operation log metadata after uncertain commit: stream_id=%s",
                     stream_id,
-                ),
-            )
-        conn.commit()
+                    exc_info=True,
+                )
+        raise
 
     publish_event(
         "logs",
@@ -200,6 +267,159 @@ def append_operation_log_entries(stream_id: int, entries: list[dict[str, Any]]) 
         },
     )
     return accepted_entries
+
+
+def _truncate_operation_log_file(path: Path, size: int) -> None:
+    try:
+        with path.open("r+b") as handle:
+            handle.truncate(size)
+    except OSError:
+        logger.critical(
+            "Failed to roll back operation log file after pre-commit failure: %s",
+            path,
+            exc_info=True,
+        )
+
+
+def _reconcile_operation_log_stream(stream_id: int) -> None:
+    """提交结果不确定时，以 JSONL 文件为事实源重建流级元数据。"""
+
+    with connect() as conn:
+        with conn.cursor() as cur:
+            cur.execute(
+                """
+                select log_path
+                from operation_log_streams
+                where id = %s
+                for update
+                """,
+                (stream_id,),
+            )
+            row = cur.fetchone()
+            if row is None:
+                return
+            stats = _read_operation_log_file_stats(
+                resolve_operation_log_path(str(row["log_path"]))
+            )
+            cur.execute(
+                """
+                update operation_log_streams
+                set line_count = %s,
+                    byte_size = %s,
+                    level_counts = %s,
+                    last_level = %s,
+                    last_message = %s,
+                    last_log_at = case when %s > 0 then now() else null end,
+                    is_truncated = %s
+                where id = %s
+                """,
+                (
+                    stats["line_count"],
+                    stats["byte_size"],
+                    Jsonb(stats["level_counts"]),
+                    stats["last_level"],
+                    stats["last_message"],
+                    stats["line_count"],
+                    stats["is_truncated"],
+                    stream_id,
+                ),
+            )
+        conn.commit()
+
+
+def _read_operation_log_file_stats(path: Path) -> dict[str, Any]:
+    if not path.exists():
+        return {
+            "line_count": 0,
+            "byte_size": 0,
+            "level_counts": {},
+            "last_level": None,
+            "last_message": None,
+            "is_truncated": False,
+        }
+
+    line_count = 0
+    level_counts: dict[str, int] = {}
+    last_level: str | None = None
+    last_message: str | None = None
+    is_truncated = False
+    file_size = path.stat().st_size
+    valid_end = 0
+    damaged_tail = False
+    missing_final_newline = False
+
+    def accumulate(entry: dict[str, Any]) -> None:
+        nonlocal line_count, last_level, last_message, is_truncated
+        level = normalize_log_level(str(entry.get("level") or "info"))
+        message = str(entry.get("message") or "")
+        line_count += 1
+        level_counts[level] = level_counts.get(level, 0) + 1
+        last_level = level
+        last_message = message
+        is_truncated = is_truncated or (
+            entry.get("component") == "xarchiver"
+            and message.startswith("操作日志达到 ")
+            and message.endswith(" 字节后已截断。")
+        )
+
+    with path.open("r+b") as handle:
+        while True:
+            raw_line = handle.readline()
+            if not raw_line:
+                break
+            line_end = handle.tell()
+            is_final_line = line_end == file_size
+            if not raw_line.strip():
+                valid_end = line_end
+                missing_final_newline = is_final_line and not raw_line.endswith(b"\n")
+                continue
+            try:
+                entry = json.loads(raw_line.decode("utf-8"))
+                if not isinstance(entry, dict):
+                    raise ValueError("invalid_operation_log_entry")
+            except (UnicodeDecodeError, json.JSONDecodeError, ValueError) as exc:
+                if not is_final_line:
+                    raise ValueError("invalid_operation_log_entry") from exc
+                damaged_tail = True
+                break
+            accumulate(entry)
+            valid_end = line_end
+            missing_final_newline = is_final_line and not raw_line.endswith(b"\n")
+
+        if damaged_tail:
+            handle.seek(valid_end)
+            handle.truncate()
+            recovery_entry = build_log_entry(
+                "warning",
+                "xarchiver",
+                "操作日志尾部存在未完成记录，已恢复到最后一条完整记录。",
+            )
+            encoded = (
+                json.dumps(
+                    recovery_entry,
+                    ensure_ascii=False,
+                    default=str,
+                    separators=(",", ":"),
+                )
+                + "\n"
+            ).encode("utf-8")
+            handle.write(encoded)
+            valid_end += len(encoded)
+            accumulate(recovery_entry)
+            logger.warning("Recovered damaged operation log tail: %s", path)
+        elif missing_final_newline:
+            handle.seek(0, 2)
+            handle.write(b"\n")
+            valid_end += 1
+        handle.flush()
+    return {
+        "line_count": line_count,
+        "byte_size": valid_end,
+        "level_counts": level_counts,
+        "last_level": last_level,
+        "last_message": last_message,
+        "is_truncated": is_truncated,
+    }
 
 
 def close_operation_log_stream(stream_id: int) -> None:

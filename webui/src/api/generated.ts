@@ -972,6 +972,46 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/api/v1/runtime/snapshot": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * Runtime Snapshot
+         * @description 返回 WebUI 运行态快照，用于首连、重连和轮询降级收敛。
+         */
+        get: operations["runtime_snapshot_api_v1_runtime_snapshot_get"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/runtime/diagnostics": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * Runtime Diagnostics
+         * @description 返回有界的 runtime 传输计数，不包含事件正文。
+         */
+        get: operations["runtime_diagnostics_api_v1_runtime_diagnostics_get"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/api/v1/media-file/{relative_path}": {
         parameters: {
             query?: never;
@@ -2283,6 +2323,188 @@ export interface components {
             statuses?: string[] | null;
             /** Limit */
             limit?: number | null;
+        };
+        /** RuntimeGlobalResponse */
+        RuntimeGlobalResponse: {
+            /**
+             * Active Run Count
+             * @default 0
+             */
+            active_run_count: number;
+            /**
+             * Active Item Count
+             * @default 0
+             */
+            active_item_count: number;
+            /**
+             * Active Scan Count
+             * @default 0
+             */
+            active_scan_count: number;
+            /** Current Run Id */
+            current_run_id?: number | null;
+            /** Current Source Id */
+            current_source_id?: number | null;
+            /** Current Tweet Id */
+            current_tweet_id?: string | null;
+            /**
+             * Downloaded Bytes
+             * @default 0
+             */
+            downloaded_bytes: number;
+            /** Total Bytes */
+            total_bytes?: number | null;
+            /** Speed Bps */
+            speed_bps?: number | null;
+        } & {
+            [key: string]: unknown;
+        };
+        /** RuntimeItemResponse */
+        RuntimeItemResponse: {
+            /** Id */
+            id: number;
+            /** Archive Run Item Id */
+            archive_run_item_id: number;
+            /** Archive Run Id */
+            archive_run_id: number;
+            /** Source Id */
+            source_id?: number | null;
+            /** Archive Run Status */
+            archive_run_status?: string | null;
+            /** Tweet Id */
+            tweet_id: string;
+            /** Status */
+            status: string;
+            /**
+             * Retry Count
+             * @default 0
+             */
+            retry_count: number;
+            /** Error Category */
+            error_category?: string | null;
+            /** Error Message */
+            error_message?: string | null;
+            /** Linked Item Id */
+            linked_item_id?: number | null;
+            /**
+             * Cancel Requested
+             * @default false
+             */
+            cancel_requested: boolean;
+            /**
+             * Downloaded Bytes
+             * @default 0
+             */
+            downloaded_bytes: number;
+            /** Total Bytes */
+            total_bytes?: number | null;
+            /** Speed Bps */
+            speed_bps?: number | null;
+            /** Progress Message */
+            progress_message?: string | null;
+            /** Last Progress At */
+            last_progress_at?: string | null;
+            /** Last Attempt At */
+            last_attempt_at?: string | null;
+            /** Next Attempt At */
+            next_attempt_at?: string | null;
+            /** Created At */
+            created_at?: string | null;
+            /** Updated At */
+            updated_at?: string | null;
+        } & {
+            [key: string]: unknown;
+        };
+        /** RuntimeRunResponse */
+        RuntimeRunResponse: {
+            /** Id */
+            id: number;
+            /** Trigger Type */
+            trigger_type: string;
+            /** Source Id */
+            source_id?: number | null;
+            /** Input Path */
+            input_path?: string | null;
+            /** Status */
+            status: string;
+            /** Blocked By Run Id */
+            blocked_by_run_id?: number | null;
+            /** Control State */
+            control_state?: {
+                [key: string]: unknown;
+            } | null;
+            /** Started At */
+            started_at?: string | null;
+            /** Finished At */
+            finished_at?: string | null;
+            /** Result */
+            result?: {
+                [key: string]: unknown;
+            } | null;
+            /** Error Message */
+            error_message?: string | null;
+            /**
+             * Downloaded Bytes
+             * @default 0
+             */
+            downloaded_bytes: number;
+            /** Total Bytes */
+            total_bytes?: number | null;
+            /** Speed Bps */
+            speed_bps?: number | null;
+            /**
+             * Active Item Count
+             * @default 0
+             */
+            active_item_count: number;
+            /** Job Id */
+            job_id?: number | null;
+            /** Current Tweet Id */
+            current_tweet_id?: string | null;
+            /** Job Status */
+            job_status?: string | null;
+            /** Last Progress At */
+            last_progress_at?: string | null;
+        } & {
+            [key: string]: unknown;
+        };
+        /** RuntimeSnapshotResponse */
+        RuntimeSnapshotResponse: {
+            /** Epoch */
+            epoch: string;
+            /** Sequence */
+            sequence: number;
+            /** Recent Window Seconds */
+            recent_window_seconds: number;
+            worker: components["schemas"]["WorkerHealthResponse"];
+            queue: components["schemas"]["QueueHealthResponse"];
+            sources: components["schemas"]["SourceHealthResponse"];
+            global: components["schemas"]["RuntimeGlobalResponse"];
+            /** Runs */
+            runs?: components["schemas"]["RuntimeRunResponse"][];
+            /** Items */
+            items?: components["schemas"]["RuntimeItemResponse"][];
+            /** Scans */
+            scans?: components["schemas"]["SourceScanRunResponse"][];
+            /** Recent Activity */
+            recent_activity?: {
+                [key: string]: unknown;
+            }[];
+        } & {
+            [key: string]: unknown;
+        };
+        /** RuntimeTransportDiagnosticsResponse */
+        RuntimeTransportDiagnosticsResponse: {
+            /** Broker */
+            broker: {
+                [key: string]: unknown;
+            };
+            /** Websocket */
+            websocket: {
+                [key: string]: number;
+            };
+        } & {
+            [key: string]: unknown;
         };
         /** SourceCreateRequest */
         SourceCreateRequest: {
@@ -4610,6 +4832,46 @@ export interface operations {
                 };
                 content: {
                     "application/json": components["schemas"]["HealthDetailResponse"];
+                };
+            };
+        };
+    };
+    runtime_snapshot_api_v1_runtime_snapshot_get: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["RuntimeSnapshotResponse"];
+                };
+            };
+        };
+    };
+    runtime_diagnostics_api_v1_runtime_diagnostics_get: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["RuntimeTransportDiagnosticsResponse"];
                 };
             };
         };

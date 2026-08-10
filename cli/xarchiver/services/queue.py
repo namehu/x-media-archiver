@@ -442,10 +442,15 @@ def claim_next_items(
                 )
         conn.commit()
     if rows:
+        payload = build_archive_run_event_payload(
+            int(rows[0]["archive_run_id"]),
+            [int(row["id"]) for row in rows],
+            {"item_count": len(rows)},
+        )
         publish_event(
             "archive_runs",
             "archive.run.processing",
-            {"run_id": int(rows[0]["archive_run_id"]), "item_count": len(rows)},
+            payload,
         )
     return rows
 
@@ -520,7 +525,11 @@ def update_processed_items(
                     raise WorkerLeaseLost("archive_item_lease_lost")
         conn.commit()
     update_run_after_processing(run_id, pipeline)
-    publish_event("archive_runs", "archive.run.items_processed", {"run_id": run_id, "item_count": len(claimed)})
+    publish_event(
+        "archive_runs",
+        "archive.run.items_processed",
+        build_archive_run_event_payload(run_id, [int(row["id"]) for row in claimed], {"item_count": len(claimed)}),
+    )
 
 
 def fail_processing_items(
@@ -567,7 +576,11 @@ def fail_processing_items(
                     raise WorkerLeaseLost("archive_item_lease_lost")
         conn.commit()
     update_run_after_processing(run_id, None)
-    publish_event("archive_runs", "archive.run.items_failed", {"run_id": run_id, "item_count": len(claimed)})
+    publish_event(
+        "archive_runs",
+        "archive.run.items_failed",
+        build_archive_run_event_payload(run_id, [int(row["id"]) for row in claimed], {"item_count": len(claimed)}),
+    )
 
 
 def update_run_after_processing(run_id: int, pipeline: dict[str, object] | None) -> None:
@@ -607,7 +620,11 @@ def update_run_after_processing(run_id: int, pipeline: dict[str, object] | None)
     if status in {"completed", "completed_with_failures", "failed", "stopped"}:
         release_next_blocked_source_run(current.get("source_id") if current else None)
     event_type = "archive.run.completed" if status in {"completed", "completed_with_failures"} else "archive.run.updated"
-    publish_event("archive_runs", event_type, {"run_id": run_id, "status": status, "tasks": task_counts})
+    publish_event(
+        "archive_runs",
+        event_type,
+        build_archive_run_event_payload(run_id, extra={"status": status, "tasks": task_counts}),
+    )
 
 
 def count_run_items(run_id: int) -> dict[str, int]:
@@ -659,6 +676,71 @@ def count_run_items(run_id: int) -> dict[str, int]:
         elif status == "cancelled":
             counts["cancelled_count"] += value
     return counts
+
+
+def build_archive_run_event_payload(
+    run_id: int,
+    item_ids: list[int] | None = None,
+    extra: dict[str, object] | None = None,
+) -> dict[str, object]:
+    """构造 runtime overlay 可消费的归档 run/item 事件载荷。"""
+
+    payload: dict[str, object] = {"run_id": run_id, "archive_run_id": run_id}
+    if extra:
+        payload.update(extra)
+    with connect() as conn:
+        with conn.cursor() as cur:
+            cur.execute(
+                """
+                select id, trigger_type, source_id, input_path, status, blocked_by_run_id,
+                       control_state, started_at, finished_at, result, error_message
+                from archive_runs
+                where id = %s
+                """,
+                (run_id,),
+            )
+            run_row = cur.fetchone()
+            if run_row:
+                run = dict(run_row)
+                payload["run"] = run
+                payload["source_id"] = run.get("source_id")
+                payload["status"] = payload.get("status") or run.get("status")
+            if item_ids:
+                cur.execute(
+                    """
+                    select i.id,
+                           i.id as archive_run_item_id,
+                           i.archive_run_id,
+                           r.source_id,
+                           r.status as archive_run_status,
+                           i.tweet_id,
+                           i.status,
+                           i.retry_count,
+                           i.error_category,
+                           i.error_message,
+                           i.linked_item_id,
+                           i.cancel_requested,
+                           i.downloaded_bytes,
+                           i.total_bytes,
+                           i.speed_bps,
+                           i.progress_message,
+                           i.last_progress_at,
+                           i.last_attempt_at,
+                           i.next_attempt_at,
+                           i.created_at,
+                           i.updated_at
+                    from archive_run_items i
+                    join archive_runs r on r.id = i.archive_run_id
+                    where i.archive_run_id = %s
+                      and i.id = any(%s)
+                    order by i.id
+                    """,
+                    (run_id, item_ids),
+                )
+                payload["items"] = [dict(row) for row in cur.fetchall()]
+            else:
+                payload.setdefault("items", [])
+    return payload
 
 
 def release_next_blocked_source_run(source_id: int | None) -> int | None:
@@ -1061,7 +1143,7 @@ def pause_run(run_id: int) -> dict[str, object]:
             )
             affected = cur.rowcount
         conn.commit()
-    publish_event("archive_runs", "archive.run.paused", {"run_id": run_id})
+    publish_event("archive_runs", "archive.run.paused", build_archive_run_event_payload(run_id))
     return {"run_id": run_id, "status": "paused" if affected else run.status, "affected_count": affected}
 
 
@@ -1103,7 +1185,11 @@ def resume_run(run_id: int) -> dict[str, object]:
             )
             affected = cur.rowcount
         conn.commit()
-    publish_event("archive_runs", "archive.run.resumed", {"run_id": run_id, "status": status})
+    publish_event(
+        "archive_runs",
+        "archive.run.resumed",
+        build_archive_run_event_payload(run_id, extra={"status": status}),
+    )
     return {"run_id": run_id, "status": status if affected else run.status, "affected_count": affected}
 
 
@@ -1124,10 +1210,12 @@ def stop_run(run_id: int) -> dict[str, object]:
                     updated_at = now()
                 where archive_run_id = %s
                   and status in ('pending', 'blocked', 'failed_retryable')
+                returning id
                 """,
                 (run_id,),
             )
-            cancelled = cur.rowcount
+            cancelled_item_ids = [int(row["id"]) for row in cur.fetchall()]
+            cancelled = len(cancelled_item_ids)
             cur.execute(
                 """
                 update archive_run_items
@@ -1137,10 +1225,12 @@ def stop_run(run_id: int) -> dict[str, object]:
                     updated_at = now()
                 where archive_run_id = %s
                   and status = 'processing'
+                returning id
                 """,
                 (run_id,),
             )
-            requested = cur.rowcount
+            requested_item_ids = [int(row["id"]) for row in cur.fetchall()]
+            requested = len(requested_item_ids)
             cur.execute(
                 """
                 update archive_runs
@@ -1153,7 +1243,15 @@ def stop_run(run_id: int) -> dict[str, object]:
             )
         conn.commit()
     release_next_blocked_source_run(run.source_id)
-    publish_event("archive_runs", "archive.run.stopped", {"run_id": run_id, "cancelled_count": cancelled})
+    publish_event(
+        "archive_runs",
+        "archive.run.stopped",
+        build_archive_run_event_payload(
+            run_id,
+            [*cancelled_item_ids, *requested_item_ids],
+            {"cancelled_count": cancelled, "cancel_requested_count": requested},
+        ),
+    )
     return {"run_id": run_id, "status": "stopped", "affected_count": cancelled + requested}
 
 
@@ -1189,10 +1287,12 @@ def cancel_run_items(
                     updated_at = now()
                 where {where}
                   and status in ('pending', 'blocked', 'failed_retryable')
+                returning id
                 """,
                 tuple(params),
             )
-            cancelled = cur.rowcount
+            cancelled_item_ids = [int(row["id"]) for row in cur.fetchall()]
+            cancelled = len(cancelled_item_ids)
             cur.execute(
                 f"""
                 update archive_run_items
@@ -1202,16 +1302,22 @@ def cancel_run_items(
                     updated_at = now()
                 where {where}
                   and status = 'processing'
+                returning id
                 """,
                 tuple(params),
             )
-            requested = cur.rowcount
+            requested_item_ids = [int(row["id"]) for row in cur.fetchall()]
+            requested = len(requested_item_ids)
         conn.commit()
     update_run_after_processing(run_id, None)
     publish_event(
         "archive_runs",
         "archive.run.items_cancelled",
-        {"run_id": run_id, "cancelled_count": cancelled, "cancel_requested_count": requested},
+        build_archive_run_event_payload(
+            run_id,
+            [*cancelled_item_ids, *requested_item_ids],
+            {"cancelled_count": cancelled, "cancel_requested_count": requested},
+        ),
     )
     return {"run_id": run_id, "status": (get_run(run_id) or run).status, "affected_count": cancelled + requested}
 

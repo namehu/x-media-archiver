@@ -11,6 +11,7 @@ import { Separator } from "../ui/separator";
 import { Sheet, SheetContent, SheetHeader, SheetTitle } from "../ui/sheet";
 import { Tooltip, TooltipContent, TooltipTrigger } from "../ui/tooltip";
 import { apiGet, type HealthDetail } from "../../lib/api";
+import { useRuntime } from "../../lib/runtime-provider";
 import {
   buildDebuggerSearch,
   persistDebuggerMode,
@@ -70,10 +71,13 @@ export function AppLayout() {
   const [mobileNavigationOpen, setMobileNavigationOpen] = useState(false);
   const [scrollContainer, setScrollContainer] = useState<HTMLElement | null>(null);
   const events = useServerEvents(["archive_runs", "sources", "source_scans", "worker", "logs", "library"]);
+  const runtimeSpeedBps = useRuntime((state) => state.global.speed_bps);
+  const runtimeCurrentTweetId = useRuntime((state) => state.global.current_tweet_id);
+  const shouldFallbackPoll = shouldUseRuntimePollingFallback(events.status, events.transport);
   const healthQuery = useQuery({
     queryKey: ["health-detail"],
     queryFn: () => apiGet<HealthDetail>("/api/v1/health/detail"),
-    refetchInterval: events.status === "connected" ? 30000 : 15000,
+    refetchInterval: shouldFallbackPoll ? 15000 : false,
   });
   const health = healthQuery.data;
   const writeLockHeld = Boolean(health?.worker.write_lock_held);
@@ -110,8 +114,17 @@ export function AppLayout() {
   const eventLabel: Record<string, string> = {
     connected: "实时事件已连接",
     connecting: "正在连接实时事件",
+    reconnecting: "实时事件正在重连",
+    resyncing: "正在同步运行态快照",
+    stale: "实时事件无新消息，启用降级刷新",
     offline: "实时事件离线，使用轮询刷新",
   };
+  const runtimeStatusLabel =
+    events.transport === "polling"
+      ? events.status === "connected"
+        ? "REST 快照轮询中"
+        : "REST 快照暂不可用"
+      : eventLabel[events.status] ?? "离线";
 
   const commands = useMemo<CommandPaletteItem[]>(
     () => [
@@ -200,8 +213,14 @@ export function AppLayout() {
             </Button>
             <span className="hidden text-sm font-semibold text-fg-primary sm:inline lg:hidden">x-media-archiver</span>
             <LiveIndicator
-              state={events.status === "connected" ? "open" : events.status === "connecting" ? "connecting" : "closed"}
-              label={eventLabel[events.status] ?? "离线"}
+              state={
+                events.status === "connected"
+                  ? "open"
+                  : events.status === "connecting" || events.status === "resyncing" || events.status === "reconnecting"
+                    ? "connecting"
+                    : "closed"
+              }
+              label={runtimeStatusLabel}
               compactOnMobile
             />
             <Badge
@@ -213,6 +232,16 @@ export function AppLayout() {
             <Badge tone={queueWork ? "warning" : "secondary"} className="hidden md:inline-flex">
               队列 {queueWork}
             </Badge>
+            {runtimeSpeedBps ? (
+              <Badge tone="secondary" className="hidden lg:inline-flex">
+                下载 {formatBytes(runtimeSpeedBps)}/s
+              </Badge>
+            ) : null}
+            {runtimeCurrentTweetId ? (
+              <Badge tone="secondary" className="hidden max-w-44 truncate xl:inline-flex">
+                当前 {runtimeCurrentTweetId}
+              </Badge>
+            ) : null}
             <Badge tone={activeScans ? "warning" : "secondary"} className="hidden md:inline-flex">
               扫描 {activeScans}
             </Badge>
@@ -284,6 +313,22 @@ export function AppLayout() {
       />
     </div>
   );
+}
+
+function formatBytes(value?: number | null) {
+  if (!value || value <= 0) return "-";
+  const units = ["B", "KB", "MB", "GB"];
+  let size = value;
+  let index = 0;
+  while (size >= 1024 && index < units.length - 1) {
+    size /= 1024;
+    index += 1;
+  }
+  return `${size.toFixed(index === 0 ? 0 : 1)} ${units[index]}`;
+}
+
+function shouldUseRuntimePollingFallback(status: string, transport: string) {
+  return transport === "polling" || status === "offline" || status === "reconnecting" || status === "stale";
 }
 
 function Navigation({ onNavigate, showBrand = true }: { onNavigate?: () => void; showBrand?: boolean }) {
