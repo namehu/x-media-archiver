@@ -21,6 +21,12 @@ test.describe("Feed video resume", () => {
     await page.locator('[data-feed-media="true"] video').click();
     await expect(page.getByRole("dialog")).toBeVisible();
     await expect(page.locator(".art-video-player video")).toHaveCount(1);
+    const fullWebPlayer = page.locator("body > .art-video-player.art-fullscreen-web");
+    await expect(fullWebPlayer).toBeVisible();
+    await expect(fullWebPlayer.locator(".art-layer-feed-preview-overlay")).toBeVisible();
+    await expect(fullWebPlayer.getByText("示例作者", { exact: true })).toBeVisible();
+    await expect(fullWebPlayer.getByText("@example", { exact: true })).toBeVisible();
+    await expect(fullWebPlayer.getByRole("button", { name: "关闭预览" })).toBeVisible();
 
     await page.evaluate(() => window.__feedVideoTest.advancePreviewVideo(7));
     await page.keyboard.press("Escape");
@@ -29,6 +35,45 @@ test.describe("Feed video resume", () => {
     await expect.poll(() => page.evaluate(() => window.__feedVideoTest.listVideoPaused())).toBe(false);
     await expect.poll(() => page.evaluate(() => window.__feedVideoTest.listVideoCurrentTime())).toBeGreaterThan(6.5);
     expect(await page.evaluate(() => window.__feedVideoTest.listVideoCurrentTime())).toBeLessThan(7.5);
+  });
+
+  test("keeps preview information inside the fullWeb player on narrow screens", async ({ page }) => {
+    await page.setViewportSize({ width: 390, height: 844 });
+    await page.addInitScript(() => {
+      Object.defineProperty(navigator, "userAgent", {
+        configurable: true,
+        get: () =>
+          "Mozilla/5.0 (iPhone; CPU iPhone OS 18_0 like Mac OS X) AppleWebKit/605.1.15 Mobile/15E148 Safari/604.1",
+      });
+    });
+    await installMediaElementMock(page);
+    await mockFeedApis(page);
+
+    await page.goto("/feed");
+    await page.locator('[data-feed-media="true"] video').click();
+
+    const fullWebPlayer = page.locator("body > .art-video-player.art-fullscreen-web");
+    await expect(fullWebPlayer.locator(".art-layer-feed-preview-overlay")).toBeVisible();
+    await expect(fullWebPlayer.getByText("示例作者", { exact: true })).toBeVisible();
+    await expect(fullWebPlayer.getByText("feed video resume fixture", { exact: true })).toBeVisible();
+
+    const closeButton = fullWebPlayer.getByRole("button", { name: "关闭预览" });
+    await expect(closeButton).toBeVisible();
+
+    const previewChrome = fullWebPlayer.locator('[data-preview-chrome="true"]');
+    const video = fullWebPlayer.locator("video");
+    const bottomControls = fullWebPlayer.locator(".art-bottom");
+
+    await fullWebPlayer.evaluate((element) => {
+      element.classList.remove("art-control-show", "art-hover");
+    });
+    await expect(previewChrome).toHaveClass(/opacity-0/);
+    await expect(bottomControls).toHaveCSS("opacity", "0");
+
+    // Click through the area previously occupied by the now-transparent header.
+    await video.click({ position: { x: 120, y: 100 } });
+    await expect(previewChrome).toHaveClass(/opacity-100/);
+    await expect(bottomControls).toHaveCSS("opacity", "1");
   });
 });
 

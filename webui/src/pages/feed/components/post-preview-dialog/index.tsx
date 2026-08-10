@@ -91,10 +91,18 @@ export function PostPreviewDialog({
   }, [post?.tweet_id]);
 
   if (!post) return null;
-  const authorName = post.author_display_name || post.author_username || "未知作者";
-  const authorProfileHref = getDebugAuthorProfileHref(debugRedactionEnabled, post.author_username);
-  const tweetHref = getDebugExternalHref(debugRedactionEnabled, post.tweet_url);
-  const tweetText = post.tweet_text || "暂无帖子正文";
+  const activeMedia = post.media[activeIndex];
+  const renderChromeInPlayer = activeMedia?.media_type === "video" && Boolean(activeMedia.media_url);
+  const previewChrome = (
+    <PreviewChrome
+      post={post}
+      debugRedactionEnabled={debugRedactionEnabled}
+      uiVisible={uiVisible}
+      contextExpanded={contextExpanded}
+      onContextToggle={() => setContextExpanded((current) => !current)}
+      onClose={handleClose}
+    />
+  );
 
   return (
     <Dialog
@@ -112,15 +120,6 @@ export function PostPreviewDialog({
           <DialogTitle>帖子媒体预览</DialogTitle>
           <DialogDescription>左右切换查看同一帖子的本地媒体。</DialogDescription>
         </DialogHeader>
-
-        <button
-          type="button"
-          onClick={handleClose}
-          className={`absolute right-4 top-4 z-50 flex size-10 items-center justify-center rounded-full bg-black/40 text-white backdrop-blur transition-all duration-300 hover:bg-black/60 ${uiVisible ? "opacity-100" : "pointer-events-none opacity-0"}`}
-          aria-label="关闭预览"
-        >
-          <CloseIcon className="size-5" />
-        </button>
 
         <div className="relative h-full min-h-0 w-full min-w-0 overflow-hidden bg-black">
           <Swiper
@@ -153,6 +152,7 @@ export function PostPreviewDialog({
                         getVideoState={getVideoState}
                         updateVideoState={updateVideoState}
                         onControlToggle={setUiVisible}
+                        overlay={index === activeIndex ? previewChrome : null}
                       />
                     ) : (
                       <PreviewImage src={item.media_url} />
@@ -165,77 +165,119 @@ export function PostPreviewDialog({
             ))}
           </Swiper>
 
-          <aside
-            className={`pointer-events-none absolute left-0 right-0 top-0 z-40 bg-gradient-to-b from-black/90 via-black/60 to-transparent px-4 pb-24 pt-4 transition-all duration-300 md:px-6 ${uiVisible ? "translate-y-0 opacity-100" : "-translate-y-8 opacity-0"}`}
-          >
-            <div className="pointer-events-auto mx-auto max-w-3xl">
-              <div className="flex items-start justify-between gap-4">
-                <a
-                  href={authorProfileHref}
-                  target={authorProfileHref ? "_blank" : undefined}
-                  rel={authorProfileHref ? "noopener noreferrer" : undefined}
-                  className="flex min-w-0 flex-1 items-center gap-3 transition-opacity hover:opacity-80"
-                  title={getDebugLinkTitle(debugRedactionEnabled, "author", "在 X 中查看主页")}
-                  aria-disabled={!authorProfileHref}
-                  onClick={(event) => {
-                    if (!authorProfileHref) event.preventDefault();
-                    event.stopPropagation();
-                  }}
-                >
-                  <Avatar
-                    className="size-10 shrink-0 border border-white/10"
-                    {...getDebugRedactProps(debugRedactionEnabled)}
-                  >
-                    <AvatarFallback className="bg-white/20 text-white">{avatarInitials(authorName)}</AvatarFallback>
-                  </Avatar>
-                  <div className="min-w-0 flex-1" {...getDebugRedactProps(debugRedactionEnabled)}>
-                    <p className="truncate font-semibold leading-tight text-white">{authorName}</p>
-                    <div className="flex items-center gap-2 text-sm text-white/70">
-                      <p className="truncate">{post.author_username ? `@${post.author_username}` : "用户名未知"}</p>
-                      <span>·</span>
-                      <p className="shrink-0">{formatDateTime(post.published_at)}</p>
-                    </div>
-                  </div>
-                </a>
-                <a
-                  href={tweetHref}
-                  target={tweetHref ? "_blank" : undefined}
-                  rel={tweetHref ? "noopener noreferrer" : undefined}
-                  className="shrink-0 rounded-full p-2 text-white/70 transition-colors hover:bg-white/10 hover:text-white"
-                  title={getDebugLinkTitle(debugRedactionEnabled, "tweet", "在 X 中查看此贴")}
-                  aria-disabled={!tweetHref}
-                  onClick={(event) => {
-                    if (!tweetHref) event.preventDefault();
-                    event.stopPropagation();
-                  }}
-                >
-                  <ExternalLink className="size-5" />
-                </a>
-              </div>
-              <button
-                type="button"
-                className="mt-3 w-full cursor-pointer text-left outline-none"
-                onClick={(event) => {
-                  event.stopPropagation();
-                  setContextExpanded((current) => !current);
-                }}
-                {...getDebugRedactProps(debugRedactionEnabled)}
-              >
-                <p
-                  className={
-                    contextExpanded
-                      ? "whitespace-pre-wrap text-[15px] leading-relaxed text-white drop-shadow-md"
-                      : "line-clamp-2 whitespace-pre-wrap text-[15px] leading-relaxed text-white drop-shadow-md"
-                  }
-                >
-                  {tweetText}
-                </p>
-              </button>
-            </div>
-          </aside>
+          {renderChromeInPlayer ? null : previewChrome}
         </div>
       </DialogContent>
     </Dialog>
+  );
+}
+
+function PreviewChrome({
+  post,
+  debugRedactionEnabled,
+  uiVisible,
+  contextExpanded,
+  onContextToggle,
+  onClose,
+}: {
+  post: PostFeedRow;
+  debugRedactionEnabled: boolean;
+  uiVisible: boolean;
+  contextExpanded: boolean;
+  onContextToggle: () => void;
+  onClose: () => void;
+}) {
+  const authorName = post.author_display_name || post.author_username || "未知作者";
+  const authorProfileHref = getDebugAuthorProfileHref(debugRedactionEnabled, post.author_username);
+  const tweetHref = getDebugExternalHref(debugRedactionEnabled, post.tweet_url);
+  const tweetText = post.tweet_text || "暂无帖子正文";
+
+  return (
+    <>
+      <button
+        type="button"
+        onClick={(event) => {
+          event.stopPropagation();
+          onClose();
+        }}
+        className={`pointer-events-auto absolute right-4 top-4 z-50 flex size-10 items-center justify-center rounded-full bg-black/40 text-white backdrop-blur transition-all duration-300 hover:bg-black/60 ${uiVisible ? "opacity-100" : "pointer-events-none opacity-0"}`}
+        aria-label="关闭预览"
+      >
+        <CloseIcon className="size-5" />
+      </button>
+
+      <aside
+        data-preview-chrome="true"
+        className={`pointer-events-none absolute inset-x-0 top-0 z-40 bg-gradient-to-b from-black/90 via-black/60 to-transparent px-4 pb-24 pt-4 transition-all duration-300 md:px-6 ${uiVisible ? "translate-y-0 opacity-100" : "-translate-y-8 opacity-0"}`}
+      >
+        <div
+          className={`${uiVisible ? "pointer-events-auto" : "pointer-events-none"} mx-auto max-w-3xl pr-12`}
+        >
+          <div className="flex items-start justify-between gap-4">
+            <a
+              href={authorProfileHref}
+              target={authorProfileHref ? "_blank" : undefined}
+              rel={authorProfileHref ? "noopener noreferrer" : undefined}
+              className="flex min-w-0 flex-1 items-center gap-3 transition-opacity hover:opacity-80"
+              title={getDebugLinkTitle(debugRedactionEnabled, "author", "在 X 中查看主页")}
+              aria-disabled={!authorProfileHref}
+              onClick={(event) => {
+                if (!authorProfileHref) event.preventDefault();
+                event.stopPropagation();
+              }}
+            >
+              <Avatar
+                className="size-10 shrink-0 border border-white/10"
+                {...getDebugRedactProps(debugRedactionEnabled)}
+              >
+                <AvatarFallback className="bg-white/20 text-white">{avatarInitials(authorName)}</AvatarFallback>
+              </Avatar>
+              <div className="min-w-0 flex-1" {...getDebugRedactProps(debugRedactionEnabled)}>
+                <p className="truncate font-semibold leading-tight text-white">{authorName}</p>
+                <div className="flex items-center gap-2 text-sm text-white/70">
+                  <p className="truncate">{post.author_username ? `@${post.author_username}` : "用户名未知"}</p>
+                  <span>·</span>
+                  <p className="shrink-0">{formatDateTime(post.published_at)}</p>
+                </div>
+              </div>
+            </a>
+            <a
+              href={tweetHref}
+              target={tweetHref ? "_blank" : undefined}
+              rel={tweetHref ? "noopener noreferrer" : undefined}
+              className="shrink-0 rounded-full p-2 text-white/70 transition-colors hover:bg-white/10 hover:text-white"
+              title={getDebugLinkTitle(debugRedactionEnabled, "tweet", "在 X 中查看此贴")}
+              aria-disabled={!tweetHref}
+              onClick={(event) => {
+                if (!tweetHref) event.preventDefault();
+                event.stopPropagation();
+              }}
+            >
+              <ExternalLink className="size-5" />
+            </a>
+          </div>
+          <button
+            type="button"
+            className="mt-3 w-full cursor-pointer text-left outline-none"
+            onClick={(event) => {
+              event.stopPropagation();
+              onContextToggle();
+            }}
+            {...getDebugRedactProps(debugRedactionEnabled)}
+          >
+            <p
+              className={
+                contextExpanded
+                  ? "whitespace-pre-wrap text-[15px] leading-relaxed text-white drop-shadow-md"
+                  : "line-clamp-2 whitespace-pre-wrap text-[15px] leading-relaxed text-white drop-shadow-md"
+              }
+            >
+              {tweetText}
+            </p>
+          </button>
+        </div>
+      </aside>
+    </>
   );
 }
 
