@@ -32,6 +32,10 @@ class RecoveryIntegrationTests(unittest.TestCase):
                     """,
                     (self.tweet_id,),
                 )
+                cur.execute(
+                    "insert into failure_dispositions (tweet_id, reason) values (%s, 'other')",
+                    (self.tweet_id,),
+                )
             conn.commit()
 
     def tearDown(self) -> None:
@@ -56,11 +60,20 @@ class RecoveryIntegrationTests(unittest.TestCase):
                     (self.tweet_id,),
                 )
                 media = cur.fetchone()
+                cur.execute("select count(*)::int as count from failure_dispositions where tweet_id = %s", (self.tweet_id,))
+                disposition_count = int(cur.fetchone()["count"])
+                cur.execute(
+                    "select action from failure_action_events where tweet_id = %s order by id desc limit 1",
+                    (self.tweet_id,),
+                )
+                action = cur.fetchone()["action"]
 
         self.assertEqual(tweet["download_status"], "pending")
         self.assertIsNone(tweet["last_error"])
         self.assertEqual(media["download_status"], "pending")
         self.assertIsNone(media["error_message"])
+        self.assertEqual(disposition_count, 0)
+        self.assertEqual(action, "retry")
 
 
 class InterruptedRecoveryIntegrationTests(unittest.TestCase):

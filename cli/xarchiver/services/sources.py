@@ -27,7 +27,9 @@ from sqlalchemy import (
     and_,
     bindparam,
     case,
+    delete,
     func,
+    insert,
     or_,
     select,
     update,
@@ -73,6 +75,8 @@ from xarchiver.tables import (
     archive_runs,
     archive_sources,
     download_jobs,
+    failure_action_events,
+    failure_dispositions,
     source_bulk_task_items,
     source_bulk_tasks,
     source_discovered_tweets,
@@ -3363,7 +3367,6 @@ def retry_source_failed_items(
                 where {" and ".join(filters)}
                 order by i.updated_at asc, i.id asc
                 {limit_sql}
-                for update
                 """,
                 tuple(params),
             )
@@ -3375,8 +3378,44 @@ def retry_source_failed_items(
                     source,
                     media_type=normalized_media_type,
                 )
+            candidate_item_ids = [int(row["id"]) for row in rows]
+            for tweet_id in sorted({str(row["tweet_id"]) for row in rows}):
+                cur.execute("select pg_advisory_xact_lock(hashtextextended(%s, 0))", (tweet_id,))
+            cur.execute(
+                """
+                select tweet_id, download_status
+                from tweets
+                where tweet_id = any(%s)
+                order by tweet_id
+                for update
+                """,
+                ([str(row["tweet_id"]) for row in rows],),
+            )
+            previous_statuses = {
+                str(row["tweet_id"]): str(row["download_status"])
+                for row in cur.fetchall()
+            }
+            cur.execute(
+                """
+                select id, archive_run_id, tweet_id
+                from archive_run_items
+                where id = any(%s) and status = 'failed_retryable'
+                order by id
+                for update
+                """,
+                (candidate_item_ids,),
+            )
+            rows = [dict(row) for row in cur.fetchall()]
+            if not rows:
+                return build_empty_source_download_submission(
+                    source_id,
+                    "failed",
+                    source,
+                    media_type=normalized_media_type,
+                )
             run_ids = sorted({int(row["archive_run_id"]) for row in rows})
             affected_tweet_ids = [str(row["tweet_id"]) for row in rows]
+            run_by_tweet = {str(row["tweet_id"]): int(row["archive_run_id"]) for row in rows}
             for run_id in run_ids:
                 blocked_by_run_id = find_source_retry_blocker(cur, source_id, run_id)
                 run_status = "blocked" if blocked_by_run_id else "queued"
@@ -3410,6 +3449,25 @@ def retry_source_failed_items(
                     """,
                     (run_status, blocked_by_run_id, run_id),
                 )
+            clear_disposition_statement = delete(failure_dispositions).where(
+                failure_dispositions.c.tweet_id.in_(affected_tweet_ids)
+            )
+            sql, params = compile_query(clear_disposition_statement)
+            cur.execute(sql, params)
+            for tweet_id in sorted(set(affected_tweet_ids)):
+                previous_status = previous_statuses.get(tweet_id)
+                if previous_status not in {"failed_retryable", "failed_permanent", "corrupt"}:
+                    continue
+                event_statement = insert(failure_action_events).values(
+                    tweet_id=tweet_id,
+                    action="retry",
+                    previous_status=previous_status,
+                    archive_run_id=run_by_tweet[tweet_id],
+                    result=Jsonb({"trigger_type": "source_failed_retry"}),
+                    created_at=func.now(),
+                )
+                sql, params = compile_query(event_statement)
+                cur.execute(sql, params)
             cur.execute(
                 """
                 update tweets
@@ -3425,6 +3483,7 @@ def retry_source_failed_items(
         "queued_count": len(affected_tweet_ids),
         "blocked_count": 0,
         "skipped_verified_count": 0,
+        "skipped_ignored_count": 0,
         "linked_pending_count": 0,
         "linked_active_count": 0,
         "skipped_completed_count": 0,
@@ -3498,6 +3557,7 @@ def build_empty_source_download_submission(
         "queued_count": 0,
         "blocked_count": 0,
         "skipped_verified_count": 0,
+        "skipped_ignored_count": 0,
         "linked_pending_count": 0,
         "linked_active_count": 0,
         "skipped_completed_count": 0,
@@ -3590,7 +3650,11 @@ def get_source_downloads(source_id: int, include_deleted: bool = False) -> dict[
         "processing_count": status_counts.get("processing", 0),
         "paused_count": sum(int((run.get("result") or {}).get("tasks", {}).get("queued_count", 0)) for run in paused_runs),
         "failed_count": status_counts.get("failed_retryable", 0) + status_counts.get("failed_permanent", 0),
-        "completed_count": status_counts.get("verified", 0) + status_counts.get("skipped_verified", 0),
+        "completed_count": (
+            status_counts.get("verified", 0)
+            + status_counts.get("skipped_verified", 0)
+            + status_counts.get("skipped_ignored", 0)
+        ),
         "cancelled_count": status_counts.get("cancelled", 0),
         "downloaded_bytes": int(progress.get("downloaded_bytes") or 0),
         "total_bytes": progress.get("total_bytes"),
@@ -3608,6 +3672,7 @@ def build_source_download_counts(task_counts: dict[str, int]) -> dict[str, int]:
         "failed_retryable_count": int(task_counts.get("failed_retryable_count", 0)),
         "verified_count": int(task_counts.get("verified_count", 0)),
         "skipped_verified_count": int(task_counts.get("skipped_verified_count", 0)),
+        "skipped_ignored_count": int(task_counts.get("skipped_ignored_count", 0)),
         "linked_pending_count": int(task_counts.get("linked_pending_count", 0)),
         "failed_permanent_count": int(task_counts.get("failed_count", 0)),
         "cancelled_count": int(task_counts.get("cancelled_count", 0)),
@@ -3618,6 +3683,7 @@ def build_source_download_counts(task_counts: dict[str, int]) -> dict[str, int]:
         for key in (
             "verified_count",
             "skipped_verified_count",
+            "skipped_ignored_count",
             "linked_pending_count",
             "failed_permanent_count",
             "cancelled_count",

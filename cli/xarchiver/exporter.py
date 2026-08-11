@@ -9,13 +9,26 @@ from html import escape
 from pathlib import Path
 from urllib.parse import quote
 
-from sqlalchemy import Integer, bindparam, case, func, lateral, select, true
+from sqlalchemy import Integer, and_, bindparam, case, func, lateral, literal, or_, select, true
 
 from xarchiver.archive import ensure_archive_dirs
 from xarchiver.db import connect
-from xarchiver.row_models import DuplicateRow, ExportMediaRow, FailureRow
+from xarchiver.row_models import (
+    DuplicateRow,
+    ExportMediaRow,
+    FailureAggregateRow,
+    FailureCategoryRow,
+    FailureRow,
+)
 from xarchiver.sql_builder import compile_query
-from xarchiver.tables import download_attempts, media_assets, tweets
+from xarchiver.tables import (
+    archive_run_items,
+    download_attempts,
+    failure_action_events,
+    failure_dispositions,
+    media_assets,
+    tweets,
+)
 
 CSV_FIELDS = [
     "tweet_id",
@@ -55,6 +68,14 @@ FAILURE_CSV_FIELDS = [
     "latest_error_message",
     "latest_exit_code",
     "latest_finished_at",
+    "failure_at",
+    "disposition",
+    "ignored_at",
+    "ignore_reason",
+    "ignore_note",
+    "latest_action",
+    "latest_action_at",
+    "latest_action_archive_run_id",
 ]
 
 DUPLICATE_CSV_FIELDS = [
@@ -229,33 +250,67 @@ def build_export_rows_query(status: str | None) -> tuple[str, dict[str, object]]
     return compile_query(statement)
 
 
-def fetch_failure_rows(limit: int | None = None, offset: int = 0) -> list[FailureRow]:
+def fetch_failure_rows(
+    limit: int | None = None,
+    offset: int = 0,
+    *,
+    disposition: str = "all",
+    statuses: list[str] | None = None,
+    error_category: str | None = None,
+    search: str | None = None,
+    sort: str = "recent",
+) -> list[FailureRow]:
     """读取失败记录列表。"""
 
-    sql, params = build_failure_rows_query(limit=limit, offset=offset)
+    sql, params = build_failure_rows_query(
+        limit=limit,
+        offset=offset,
+        disposition=disposition,
+        statuses=statuses,
+        error_category=error_category,
+        search=search,
+        sort=sort,
+    )
     with connect() as conn:
         with conn.cursor() as cur:
             cur.execute(sql, params)
             return [FailureRow.model_validate(dict(row)) for row in cur.fetchall()]
 
 
-def build_failure_rows_query(limit: int | None = None, offset: int = 0) -> tuple[str, dict[str, object]]:
+def build_failure_rows_query(
+    limit: int | None = None,
+    offset: int = 0,
+    *,
+    disposition: str = "all",
+    statuses: list[str] | None = None,
+    error_category: str | None = None,
+    search: str | None = None,
+    sort: str = "recent",
+) -> tuple[str, dict[str, object]]:
     """构造失败记录查询。"""
 
-    latest_attempt = lateral(
+    latest_attempt = failure_latest_attempt_lateral()
+    latest_item = failure_latest_item_lateral()
+    latest_action = lateral(
         select(
-            download_attempts.c.engine,
-            download_attempts.c.status,
-            download_attempts.c.error_category,
-            download_attempts.c.error_message,
-            download_attempts.c.exit_code,
-            download_attempts.c.finished_at,
+            failure_action_events.c.action,
+            failure_action_events.c.created_at,
+            failure_action_events.c.archive_run_id,
         )
-        .select_from(download_attempts)
-        .where(download_attempts.c.tweet_id == tweets.c.tweet_id)
-        .order_by(download_attempts.c.finished_at.desc().nulls_last(), download_attempts.c.id.desc())
+        .where(failure_action_events.c.tweet_id == tweets.c.tweet_id)
+        .order_by(failure_action_events.c.created_at.desc(), failure_action_events.c.id.desc())
         .limit(1)
-    ).alias("latest")
+    ).alias("latest_action")
+    error_expression, error_message_expression = failure_error_expressions(latest_attempt, latest_item)
+    failure_time = func.greatest(
+        tweets.c.failure_at,
+        latest_attempt.c.finished_at,
+        latest_item.c.failure_at,
+    )
+    disposition_expression = case(
+        (failure_dispositions.c.tweet_id.is_not(None), literal("ignored")),
+        else_=literal("open"),
+    )
     statement = (
         select(
             tweets.c.tweet_id,
@@ -266,34 +321,232 @@ def build_failure_rows_query(limit: int | None = None, offset: int = 0) -> tuple
             tweets.c.retry_count,
             latest_attempt.c.engine.label("latest_engine"),
             latest_attempt.c.status.label("latest_attempt_status"),
-            latest_attempt.c.error_category.label("latest_error_category"),
-            latest_attempt.c.error_message.label("latest_error_message"),
+            error_expression.label("latest_error_category"),
+            error_message_expression.label("latest_error_message"),
             latest_attempt.c.exit_code.label("latest_exit_code"),
             latest_attempt.c.finished_at.label("latest_finished_at"),
+            failure_time.label("failure_at"),
+            disposition_expression.label("disposition"),
+            failure_dispositions.c.ignored_at,
+            failure_dispositions.c.reason.label("ignore_reason"),
+            failure_dispositions.c.note.label("ignore_note"),
+            latest_action.c.action.label("latest_action"),
+            latest_action.c.created_at.label("latest_action_at"),
+            latest_action.c.archive_run_id.label("latest_action_archive_run_id"),
         )
-        .select_from(tweets.outerjoin(latest_attempt, true()))
-        .where(tweets.c.download_status.in_(FAILURE_TWEET_STATUSES))
-        .order_by(tweets.c.updated_at.desc(), tweets.c.tweet_id.asc())
+        .select_from(
+            tweets.outerjoin(latest_attempt, true())
+            .outerjoin(latest_item, true())
+            .outerjoin(failure_dispositions, failure_dispositions.c.tweet_id == tweets.c.tweet_id)
+            .outerjoin(latest_action, true())
+        )
+        .where(*failure_filters(disposition, statuses, error_category, search, error_expression))
     )
+    if sort == "oldest":
+        statement = statement.order_by(failure_time.asc().nulls_last(), tweets.c.tweet_id.asc())
+    elif sort == "retries":
+        statement = statement.order_by(tweets.c.retry_count.desc(), failure_time.desc(), tweets.c.tweet_id.asc())
+    else:
+        statement = statement.order_by(failure_time.desc().nulls_last(), tweets.c.tweet_id.asc())
     if limit is not None:
         statement = statement.limit(bindparam("limit", limit)).offset(bindparam("offset", offset))
     return compile_query(statement)
 
 
-def count_failure_rows() -> int:
+def count_failure_rows(
+    *,
+    disposition: str = "all",
+    statuses: list[str] | None = None,
+    error_category: str | None = None,
+    search: str | None = None,
+) -> int:
     """统计失败记录总数。"""
 
+    aggregate = fetch_failure_aggregates(
+        disposition=disposition,
+        statuses=statuses,
+        error_category=error_category,
+        search=search,
+    )
+    return aggregate.total_count
+
+
+def fetch_failure_aggregates(
+    *,
+    disposition: str = "all",
+    statuses: list[str] | None = None,
+    error_category: str | None = None,
+    search: str | None = None,
+) -> FailureAggregateRow:
+    """统计当前失败筛选范围内的处置状态与失败状态。"""
+
+    latest_attempt = failure_latest_attempt_lateral()
+    latest_item = failure_latest_item_lateral()
+    error_expression, _ = failure_error_expressions(latest_attempt, latest_item)
+    statement = (
+        select(
+            func.count().cast(Integer).label("total_count"),
+            func.count().filter(failure_dispositions.c.tweet_id.is_(None)).cast(Integer).label("open_count"),
+            func.count().filter(failure_dispositions.c.tweet_id.is_not(None)).cast(Integer).label("ignored_count"),
+            func.count().filter(tweets.c.download_status == "failed_retryable").cast(Integer).label("retryable_count"),
+            func.count().filter(tweets.c.download_status == "failed_permanent").cast(Integer).label("permanent_count"),
+            func.count().filter(tweets.c.download_status == "corrupt").cast(Integer).label("corrupt_count"),
+            func.coalesce(func.sum(tweets.c.retry_count), 0).cast(Integer).label("retry_total"),
+        )
+        .select_from(
+            tweets.outerjoin(latest_attempt, true()).outerjoin(latest_item, true()).outerjoin(
+                failure_dispositions,
+                failure_dispositions.c.tweet_id == tweets.c.tweet_id,
+            )
+        )
+        .where(*failure_filters(disposition, statuses, error_category, search, error_expression))
+    )
+    sql, params = compile_query(statement)
     with connect() as conn:
         with conn.cursor() as cur:
-            cur.execute(
-                """
-                select count(*)::int as count
-                from tweets
-                where download_status = any(%s)
-                """,
-                (list(FAILURE_TWEET_STATUSES),),
+            cur.execute(sql, params)
+            return FailureAggregateRow.model_validate(dict(cur.fetchone()))
+
+
+def fetch_failure_categories(
+    *,
+    disposition: str = "all",
+    statuses: list[str] | None = None,
+    error_category: str | None = None,
+    search: str | None = None,
+) -> list[FailureCategoryRow]:
+    """返回当前失败筛选范围内的错误分类分布。"""
+
+    latest_attempt = failure_latest_attempt_lateral()
+    latest_item = failure_latest_item_lateral()
+    error_expression, _ = failure_error_expressions(latest_attempt, latest_item)
+    statement = (
+        select(error_expression.label("error_category"), func.count().cast(Integer).label("count"))
+        .select_from(
+            tweets.outerjoin(latest_attempt, true()).outerjoin(latest_item, true()).outerjoin(
+                failure_dispositions,
+                failure_dispositions.c.tweet_id == tweets.c.tweet_id,
             )
-            return int(cur.fetchone()["count"])
+        )
+        .where(*failure_filters(disposition, statuses, error_category, search, error_expression))
+        .group_by(error_expression)
+        .order_by(func.count().desc(), error_expression.asc())
+    )
+    sql, params = compile_query(statement)
+    with connect() as conn:
+        with conn.cursor() as cur:
+            cur.execute(sql, params)
+            return [FailureCategoryRow.model_validate(dict(row)) for row in cur.fetchall()]
+
+
+def failure_latest_attempt_lateral():
+    """构造失败查询共享的最近尝试 lateral 子查询。"""
+
+    return lateral(
+        select(
+            download_attempts.c.id,
+            download_attempts.c.engine,
+            download_attempts.c.status,
+            download_attempts.c.error_category,
+            download_attempts.c.error_message,
+            download_attempts.c.exit_code,
+            download_attempts.c.finished_at,
+        )
+        .where(download_attempts.c.tweet_id == tweets.c.tweet_id)
+        .order_by(download_attempts.c.finished_at.desc().nulls_last(), download_attempts.c.id.desc())
+        .limit(1)
+    ).alias("latest")
+
+
+def failure_latest_item_lateral():
+    """构造失败查询共享的最近结构化运行错误 lateral 子查询。"""
+
+    return lateral(
+        select(
+            archive_run_items.c.error_category,
+            archive_run_items.c.error_message,
+            archive_run_items.c.failure_at,
+        )
+        .where(
+            archive_run_items.c.tweet_id == tweets.c.tweet_id,
+            archive_run_items.c.error_category.is_not(None),
+        )
+        .order_by(archive_run_items.c.failure_at.desc().nulls_last(), archive_run_items.c.id.desc())
+        .limit(1)
+    ).alias("latest_item_error")
+
+
+def failure_error_expressions(latest_attempt, latest_item):
+    """按证据时间选择结构化错误分类与对应摘要。"""
+
+    item_is_latest = and_(
+        latest_item.c.error_category.is_not(None),
+        or_(
+            latest_attempt.c.error_category.is_(None),
+            latest_item.c.failure_at >= latest_attempt.c.finished_at,
+        ),
+    )
+    historical_category = case(
+        (item_is_latest, latest_item.c.error_category),
+        else_=latest_attempt.c.error_category,
+    )
+    historical_message = case(
+        (item_is_latest, latest_item.c.error_message),
+        else_=latest_attempt.c.error_message,
+    )
+    latest_evidence_at = func.greatest(
+        case(
+            (latest_attempt.c.error_category.is_not(None), latest_attempt.c.finished_at),
+            else_=None,
+        ),
+        case(
+            (latest_item.c.error_category.is_not(None), latest_item.c.failure_at),
+            else_=None,
+        ),
+    )
+    current_state_is_latest = or_(
+        latest_evidence_at.is_(None),
+        tweets.c.failure_at > latest_evidence_at,
+    )
+    error_category = case(
+        (current_state_is_latest, tweets.c.download_status),
+        else_=func.coalesce(historical_category, tweets.c.download_status),
+    )
+    error_message = case(
+        (current_state_is_latest, func.coalesce(tweets.c.last_error, tweets.c.download_status)),
+        else_=func.coalesce(historical_message, tweets.c.last_error, tweets.c.download_status),
+    )
+    return error_category, error_message
+
+
+def failure_filters(
+    disposition: str,
+    statuses: list[str] | None,
+    error_category: str | None,
+    search: str | None,
+    error_expression,
+) -> list[object]:
+    """构造失败列表、聚合和分面共享的筛选条件。"""
+
+    selected_statuses = statuses or list(FAILURE_TWEET_STATUSES)
+    filters: list[object] = [tweets.c.download_status.in_(selected_statuses)]
+    if disposition == "open":
+        filters.append(failure_dispositions.c.tweet_id.is_(None))
+    elif disposition == "ignored":
+        filters.append(failure_dispositions.c.tweet_id.is_not(None))
+    if error_category:
+        filters.append(error_expression == error_category)
+    if search:
+        pattern = f"%{search}%"
+        filters.append(
+            or_(
+                tweets.c.tweet_id.ilike(pattern),
+                tweets.c.author_username.ilike(pattern),
+                tweets.c.last_error.ilike(pattern),
+                error_expression.ilike(pattern),
+            )
+        )
+    return filters
 
 
 def fetch_duplicate_rows(limit: int | None = None, offset: int = 0) -> list[DuplicateRow]:

@@ -11,6 +11,7 @@ from xarchiver.exporter import (
     count_all_duplicate_groups,
     count_duplicate_groups,
     count_duplicate_rows,
+    count_failure_rows,
     fetch_duplicate_group_rows,
     fetch_duplicate_rows,
     fetch_export_rows,
@@ -29,11 +30,7 @@ def get_summary(settings: Settings) -> dict[str, object]:
     ensure_archive_dirs(settings.archive_dir)
     status_counts = get_status_counts()
     media_count = get_media_count()
-    failures = sum(
-        count
-        for status, count in status_counts.items()
-        if status not in {"downloaded", "verified", "skipped"}
-    )
+    failures = count_failure_rows(disposition="open")
     return {
         "tweet_status_counts": status_counts,
         "media_count": media_count,

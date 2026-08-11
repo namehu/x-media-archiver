@@ -221,6 +221,11 @@ class DownloadStatusRow(RowModel):
     download_status: str
 
 
+class TweetQueueStateRow(RowModel):
+    download_status: str
+    failure_ignored: bool
+
+
 class TweetIdRow(RowModel):
     tweet_id: str
 
@@ -241,6 +246,7 @@ class TweetRow(RowModel):
     last_error: str | None = None
     retry_count: int
     last_attempt_at: datetime | None = None
+    failure_at: datetime | None = None
     updated_at: datetime
 
 
@@ -435,6 +441,47 @@ class FailureRow(RowModel):
     latest_error_message: str | None = None
     latest_exit_code: int | None = None
     latest_finished_at: datetime | None = None
+    failure_at: datetime | None = None
+    disposition: str = "open"
+    ignored_at: datetime | None = None
+    ignore_reason: str | None = None
+    ignore_note: str | None = None
+    latest_action: str | None = None
+    latest_action_at: datetime | None = None
+    latest_action_archive_run_id: int | None = None
+
+
+class FailureAggregateRow(RowModel):
+    total_count: int
+    open_count: int
+    ignored_count: int
+    retryable_count: int
+    permanent_count: int
+    corrupt_count: int
+    retry_total: int
+
+
+class FailureCategoryRow(RowModel):
+    error_category: str
+    count: int
+
+
+class FailureActionEventRow(RowModel):
+    id: int
+    tweet_id: str
+    action: str
+    previous_status: str
+    reason: str | None = None
+    note: str | None = None
+    archive_run_id: int | None = None
+    result: dict[str, Any]
+    created_at: datetime
+
+
+class FailureTargetRow(RowModel):
+    tweet_id: str
+    url: str
+    download_status: str
 
 
 class DuplicateRow(RowModel):

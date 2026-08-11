@@ -104,6 +104,7 @@ class LibraryServiceTests(unittest.TestCase):
         with (
             patch("xarchiver.services.library.ensure_archive_dirs"),
             patch("xarchiver.services.library.get_status_counts", return_value={"verified": 2, "missing": 1}),
+            patch("xarchiver.services.library.count_failure_rows", return_value=1),
             patch("xarchiver.services.library.get_media_count", return_value=3),
             patch("xarchiver.services.library.list_recent_exports", return_value=[]),
         ):

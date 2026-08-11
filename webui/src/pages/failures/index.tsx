@@ -1,68 +1,192 @@
-import { useMemo, useState } from "react";
-import { AlertTriangle, Bug, ChevronDown, ExternalLink, RefreshCw } from "lucide-react";
+import { useEffect, useMemo, useState } from "react";
+import { AlertTriangle, Ban, Bug, FileWarning, RefreshCw, RotateCcw } from "lucide-react";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
-import { Link } from "react-router-dom";
 import type { ColumnDef } from "@tanstack/react-table";
-import { apiGet, apiPost, type ActionResponse, type FailureRow, type PageResponse } from "../../lib/api";
-import { errorLabel, statusLabel } from "../../lib/formatters";
-import { formatDateTime } from "../../lib/utils";
-import { Badge, type BadgeProps } from "../../components/ui/badge";
-import { Button } from "../../components/ui/button";
-import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "../../components/ui/card";
-import { Checkbox } from "../../components/ui/checkbox";
-import { DataTable } from "../../components/ui/data-table";
-import {
-  DropdownMenu,
-  DropdownMenuContent,
-  DropdownMenuItem,
-  DropdownMenuTrigger,
-} from "../../components/ui/dropdown-menu";
-import { EmptyState } from "../../components/ui/empty-state";
-import { ErrorState } from "../../components/ui/error-state";
-import { Pagination } from "../../components/ui/pagination";
-import { Skeleton } from "../../components/ui/skeleton";
-import { StatCard } from "../../components/ui/stat-card";
+import { Link, useSearchParams } from "react-router-dom";
+import { toast } from "sonner";
+import type {
+  ActionResponse,
+  FailureActionResult,
+  FailurePageResponse,
+  FailureRow,
+} from "@/lib/api";
+import { apiGet, apiPost } from "@/lib/api";
+import { Alert, AlertDescription, AlertTitle } from "@/components/ui/alert";
+import { Badge, type BadgeProps } from "@/components/ui/badge";
+import { Button } from "@/components/ui/button";
+import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
+import { Checkbox } from "@/components/ui/checkbox";
+import { DataTable } from "@/components/ui/data-table";
+import { EmptyState } from "@/components/ui/empty-state";
+import { ErrorState } from "@/components/ui/error-state";
+import { Pagination } from "@/components/ui/pagination";
+import { Skeleton } from "@/components/ui/skeleton";
+import { StatCard } from "@/components/ui/stat-card";
 import {
   getDebugDetailLinkLabel,
   getDebugDetailRoute,
   getDebugRedactProps,
   getDebugSelectionLabel,
   useDebugRedactionEnabled,
-} from "../../lib/debug-redaction";
+} from "@/lib/debug-redaction";
+import { errorLabel, statusLabel } from "@/lib/formatters";
+import { formatDateTime } from "@/lib/utils";
+import {
+  ConfirmFailureActionDialog,
+  IgnoreFailureDialog,
+  type IgnoreFailureInput,
+} from "./components/failure-action-dialogs";
+import {
+  FailureFilters,
+  type FailureDisposition,
+  type FailureSort,
+} from "./components/failure-filters";
+import { FailureHistoryDialog } from "./components/failure-history-dialog";
+import { FailureRowActions } from "./components/failure-row-actions";
+import { FAILURE_REASON_LABELS, FAILURE_SKIP_REASON_LABELS } from "./failure-labels";
 
 const PAGE_SIZE = 100;
-const REQUEUE_STATUSES = ["failed_retryable", "corrupt", "failed_permanent"];
 
 export function FailuresPage() {
   const debugRedactionEnabled = useDebugRedactionEnabled();
   const queryClient = useQueryClient();
-  const [offset, setOffset] = useState(0);
+  const [searchParams, setSearchParams] = useSearchParams();
   const [selectedIds, setSelectedIds] = useState<Set<string>>(() => new Set());
-  const { data, isLoading, error, refetch } = useQuery({
-    queryKey: ["failures", offset],
-    queryFn: () => apiGet<PageResponse<FailureRow>>(`/api/v1/library/failures?limit=${PAGE_SIZE}&offset=${offset}`),
+  const [ignoreIds, setIgnoreIds] = useState<string[]>([]);
+  const [retryConfirmIds, setRetryConfirmIds] = useState<string[]>([]);
+  const [restoreConfirmIds, setRestoreConfirmIds] = useState<string[]>([]);
+  const [historyTweetId, setHistoryTweetId] = useState<string | null>(null);
+
+  const disposition = parseDisposition(searchParams.get("disposition"));
+  const status = searchParams.get("status") ?? "";
+  const errorCategory = searchParams.get("error_category") ?? "";
+  const search = searchParams.get("search") ?? "";
+  const sort = parseSort(searchParams.get("sort"));
+  const offset = parseOffset(searchParams.get("offset"));
+  const queryString = buildFailureQuery({ disposition, status, errorCategory, search, sort, offset });
+  const query = useQuery({
+    queryKey: ["failures", disposition, status, errorCategory, search, sort, offset],
+    queryFn: () => apiGet<FailurePageResponse>(`/api/v1/library/failures?${queryString}`),
   });
 
-  const rows = data?.rows ?? [];
-  const model = useMemo(() => buildFailureModel(rows, data?.total_count ?? 0), [rows, data?.total_count]);
-  const selectedCount = selectedIds.size;
+  const rows = query.data?.rows ?? [];
   const pageIds = useMemo(() => rows.map((row) => row.tweet_id), [rows]);
+  const selectedRows = useMemo(() => rows.filter((row) => selectedIds.has(row.tweet_id)), [rows, selectedIds]);
+  const selectedOpenIds = selectedRows.filter((row) => row.disposition === "open").map((row) => row.tweet_id);
+  const selectedIgnoredIds = selectedRows.filter((row) => row.disposition === "ignored").map((row) => row.tweet_id);
   const allPageSelected = pageIds.length > 0 && pageIds.every((id) => selectedIds.has(id));
-  const requeueMutation = useMutation({
-    mutationFn: (limit: number | null) =>
-      apiPost<ActionResponse>("/api/v1/actions/requeue", {
-        statuses: REQUEUE_STATUSES,
-        limit,
-      }),
-    onSuccess: async () => {
-      setSelectedIds(new Set());
-      await Promise.all([
-        queryClient.invalidateQueries({ queryKey: ["failures"] }),
-        queryClient.invalidateQueries({ queryKey: ["archive-runs"] }),
-        queryClient.invalidateQueries({ queryKey: ["summary"] }),
-      ]);
-    },
+  const somePageSelected = pageIds.some((id) => selectedIds.has(id));
+
+  useEffect(() => {
+    setSelectedIds((current) => {
+      const visible = new Set(pageIds);
+      const next = new Set([...current].filter((id) => visible.has(id)));
+      return next.size === current.size ? current : next;
+    });
+  }, [pageIds]);
+
+  const invalidateFailureData = async () => {
+    setSelectedIds(new Set());
+    await Promise.all([
+      queryClient.invalidateQueries({ queryKey: ["failures"] }),
+      queryClient.invalidateQueries({ queryKey: ["failure-actions"] }),
+      queryClient.invalidateQueries({ queryKey: ["archive-runs"] }),
+      queryClient.invalidateQueries({ queryKey: ["summary"] }),
+    ]);
+  };
+
+  const handleActionSuccess = async (label: string, response: ActionResponse) => {
+    const result = response.result as FailureActionResult;
+    const skipped = result.skipped_count
+      ? `，跳过 ${result.skipped_count} 项${formatSkipReasons(result.skip_reasons)}`
+      : "";
+    toast.success(`${label} ${result.succeeded_count} 项${skipped}`);
+    setIgnoreIds([]);
+    setRetryConfirmIds([]);
+    setRestoreConfirmIds([]);
+    await invalidateFailureData();
+  };
+
+  const retryMutation = useMutation({
+    mutationFn: (tweetIds: string[]) =>
+      apiPost<ActionResponse>("/api/v1/library/failures/retry", { tweet_ids: tweetIds }),
+    onSuccess: (response) => handleActionSuccess("已重新入队", response),
   });
+  const ignoreMutation = useMutation({
+    mutationFn: (input: IgnoreFailureInput) =>
+      apiPost<ActionResponse>("/api/v1/library/failures/ignore", {
+        tweet_ids: input.tweetIds,
+        reason: input.reason,
+        note: input.note,
+      }),
+    onSuccess: (response) => handleActionSuccess("已忽略", response),
+  });
+  const restoreMutation = useMutation({
+    mutationFn: (tweetIds: string[]) =>
+      apiPost<ActionResponse>("/api/v1/library/failures/restore", { tweet_ids: tweetIds }),
+    onSuccess: (response) => handleActionSuccess("已恢复", response),
+  });
+  const actionPending = retryMutation.isPending || ignoreMutation.isPending || restoreMutation.isPending;
+  const actionError = retryMutation.error || ignoreMutation.error || restoreMutation.error;
+  const clearActionErrors = () => {
+    retryMutation.reset();
+    ignoreMutation.reset();
+    restoreMutation.reset();
+  };
+  const retryItems = (tweetIds: string[]) => {
+    clearActionErrors();
+    retryMutation.mutate(tweetIds);
+  };
+  const ignoreItems = (input: IgnoreFailureInput) => {
+    clearActionErrors();
+    ignoreMutation.mutate(input);
+  };
+  const restoreItems = (tweetIds: string[]) => {
+    clearActionErrors();
+    restoreMutation.mutate(tweetIds);
+  };
+
+  const updateFilter = (key: "status" | "error_category" | "sort" | "search", value: string) => {
+    const next = new URLSearchParams(searchParams);
+    if (value && !(key === "sort" && value === "recent")) next.set(key, value);
+    else next.delete(key);
+    next.delete("offset");
+    setSelectedIds(new Set());
+    setSearchParams(next, { replace: true });
+  };
+
+  const updateDisposition = (value: FailureDisposition) => {
+    const next = new URLSearchParams(searchParams);
+    if (value === "open") next.delete("disposition");
+    else next.set("disposition", value);
+    next.delete("offset");
+    setSelectedIds(new Set());
+    setSearchParams(next, { replace: true });
+  };
+
+  const resetFilters = () => {
+    setSelectedIds(new Set());
+    setSearchParams({}, { replace: true });
+  };
+
+  const updateOffset = (nextOffset: number) => {
+    const next = new URLSearchParams(searchParams);
+    if (nextOffset) next.set("offset", String(nextOffset));
+    else next.delete("offset");
+    setSelectedIds(new Set());
+    setSearchParams(next, { replace: true });
+  };
+
+  useEffect(() => {
+    const totalCount = query.data?.total_count;
+    if (query.isFetching || totalCount === undefined || offset === 0 || offset < totalCount) return;
+    const lastOffset = totalCount > 0 ? Math.floor((totalCount - 1) / PAGE_SIZE) * PAGE_SIZE : 0;
+    const next = new URLSearchParams(searchParams);
+    if (lastOffset) next.set("offset", String(lastOffset));
+    else next.delete("offset");
+    setSelectedIds(new Set());
+    setSearchParams(next, { replace: true });
+  }, [offset, query.data?.total_count, query.isFetching, searchParams, setSearchParams]);
 
   const columns = useMemo<ColumnDef<FailureRow>[]>(
     () => [
@@ -70,8 +194,8 @@ export function FailuresPage() {
         id: "select",
         header: () => (
           <Checkbox
-            checked={allPageSelected}
-            aria-label="全部状态"
+            checked={allPageSelected ? true : somePageSelected ? "indeterminate" : false}
+            aria-label="选择本页全部失败项"
             onCheckedChange={(checked) => {
               setSelectedIds((current) => {
                 const next = new Set(current);
@@ -100,15 +224,48 @@ export function FailuresPage() {
       },
       {
         header: "Tweet",
-        cell: ({ row }) => <FailureTweetCell row={row.original} />,
+        cell: ({ row }) => {
+          const item = row.original;
+          const detailRoute = getDebugDetailRoute(debugRedactionEnabled, item.tweet_id);
+          return (
+            <div className="min-w-[280px] max-w-xl">
+              <div className="flex flex-wrap items-center gap-2">
+                {detailRoute ? (
+                  <Link className="font-semibold text-brand hover:text-brand-hover" to={detailRoute} {...getDebugRedactProps(debugRedactionEnabled)}>
+                    {item.tweet_id}
+                  </Link>
+                ) : (
+                  <span className="font-semibold text-fg-tertiary">{getDebugDetailLinkLabel(debugRedactionEnabled)}</span>
+                )}
+                {item.disposition === "ignored" ? <Badge tone="secondary">已忽略</Badge> : null}
+              </div>
+              <div className="mt-1 truncate text-xs text-fg-secondary" {...getDebugRedactProps(debugRedactionEnabled)}>
+                @{item.author_username || "-"}
+              </div>
+              {item.latest_error_message || item.last_error ? (
+                <div className="mt-2 line-clamp-2 rounded-md border border-danger/20 bg-danger/10 px-2 py-1 text-xs text-danger">
+                  {item.latest_error_message || item.last_error}
+                </div>
+              ) : null}
+              {item.disposition === "ignored" ? (
+                <div className="mt-2 text-xs text-fg-tertiary">
+                  {item.ignore_reason ? `原因：${FAILURE_REASON_LABELS[item.ignore_reason] ?? item.ignore_reason}` : "未填写忽略原因"}
+                  {item.ignored_at ? ` · ${formatDateTime(item.ignored_at)}` : ""}
+                </div>
+              ) : null}
+            </div>
+          );
+        },
       },
       {
-        header: "状态",
+        header: "失败状态",
+        cell: ({ row }) => <Badge tone={failureTone(row.original.tweet_status)}>{statusLabel(row.original.tweet_status)}</Badge>,
+      },
+      {
+        header: "错误分类",
         cell: ({ row }) => (
-          <Badge tone={failureTone(row.original.latest_error_category || row.original.tweet_status)}>
-            {errorLabel(row.original.latest_error_category) !== "-"
-              ? errorLabel(row.original.latest_error_category)
-              : statusLabel(row.original.tweet_status)}
+          <Badge tone={failureTone(row.original.latest_error_category || row.original.last_error)}>
+            {errorLabel(row.original.latest_error_category || row.original.last_error)}
           </Badge>
         ),
       },
@@ -121,79 +278,110 @@ export function FailuresPage() {
         cell: ({ row }) => <span className="tabular-nums">{row.original.retry_count ?? 0}</span>,
       },
       {
-        header: "完成时间",
-        cell: ({ row }) => <span className="whitespace-nowrap text-fg-secondary">{formatDateTime(row.original.latest_finished_at)}</span>,
+        header: "失败时间",
+        cell: ({ row }) => <span className="whitespace-nowrap text-fg-secondary">{formatDateTime(row.original.failure_at)}</span>,
       },
       {
         id: "actions",
-        header: "",
-        cell: ({ row }) => <FailureActions row={row.original} />,
+        header: "操作",
+        cell: ({ row }) => (
+          <FailureRowActions
+            row={row.original}
+            pending={actionPending}
+            onRetry={(tweetId) => retryItems([tweetId])}
+            onIgnore={(tweetId) => setIgnoreIds([tweetId])}
+            onRestore={(tweetId) => restoreItems([tweetId])}
+            onHistory={setHistoryTweetId}
+          />
+        ),
       },
     ],
-    [allPageSelected, debugRedactionEnabled, errorLabel, pageIds, selectedIds],
+    [
+      actionPending,
+      allPageSelected,
+      debugRedactionEnabled,
+      pageIds,
+      retryMutation,
+      restoreMutation,
+      selectedIds,
+      somePageSelected,
+    ],
   );
 
-  if (isLoading) return <FailuresSkeleton />;
-  if (error) return <ErrorState title="API 不可用" detail={String(error)} onRetry={() => void refetch()} />;
+  if (query.isLoading) return <FailuresSkeleton />;
+  if (query.error) return <ErrorState title="API 不可用" detail={String(query.error)} onRetry={() => void query.refetch()} />;
+
+  const data = query.data;
+  const aggregates = data?.aggregates;
+  const categories = data?.error_categories ?? [];
+  const topCategories = categories.slice(0, 5);
+  const selectedCount = selectedIds.size;
 
   return (
-    <div className="space-y-5">
+    <div className="flex flex-col gap-5">
       <section className="flex flex-col justify-between gap-4 md:flex-row md:items-end">
         <div>
-          <h1 className="text-2xl font-bold tracking-tight text-fg-primary">失败队列</h1>
-          <p className="mt-1 text-sm text-fg-secondary">需要排查或重试</p>
+          <h1 className="text-2xl font-bold tracking-tight text-fg-primary">失败工作台</h1>
+          <p className="mt-1 text-sm text-fg-secondary">精确重试、忽略并追踪失败项处置历史</p>
         </div>
-        <Button
-          type="button"
-          variant={selectedCount ? "default" : "outline"}
-          disabled={requeueMutation.isPending || rows.length === 0}
-          onClick={() => requeueMutation.mutate(selectedCount || PAGE_SIZE)}
-        >
-          <RefreshCw className="h-4 w-4" />
-          重新入队
-          {selectedCount ? <span className="tabular-nums">{selectedCount}</span> : null}
+        <Button type="button" variant="outline" disabled={query.isFetching} onClick={() => void query.refetch()}>
+          <RefreshCw data-icon="inline-start" />
+          {query.isFetching ? "正在刷新…" : "刷新"}
         </Button>
       </section>
 
+      <FailureFilters
+        disposition={disposition}
+        status={status}
+        errorCategory={errorCategory}
+        search={search}
+        sort={sort}
+        openCount={data?.disposition_counts.open_count ?? 0}
+        ignoredCount={data?.disposition_counts.ignored_count ?? 0}
+        categories={categories}
+        onDispositionChange={updateDisposition}
+        onFilterChange={updateFilter}
+        onReset={resetFilters}
+      />
+
       <section className="grid gap-4 md:grid-cols-2 xl:grid-cols-4">
         <StatCard
-          label="失败队列"
-          value={model.total.toLocaleString()}
-          detail={`第 ${data?.total_count ? offset + 1 : 0}-${Math.min(offset + (data?.count ?? 0), data?.total_count ?? 0)} 项，共 ${data?.total_count ?? 0} 项`}
-          icon={<AlertTriangle className="h-4 w-4" />}
-          tone={model.total ? "danger" : "success"}
-          sparklineData={model.sparkline}
+          label="当前范围"
+          value={(aggregates?.total_count ?? 0).toLocaleString()}
+          detail={`${data?.disposition_counts.open_count ?? 0} 个待处理 · ${data?.disposition_counts.ignored_count ?? 0} 个已忽略`}
+          icon={<AlertTriangle className="size-4" />}
+          tone={aggregates?.total_count ? "danger" : "success"}
         />
         <StatCard
           label="可重试失败"
-          value={model.retryable.toLocaleString()}
-          detail="重试永久失败项"
-          icon={<RefreshCw className="h-4 w-4" />}
-          tone={model.retryable ? "warning" : "success"}
+          value={(aggregates?.retryable_count ?? 0).toLocaleString()}
+          detail={`累计重试 ${aggregates?.retry_total ?? 0} 次`}
+          icon={<RefreshCw className="size-4" />}
+          tone={aggregates?.retryable_count ? "warning" : "success"}
         />
         <StatCard
-          label={model.topCategory.label}
-          value={model.topCategory.count.toLocaleString()}
-          detail="最近错误"
-          icon={<Bug className="h-4 w-4" />}
-          tone={model.topCategory.count ? "danger" : "brand"}
+          label="永久失败"
+          value={(aggregates?.permanent_count ?? 0).toLocaleString()}
+          detail="需要人工判断是否再次尝试"
+          icon={<Bug className="size-4" />}
+          tone={aggregates?.permanent_count ? "danger" : "success"}
         />
         <StatCard
-          label="重试次数"
-          value={model.retryTotal.toLocaleString()}
-          detail="最近尝试"
-          icon={<ChevronDown className="h-4 w-4" />}
-          tone={model.retryTotal ? "warning" : "brand"}
+          label="文件损坏"
+          value={(aggregates?.corrupt_count ?? 0).toLocaleString()}
+          detail="重新下载可能修复文件"
+          icon={<FileWarning className="size-4" />}
+          tone={aggregates?.corrupt_count ? "danger" : "success"}
         />
       </section>
 
       <section className="grid gap-4 xl:grid-cols-[minmax(0,1fr)_320px]">
-        <Card>
+        <Card className="min-w-0">
           <CardHeader>
             <div className="flex flex-col justify-between gap-3 lg:flex-row lg:items-center">
               <div>
-                <CardTitle>最近错误</CardTitle>
-                <CardDescription>打开 Failures 页面查看可重试项。</CardDescription>
+                <CardTitle>{disposition === "open" ? "待处理失败" : disposition === "ignored" ? "已忽略失败" : "全部失败"}</CardTitle>
+                <CardDescription>所有写操作均精确作用于当前勾选的 Tweet。</CardDescription>
               </div>
               {data ? (
                 <Pagination
@@ -201,159 +389,174 @@ export function FailuresPage() {
                   count={data.count}
                   totalCount={data.total_count}
                   pageSize={PAGE_SIZE}
-                  onOffsetChange={(next) => {
-                    setSelectedIds(new Set());
-                    setOffset(next);
-                  }}
+                  onOffsetChange={updateOffset}
                   label="第 {start}-{end} 项，共 {total} 项"
                 />
               ) : null}
             </div>
           </CardHeader>
-          <CardContent className="space-y-4">
-            {requeueMutation.error ? (
-              <div className="rounded-lg border border-danger/20 bg-danger/10 p-3 text-sm text-danger">{String(requeueMutation.error)}</div>
+          <CardContent className="flex flex-col gap-4">
+            {actionError ? (
+              <Alert variant="destructive">
+                <AlertTitle>操作失败</AlertTitle>
+                <AlertDescription>{String(actionError)}</AlertDescription>
+              </Alert>
             ) : null}
+
+            {selectedCount ? (
+              <div className="flex flex-col justify-between gap-3 rounded-lg border border-brand/20 bg-brand-soft p-3 sm:flex-row sm:items-center">
+                <div className="text-sm font-medium text-fg-primary">
+                  已选择本页 <span className="tabular-nums">{selectedCount}</span> 项
+                </div>
+                <div className="flex flex-wrap gap-2">
+                  <Button type="button" size="sm" disabled={actionPending} onClick={() => setRetryConfirmIds([...selectedIds])}>
+                    <RefreshCw data-icon="inline-start" />
+                    批量重试
+                  </Button>
+                  {selectedOpenIds.length ? (
+                    <Button type="button" size="sm" variant="outline" disabled={actionPending} onClick={() => setIgnoreIds(selectedOpenIds)}>
+                      <Ban data-icon="inline-start" />
+                      忽略 {selectedOpenIds.length} 项
+                    </Button>
+                  ) : null}
+                  {selectedIgnoredIds.length ? (
+                    <Button type="button" size="sm" variant="outline" disabled={actionPending} onClick={() => setRestoreConfirmIds(selectedIgnoredIds)}>
+                      <RotateCcw data-icon="inline-start" />
+                      恢复 {selectedIgnoredIds.length} 项
+                    </Button>
+                  ) : null}
+                </div>
+              </div>
+            ) : null}
+
             {rows.length ? (
-              <DataTable columns={columns} data={rows} />
+              <DataTable columns={columns} data={rows} stickyActionColumn />
             ) : (
-              <EmptyState icon={<AlertTriangle className="h-5 w-5" />} title="没有失败项。" description="暂无失败项" />
+              <EmptyState
+                icon={<AlertTriangle className="size-5" />}
+                title={disposition === "ignored" ? "没有已忽略项" : "没有待处理失败项"}
+                description="调整筛选条件，或等待新的失败记录。"
+              />
             )}
           </CardContent>
         </Card>
 
         <Card>
           <CardHeader>
-            <CardTitle>调试详情</CardTitle>
-            <CardDescription>最近错误</CardDescription>
+            <CardTitle>错误分布</CardTitle>
+            <CardDescription>按当前筛选范围聚合，不受分页影响。</CardDescription>
           </CardHeader>
-          <CardContent className="space-y-3">
-            {model.clusters.length ? (
-              model.clusters.map((cluster) => (
-                <div key={cluster.label} className="rounded-lg border border-border-subtle bg-bg-surface p-3">
+          <CardContent className="flex flex-col gap-3">
+            {topCategories.length ? (
+              topCategories.map((category) => (
+                <div key={category.error_category} className="rounded-lg border border-border-subtle bg-bg-surface p-3">
                   <div className="flex items-center justify-between gap-3">
-                    <Badge tone={failureTone(cluster.label)}>{cluster.label}</Badge>
-                    <span className="text-sm font-semibold tabular-nums text-fg-primary">{cluster.count}</span>
+                    <Badge tone={failureTone(category.error_category)}>{errorLabel(category.error_category)}</Badge>
+                    <span className="text-sm font-semibold tabular-nums text-fg-primary">{category.count}</span>
                   </div>
                   <div className="mt-3 h-2 overflow-hidden rounded-full bg-bg-muted">
-                    <div className="h-full rounded-full bg-danger" style={{ width: `${cluster.percent}%` }} />
+                    <div
+                      className="h-full rounded-full bg-danger"
+                      style={{ width: `${Math.max(6, Math.round((category.count / Math.max(aggregates?.total_count ?? 1, 1)) * 100))}%` }}
+                    />
                   </div>
                 </div>
               ))
             ) : (
-              <p className="rounded-lg border border-border-subtle bg-bg-surface p-4 text-sm text-fg-secondary">最近没有错误。</p>
+              <p className="rounded-lg border border-border-subtle bg-bg-surface p-4 text-sm text-fg-secondary">当前范围没有错误。</p>
             )}
           </CardContent>
         </Card>
       </section>
-    </div>
-  );
-}
 
-function FailureTweetCell({ row }: { row: FailureRow }) {
-  const debugRedactionEnabled = useDebugRedactionEnabled();
-  const detailRoute = getDebugDetailRoute(debugRedactionEnabled, row.tweet_id);
-  return (
-    <div className="min-w-0">
-      {detailRoute ? (
-        <Link className="font-semibold text-brand hover:text-brand-hover" to={detailRoute} {...getDebugRedactProps(debugRedactionEnabled)}>
-          {row.tweet_id}
-        </Link>
-      ) : (
-        <span className="font-semibold text-fg-tertiary">{getDebugDetailLinkLabel(debugRedactionEnabled)}</span>
-      )}
-      <div className="mt-1 truncate text-xs text-fg-secondary" {...getDebugRedactProps(debugRedactionEnabled)}>
-        @{row.author_username || "-"}
-      </div>
-      {row.latest_error_message || row.last_error ? (
-        <div className="mt-2 line-clamp-2 max-w-xl rounded-md border border-danger/20 bg-danger/10 px-2 py-1 text-xs text-danger">
-          {row.latest_error_message || row.last_error}
-        </div>
-      ) : null}
+      <IgnoreFailureDialog
+        tweetIds={ignoreIds}
+        pending={ignoreMutation.isPending}
+        onOpenChange={(open) => !open && setIgnoreIds([])}
+        onConfirm={ignoreItems}
+      />
+      <ConfirmFailureActionDialog
+        open={retryConfirmIds.length > 0}
+        title="批量立即重试"
+        description={`将为 ${retryConfirmIds.length} 个失败项创建新的手动运行，并立即产生下载请求。`}
+        confirmLabel="确认重试"
+        pending={retryMutation.isPending}
+        onOpenChange={(open) => !open && setRetryConfirmIds([])}
+        onConfirm={() => retryItems(retryConfirmIds)}
+      />
+      <ConfirmFailureActionDialog
+        open={restoreConfirmIds.length > 0}
+        title="批量恢复失败项"
+        description={`将 ${restoreConfirmIds.length} 个已忽略项恢复为待处理；此操作不会自动下载。`}
+        confirmLabel="确认恢复"
+        pending={restoreMutation.isPending}
+        onOpenChange={(open) => !open && setRestoreConfirmIds([])}
+        onConfirm={() => restoreItems(restoreConfirmIds)}
+      />
+      <FailureHistoryDialog tweetId={historyTweetId} onOpenChange={(open) => !open && setHistoryTweetId(null)} />
     </div>
-  );
-}
-
-function FailureActions({ row }: { row: FailureRow }) {
-  const debugRedactionEnabled = useDebugRedactionEnabled();
-  const detailRoute = getDebugDetailRoute(debugRedactionEnabled, row.tweet_id);
-  return (
-    <DropdownMenu>
-      <DropdownMenuTrigger asChild>
-        <Button type="button" variant="ghost" size="sm" onClick={(event) => event.stopPropagation()}>
-          结果
-          <ChevronDown className="h-4 w-4" />
-        </Button>
-      </DropdownMenuTrigger>
-      <DropdownMenuContent align="end">
-        {detailRoute ? (
-          <DropdownMenuItem asChild>
-            <Link to={detailRoute}>
-              <ExternalLink className="mr-2 h-4 w-4" />
-              Tweet 详情
-            </Link>
-          </DropdownMenuItem>
-        ) : (
-          <DropdownMenuItem disabled>
-            <ExternalLink className="mr-2 h-4 w-4" />
-            {getDebugDetailLinkLabel(debugRedactionEnabled)}
-          </DropdownMenuItem>
-        )}
-      </DropdownMenuContent>
-    </DropdownMenu>
   );
 }
 
 function FailuresSkeleton() {
   return (
-    <div className="space-y-5">
+    <div className="flex flex-col gap-5">
       <section>
-        <h1 className="text-2xl font-bold tracking-tight text-fg-primary">失败队列</h1>
+        <h1 className="text-2xl font-bold tracking-tight text-fg-primary">失败工作台</h1>
         <p className="mt-1 text-sm text-fg-secondary">正在加载失败项</p>
       </section>
+      <Skeleton className="h-32 rounded-lg" />
       <div className="grid gap-4 md:grid-cols-2 xl:grid-cols-4">
-        {Array.from({ length: 4 }).map((_, index) => (
-          <Skeleton key={index} className="h-32 rounded-lg" />
-        ))}
+        {Array.from({ length: 4 }).map((_, index) => <Skeleton key={index} className="h-32 rounded-lg" />)}
       </div>
-      <Card>
-        <CardContent className="space-y-2 p-4">
-          {Array.from({ length: 8 }).map((_, index) => (
-            <Skeleton key={index} className="h-14" />
-          ))}
-        </CardContent>
-      </Card>
+      <Skeleton className="h-96 rounded-lg" />
     </div>
   );
 }
 
-function buildFailureModel(rows: FailureRow[], total: number) {
-  const counts = new Map<string, number>();
-  let retryable = 0;
-  let retryTotal = 0;
-  for (const row of rows) {
-    const label = row.latest_error_category || row.last_error || row.tweet_status || "-";
-    counts.set(label, (counts.get(label) ?? 0) + 1);
-    retryTotal += row.retry_count ?? 0;
-    if (row.tweet_status === "failed_retryable") retryable += 1;
-  }
-  const clusters = [...counts.entries()]
-    .map(([label, count]) => ({ label, count, percent: rows.length ? Math.max(6, Math.round((count / rows.length) * 100)) : 0 }))
-    .sort((a, b) => b.count - a.count)
-    .slice(0, 5);
-  return {
-    total,
-    retryable,
-    retryTotal,
-    clusters,
-    topCategory: clusters[0] ?? { label: "-", count: 0, percent: 0 },
-    sparkline: rows.slice(0, 12).map((row) => Math.max(1, row.retry_count ?? 1)),
-  };
+function buildFailureQuery({
+  disposition,
+  status,
+  errorCategory,
+  search,
+  sort,
+  offset,
+}: {
+  disposition: FailureDisposition;
+  status: string;
+  errorCategory: string;
+  search: string;
+  sort: FailureSort;
+  offset: number;
+}) {
+  const params = new URLSearchParams({ disposition, sort, limit: String(PAGE_SIZE), offset: String(offset) });
+  if (status) params.append("status", status);
+  if (errorCategory) params.set("error_category", errorCategory);
+  if (search) params.set("search", search);
+  return params.toString();
+}
+
+function parseDisposition(value: string | null): FailureDisposition {
+  return value === "ignored" || value === "all" ? value : "open";
+}
+
+function parseSort(value: string | null): FailureSort {
+  return value === "oldest" || value === "retries" ? value : "recent";
+}
+
+function parseOffset(value: string | null) {
+  const parsed = Number(value);
+  return Number.isFinite(parsed) && parsed >= 0 ? Math.floor(parsed / PAGE_SIZE) * PAGE_SIZE : 0;
+}
+
+function formatSkipReasons(reasons: Record<string, number>) {
+  const values = Object.entries(reasons).map(([reason, count]) => `${FAILURE_SKIP_REASON_LABELS[reason] ?? reason} ${count}`);
+  return values.length ? `（${values.join("、")}）` : "";
 }
 
 function failureTone(value?: string | null): BadgeProps["tone"] {
   if (!value) return "secondary";
   if (value.includes("retryable") || value.includes("rate_limited")) return "warning";
-  if (value.includes("failed") || value.includes("error") || value.includes("auth") || value.includes("invalid")) return "danger";
+  if (value.includes("failed") || value.includes("error") || value.includes("auth") || value.includes("invalid") || value.includes("corrupt")) return "danger";
   return "secondary";
 }

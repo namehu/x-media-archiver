@@ -245,6 +245,86 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/api/v1/library/failures/{tweet_id}/actions": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * Failure Actions
+         * @description 返回单条 Tweet 的失败处置时间线。
+         */
+        get: operations["failure_actions_api_v1_library_failures__tweet_id__actions_get"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/library/failures/ignore": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Ignore Failure Items
+         * @description 忽略精确选择的失败项，并停止尚未完成的自动重试。
+         */
+        post: operations["ignore_failure_items_api_v1_library_failures_ignore_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/library/failures/restore": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Restore Failure Items
+         * @description 把已忽略失败项恢复到待处理工作台。
+         */
+        post: operations["restore_failure_items_api_v1_library_failures_restore_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/library/failures/retry": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Retry Failure Items
+         * @description 为精确选择的失败项创建一次立即执行的手动重试运行。
+         */
+        post: operations["retry_failure_items_api_v1_library_failures_retry_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/api/v1/library/duplicates": {
         parameters: {
             query?: never;
@@ -1768,6 +1848,11 @@ export interface components {
              */
             skipped_verified_count: number;
             /**
+             * Skipped Ignored Count
+             * @default 0
+             */
+            skipped_ignored_count: number;
+            /**
              * Linked Pending Count
              * @default 0
              */
@@ -2072,6 +2157,101 @@ export interface components {
         } & {
             [key: string]: unknown;
         };
+        /** FailureActionEventResponse */
+        FailureActionEventResponse: {
+            /** Id */
+            id: number;
+            /** Tweet Id */
+            tweet_id: string;
+            /** Action */
+            action: string;
+            /** Previous Status */
+            previous_status: string;
+            /** Reason */
+            reason?: string | null;
+            /** Note */
+            note?: string | null;
+            /** Archive Run Id */
+            archive_run_id?: number | null;
+            /** Result */
+            result?: {
+                [key: string]: unknown;
+            };
+            /**
+             * Created At
+             * Format: date-time
+             */
+            created_at: string;
+        } & {
+            [key: string]: unknown;
+        };
+        /** FailureActionsResponse */
+        FailureActionsResponse: {
+            /** Rows */
+            rows: components["schemas"]["FailureActionEventResponse"][];
+            /** Count */
+            count: number;
+        } & {
+            [key: string]: unknown;
+        };
+        /** FailureAggregateResponse */
+        FailureAggregateResponse: {
+            /**
+             * Total Count
+             * @default 0
+             */
+            total_count: number;
+            /**
+             * Open Count
+             * @default 0
+             */
+            open_count: number;
+            /**
+             * Ignored Count
+             * @default 0
+             */
+            ignored_count: number;
+            /**
+             * Retryable Count
+             * @default 0
+             */
+            retryable_count: number;
+            /**
+             * Permanent Count
+             * @default 0
+             */
+            permanent_count: number;
+            /**
+             * Corrupt Count
+             * @default 0
+             */
+            corrupt_count: number;
+            /**
+             * Retry Total
+             * @default 0
+             */
+            retry_total: number;
+        } & {
+            [key: string]: unknown;
+        };
+        /** FailureCategoryResponse */
+        FailureCategoryResponse: {
+            /** Error Category */
+            error_category: string;
+            /** Count */
+            count: number;
+        } & {
+            [key: string]: unknown;
+        };
+        /** FailureIgnoreRequest */
+        FailureIgnoreRequest: {
+            /** Tweet Ids */
+            tweet_ids: string[];
+            /** Reason */
+            reason?: string | null;
+            /** Note */
+            note?: string | null;
+        };
         /** FailurePageResponse */
         FailurePageResponse: {
             /** Count */
@@ -2084,6 +2264,10 @@ export interface components {
             offset: number;
             /** Rows */
             rows: components["schemas"]["FailureRowResponse"][];
+            aggregates?: components["schemas"]["FailureAggregateResponse"];
+            disposition_counts?: components["schemas"]["FailureAggregateResponse"];
+            /** Error Categories */
+            error_categories?: components["schemas"]["FailureCategoryResponse"][];
         } & {
             [key: string]: unknown;
         };
@@ -2113,8 +2297,32 @@ export interface components {
             latest_exit_code?: number | null;
             /** Latest Finished At */
             latest_finished_at?: string | null;
+            /** Failure At */
+            failure_at?: string | null;
+            /**
+             * Disposition
+             * @default open
+             */
+            disposition: string;
+            /** Ignored At */
+            ignored_at?: string | null;
+            /** Ignore Reason */
+            ignore_reason?: string | null;
+            /** Ignore Note */
+            ignore_note?: string | null;
+            /** Latest Action */
+            latest_action?: string | null;
+            /** Latest Action At */
+            latest_action_at?: string | null;
+            /** Latest Action Archive Run Id */
+            latest_action_archive_run_id?: number | null;
         } & {
             [key: string]: unknown;
+        };
+        /** FailureSelectionRequest */
+        FailureSelectionRequest: {
+            /** Tweet Ids */
+            tweet_ids: string[];
         };
         /** HTTPValidationError */
         HTTPValidationError: {
@@ -3126,6 +3334,11 @@ export interface components {
              */
             skipped_verified_count: number;
             /**
+             * Skipped Ignored Count
+             * @default 0
+             */
+            skipped_ignored_count: number;
+            /**
              * Linked Pending Count
              * @default 0
              */
@@ -4027,6 +4240,11 @@ export interface operations {
     failures_api_v1_library_failures_get: {
         parameters: {
             query?: {
+                disposition?: string;
+                status?: string[] | null;
+                error_category?: string | null;
+                search?: string | null;
+                sort?: string;
                 limit?: number;
                 offset?: number;
             };
@@ -4043,6 +4261,138 @@ export interface operations {
                 };
                 content: {
                     "application/json": components["schemas"]["FailurePageResponse"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    failure_actions_api_v1_library_failures__tweet_id__actions_get: {
+        parameters: {
+            query?: {
+                limit?: number;
+            };
+            header?: never;
+            path: {
+                tweet_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["FailureActionsResponse"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    ignore_failure_items_api_v1_library_failures_ignore_post: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["FailureIgnoreRequest"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["WriteActionResponse"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    restore_failure_items_api_v1_library_failures_restore_post: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["FailureSelectionRequest"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["WriteActionResponse"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    retry_failure_items_api_v1_library_failures_retry_post: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["FailureSelectionRequest"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["WriteActionResponse"];
                 };
             };
             /** @description Validation Error */

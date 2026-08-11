@@ -1797,6 +1797,7 @@ class SourceDiscoveryIntegrationTests(unittest.TestCase):
                 "failed_retryable_count": 0,
                 "verified_count": 0,
                 "skipped_verified_count": 0,
+                "skipped_ignored_count": 0,
                 "linked_pending_count": 0,
                 "failed_permanent_count": 0,
                 "cancelled_count": 0,

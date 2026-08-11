@@ -118,6 +118,7 @@ const TERMINAL_ITEM_STATUSES = new Set([
   "verified",
   "downloaded",
   "skipped_verified",
+  "skipped_ignored",
   "linked_pending",
   "failed_permanent",
   "cancelled",

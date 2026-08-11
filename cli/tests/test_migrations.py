@@ -39,6 +39,9 @@ class MigrationTests(unittest.TestCase):
                 "015_soft_delete_sources.py",
                 "016_add_source_manual_order.py",
                 "017_add_source_bulk_tasks.py",
+                "018_add_failure_triage.py",
+                "019_harden_failure_triage.py",
+                "020_add_failure_timestamps.py",
             ],
         )
         upgrade.assert_called_once()
@@ -50,7 +53,7 @@ class MigrationTests(unittest.TestCase):
 
         with (
             patch("xarchiver.migrations.get_settings", return_value=settings),
-            patch("xarchiver.migrations.current_alembic_revision", return_value="017_add_source_bulk_tasks"),
+            patch("xarchiver.migrations.current_alembic_revision", return_value="020_add_failure_timestamps"),
             patch("xarchiver.migrations.command.upgrade") as upgrade,
         ):
             self.assertEqual(migrate(), [])
@@ -91,6 +94,9 @@ class MigrationTests(unittest.TestCase):
                 "015_soft_delete_sources.py",
                 "016_add_source_manual_order.py",
                 "017_add_source_bulk_tasks.py",
+                "018_add_failure_triage.py",
+                "019_harden_failure_triage.py",
+                "020_add_failure_timestamps.py",
             ],
         )
 
@@ -300,6 +306,61 @@ class MigrationTests(unittest.TestCase):
         self.assertIn("first_discovered_scan_run_id", sql)
         self.assertIn("last_dispatched_at", sql)
         self.assertIn("uq_source_bulk_tasks_active_schedule", sql)
+
+    def test_failure_triage_revision_adds_state_audit_and_queue_status(self) -> None:
+        module = importlib.import_module("xarchiver.alembic.versions.018_add_failure_triage")
+        captured_sql: list[str] = []
+
+        with patch.object(module.op, "execute", side_effect=captured_sql.append):
+            module.upgrade()
+
+        sql = captured_sql[0]
+        self.assertIn("create table if not exists failure_dispositions", sql)
+        self.assertIn("create table if not exists failure_action_events", sql)
+        self.assertIn("'skipped_ignored'", sql)
+        self.assertIn("trg_tweets_clear_failure_disposition", sql)
+
+    def test_failure_triage_hardening_only_clears_on_success_and_audits_resolution(self) -> None:
+        module = importlib.import_module("xarchiver.alembic.versions.019_harden_failure_triage")
+        captured_sql: list[str] = []
+
+        with patch.object(module.op, "execute", side_effect=captured_sql.append):
+            module.upgrade()
+
+        sql = captured_sql[0]
+        self.assertIn("'resolved'", sql)
+        self.assertIn("new.download_status in ('downloaded', 'verified')", sql)
+        self.assertIn("insert into failure_action_events", sql)
+
+        captured_sql.clear()
+        with patch.object(module.op, "execute", side_effect=captured_sql.append):
+            module.downgrade()
+
+        downgrade_sql = captured_sql[0]
+        self.assertIn("delete from failure_dispositions d", downgrade_sql)
+        self.assertIn("t.download_status not in ('failed_retryable', 'failed_permanent', 'corrupt')", downgrade_sql)
+
+    def test_failure_timestamp_revision_uses_dedicated_trigger_managed_columns(self) -> None:
+        module = importlib.import_module("xarchiver.alembic.versions.020_add_failure_timestamps")
+        captured_sql: list[str] = []
+
+        with patch.object(module.op, "execute", side_effect=captured_sql.append):
+            module.upgrade()
+
+        sql = captured_sql[0]
+        self.assertIn("alter table tweets", sql)
+        self.assertIn("alter table archive_run_items", sql)
+        self.assertIn("add column if not exists failure_at timestamptz", sql)
+        self.assertIn("trg_tweets_set_failure_at", sql)
+        self.assertIn("trg_archive_run_items_set_failure_at", sql)
+
+        captured_sql.clear()
+        with patch.object(module.op, "execute", side_effect=captured_sql.append):
+            module.downgrade()
+
+        downgrade_sql = captured_sql[0]
+        self.assertIn("drop trigger if exists trg_tweets_set_failure_at", downgrade_sql)
+        self.assertIn("drop column if exists failure_at", downgrade_sql)
 
 
 if __name__ == "__main__":

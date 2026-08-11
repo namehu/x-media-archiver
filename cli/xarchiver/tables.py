@@ -76,7 +76,18 @@ tweets = Table(
     Column("last_error", Text),
     Column("retry_count", Integer),
     Column("last_attempt_at", DateTime(timezone=True)),
+    Column("failure_at", DateTime(timezone=True)),
     Column("updated_at", DateTime(timezone=True)),
+)
+
+failure_dispositions = Table(
+    "failure_dispositions",
+    metadata,
+    Column("tweet_id", Text, ForeignKey("tweets.tweet_id", ondelete="CASCADE"), primary_key=True),
+    Column("reason", Text),
+    Column("note", Text),
+    Column("ignored_at", DateTime(timezone=True), nullable=False),
+    Column("updated_at", DateTime(timezone=True), nullable=False),
 )
 
 media_assets = Table(
@@ -137,16 +148,40 @@ archive_run_items = Table(
     Column("id", BigInteger),
     Column("archive_run_id", BigInteger),
     Column("tweet_id", Text),
+    Column("input_payload", JSONB),
     Column("status", Text),
     Column("retry_count", Integer),
+    Column("last_attempt_at", DateTime(timezone=True)),
     Column("next_attempt_at", DateTime(timezone=True)),
+    Column("error_category", Text),
+    Column("error_message", Text),
+    Column("linked_item_id", BigInteger),
+    Column("worker_id", Text),
     Column("lease_expires_at", DateTime(timezone=True)),
+    Column("claimed_at", DateTime(timezone=True)),
     Column("cancel_requested", Boolean),
     Column("downloaded_bytes", BigInteger),
     Column("total_bytes", BigInteger),
     Column("speed_bps", BigInteger),
     Column("progress_message", Text),
     Column("last_progress_at", DateTime(timezone=True)),
+    Column("failure_at", DateTime(timezone=True)),
+    Column("created_at", DateTime(timezone=True)),
+    Column("updated_at", DateTime(timezone=True)),
+)
+
+failure_action_events = Table(
+    "failure_action_events",
+    metadata,
+    Column("id", BigInteger, primary_key=True),
+    Column("tweet_id", Text, ForeignKey("tweets.tweet_id", ondelete="CASCADE"), nullable=False),
+    Column("action", Text, nullable=False),
+    Column("previous_status", Text, nullable=False),
+    Column("reason", Text),
+    Column("note", Text),
+    Column("archive_run_id", BigInteger, ForeignKey("archive_runs.id", ondelete="SET NULL")),
+    Column("result", JSONB, nullable=False),
+    Column("created_at", DateTime(timezone=True), nullable=False),
 )
 
 archive_sources = Table(

@@ -7,6 +7,7 @@
 from __future__ import annotations
 
 import logging
+from contextlib import nullcontext
 from pathlib import Path
 from threading import Event, Thread
 from typing import Any
@@ -17,8 +18,10 @@ from sqlalchemy import (
     and_,
     bindparam,
     case,
+    delete,
     exists,
     func,
+    insert,
     or_,
     select,
     update,
@@ -34,17 +37,23 @@ from xarchiver.row_models import (
     ArchiveRunAttemptRow,
     ArchiveRunItemRow,
     ArchiveRunRow,
-    DownloadStatusRow,
     IdRow,
     LatestItemErrorRow,
     StatusCountRow,
+    TweetQueueStateRow,
     TweetStatusRow,
     UrlRow,
 )
 from xarchiver.services.library import get_library_snapshot
 from xarchiver.services.operation_logs import redact_sensitive_text
 from xarchiver.sql_builder import compile_query
-from xarchiver.tables import archive_run_items, archive_runs, tweets
+from xarchiver.tables import (
+    archive_run_items,
+    archive_runs,
+    failure_action_events,
+    failure_dispositions,
+    tweets,
+)
 from xarchiver.workflow import process_tweet_scope
 
 logger = logging.getLogger(__name__)
@@ -53,6 +62,7 @@ HEARTBEAT_SECONDS = 20
 ACTIVE_ITEM_STATUSES = ("pending", "blocked", "processing", "failed_retryable")
 RUNNABLE_RUN_STATUSES = ("queued", "running")
 SOURCE_BLOCKING_RUN_STATUSES = ("queued", "running", "paused")
+FAILURE_TWEET_STATUSES = ("failed_retryable", "failed_permanent", "corrupt")
 
 
 class WorkerLeaseLost(RuntimeError):
@@ -98,6 +108,9 @@ def submit_archive_batch(
     trigger_type: str,
     input_path: str | None = None,
     source_id: int | None = None,
+    *,
+    _connection: Any | None = None,
+    _defer_publish: bool = False,
 ) -> dict[str, object]:
     """规范化输入记录，并创建一个排队中的归档运行。"""
 
@@ -112,11 +125,20 @@ def submit_archive_batch(
         "queued_count": 0,
         "blocked_count": 0,
         "skipped_verified_count": 0,
+        "skipped_ignored_count": 0,
         "linked_pending_count": 0,
         "linked_active_count": 0,
         "skipped_completed_count": 0,
     }
-    with connect() as conn:
+    owns_connection = _connection is None
+    connection_context = connect() if owns_connection else nullcontext(_connection)
+    with connection_context as conn:
+        with conn.cursor() as cur:
+            # Every writer that combines the per-Tweet advisory lock with row
+            # locks must acquire them in this order to avoid cross-process
+            # advisory-lock/row-lock deadlocks.
+            for tweet_id in sorted(str(row["tweet_id"]) for row in unique_rows):
+                cur.execute("select pg_advisory_xact_lock(hashtextextended(%s, 0))", (tweet_id,))
         upsert_tweets(unique_rows, conn)
         with conn.cursor() as cur:
             blocked_by_run_id = find_source_blocker(cur, source_id)
@@ -153,11 +175,18 @@ def submit_archive_batch(
             run_id = IdRow.model_validate(dict(cur.fetchone())).id
             for row in unique_rows:
                 tweet_id = str(row["tweet_id"])
-                # 通过每条 tweet 的顾问锁做串行化，避免两个运行并发
-                # 判断同一条推文到底应该入队还是关联已有任务。
-                cur.execute("select pg_advisory_xact_lock(hashtextextended(%s, 0))", (tweet_id,))
-                cur.execute("select download_status from tweets where tweet_id = %s for update", (tweet_id,))
-                tweet_status = DownloadStatusRow.model_validate(dict(cur.fetchone())).download_status
+                cur.execute(
+                    """
+                    select t.download_status, (d.tweet_id is not null) as failure_ignored
+                    from tweets t
+                    left join failure_dispositions d on d.tweet_id = t.tweet_id
+                    where t.tweet_id = %s
+                    for update of t
+                    """,
+                    (tweet_id,),
+                )
+                queue_state = TweetQueueStateRow.model_validate(dict(cur.fetchone()))
+                tweet_status = queue_state.download_status
                 cur.execute(
                     """
                     select id from archive_run_items
@@ -169,7 +198,11 @@ def submit_archive_batch(
                 active_item_row = cur.fetchone()
                 active_item = IdRow.model_validate(dict(active_item_row)) if active_item_row else None
                 linked_id = None
-                if tweet_status in {"verified", "downloaded", "skipped"}:
+                if queue_state.failure_ignored and tweet_status in {"failed_retryable", "failed_permanent", "corrupt"}:
+                    item_status = "skipped_ignored"
+                    counts["skipped_ignored_count"] += 1
+                    counts["skipped_completed_count"] += 1
+                elif tweet_status in {"verified", "downloaded", "skipped"}:
                     item_status = "skipped_verified"
                     counts["skipped_verified_count"] += 1
                     counts["skipped_completed_count"] += 1
@@ -205,7 +238,8 @@ def submit_archive_batch(
                 """,
                 (status, Jsonb(result), status, status, run_id),
             )
-        conn.commit()
+        if owns_connection:
+            conn.commit()
 
     result = {
         "run_id": run_id,
@@ -215,21 +249,33 @@ def submit_archive_batch(
         "input": input_summary,
         "tasks": counts,
     }
+    if not _defer_publish:
+        publish_archive_submission(result, trigger_type=trigger_type, input_path=input_path)
+    return result
+
+
+def publish_archive_submission(
+    result: dict[str, object],
+    *,
+    trigger_type: str,
+    input_path: str | None = None,
+) -> None:
+    """在归档提交事务完成后发布运行事件。"""
+
     publish_event(
         "archive_runs",
         "archive.run.submitted",
         {
-            "run_id": run_id,
-            "status": status,
+            "run_id": result["run_id"],
+            "status": result["status"],
             "trigger_type": trigger_type,
             "input_path": input_path,
-            "source_id": source_id,
-            "blocked_by_run_id": blocked_by_run_id,
-            "input": input_summary,
-            "tasks": counts,
+            "source_id": result.get("source_id"),
+            "blocked_by_run_id": result.get("blocked_by_run_id"),
+            "input": result["input"],
+            "tasks": result["tasks"],
         },
     )
-    return result
 
 
 def find_source_blocker(cur, source_id: int | None, exclude_run_id: int | None = None) -> int | None:
@@ -350,11 +396,16 @@ def has_runnable_download_work(retry_limit: int = 3) -> bool:
             archive_run_items.join(
                 archive_runs,
                 archive_runs.c.id == archive_run_items.c.archive_run_id,
+            ).outerjoin(
+                failure_dispositions,
+                failure_dispositions.c.tweet_id == archive_run_items.c.tweet_id,
             )
         )
         .where(
             archive_runs.c.status.in_({"queued", "running"}),
             archive_run_items.c.retry_count < retry_limit,
+            archive_run_items.c.cancel_requested.is_not(True),
+            failure_dispositions.c.tweet_id.is_(None),
             or_(
                 archive_run_items.c.status == "pending",
                 and_(
@@ -437,15 +488,18 @@ def claim_next_items(
                   select i.archive_run_id
                   from archive_run_items i
                   join archive_runs r on r.id = i.archive_run_id
+                  left join failure_dispositions d on d.tweet_id = i.tweet_id
                   where (
                       i.status in ('pending', 'failed_retryable')
                       or (i.status = 'processing' and (i.lease_expires_at is null or i.lease_expires_at < now()))
                     )
                     and r.status in ('queued', 'running')
+                    and i.cancel_requested is not true
+                    and d.tweet_id is null
                     and i.retry_count < %s
                     and (i.next_attempt_at is null or i.next_attempt_at <= now())
                   order by r.last_dispatched_at asc nulls first, r.started_at asc, i.created_at asc, i.id asc
-                  for update skip locked
+                  for update of i skip locked
                   limit 1
                 ),
                 candidate_items as materialized (
@@ -453,16 +507,19 @@ def claim_next_items(
                   from archive_run_items i
                   join candidate_run r on r.archive_run_id = i.archive_run_id
                   join archive_runs ar on ar.id = i.archive_run_id
+                  left join failure_dispositions d on d.tweet_id = i.tweet_id
                   where (
                       i.status in ('pending', 'failed_retryable')
                       or (i.status = 'processing' and (i.lease_expires_at is null or i.lease_expires_at < now()))
                     )
                     and ar.status in ('queued', 'running')
+                    and i.cancel_requested is not true
+                    and d.tweet_id is null
                     and i.retry_count < %s
                     and (i.next_attempt_at is null or i.next_attempt_at <= now())
                   order by i.id asc
                   limit %s
-                  for update skip locked
+                  for update of i skip locked
                 )
                 update archive_run_items
                 set status = 'processing',
@@ -530,7 +587,20 @@ def update_processed_items(
                 tweet_id = str(row["tweet_id"])
                 retries = int(row["retry_count"]) + 1
                 tweet_status = tweet_statuses.get(tweet_id, "failed_retryable")
-                cancel_requested = bool(row.get("cancel_requested"))
+                cur.execute(
+                    """
+                    select cancel_requested
+                    from archive_run_items
+                    where id = %s
+                      and (%s::text is null or worker_id = %s)
+                    for update
+                    """,
+                    (int(row["id"]), worker_id, worker_id),
+                )
+                current_item = cur.fetchone()
+                if current_item is None:
+                    raise WorkerLeaseLost("archive_item_lease_lost")
+                cancel_requested = bool(current_item["cancel_requested"])
                 # 队列条目的最终状态以下载流水线结束后的 tweet/media 结果为准。
                 if cancel_requested and tweet_status != "verified":
                     item_status = "cancelled"
@@ -603,16 +673,35 @@ def fail_processing_items(
         with conn.cursor() as cur:
             for row in claimed:
                 retries = int(row["retry_count"]) + 1
-                status = "failed_permanent" if retries >= settings.retry_limit else "failed_retryable"
+                cur.execute(
+                    """
+                    select cancel_requested
+                    from archive_run_items
+                    where id = %s
+                      and (%s::text is null or worker_id = %s)
+                    for update
+                    """,
+                    (int(row["id"]), worker_id, worker_id),
+                )
+                current_item = cur.fetchone()
+                if current_item is None:
+                    raise WorkerLeaseLost("archive_item_lease_lost")
+                cancel_requested = bool(current_item["cancel_requested"])
+                status = (
+                    "cancelled"
+                    if cancel_requested
+                    else "failed_permanent" if retries >= settings.retry_limit else "failed_retryable"
+                )
                 cur.execute(
                     """
                     update archive_run_items
                     set status = %s, retry_count = %s,
                         next_attempt_at = case when %s = 'failed_retryable'
                           then now() + make_interval(mins => %s) else null end,
-                        error_category = 'worker_error', error_message = %s,
+                        error_category = case when %s = 'cancelled' then null else 'worker_error' end,
+                        error_message = case when %s = 'cancelled' then null else %s end,
                         worker_id = null, lease_expires_at = null,
-                        progress_message = %s,
+                        progress_message = case when %s = 'cancelled' then '已取消' else %s end,
                         last_progress_at = now(),
                         updated_at = now()
                     where id = %s
@@ -623,7 +712,10 @@ def fail_processing_items(
                         retries,
                         status,
                         settings.retry_backoff_minutes * retries,
+                        status,
+                        status,
                         error,
+                        status,
                         error,
                         int(row["id"]),
                         worker_id,
@@ -692,6 +784,7 @@ def count_run_items(run_id: int) -> dict[str, int]:
         "queued_count": 0,
         "blocked_count": 0,
         "skipped_verified_count": 0,
+        "skipped_ignored_count": 0,
         "linked_pending_count": 0,
         "linked_active_count": 0,
         "skipped_completed_count": 0,
@@ -727,6 +820,8 @@ def count_run_items(run_id: int) -> dict[str, int]:
             counts["failed_count"] += value
         elif status == "skipped_verified":
             counts["skipped_verified_count"] += value
+        elif status == "skipped_ignored":
+            counts["skipped_ignored_count"] += value
         elif status == "linked_pending":
             counts["linked_pending_count"] += value
         elif status == "verified":
@@ -897,6 +992,7 @@ def build_run_result(
                 "queued_count",
                 "blocked_count",
                 "skipped_verified_count",
+                "skipped_ignored_count",
                 "linked_pending_count",
                 "linked_active_count",
                 "skipped_completed_count",
@@ -1169,8 +1265,11 @@ def retry_run(run_id: int) -> dict[str, object]:
     ]
     if not retryable:
         raise ValueError("archive_run_has_no_failed_items")
-    reset_tweets_for_retry([extract_tweet_id(str(row["url"])) for row in retryable])
-    result = submit_archive_batch(retryable, "manual_retry")
+    result = submit_explicit_retry_batch(
+        retryable,
+        "manual_retry",
+        original_run_id=run_id,
+    )
     publish_event(
         "archive_runs",
         "archive.run.retried",
@@ -1390,9 +1489,7 @@ def submit_requeue_batch(statuses: list[str], limit: int | None = None) -> dict[
             rows = [UrlRow.model_validate(dict(row)) for row in cur.fetchall()]
     if not rows:
         return {"requeued": 0, "statuses": statuses}
-    tweet_ids = [extract_tweet_id(str(row["url"])) for row in rows]
-    reset_tweets_for_retry(tweet_ids)
-    return submit_archive_batch([{"url": row["url"]} for row in rows], "manual_requeue")
+    return submit_explicit_retry_batch([{"url": row["url"]} for row in rows], "manual_requeue")
 
 
 def build_requeue_urls_query(statuses: list[str], limit: int | None = None) -> tuple[str, dict[str, object]]:
@@ -1426,11 +1523,37 @@ def fetch_retry_urls(run_id: int) -> list[UrlRow]:
             return [UrlRow.model_validate(dict(row)) for row in cur.fetchall()]
 
 
-def reset_tweets_for_retry(tweet_ids: list[str]) -> None:
-    """重置推文状态，使下载流水线把它们重新视为 pending。"""
+def submit_explicit_retry_batch(
+    records: list[dict[str, Any]],
+    trigger_type: str,
+    *,
+    original_run_id: int | None = None,
+) -> dict[str, object]:
+    """原子清理失败处置、重置 Tweet，并创建可审计重试运行。"""
 
+    normalized = normalize_records(records, trigger_type)
+    tweet_ids = sorted({str(row["tweet_id"]) for row in normalized})
     with connect() as conn:
         with conn.cursor() as cur:
+            for tweet_id in tweet_ids:
+                cur.execute("select pg_advisory_xact_lock(hashtextextended(%s, 0))", (tweet_id,))
+            cur.execute(
+                """
+                select tweet_id, download_status
+                from tweets
+                where tweet_id = any(%s)
+                order by tweet_id
+                for update
+                """,
+                (tweet_ids,),
+            )
+            previous_statuses = {
+                str(row["tweet_id"]): str(row["download_status"])
+                for row in cur.fetchall()
+            }
+            statement = delete(failure_dispositions).where(failure_dispositions.c.tweet_id.in_(tweet_ids))
+            sql, params = compile_query(statement)
+            cur.execute(sql, params)
             cur.execute(
                 """
                 update tweets set download_status = 'pending', last_error = null, updated_at = now()
@@ -1438,7 +1561,33 @@ def reset_tweets_for_retry(tweet_ids: list[str]) -> None:
                 """,
                 (tweet_ids,),
             )
+            result = submit_archive_batch(
+                records,
+                trigger_type,
+                _connection=conn,
+                _defer_publish=True,
+            )
+            for tweet_id, previous_status in previous_statuses.items():
+                if previous_status not in FAILURE_TWEET_STATUSES:
+                    continue
+                event_statement = insert(failure_action_events).values(
+                    tweet_id=tweet_id,
+                    action="retry",
+                    previous_status=previous_status,
+                    archive_run_id=int(result["run_id"]),
+                    result=Jsonb(
+                        {
+                            "trigger_type": trigger_type,
+                            "original_run_id": original_run_id,
+                        }
+                    ),
+                    created_at=func.now(),
+                )
+                sql, params = compile_query(event_statement)
+                cur.execute(sql, params)
         conn.commit()
+    publish_archive_submission(result, trigger_type=trigger_type)
+    return result
 
 
 def log_queue_event(event: str, **details: object) -> None:

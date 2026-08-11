@@ -12,7 +12,10 @@ from xarchiver.api.deps import execute_write_action, raise_api_error
 from xarchiver.api.schemas import (
     AuthorOptionsResponse,
     DuplicatesPageResponse,
+    FailureActionsResponse,
+    FailureIgnoreRequest,
     FailurePageResponse,
+    FailureSelectionRequest,
     MediaDeleteRequest,
     MediaPageResponse,
     PostFeedPageResponse,
@@ -22,7 +25,14 @@ from xarchiver.api.schemas import (
 )
 from xarchiver.config import get_settings
 from xarchiver.core.errors import ArchiverError
-from xarchiver.services.failures import list_failures
+from xarchiver.services.failures import (
+    FAILURE_STATUSES,
+    ignore_failures,
+    list_failure_actions,
+    list_failures,
+    restore_failures,
+    retry_failures,
+)
 from xarchiver.services.library import (
     get_author_options,
     get_summary,
@@ -134,12 +144,73 @@ def tweet_detail(tweet_id: str) -> dict[str, object]:
 
 @router.get("/failures", response_model=FailurePageResponse)
 def failures(
+    disposition: str = Query("open", pattern="^(open|ignored|all)$"),
+    status: list[str] | None = Query(None),
+    error_category: str | None = Query(None, max_length=200),
+    search: str | None = Query(None, max_length=200),
+    sort: str = Query("recent", pattern="^(recent|oldest|retries)$"),
     limit: int = Query(100, ge=1, le=500),
     offset: int = Query(0, ge=0),
 ) -> dict[str, object]:
     """分页返回失败记录列表。"""
 
-    return list_failures(limit=limit, offset=offset)
+    if status and any(value not in FAILURE_STATUSES for value in status):
+        raise HTTPException(status_code=400, detail="invalid_failure_status")
+    return list_failures(
+        limit=limit,
+        offset=offset,
+        disposition=disposition,
+        statuses=status,
+        error_category=error_category,
+        search=search,
+        sort=sort,
+    )
+
+
+@router.get("/failures/{tweet_id}/actions", response_model=FailureActionsResponse)
+def failure_actions(tweet_id: str, limit: int = Query(100, ge=1, le=200)) -> dict[str, object]:
+    """返回单条 Tweet 的失败处置时间线。"""
+
+    return list_failure_actions(tweet_id, limit=limit)
+
+
+@router.post("/failures/ignore", response_model=WriteActionResponse)
+def ignore_failure_items(request: FailureIgnoreRequest) -> dict[str, object]:
+    """忽略精确选择的失败项，并停止尚未完成的自动重试。"""
+
+    try:
+        return execute_write_action(
+            "ignore-failures",
+            lambda: ignore_failures(request.tweet_ids, request.reason, request.note),
+        )
+    except (ArchiverError, ValueError) as exc:
+        raise_api_error(exc)
+
+
+@router.post("/failures/restore", response_model=WriteActionResponse)
+def restore_failure_items(request: FailureSelectionRequest) -> dict[str, object]:
+    """把已忽略失败项恢复到待处理工作台。"""
+
+    try:
+        return execute_write_action(
+            "restore-failures",
+            lambda: restore_failures(request.tweet_ids),
+        )
+    except (ArchiverError, ValueError) as exc:
+        raise_api_error(exc)
+
+
+@router.post("/failures/retry", response_model=WriteActionResponse)
+def retry_failure_items(request: FailureSelectionRequest) -> dict[str, object]:
+    """为精确选择的失败项创建一次立即执行的手动重试运行。"""
+
+    try:
+        return execute_write_action(
+            "retry-failures",
+            lambda: retry_failures(request.tweet_ids),
+        )
+    except (ArchiverError, ValueError) as exc:
+        raise_api_error(exc)
 
 
 @router.get("/duplicates", response_model=DuplicatesPageResponse)

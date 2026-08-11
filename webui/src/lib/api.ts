@@ -91,6 +91,62 @@ export type FailureRow = {
   latest_error_message?: string | null;
   latest_exit_code?: number | null;
   latest_finished_at?: string | null;
+  failure_at?: string | null;
+  disposition: "open" | "ignored";
+  ignored_at?: string | null;
+  ignore_reason?: string | null;
+  ignore_note?: string | null;
+  latest_action?: "ignore" | "restore" | "retry" | "resolved" | null;
+  latest_action_at?: string | null;
+  latest_action_archive_run_id?: number | null;
+};
+
+export type FailureAggregates = {
+  total_count: number;
+  open_count: number;
+  ignored_count: number;
+  retryable_count: number;
+  permanent_count: number;
+  corrupt_count: number;
+  retry_total: number;
+};
+
+export type FailureCategory = {
+  error_category: string;
+  count: number;
+};
+
+export type FailurePageResponse = PageResponse<FailureRow> & {
+  aggregates: FailureAggregates;
+  disposition_counts: FailureAggregates;
+  error_categories: FailureCategory[];
+};
+
+export type FailureActionEvent = {
+  id: number;
+  tweet_id: string;
+  action: "ignore" | "restore" | "retry" | "resolved";
+  previous_status: string;
+  reason?: string | null;
+  note?: string | null;
+  archive_run_id?: number | null;
+  result: Record<string, unknown>;
+  created_at: string;
+};
+
+export type FailureActionsResponse = {
+  rows: FailureActionEvent[];
+  count: number;
+};
+
+export type FailureActionResult = {
+  requested_count: number;
+  succeeded_count: number;
+  skipped_count: number;
+  skip_reasons: Record<string, number>;
+  run_id?: number | null;
+  cancelled_items?: number;
+  cancel_requested_items?: number;
 };
 
 export type PageResponse<T> = {
@@ -159,6 +215,7 @@ export type ArchiveRunTasks = {
   queued_count: number;
   blocked_count?: number;
   skipped_verified_count: number;
+  skipped_ignored_count?: number;
   linked_pending_count: number;
   linked_active_count?: number;
   skipped_completed_count?: number;
@@ -239,6 +296,7 @@ export type ArchiveSubmission = {
     queued_count: number;
     blocked_count?: number;
     skipped_verified_count: number;
+    skipped_ignored_count?: number;
     linked_pending_count: number;
     linked_active_count?: number;
     skipped_completed_count?: number;
@@ -532,6 +590,7 @@ export type SourceDownloadSummary = {
     failed_retryable_count: number;
     verified_count: number;
     skipped_verified_count: number;
+    skipped_ignored_count: number;
     linked_pending_count: number;
     failed_permanent_count: number;
     cancelled_count: number;

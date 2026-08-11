@@ -183,6 +183,7 @@ GET /api/v1/library/posts
 DELETE /api/v1/library/media
 GET /api/v1/library/tweets/{tweet_id}
 GET /api/v1/library/failures
+GET /api/v1/library/failures/{tweet_id}/actions
 GET /api/v1/library/duplicates
 GET /api/v1/media-file/{relative_path}
 GET /api/v1/archive-runs
@@ -205,6 +206,9 @@ POST /api/v1/actions/recover-interrupted
 POST /api/v1/actions/export
 POST /api/v1/archive-runs
 POST /api/v1/archive-runs/{run_id}/retry
+POST /api/v1/library/failures/ignore
+POST /api/v1/library/failures/restore
+POST /api/v1/library/failures/retry
 POST /api/v1/sources
 POST /api/v1/sources/{source_id}/records
 POST /api/v1/sources/{source_id}/downloads
@@ -237,6 +241,8 @@ http://127.0.0.1:5173
 ```
 
 WebUI 使用 React、TanStack Query、React Router、Tailwind，以及位于 `webui/src/components/ui` 下的本地 shadcn 风格 UI 组件。
+
+Failures 是可操作的失败工作台：默认只展示待处理项，可切换已忽略或全部，支持服务端状态、错误分类、Tweet ID、作者和错误摘要筛选；当前页最多批量选择 100 项进行精确重试、忽略或恢复。忽略会阻止后续普通来源提交再次入队，但保留 Tweet 失败状态和追加式处置记录；恢复不会自动下载，手动重试会创建新的 `manual_retry` 运行并刷新重试预算。失败 CSV 会同时导出待处理与已忽略项的处置字段。
 
 当前页面：
 

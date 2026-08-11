@@ -144,12 +144,27 @@ class QueueIntegrationTests(unittest.TestCase):
                     "update tweets set download_status = 'failed_permanent' where tweet_id = %s",
                     (self.tweet_ids[1],),
                 )
+                cur.execute(
+                    "insert into failure_dispositions (tweet_id, reason) values (%s, 'other')",
+                    (self.tweet_ids[1],),
+                )
             conn.commit()
 
         retried = retry_run(int(original["run_id"]))
 
         self.assertNotEqual(retried["run_id"], original["run_id"])
         self.assertEqual(retried["tasks"]["queued_count"], 1)
+        with connect() as conn:
+            with conn.cursor() as cur:
+                cur.execute("select count(*)::int as count from failure_dispositions where tweet_id = %s", (self.tweet_ids[1],))
+                self.assertEqual(int(cur.fetchone()["count"]), 0)
+                cur.execute(
+                    "select action, archive_run_id from failure_action_events where tweet_id = %s order by id desc limit 1",
+                    (self.tweet_ids[1],),
+                )
+                event = cur.fetchone()
+        self.assertEqual(event["action"], "retry")
+        self.assertEqual(int(event["archive_run_id"]), int(retried["run_id"]))
 
     def test_worker_processes_claimed_run_scope_and_completes_item(self) -> None:
         submitted = submit_archive_batch([self.record(self.tweet_ids[2])], "test_queue_worker")

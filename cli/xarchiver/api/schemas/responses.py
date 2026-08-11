@@ -250,6 +250,7 @@ class ArchiveTaskCountsResponse(FlexibleResponse):
     queued_count: int = 0
     blocked_count: int = 0
     skipped_verified_count: int = 0
+    skipped_ignored_count: int = 0
     linked_pending_count: int = 0
     linked_active_count: int = 0
     skipped_completed_count: int = 0
@@ -489,6 +490,46 @@ class FailureRowResponse(FlexibleResponse):
     latest_error_message: str | None = None
     latest_exit_code: int | None = None
     latest_finished_at: datetime | None = None
+    failure_at: datetime | None = None
+    disposition: str = "open"
+    ignored_at: datetime | None = None
+    ignore_reason: str | None = None
+    ignore_note: str | None = None
+    latest_action: str | None = None
+    latest_action_at: datetime | None = None
+    latest_action_archive_run_id: int | None = None
+
+
+class FailureAggregateResponse(FlexibleResponse):
+    total_count: int = 0
+    open_count: int = 0
+    ignored_count: int = 0
+    retryable_count: int = 0
+    permanent_count: int = 0
+    corrupt_count: int = 0
+    retry_total: int = 0
+
+
+class FailureCategoryResponse(FlexibleResponse):
+    error_category: str
+    count: int
+
+
+class FailureActionEventResponse(FlexibleResponse):
+    id: int
+    tweet_id: str
+    action: str
+    previous_status: str
+    reason: str | None = None
+    note: str | None = None
+    archive_run_id: int | None = None
+    result: dict[str, Any] = Field(default_factory=dict)
+    created_at: datetime
+
+
+class FailureActionsResponse(FlexibleResponse):
+    rows: list[FailureActionEventResponse]
+    count: int
 
 
 class DuplicateMediaResponse(FlexibleResponse):
@@ -518,6 +559,9 @@ class MediaPageResponse(PageMetaResponse):
 
 class FailurePageResponse(PageMetaResponse):
     rows: list[FailureRowResponse]
+    aggregates: FailureAggregateResponse = Field(default_factory=FailureAggregateResponse)
+    disposition_counts: FailureAggregateResponse = Field(default_factory=FailureAggregateResponse)
+    error_categories: list[FailureCategoryResponse] = Field(default_factory=list)
 
 
 class ArchiveRunsPageResponse(PageMetaResponse):
@@ -677,6 +721,7 @@ class SourceDownloadCountsResponse(FlexibleResponse):
     failed_retryable_count: int = 0
     verified_count: int = 0
     skipped_verified_count: int = 0
+    skipped_ignored_count: int = 0
     linked_pending_count: int = 0
     failed_permanent_count: int = 0
     cancelled_count: int = 0

@@ -1,6 +1,7 @@
-import { useMemo, useState } from "react";
+import { useEffect, useMemo, useState } from "react";
 import { Activity, AlertTriangle, Clock3, FileInput, ListFilter, RefreshCw, Search, UploadCloud } from "lucide-react";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
+import { useSearchParams } from "react-router-dom";
 import { apiGet, apiPost, type ArchiveRun, type ArchiveRunControl, type ArchiveRunDetail, type ArchiveRunPageResponse, type ArchiveSubmission } from "../../lib/api";
 import { errorLabel, statusLabel, triggerLabel } from "../../lib/formatters";
 import { formatDateTime } from "../../lib/utils";
@@ -50,10 +51,12 @@ const eventLabels: Record<string, string> = {
 
 export function ArchiveQueuePage() {
   const queryClient = useQueryClient();
+  const [searchParams] = useSearchParams();
   const events = useServerEvents(["archive_runs", "worker"]);
   const shouldFallbackPoll = shouldUseRuntimePollingFallback(events.status, events.transport);
   const [urls, setUrls] = useState("");
-  const [selectedRunId, setSelectedRunId] = useState<number | null>(null);
+  const linkedRunId = parseRunId(searchParams.get("run"));
+  const [selectedRunId, setSelectedRunId] = useState<number | null>(linkedRunId);
   const [feedback, setFeedback] = useState<ArchiveSubmission | null>(null);
   const [parseError, setParseError] = useState<string | null>(null);
   const [activeTab, setActiveTab] = useState<QueueTab>("all");
@@ -61,6 +64,10 @@ export function ArchiveQueuePage() {
   const [offset, setOffset] = useState(0);
 
   const preview = useMemo(() => parseUrlInput(urls), [urls]);
+
+  useEffect(() => {
+    if (linkedRunId !== null) setSelectedRunId(linkedRunId);
+  }, [linkedRunId]);
   const validRecords = useMemo(
     () =>
       preview.rows
@@ -315,6 +322,11 @@ export function ArchiveQueuePage() {
   );
 }
 
+function parseRunId(value: string | null) {
+  const parsed = Number(value);
+  return Number.isSafeInteger(parsed) && parsed > 0 ? parsed : null;
+}
+
 function QueueHero({
   progress,
   activeRun,
@@ -428,7 +440,7 @@ function SubmitPanel({
         ) : null}
         {feedback ? (
           <div className="rounded-lg border border-brand/20 bg-brand-soft p-3 text-sm text-fg-primary">
-            Run #{feedback.run_id} · {statusLabel(feedback.status)} · {feedback.tasks.queued_count} 个已入队 · {feedback.tasks.skipped_verified_count} 个已归档 · {feedback.tasks.linked_pending_count} 个已有任务
+            Run #{feedback.run_id} · {statusLabel(feedback.status)} · {feedback.tasks.queued_count} 个已入队 · {feedback.tasks.skipped_verified_count} 个已归档 · {feedback.tasks.skipped_ignored_count ?? 0} 个已忽略 · {feedback.tasks.linked_pending_count} 个已有任务
           </div>
         ) : null}
       </CardContent>
@@ -678,15 +690,15 @@ function progressForRun(run: ArchiveRun) {
   if (run.status === "completed_with_failures" || run.status === "failed" || run.status === "stopped") return 100;
   const tasks = run.result?.tasks;
   if (!tasks) return run.status === "running" ? 32 : 8;
-  const total = tasks.queued_count + tasks.skipped_verified_count + tasks.linked_pending_count + tasks.verified_count + tasks.failed_count;
+  const total = tasks.queued_count + tasks.skipped_verified_count + (tasks.skipped_ignored_count ?? 0) + tasks.linked_pending_count + tasks.verified_count + tasks.failed_count;
   if (!total) return run.status === "running" ? 32 : 8;
-  const done = tasks.skipped_verified_count + tasks.linked_pending_count + tasks.verified_count + tasks.failed_count;
+  const done = tasks.skipped_verified_count + (tasks.skipped_ignored_count ?? 0) + tasks.linked_pending_count + tasks.verified_count + tasks.failed_count;
   return Math.round((done / total) * 100);
 }
 
 function statusDot(status?: string | null): "running" | "success" | "warning" | "danger" | "idle" {
   if (status === "running" || status === "queued" || status === "processing" || status === "downloading") return "running";
-  if (status === "completed" || status === "verified" || status === "downloaded" || status === "skipped_verified" || status === "linked_pending") return "success";
+  if (status === "completed" || status === "verified" || status === "downloaded" || status === "skipped_verified" || status === "skipped_ignored" || status === "linked_pending") return "success";
   if (status === "completed_with_failures" || status === "failed_retryable" || status === "blocked" || status === "paused") return "warning";
   if (status === "failed" || status === "failed_permanent" || status === "stopped" || status === "cancelled") return "danger";
   return "idle";
@@ -766,6 +778,7 @@ function RunSummary({ run }: { run: ArchiveRunDetail }) {
   const metrics = [
     ["已入队", tasks.queued_count],
     ["已归档", tasks.skipped_verified_count],
+    ["已忽略", tasks.skipped_ignored_count ?? 0],
     ["已有任务", tasks.linked_pending_count],
     ["已校验", tasks.verified_count],
     ["失败", tasks.failed_count],

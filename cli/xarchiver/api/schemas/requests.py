@@ -42,6 +42,18 @@ class MediaDeleteRequest(BaseModel):
     confirm_physical_delete: bool = False
 
 
+class FailureSelectionRequest(BaseModel):
+    tweet_ids: list[str] = Field(min_length=1, max_length=100)
+
+
+class FailureIgnoreRequest(FailureSelectionRequest):
+    reason: str | None = Field(
+        default=None,
+        pattern="^(not_needed|unavailable|unsupported|duplicate|other)$",
+    )
+    note: str | None = Field(default=None, max_length=500)
+
+
 # 归档队列请求
 class ArchiveRecord(BaseModel):
     url: str

@@ -16,6 +16,8 @@ from xarchiver.api.schemas import (
     AuthorOptionsResponse,
     BackfillRequest,
     DuplicatesPageResponse,
+    FailureIgnoreRequest,
+    FailureSelectionRequest,
     MediaDeleteRequest,
     PostFeedPageResponse,
     SourceBulkTaskCreateRequest,
@@ -76,6 +78,7 @@ class V1RouterSmokeTests(unittest.TestCase):
             "/api/v1/library/posts",
             "/api/v1/library/tweets/{tweet_id}",
             "/api/v1/library/failures",
+            "/api/v1/library/failures/{tweet_id}/actions",
             "/api/v1/library/duplicates",
             "/api/v1/archive-runs",
             "/api/v1/archive-runs/{run_id}",
@@ -119,6 +122,9 @@ class V1RouterSmokeTests(unittest.TestCase):
             "/api/v1/source-bulk-tasks/{task_id}/retry",
             "/api/v1/source-schedule-policies",
             "/api/v1/actions/verify",
+            "/api/v1/library/failures/ignore",
+            "/api/v1/library/failures/restore",
+            "/api/v1/library/failures/retry",
             "/api/v1/actions/requeue",
             "/api/v1/actions/recover-interrupted",
             "/api/v1/actions/export",
@@ -213,6 +219,63 @@ class V1RouterSmokeTests(unittest.TestCase):
         payload = AuthorOptionsResponse.model_validate(result).model_dump(mode="json")
         self.assertEqual(payload["rows"][0]["author_username"], "alice")
         mock.assert_called_once_with(query="@ali", limit=10)
+
+    def test_v1_library_failures_delegates_server_filters(self):
+        page = {
+            "rows": [],
+            "count": 0,
+            "total_count": 0,
+            "limit": 50,
+            "offset": 0,
+            "aggregates": {},
+            "disposition_counts": {},
+            "error_categories": [],
+        }
+        with patch("xarchiver.api.v1.library.list_failures", return_value=page) as list_page:
+            result = self.get_paths["/api/v1/library/failures"](
+                disposition="ignored",
+                status=["corrupt"],
+                error_category="sha256_mismatch",
+                search="alice",
+                sort="oldest",
+                limit=50,
+                offset=0,
+            )
+
+        self.assertEqual(result, page)
+        list_page.assert_called_once_with(
+            limit=50,
+            offset=0,
+            disposition="ignored",
+            statuses=["corrupt"],
+            error_category="sha256_mismatch",
+            search="alice",
+            sort="oldest",
+        )
+
+    def test_v1_failure_actions_use_serialized_write_entrypoints(self):
+        expected = {"requested_count": 1, "succeeded_count": 1, "skipped_count": 0, "skip_reasons": {}}
+        with (
+            patch("xarchiver.api.v1.library.ignore_failures", return_value=expected) as ignore,
+            patch("xarchiver.api.v1.library.restore_failures", return_value=expected) as restore,
+            patch("xarchiver.api.v1.library.retry_failures", return_value=expected) as retry,
+        ):
+            ignored = self.post_paths["/api/v1/library/failures/ignore"](
+                FailureIgnoreRequest(tweet_ids=["123"], reason="unsupported", note="later")
+            )
+            restored = self.post_paths["/api/v1/library/failures/restore"](
+                FailureSelectionRequest(tweet_ids=["123"])
+            )
+            retried = self.post_paths["/api/v1/library/failures/retry"](
+                FailureSelectionRequest(tweet_ids=["123"])
+            )
+
+        self.assertEqual(ignored["action"], "ignore-failures")
+        self.assertEqual(restored["action"], "restore-failures")
+        self.assertEqual(retried["action"], "retry-failures")
+        ignore.assert_called_once_with(["123"], "unsupported", "later")
+        restore.assert_called_once_with(["123"])
+        retry.assert_called_once_with(["123"])
 
     def test_v1_library_posts_delegates_grouped_filters(self):
         response = {
