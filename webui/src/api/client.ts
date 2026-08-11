@@ -37,6 +37,14 @@ export async function apiPost<T>(path: string, body: unknown, options: ApiReques
   return apiRequest<T>(path, { ...options, method: "POST", body });
 }
 
+export async function apiPut<T>(path: string, body: unknown, options: ApiRequestOptions = {}): Promise<T> {
+  return apiRequest<T>(path, { ...options, method: "PUT", body });
+}
+
+export async function apiPatch<T>(path: string, body: unknown, options: ApiRequestOptions = {}): Promise<T> {
+  return apiRequest<T>(path, { ...options, method: "PATCH", body });
+}
+
 export async function apiDelete<T>(path: string, options: ApiRequestOptions = {}): Promise<T> {
   return apiRequest<T>(path, { ...options, method: "DELETE" });
 }

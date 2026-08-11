@@ -6,6 +6,8 @@
 
 from __future__ import annotations
 
+from typing import Annotated
+
 from fastapi import APIRouter, HTTPException, Query, status
 
 from xarchiver.api.deps import execute_write_action, raise_api_error
@@ -79,20 +81,38 @@ def archive_sources(
     source_status: str | None = None,
     source_type: str | None = None,
     deleted: str = Query("active", pattern="^(active|deleted|all)$"),
-    sort_by: str = Query("manual_order", pattern="^(manual_order|updated_at|created_at)$"),
+    sort_by: str = Query(
+        "manual_order",
+        pattern=(
+            "^(manual_order|updated_at|created_at|latest_tweet_published_at|"
+            "last_success_at|unsubmitted_tweet_count|pending_download_count|schedule_next_run_at)$"
+        ),
+    ),
     sort_direction: str = Query("desc", pattern="^(asc|desc)$"),
+    search: Annotated[str | None, Query(max_length=200)] = None,
+    operational_filter: Annotated[
+        str | None,
+        Query(pattern="^(due|waiting_download|running|error|scheduled)$"),
+    ] = None,
 ) -> dict[str, object]:
     """分页查询来源列表。"""
 
     try:
+        kwargs: dict[str, object] = {
+            "status": source_status,
+            "source_type": source_type,
+            "deleted": deleted,
+            "sort_by": sort_by,
+            "sort_direction": sort_direction,
+            "limit": limit,
+            "offset": offset,
+        }
+        if search is not None:
+            kwargs["search"] = search
+        if operational_filter is not None:
+            kwargs["operational_filter"] = operational_filter
         page = list_sources_page(
-            status=source_status,
-            source_type=source_type,
-            deleted=deleted,
-            sort_by=sort_by,
-            sort_direction=sort_direction,
-            limit=limit,
-            offset=offset,
+            **kwargs,
         )
         return {**page, "rows": [dict(row) for row in page.get("rows", [])]}
     except ValueError as exc:

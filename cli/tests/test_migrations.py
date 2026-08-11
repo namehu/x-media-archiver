@@ -38,6 +38,7 @@ class MigrationTests(unittest.TestCase):
                 "014_unique_source_urls.py",
                 "015_soft_delete_sources.py",
                 "016_add_source_manual_order.py",
+                "017_add_source_bulk_tasks.py",
             ],
         )
         upgrade.assert_called_once()
@@ -49,7 +50,7 @@ class MigrationTests(unittest.TestCase):
 
         with (
             patch("xarchiver.migrations.get_settings", return_value=settings),
-            patch("xarchiver.migrations.current_alembic_revision", return_value="016_add_source_manual_order"),
+            patch("xarchiver.migrations.current_alembic_revision", return_value="017_add_source_bulk_tasks"),
             patch("xarchiver.migrations.command.upgrade") as upgrade,
         ):
             self.assertEqual(migrate(), [])
@@ -89,6 +90,7 @@ class MigrationTests(unittest.TestCase):
                 "014_unique_source_urls.py",
                 "015_soft_delete_sources.py",
                 "016_add_source_manual_order.py",
+                "017_add_source_bulk_tasks.py",
             ],
         )
 
@@ -283,6 +285,21 @@ class MigrationTests(unittest.TestCase):
         self.assertIn("add column if not exists manual_order integer not null default 0", sql)
         self.assertIn("idx_archive_sources_active_manual_order", sql)
         self.assertIn("where deleted_at is null", sql)
+
+    def test_source_bulk_tasks_revision_contains_task_and_schedule_tables(self) -> None:
+        module = importlib.import_module("xarchiver.alembic.versions.017_add_source_bulk_tasks")
+        captured_sql: list[str] = []
+
+        with patch.object(module.op, "execute", side_effect=captured_sql.append):
+            module.upgrade()
+
+        sql = captured_sql[0]
+        self.assertIn("create table if not exists source_bulk_tasks", sql)
+        self.assertIn("create table if not exists source_bulk_task_items", sql)
+        self.assertIn("create table if not exists source_schedule_policies", sql)
+        self.assertIn("first_discovered_scan_run_id", sql)
+        self.assertIn("last_dispatched_at", sql)
+        self.assertIn("uq_source_bulk_tasks_active_schedule", sql)
 
 
 if __name__ == "__main__":

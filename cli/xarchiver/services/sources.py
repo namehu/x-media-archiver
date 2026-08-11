@@ -73,16 +73,30 @@ from xarchiver.tables import (
     archive_runs,
     archive_sources,
     download_jobs,
+    source_bulk_task_items,
+    source_bulk_tasks,
     source_discovered_tweets,
     source_scan_runs,
+    source_schedule_policies,
+    source_schedule_policy_sources,
     tweets,
 )
 
 VALID_SOURCE_TYPES = {"profile", "user_media", "likes", "bookmarks", "search", "manual"}
 VALID_SOURCE_STATUSES = {"active", "paused", "completed", "failed"}
 VALID_SOURCE_DELETED_FILTERS = {"active", "deleted", "all"}
-VALID_SOURCE_SORT_FIELDS = {"manual_order", "updated_at", "created_at"}
+VALID_SOURCE_SORT_FIELDS = {
+    "manual_order",
+    "updated_at",
+    "created_at",
+    "latest_tweet_published_at",
+    "last_success_at",
+    "unsubmitted_tweet_count",
+    "pending_download_count",
+    "schedule_next_run_at",
+}
 VALID_SORT_DIRECTIONS = {"asc", "desc"}
+VALID_SOURCE_OPERATIONAL_FILTERS = {"due", "waiting_download", "running", "error", "scheduled"}
 VALID_SCAN_TRIGGERS = {"history_worker", "manual_next", "latest_refresh", "from_start_repair"}
 VALID_SCAN_SESSION_MODES = {"history", "latest_refresh", "from_start"}
 VALID_DISCOVERY_MEDIA_TYPES = {"video", "photo"}
@@ -239,6 +253,8 @@ def list_sources(
     deleted: str = "active",
     sort_by: str = "manual_order",
     sort_direction: str = "desc",
+    search: str | None = None,
+    operational_filter: str | None = None,
     limit: int = 50,
     offset: int = 0,
 ) -> list[ArchiveSourceListRow]:
@@ -250,6 +266,8 @@ def list_sources(
         deleted=deleted,
         sort_by=sort_by,
         sort_direction=sort_direction,
+        search=search,
+        operational_filter=operational_filter,
         limit=limit,
         offset=offset,
     )
@@ -265,6 +283,8 @@ def list_sources_page(
     deleted: str = "active",
     sort_by: str = "manual_order",
     sort_direction: str = "desc",
+    search: str | None = None,
+    operational_filter: str | None = None,
     limit: int = 50,
     offset: int = 0,
 ) -> dict[str, object]:
@@ -276,10 +296,18 @@ def list_sources_page(
         deleted=deleted,
         sort_by=sort_by,
         sort_direction=sort_direction,
+        search=search,
+        operational_filter=operational_filter,
         limit=limit,
         offset=offset,
     )
-    total_count = count_sources(status=status, source_type=source_type, deleted=deleted)
+    total_count = count_sources(
+        status=status,
+        source_type=source_type,
+        deleted=deleted,
+        search=search,
+        operational_filter=operational_filter,
+    )
     return {
         "rows": [dict(row) for row in rows],
         "count": len(rows),
@@ -293,10 +321,18 @@ def count_sources(
     status: str | None = None,
     source_type: str | None = None,
     deleted: str = "active",
+    search: str | None = None,
+    operational_filter: str | None = None,
 ) -> int:
     """按与 ``list_sources`` 相同的过滤条件统计来源数量。"""
 
-    sql, params = build_count_sources_query(status=status, source_type=source_type, deleted=deleted)
+    sql, params = build_count_sources_query(
+        status=status,
+        source_type=source_type,
+        deleted=deleted,
+        search=search,
+        operational_filter=operational_filter,
+    )
     with connect() as conn:
         with conn.cursor() as cur:
             cur.execute(sql, params)
@@ -309,6 +345,8 @@ def build_sources_query(
     deleted: str = "active",
     sort_by: str = "manual_order",
     sort_direction: str = "desc",
+    search: str | None = None,
+    operational_filter: str | None = None,
     limit: int = 50,
     offset: int = 0,
 ) -> tuple[str, dict[str, object]]:
@@ -339,6 +377,129 @@ def build_sources_query(
         )
         .scalar_subquery()
     )
+    latest_tweet_published_at = (
+        select(func.max(tweets.c.published_at))
+        .select_from(
+            source_discovered_tweets.join(
+                tweets,
+                tweets.c.tweet_id == source_discovered_tweets.c.tweet_id,
+            )
+        )
+        .where(source_discovered_tweets.c.source_id == archive_sources.c.id)
+        .scalar_subquery()
+    )
+    last_success_at = (
+        select(func.max(source_scan_runs.c.finished_at))
+        .where(
+            source_scan_runs.c.source_id == archive_sources.c.id,
+            source_scan_runs.c.status.in_({"succeeded", "completed_empty_batch", "completed_end_of_source"}),
+        )
+        .scalar_subquery()
+    )
+    last_error_at = (
+        select(func.max(source_scan_runs.c.finished_at))
+        .where(
+            source_scan_runs.c.source_id == archive_sources.c.id,
+            source_scan_runs.c.status.in_({"rate_limited", "auth_required", "network_error", "failed"}),
+        )
+        .scalar_subquery()
+    )
+    pending_download_count = (
+        select(func.count(archive_run_items.c.id).cast(Integer))
+        .select_from(archive_run_items.join(archive_runs, archive_runs.c.id == archive_run_items.c.archive_run_id))
+        .where(
+            archive_runs.c.source_id == archive_sources.c.id,
+            archive_run_items.c.status.in_({"pending", "blocked"}),
+        )
+        .scalar_subquery()
+    )
+    processing_download_count = (
+        select(func.count(archive_run_items.c.id).cast(Integer))
+        .select_from(archive_run_items.join(archive_runs, archive_runs.c.id == archive_run_items.c.archive_run_id))
+        .where(
+            archive_runs.c.source_id == archive_sources.c.id,
+            archive_run_items.c.status == "processing",
+        )
+        .scalar_subquery()
+    )
+    latest_download_item_id = build_latest_source_download_item_id()
+    failed_download_count = (
+        select(func.count(archive_run_items.c.id).cast(Integer))
+        .select_from(archive_run_items.join(archive_runs, archive_runs.c.id == archive_run_items.c.archive_run_id))
+        .where(
+            archive_runs.c.source_id == archive_sources.c.id,
+            archive_run_items.c.status.in_({"failed_retryable", "failed_permanent"}),
+            archive_run_items.c.id == latest_download_item_id,
+        )
+        .scalar_subquery()
+    )
+    schedule_enabled = (
+        select(func.count(source_schedule_policy_sources.c.policy_id) > 0)
+        .select_from(
+            source_schedule_policy_sources.join(
+                source_schedule_policies,
+                source_schedule_policies.c.id == source_schedule_policy_sources.c.policy_id,
+            )
+        )
+        .where(
+            source_schedule_policy_sources.c.source_id == archive_sources.c.id,
+            source_schedule_policies.c.enabled.is_(True),
+        )
+        .scalar_subquery()
+    )
+    schedule_next_run_at = (
+        select(func.min(source_schedule_policies.c.next_run_at))
+        .select_from(
+            source_schedule_policy_sources.join(
+                source_schedule_policies,
+                source_schedule_policies.c.id == source_schedule_policy_sources.c.policy_id,
+            )
+        )
+        .where(
+            source_schedule_policy_sources.c.source_id == archive_sources.c.id,
+            source_schedule_policies.c.enabled.is_(True),
+        )
+        .scalar_subquery()
+    )
+    schedule_policy_label = (
+        select(source_schedule_policies.c.label)
+        .select_from(
+            source_schedule_policy_sources.join(
+                source_schedule_policies,
+                source_schedule_policies.c.id == source_schedule_policy_sources.c.policy_id,
+            )
+        )
+        .where(
+            source_schedule_policy_sources.c.source_id == archive_sources.c.id,
+            source_schedule_policies.c.enabled.is_(True),
+        )
+        .order_by(source_schedule_policies.c.next_run_at.asc().nulls_last(), source_schedule_policies.c.id.asc())
+        .limit(1)
+        .scalar_subquery()
+    )
+    active_bulk_task_item_status = (
+        select(
+            case(
+                (source_bulk_tasks.c.status == "paused", "paused"),
+                (source_bulk_tasks.c.status == "blocked", "blocked"),
+                else_=source_bulk_task_items.c.status,
+            )
+        )
+        .select_from(
+            source_bulk_task_items.join(
+                source_bulk_tasks,
+                source_bulk_tasks.c.id == source_bulk_task_items.c.task_id,
+            )
+        )
+        .where(
+            source_bulk_task_items.c.source_id == archive_sources.c.id,
+            source_bulk_task_items.c.status.in_({"queued", "scanning", "waiting_download", "downloading"}),
+            source_bulk_tasks.c.status.in_({"queued", "running", "pausing", "paused", "blocked"}),
+        )
+        .order_by(source_bulk_task_items.c.created_at.asc(), source_bulk_task_items.c.id.asc())
+        .limit(1)
+        .scalar_subquery()
+    )
 
     normalized_sort_field = normalize_source_sort_field(sort_by)
     normalized_direction = normalize_sort_direction(sort_direction)
@@ -350,8 +511,20 @@ def build_sources_query(
             archive_sources.c.id.desc(),
         ]
     else:
-        sort_column = archive_sources.c[normalized_sort_field]
+        aggregate_sort_columns = {
+            "latest_tweet_published_at": latest_tweet_published_at,
+            "last_success_at": last_success_at,
+            "unsubmitted_tweet_count": unsubmitted_count,
+            "pending_download_count": pending_download_count,
+            "schedule_next_run_at": schedule_next_run_at,
+        }
+        is_aggregate_sort = normalized_sort_field in aggregate_sort_columns
+        sort_column = aggregate_sort_columns.get(normalized_sort_field)
+        if sort_column is None:
+            sort_column = archive_sources.c[normalized_sort_field]
         sort_expression = sort_column.asc() if normalized_direction == "asc" else sort_column.desc()
+        if is_aggregate_sort:
+            sort_expression = sort_expression.nulls_last()
         id_expression = archive_sources.c.id.asc() if normalized_direction == "asc" else archive_sources.c.id.desc()
         sort_expressions = [sort_expression, id_expression]
 
@@ -363,6 +536,16 @@ def build_sources_query(
             media_count.label("discovered_media_count"),
             scan_batch_count.label("scan_batch_count"),
             func.max(source_discovered_tweets.c.discovered_at).label("latest_discovered_at"),
+            latest_tweet_published_at.label("latest_tweet_published_at"),
+            last_success_at.label("last_success_at"),
+            last_error_at.label("last_error_at"),
+            pending_download_count.label("pending_download_count"),
+            processing_download_count.label("processing_download_count"),
+            failed_download_count.label("failed_download_count"),
+            schedule_enabled.label("schedule_enabled"),
+            schedule_next_run_at.label("schedule_next_run_at"),
+            schedule_policy_label.label("schedule_policy_label"),
+            active_bulk_task_item_status.label("active_bulk_task_item_status"),
         )
         .select_from(
             archive_sources.outerjoin(
@@ -375,7 +558,14 @@ def build_sources_query(
         .limit(bindparam("limit", limit))
         .offset(bindparam("offset", offset))
     )
-    statement = apply_source_filters(statement, status=status, source_type=source_type, deleted=deleted)
+    statement = apply_source_filters(
+        statement,
+        status=status,
+        source_type=source_type,
+        deleted=deleted,
+        search=search,
+        operational_filter=operational_filter,
+    )
     return compile_query(statement)
 
 
@@ -383,11 +573,20 @@ def build_count_sources_query(
     status: str | None = None,
     source_type: str | None = None,
     deleted: str = "active",
+    search: str | None = None,
+    operational_filter: str | None = None,
 ) -> tuple[str, dict[str, object]]:
     """构造与 ``build_sources_query`` 对应的数量查询。"""
 
     statement = select(func.count().cast(Integer).label("count")).select_from(archive_sources)
-    statement = apply_source_filters(statement, status=status, source_type=source_type, deleted=deleted)
+    statement = apply_source_filters(
+        statement,
+        status=status,
+        source_type=source_type,
+        deleted=deleted,
+        search=search,
+        operational_filter=operational_filter,
+    )
     return compile_query(statement)
 
 
@@ -396,10 +595,18 @@ def apply_source_filters(
     status: str | None = None,
     source_type: str | None = None,
     deleted: str = "active",
+    search: str | None = None,
+    operational_filter: str | None = None,
 ) -> Select:
     """把可选来源过滤条件应用到 SQLAlchemy 语句上。"""
 
-    filters = build_source_filters(status=status, source_type=source_type, deleted=deleted)
+    filters = build_source_filters(
+        status=status,
+        source_type=source_type,
+        deleted=deleted,
+        search=search,
+        operational_filter=operational_filter,
+    )
     if not filters:
         return statement
     return statement.where(and_(*filters))
@@ -409,6 +616,8 @@ def build_source_filters(
     status: str | None = None,
     source_type: str | None = None,
     deleted: str = "active",
+    search: str | None = None,
+    operational_filter: str | None = None,
 ) -> list[ColumnElement[bool]]:
     """构造可复用的来源过滤表达式。"""
 
@@ -432,7 +641,138 @@ def build_source_filters(
                 normalize_source_type(source_type),
             )
         )
+    normalized_search = (search or "").strip()
+    if normalized_search:
+        search_pattern = f"%{normalized_search}%"
+        filters.append(
+            or_(
+                archive_sources.c.label.ilike(bindparam("source_search", search_pattern)),
+                archive_sources.c.author_username.ilike(bindparam("source_search", search_pattern)),
+                archive_sources.c.source_url.ilike(bindparam("source_search", search_pattern)),
+            )
+        )
+    if operational_filter:
+        normalized_operation = operational_filter.strip().lower()
+        if normalized_operation not in VALID_SOURCE_OPERATIONAL_FILTERS:
+            raise ValueError("invalid_source_operational_filter")
+        active_bulk_item = (
+            select(source_bulk_task_items.c.id)
+            .select_from(
+                source_bulk_task_items.join(
+                    source_bulk_tasks,
+                    source_bulk_tasks.c.id == source_bulk_task_items.c.task_id,
+                )
+            )
+            .where(
+                source_bulk_task_items.c.source_id == archive_sources.c.id,
+                source_bulk_task_items.c.status.in_({"queued", "scanning", "waiting_download", "downloading"}),
+                source_bulk_tasks.c.status.in_({"queued", "running", "pausing"}),
+            )
+            .correlate(archive_sources)
+        )
+        active_download = (
+            select(archive_runs.c.id)
+            .where(
+                archive_runs.c.source_id == archive_sources.c.id,
+                archive_runs.c.status.in_({"queued", "running", "paused", "blocked"}),
+            )
+            .correlate(archive_sources)
+        )
+        latest_download_item_id = build_latest_source_download_item_id()
+        failed_download = (
+            select(archive_run_items.c.id)
+            .select_from(
+                archive_run_items.join(
+                    archive_runs,
+                    archive_runs.c.id == archive_run_items.c.archive_run_id,
+                )
+            )
+            .where(
+                archive_runs.c.source_id == archive_sources.c.id,
+                archive_run_items.c.status.in_({"failed_retryable", "failed_permanent"}),
+                archive_run_items.c.id == latest_download_item_id,
+            )
+            .correlate(archive_sources)
+        )
+        failed_scan = (
+            select(source_scan_runs.c.id)
+            .where(
+                source_scan_runs.c.source_id == archive_sources.c.id,
+                source_scan_runs.c.status.in_({"rate_limited", "auth_required", "network_error", "failed"}),
+            )
+            .correlate(archive_sources)
+        )
+        enabled_schedule = (
+            select(source_schedule_policy_sources.c.source_id)
+            .select_from(
+                source_schedule_policy_sources.join(
+                    source_schedule_policies,
+                    source_schedule_policies.c.id == source_schedule_policy_sources.c.policy_id,
+                )
+            )
+            .where(
+                source_schedule_policy_sources.c.source_id == archive_sources.c.id,
+                source_schedule_policies.c.enabled.is_(True),
+            )
+            .correlate(archive_sources)
+        )
+        if normalized_operation == "due":
+            filters.append(
+                or_(
+                    enabled_schedule.where(source_schedule_policies.c.next_run_at <= func.now()).exists(),
+                    and_(
+                        archive_sources.c.cursor_state["automation_enabled"].astext == "true",
+                        or_(archive_sources.c.next_scan_at.is_(None), archive_sources.c.next_scan_at <= func.now()),
+                    ),
+                )
+            )
+        elif normalized_operation == "waiting_download":
+            filters.append(
+                select(source_discovered_tweets.c.id)
+                .where(
+                    source_discovered_tweets.c.source_id == archive_sources.c.id,
+                    source_discovered_tweets.c.archive_run_id.is_(None),
+                )
+                .correlate(archive_sources)
+                .exists()
+            )
+        elif normalized_operation == "running":
+            filters.append(
+                or_(
+                    active_bulk_item.exists(),
+                    active_download.exists(),
+                    archive_sources.c.cursor_state["automation_enabled"].astext == "true",
+                )
+            )
+        elif normalized_operation == "error":
+            filters.append(
+                or_(
+                    archive_sources.c.error_category.is_not(None),
+                    archive_sources.c.status == "failed",
+                    failed_scan.exists(),
+                    failed_download.exists(),
+                )
+            )
+        elif normalized_operation == "scheduled":
+            filters.append(enabled_schedule.exists())
     return filters
+
+
+def build_latest_source_download_item_id() -> ColumnElement[int | None]:
+    """返回来源内同一 Tweet 最近一次下载条目的关联子查询。"""
+
+    latest_item = archive_run_items.alias("latest_source_download_item")
+    latest_item_run = archive_runs.alias("latest_source_download_run")
+    return (
+        select(func.max(latest_item.c.id))
+        .select_from(latest_item.join(latest_item_run, latest_item_run.c.id == latest_item.c.archive_run_id))
+        .where(
+            latest_item_run.c.source_id == archive_sources.c.id,
+            latest_item.c.tweet_id == archive_run_items.c.tweet_id,
+        )
+        .correlate(archive_sources, archive_run_items)
+        .scalar_subquery()
+    )
 
 
 def normalize_source_deleted_filter(value: str) -> str:
@@ -1057,6 +1397,7 @@ def start_source_scan_session(
     mode: str,
     limit: int = 20,
     restart: bool = False,
+    bulk_task_item_id: int | None = None,
 ) -> dict[str, object]:
     """为来源启动或重启一个自动扫描会话。"""
 
@@ -1071,6 +1412,8 @@ def start_source_scan_session(
     if cursor_state.get("automation_enabled") and cursor_state.get("active_scan_mode") not in {None, mode}:
         raise ValueError("source_scan_session_in_progress")
     cursor_state = start_scan_session_state(cursor_state, mode, limit, restart=restart)
+    if bulk_task_item_id is not None:
+        cursor_state["bulk_task_item_id"] = int(bulk_task_item_id)
     with connect() as conn:
         with conn.cursor() as cur:
             cur.execute(
@@ -1145,7 +1488,12 @@ def stop_source_scan_session(source_id: int) -> dict[str, object]:
     return get_source(source_id) or {}
 
 
-def process_next_source_history_scan(settings: Settings, worker_id: str | None = None) -> dict[str, object] | None:
+def process_next_source_history_scan(
+    settings: Settings,
+    worker_id: str | None = None,
+    *,
+    allow_during_downloads: bool = False,
+) -> dict[str, object] | None:
     """挑选下一个到期来源，并执行一批自动扫描。"""
 
     source = fetch_due_history_source()
@@ -1158,7 +1506,7 @@ def process_next_source_history_scan(settings: Settings, worker_id: str | None =
     session = get_scan_session(cursor_state, mode)
     limit = normalize_scan_limit(parse_positive_int(session.get("limit") or cursor_state.get("automation_limit"), settings.source_scan_batch_size))
     try:
-        downloads_pending = has_pending_download_work()
+        downloads_pending = has_pending_download_work() if not allow_during_downloads else False
     except Exception as exc:
         record_source_scan_failure(source_id, cursor_state, limit, trigger_type, exc)
         schedule_next_history_scan(source_id, settings, "retry_wait")
@@ -1270,20 +1618,39 @@ def count_expired_source_scan_leases() -> int:
 def fetch_due_history_source() -> dict[str, object] | None:
     """读取下一个到达扫描时间的活跃来源。"""
 
+    bulk_item_id = archive_sources.c.cursor_state["bulk_task_item_id"].astext
+    bulk_task_allows_scan = or_(
+        bulk_item_id.is_(None),
+        select(source_bulk_task_items.c.id)
+        .select_from(
+            source_bulk_task_items.join(
+                source_bulk_tasks,
+                source_bulk_tasks.c.id == source_bulk_task_items.c.task_id,
+            )
+        )
+        .where(
+            source_bulk_task_items.c.id == bulk_item_id.cast(source_bulk_task_items.c.id.type),
+            source_bulk_task_items.c.status == "scanning",
+            source_bulk_tasks.c.status == "running",
+        )
+        .exists(),
+    )
+    statement = (
+        select(archive_sources)
+        .where(
+            archive_sources.c.status == "active",
+            archive_sources.c.deleted_at.is_(None),
+            archive_sources.c.cursor_state["automation_enabled"].astext == "true",
+            or_(archive_sources.c.next_scan_at.is_(None), archive_sources.c.next_scan_at <= func.now()),
+            bulk_task_allows_scan,
+        )
+        .order_by(func.coalesce(archive_sources.c.next_scan_at, func.now()), archive_sources.c.id)
+        .limit(1)
+    )
     with connect() as conn:
         with conn.cursor() as cur:
-            cur.execute(
-                """
-                select *
-                from archive_sources
-                where status = 'active'
-                  and deleted_at is null
-                  and cursor_state->>'automation_enabled' = 'true'
-                  and (next_scan_at is null or next_scan_at <= now())
-                order by coalesce(next_scan_at, now()), id
-                limit 1
-                """
-            )
+            sql, params = compile_query(statement)
+            cur.execute(sql, params)
             row = cur.fetchone()
             return dict(ArchiveSourceRow.model_validate(dict(row))) if row else None
 
@@ -1366,6 +1733,7 @@ def start_source_scan_run(
     scan_range: dict[str, int],
     cursor_before: dict[str, Any],
     worker_id: str | None = None,
+    bulk_task_item_id: int | None = None,
 ) -> int:
     """创建一条运行中的 ``source_scan_runs`` 记录及其日志流。"""
 
@@ -1379,13 +1747,15 @@ def start_source_scan_run(
                     insert into source_scan_runs (
                         source_id, trigger_type, status, range_start, range_end,
                         requested_limit, cursor_before, started_at,
-                        worker_id, claimed_at, lease_expires_at
+                        worker_id, claimed_at, lease_expires_at,
+                        source_bulk_task_item_id
                     )
                     values (
                         %s, %s, 'running', %s, %s, %s, %s, now(),
                         %s,
                         case when %s::text is null then null else now() end,
-                        case when %s::text is null then null else now() + make_interval(secs => %s) end
+                        case when %s::text is null then null else now() + make_interval(secs => %s) end,
+                        %s
                     )
                     returning id
                     """,
@@ -1400,6 +1770,7 @@ def start_source_scan_run(
                         worker_id,
                         worker_id,
                         LEASE_SECONDS,
+                        bulk_task_item_id,
                     ),
                 )
             except UniqueViolation as exc:
@@ -1566,9 +1937,10 @@ def record_waiting_downloads_scan(
                 """
                 insert into source_scan_runs (
                     source_id, trigger_type, status, range_start, range_end,
-                    requested_limit, cursor_before, cursor_after, started_at, finished_at
+                    requested_limit, cursor_before, cursor_after, started_at, finished_at,
+                    source_bulk_task_item_id
                 )
-                values (%s, %s, 'waiting_downloads', %s, %s, %s, %s, %s, now(), now())
+                values (%s, %s, 'waiting_downloads', %s, %s, %s, %s, %s, now(), now(), %s)
                 returning id
                 """,
                 (
@@ -1579,6 +1951,7 @@ def record_waiting_downloads_scan(
                     scan_range["limit"],
                     Jsonb(cursor_state),
                     Jsonb(cursor_state),
+                    parse_positive_int(cursor_state.get("bulk_task_item_id"), 0) or None,
                 ),
             )
             scan_run_id = int(cur.fetchone()["id"])
@@ -1605,7 +1978,13 @@ def record_source_scan_failure(
 ) -> None:
     """为扫描前编排阶段的异常落一条合成失败扫描记录。"""
 
-    run_id = start_source_scan_run(source_id, trigger_type, build_active_scan_range(cursor_state, limit), cursor_state)
+    run_id = start_source_scan_run(
+        source_id,
+        trigger_type,
+        build_active_scan_range(cursor_state, limit),
+        cursor_state,
+        bulk_task_item_id=parse_positive_int(cursor_state.get("bulk_task_item_id"), 0) or None,
+    )
     message = str(error) or error.__class__.__name__
     mark_source_scan_result(source_id, error_category="failed", error_message=message)
     finish_source_scan_run(
@@ -1625,6 +2004,7 @@ def scan_source(
     trigger_type: str | None = None,
     session_mode: str | None = None,
     worker_id: str | None = None,
+    bulk_task_item_id: int | None = None,
 ) -> dict[str, object]:
     """为某个来源执行一批 gallery-dl 发现扫描。"""
 
@@ -1641,6 +2021,8 @@ def scan_source(
         raise ValueError("source_scan_not_supported")
     scan_url = build_gallery_dl_scan_url(source_type, source_url)
     cursor_state = source.get("cursor_state") if isinstance(source.get("cursor_state"), dict) else {}
+    if bulk_task_item_id is None:
+        bulk_task_item_id = parse_positive_int(cursor_state.get("bulk_task_item_id"), 0) or None
     scan_trigger = trigger_type or ("latest_refresh" if restart else "manual_next")
     mode = normalize_session_mode_for_trigger(scan_trigger, session_mode)
     advances_cursor = scan_trigger != "latest_refresh" or session_mode == "latest_refresh"
@@ -1648,7 +2030,14 @@ def scan_source(
     scan_cursor = None if not advances_cursor else session.get("extractor_cursor") or cursor_state.get("extractor_cursor")
     range_state = session if mode else cursor_state
     scan_range = build_scan_range(range_state, limit, restart=restart)
-    scan_run_id = start_source_scan_run(source_id, scan_trigger, scan_range, cursor_state, worker_id=worker_id)
+    scan_run_id = start_source_scan_run(
+        source_id,
+        scan_trigger,
+        scan_range,
+        cursor_state,
+        worker_id=worker_id,
+        bulk_task_item_id=bulk_task_item_id,
+    )
     log_source_scan_event(
         "source.scan.started",
         source_id=source_id,
@@ -1791,7 +2180,12 @@ def finish_scan_source_result(
 
     lease.ensure_active()
     ensure_source_scan_lease(scan_run_id, worker_id)
-    result = record_source_discoveries(source_id, records, mark_scanned=True)
+    result = record_source_discoveries(
+        source_id,
+        records,
+        mark_scanned=True,
+        scan_run_id=scan_run_id,
+    )
     completed = advances_history and is_scan_session_complete(
         session_mode,
         scan_meta,
@@ -2702,6 +3096,7 @@ def record_source_discoveries(
     source_id: int,
     records: list[dict[str, Any]],
     mark_scanned: bool = False,
+    scan_run_id: int | None = None,
 ) -> dict[str, int]:
     """对来源发现结果做 upsert，并刷新来源级聚合统计。"""
 
@@ -2743,14 +3138,14 @@ def record_source_discoveries(
                 cur.execute(
                     """
                     insert into source_discovered_tweets (
-                        source_id, tweet_id, raw_payload
+                        source_id, tweet_id, raw_payload, first_discovered_scan_run_id
                     )
-                    values (%s, %s, %s)
+                    values (%s, %s, %s, %s)
                     on conflict (source_id, tweet_id) do update set
                         raw_payload = excluded.raw_payload
                     returning (xmax = 0) as inserted
                     """,
-                    (source_id, tweet_id, Jsonb(payload)),
+                    (source_id, tweet_id, Jsonb(payload), scan_run_id),
                 )
                 if InsertedFlagRow.model_validate(dict(cur.fetchone())).inserted:
                     inserted += 1

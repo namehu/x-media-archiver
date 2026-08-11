@@ -752,6 +752,162 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/api/v1/source-bulk-tasks": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * Bulk Tasks
+         * @description 分页查询批量任务。
+         */
+        get: operations["bulk_tasks_api_v1_source_bulk_tasks_get"];
+        put?: never;
+        /**
+         * Create Bulk Task
+         * @description 创建来源批量任务，并立即冻结来源成员。
+         */
+        post: operations["create_bulk_task_api_v1_source_bulk_tasks_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/source-bulk-tasks/{task_id}": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * Bulk Task Detail
+         * @description 查询任务及逐来源结果。
+         */
+        get: operations["bulk_task_detail_api_v1_source_bulk_tasks__task_id__get"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/source-bulk-tasks/{task_id}/control": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Control Bulk Task
+         * @description 暂停、恢复或取消任务。
+         */
+        post: operations["control_bulk_task_api_v1_source_bulk_tasks__task_id__control_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/source-bulk-tasks/{task_id}/retry": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Retry Bulk Task
+         * @description 仅使用失败来源创建重试任务。
+         */
+        post: operations["retry_bulk_task_api_v1_source_bulk_tasks__task_id__retry_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/source-schedule-policies": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * Schedule Policies
+         * @description 列出所有来源定时策略。
+         */
+        get: operations["schedule_policies_api_v1_source_schedule_policies_get"];
+        put?: never;
+        /**
+         * Create Schedule Policy
+         * @description 创建默认关闭的命名策略，或按请求明确启用。
+         */
+        post: operations["create_schedule_policy_api_v1_source_schedule_policies_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/source-schedule-policies/{policy_id}": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * Schedule Policy Detail
+         * @description 查询策略及成员快照。
+         */
+        get: operations["schedule_policy_detail_api_v1_source_schedule_policies__policy_id__get"];
+        put?: never;
+        post?: never;
+        /**
+         * Delete Schedule Policy
+         * @description 删除策略但保留历史任务。
+         */
+        delete: operations["delete_schedule_policy_api_v1_source_schedule_policies__policy_id__delete"];
+        options?: never;
+        head?: never;
+        /**
+         * Update Schedule Policy
+         * @description 更新策略配置并重算下一次执行。
+         */
+        patch: operations["update_schedule_policy_api_v1_source_schedule_policies__policy_id__patch"];
+        trace?: never;
+    };
+    "/api/v1/source-schedule-policies/{policy_id}/sources": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        /**
+         * Assign Schedule Policy
+         * @description 替换策略的来源成员。
+         */
+        put: operations["assign_schedule_policy_api_v1_source_schedule_policies__policy_id__sources_put"];
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/api/v1/log-streams": {
         parameters: {
             query?: never;
@@ -1391,6 +1547,38 @@ export interface components {
             scan_batch_count: number;
             /** Latest Discovered At */
             latest_discovered_at?: string | null;
+            /** Latest Tweet Published At */
+            latest_tweet_published_at?: string | null;
+            /** Last Success At */
+            last_success_at?: string | null;
+            /** Last Error At */
+            last_error_at?: string | null;
+            /**
+             * Pending Download Count
+             * @default 0
+             */
+            pending_download_count: number;
+            /**
+             * Processing Download Count
+             * @default 0
+             */
+            processing_download_count: number;
+            /**
+             * Failed Download Count
+             * @default 0
+             */
+            failed_download_count: number;
+            /**
+             * Schedule Enabled
+             * @default false
+             */
+            schedule_enabled: boolean;
+            /** Schedule Next Run At */
+            schedule_next_run_at?: string | null;
+            /** Schedule Policy Label */
+            schedule_policy_label?: string | null;
+            /** Active Bulk Task Item Status */
+            active_bulk_task_item_status?: string | null;
             scan_summary: components["schemas"]["SourceScanSummaryResponse"];
             active_scan_run?: components["schemas"]["SourceScanRunResponse"] | null;
         } & {
@@ -1473,6 +1661,38 @@ export interface components {
             scan_batch_count: number;
             /** Latest Discovered At */
             latest_discovered_at?: string | null;
+            /** Latest Tweet Published At */
+            latest_tweet_published_at?: string | null;
+            /** Last Success At */
+            last_success_at?: string | null;
+            /** Last Error At */
+            last_error_at?: string | null;
+            /**
+             * Pending Download Count
+             * @default 0
+             */
+            pending_download_count: number;
+            /**
+             * Processing Download Count
+             * @default 0
+             */
+            processing_download_count: number;
+            /**
+             * Failed Download Count
+             * @default 0
+             */
+            failed_download_count: number;
+            /**
+             * Schedule Enabled
+             * @default false
+             */
+            schedule_enabled: boolean;
+            /** Schedule Next Run At */
+            schedule_next_run_at?: string | null;
+            /** Schedule Policy Label */
+            schedule_policy_label?: string | null;
+            /** Active Bulk Task Item Status */
+            active_bulk_task_item_status?: string | null;
         } & {
             [key: string]: unknown;
         };
@@ -2506,6 +2726,166 @@ export interface components {
         } & {
             [key: string]: unknown;
         };
+        /** SourceBulkTaskControlRequest */
+        SourceBulkTaskControlRequest: {
+            /** Action */
+            action: string;
+        };
+        /** SourceBulkTaskCreateRequest */
+        SourceBulkTaskCreateRequest: {
+            /** Task Type */
+            task_type: string;
+            /** Source Ids */
+            source_ids?: number[] | null;
+            source_filter?: components["schemas"]["SourceSelectionFilterRequest"] | null;
+            /**
+             * Confirm Large Download
+             * @default false
+             */
+            confirm_large_download: boolean;
+        };
+        /** SourceBulkTaskItemResponse */
+        SourceBulkTaskItemResponse: {
+            /** Id */
+            id: number;
+            /** Task Id */
+            task_id: number;
+            /** Source Id */
+            source_id: number;
+            /** Position */
+            position: number;
+            /** Wave Index */
+            wave_index: number;
+            /** Status */
+            status: string;
+            /** Scan Run Ids */
+            scan_run_ids?: number[];
+            /** Archive Run Id */
+            archive_run_id?: number | null;
+            /**
+             * Discovered Count
+             * @default 0
+             */
+            discovered_count: number;
+            /**
+             * New Tweet Count
+             * @default 0
+             */
+            new_tweet_count: number;
+            /**
+             * Submitted Count
+             * @default 0
+             */
+            submitted_count: number;
+            /** Skip Reason */
+            skip_reason?: string | null;
+            /** Error Category */
+            error_category?: string | null;
+            /** Error Message */
+            error_message?: string | null;
+            /** Label */
+            label?: string | null;
+            /** Author Username */
+            author_username?: string | null;
+            /** Started At */
+            started_at?: string | null;
+            /** Finished At */
+            finished_at?: string | null;
+            /**
+             * Created At
+             * Format: date-time
+             */
+            created_at: string;
+            /**
+             * Updated At
+             * Format: date-time
+             */
+            updated_at: string;
+        } & {
+            [key: string]: unknown;
+        };
+        /** SourceBulkTaskResponse */
+        SourceBulkTaskResponse: {
+            /** Id */
+            id: number;
+            /** Task Type */
+            task_type: string;
+            /** Trigger Type */
+            trigger_type: string;
+            /** Status */
+            status: string;
+            /** Schedule Policy Id */
+            schedule_policy_id?: number | null;
+            /** Source Filter */
+            source_filter?: {
+                [key: string]: unknown;
+            };
+            /** Options */
+            options?: {
+                [key: string]: unknown;
+            };
+            /** Total Count */
+            total_count: number;
+            /** Error Category */
+            error_category?: string | null;
+            /** Error Message */
+            error_message?: string | null;
+            /** Counts */
+            counts?: {
+                [key: string]: number;
+            };
+            /**
+             * Settled Count
+             * @default 0
+             */
+            settled_count: number;
+            /**
+             * Progress
+             * @default 0
+             */
+            progress: number;
+            /** Items */
+            items?: components["schemas"]["SourceBulkTaskItemResponse"][];
+            /** Started At */
+            started_at?: string | null;
+            /** Finished At */
+            finished_at?: string | null;
+            /**
+             * Created At
+             * Format: date-time
+             */
+            created_at: string;
+            /**
+             * Updated At
+             * Format: date-time
+             */
+            updated_at: string;
+        } & {
+            [key: string]: unknown;
+        };
+        /** SourceBulkTaskRetryRequest */
+        SourceBulkTaskRetryRequest: {
+            /**
+             * Confirm Large Download
+             * @default false
+             */
+            confirm_large_download: boolean;
+        };
+        /** SourceBulkTasksPageResponse */
+        SourceBulkTasksPageResponse: {
+            /** Count */
+            count: number;
+            /** Total Count */
+            total_count: number;
+            /** Limit */
+            limit: number;
+            /** Offset */
+            offset: number;
+            /** Rows */
+            rows: components["schemas"]["SourceBulkTaskResponse"][];
+        } & {
+            [key: string]: unknown;
+        };
         /** SourceCreateRequest */
         SourceCreateRequest: {
             /** Source Type */
@@ -2993,6 +3373,160 @@ export interface components {
             last_error_at?: string | null;
         } & {
             [key: string]: unknown;
+        };
+        /** SourceSchedulePolicyAssignRequest */
+        SourceSchedulePolicyAssignRequest: {
+            /** Source Ids */
+            source_ids: number[];
+        };
+        /** SourceSchedulePolicyCreateRequest */
+        SourceSchedulePolicyCreateRequest: {
+            /** Label */
+            label: string;
+            /** Action */
+            action: string;
+            /** Frequency Kind */
+            frequency_kind: string;
+            /** Interval Minutes */
+            interval_minutes?: number | null;
+            /** Local Time */
+            local_time?: string | null;
+            /** Weekday */
+            weekday?: number | null;
+            /**
+             * Timezone
+             * @default Asia/Shanghai
+             */
+            timezone: string;
+            /**
+             * Jitter Seconds
+             * @default 300
+             */
+            jitter_seconds: number;
+            /**
+             * Max Downloads Per Source
+             * @default 50
+             */
+            max_downloads_per_source: number;
+            /**
+             * Max Downloads Per Task
+             * @default 1000
+             */
+            max_downloads_per_task: number;
+            /**
+             * Enabled
+             * @default false
+             */
+            enabled: boolean;
+            /** Source Ids */
+            source_ids?: number[] | null;
+            source_filter?: components["schemas"]["SourceSelectionFilterRequest"] | null;
+        };
+        /** SourceSchedulePolicyResponse */
+        SourceSchedulePolicyResponse: {
+            /** Id */
+            id: number;
+            /** Label */
+            label: string;
+            /** Action */
+            action: string;
+            /** Frequency Kind */
+            frequency_kind: string;
+            /** Interval Minutes */
+            interval_minutes?: number | null;
+            /** Local Time */
+            local_time?: string | null;
+            /** Weekday */
+            weekday?: number | null;
+            /** Timezone */
+            timezone: string;
+            /** Jitter Seconds */
+            jitter_seconds: number;
+            /** Max Downloads Per Source */
+            max_downloads_per_source: number;
+            /** Max Downloads Per Task */
+            max_downloads_per_task: number;
+            /** Enabled */
+            enabled: boolean;
+            /** Next Run At */
+            next_run_at?: string | null;
+            /** Last Run At */
+            last_run_at?: string | null;
+            /**
+             * Source Count
+             * @default 0
+             */
+            source_count: number;
+            /** Source Ids */
+            source_ids?: number[];
+            /**
+             * Created At
+             * Format: date-time
+             */
+            created_at: string;
+            /**
+             * Updated At
+             * Format: date-time
+             */
+            updated_at: string;
+        } & {
+            [key: string]: unknown;
+        };
+        /** SourceSchedulePolicyUpdateRequest */
+        SourceSchedulePolicyUpdateRequest: {
+            /** Label */
+            label?: string | null;
+            /** Action */
+            action?: string | null;
+            /** Frequency Kind */
+            frequency_kind?: string | null;
+            /** Interval Minutes */
+            interval_minutes?: number | null;
+            /** Local Time */
+            local_time?: string | null;
+            /** Weekday */
+            weekday?: number | null;
+            /** Timezone */
+            timezone?: string | null;
+            /** Jitter Seconds */
+            jitter_seconds?: number | null;
+            /** Max Downloads Per Source */
+            max_downloads_per_source?: number | null;
+            /** Max Downloads Per Task */
+            max_downloads_per_task?: number | null;
+            /** Enabled */
+            enabled?: boolean | null;
+        };
+        /**
+         * SourceSelectionFilterRequest
+         * @description 服务端冻结“当前筛选全部”时允许的来源筛选字段。
+         */
+        SourceSelectionFilterRequest: {
+            /** Status */
+            status?: string | null;
+            /** Source Type */
+            source_type?: string | null;
+            /**
+             * Deleted
+             * @default active
+             */
+            deleted: string;
+            /**
+             * Sort By
+             * @default manual_order
+             */
+            sort_by: string;
+            /**
+             * Sort Direction
+             * @default desc
+             */
+            sort_direction: string;
+            /** Search */
+            search?: string | null;
+            /** Operational Filter */
+            operational_filter?: string | null;
+            /** Exclude Source Ids */
+            exclude_source_ids?: number[];
         };
         /** SourceStatusRequest */
         SourceStatusRequest: {
@@ -3823,6 +4357,8 @@ export interface operations {
                 deleted?: string;
                 sort_by?: string;
                 sort_direction?: string;
+                search?: string | null;
+                operational_filter?: string | null;
             };
             header?: never;
             path?: never;
@@ -4481,6 +5017,355 @@ export interface operations {
                 };
                 content: {
                     "application/json": components["schemas"]["ArchiveSourceDetailResponse"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    bulk_tasks_api_v1_source_bulk_tasks_get: {
+        parameters: {
+            query?: {
+                limit?: number;
+                offset?: number;
+            };
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["SourceBulkTasksPageResponse"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    create_bulk_task_api_v1_source_bulk_tasks_post: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["SourceBulkTaskCreateRequest"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            202: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["SourceBulkTaskResponse"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    bulk_task_detail_api_v1_source_bulk_tasks__task_id__get: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                task_id: number;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["SourceBulkTaskResponse"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    control_bulk_task_api_v1_source_bulk_tasks__task_id__control_post: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                task_id: number;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["SourceBulkTaskControlRequest"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["SourceBulkTaskResponse"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    retry_bulk_task_api_v1_source_bulk_tasks__task_id__retry_post: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                task_id: number;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["SourceBulkTaskRetryRequest"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            202: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["SourceBulkTaskResponse"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    schedule_policies_api_v1_source_schedule_policies_get: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["SourceSchedulePolicyResponse"][];
+                };
+            };
+        };
+    };
+    create_schedule_policy_api_v1_source_schedule_policies_post: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["SourceSchedulePolicyCreateRequest"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            201: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["SourceSchedulePolicyResponse"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    schedule_policy_detail_api_v1_source_schedule_policies__policy_id__get: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                policy_id: number;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["SourceSchedulePolicyResponse"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    delete_schedule_policy_api_v1_source_schedule_policies__policy_id__delete: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                policy_id: number;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            204: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    update_schedule_policy_api_v1_source_schedule_policies__policy_id__patch: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                policy_id: number;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["SourceSchedulePolicyUpdateRequest"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["SourceSchedulePolicyResponse"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    assign_schedule_policy_api_v1_source_schedule_policies__policy_id__sources_put: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                policy_id: number;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["SourceSchedulePolicyAssignRequest"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["SourceSchedulePolicyResponse"];
                 };
             };
             /** @description Validation Error */

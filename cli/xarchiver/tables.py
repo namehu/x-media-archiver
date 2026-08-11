@@ -16,8 +16,9 @@ from sqlalchemy import (
     SmallInteger,
     Table,
     Text,
+    Time,
 )
-from sqlalchemy.dialects.postgresql import JSONB, UUID
+from sqlalchemy.dialects.postgresql import ARRAY, JSONB, UUID
 
 metadata = MetaData()
 
@@ -127,6 +128,7 @@ archive_runs = Table(
     Column("finished_at", DateTime(timezone=True)),
     Column("result", JSONB),
     Column("error_message", Text),
+    Column("last_dispatched_at", DateTime(timezone=True)),
 )
 
 archive_run_items = Table(
@@ -136,6 +138,9 @@ archive_run_items = Table(
     Column("archive_run_id", BigInteger),
     Column("tweet_id", Text),
     Column("status", Text),
+    Column("retry_count", Integer),
+    Column("next_attempt_at", DateTime(timezone=True)),
+    Column("lease_expires_at", DateTime(timezone=True)),
     Column("cancel_requested", Boolean),
     Column("downloaded_bytes", BigInteger),
     Column("total_bytes", BigInteger),
@@ -170,6 +175,77 @@ archive_sources = Table(
     Column("updated_at", DateTime(timezone=True)),
 )
 
+source_schedule_policies = Table(
+    "source_schedule_policies",
+    metadata,
+    Column("id", BigInteger),
+    Column("label", Text),
+    Column("action", Text),
+    Column("frequency_kind", Text),
+    Column("interval_minutes", Integer),
+    Column("local_time", Time),
+    Column("weekday", SmallInteger),
+    Column("timezone", Text),
+    Column("jitter_seconds", Integer),
+    Column("max_downloads_per_source", Integer),
+    Column("max_downloads_per_task", Integer),
+    Column("enabled", Boolean),
+    Column("next_run_at", DateTime(timezone=True)),
+    Column("last_run_at", DateTime(timezone=True)),
+    Column("created_at", DateTime(timezone=True)),
+    Column("updated_at", DateTime(timezone=True)),
+)
+
+source_bulk_tasks = Table(
+    "source_bulk_tasks",
+    metadata,
+    Column("id", BigInteger),
+    Column("task_type", Text),
+    Column("trigger_type", Text),
+    Column("status", Text),
+    Column("schedule_policy_id", BigInteger),
+    Column("source_filter", JSONB),
+    Column("options", JSONB),
+    Column("total_count", Integer),
+    Column("error_category", Text),
+    Column("error_message", Text),
+    Column("started_at", DateTime(timezone=True)),
+    Column("finished_at", DateTime(timezone=True)),
+    Column("created_at", DateTime(timezone=True)),
+    Column("updated_at", DateTime(timezone=True)),
+)
+
+source_bulk_task_items = Table(
+    "source_bulk_task_items",
+    metadata,
+    Column("id", BigInteger),
+    Column("task_id", BigInteger),
+    Column("source_id", BigInteger),
+    Column("position", Integer),
+    Column("wave_index", Integer),
+    Column("status", Text),
+    Column("scan_run_ids", ARRAY(BigInteger)),
+    Column("archive_run_id", BigInteger),
+    Column("discovered_count", Integer),
+    Column("new_tweet_count", Integer),
+    Column("submitted_count", Integer),
+    Column("skip_reason", Text),
+    Column("error_category", Text),
+    Column("error_message", Text),
+    Column("started_at", DateTime(timezone=True)),
+    Column("finished_at", DateTime(timezone=True)),
+    Column("created_at", DateTime(timezone=True)),
+    Column("updated_at", DateTime(timezone=True)),
+)
+
+source_schedule_policy_sources = Table(
+    "source_schedule_policy_sources",
+    metadata,
+    Column("policy_id", BigInteger),
+    Column("source_id", BigInteger),
+    Column("created_at", DateTime(timezone=True)),
+)
+
 operation_log_streams = Table(
     "operation_log_streams",
     metadata,
@@ -198,6 +274,7 @@ source_discovered_tweets = Table(
     Column("archive_run_id", BigInteger),
     Column("discovered_at", DateTime(timezone=True)),
     Column("raw_payload", JSONB),
+    Column("first_discovered_scan_run_id", BigInteger),
 )
 
 source_scan_runs = Table(
@@ -206,7 +283,12 @@ source_scan_runs = Table(
     Column("id", BigInteger),
     Column("source_id", BigInteger),
     Column("status", Text),
+    Column("discovered_tweet_count", Integer),
     Column("new_tweet_count", Integer),
+    Column("error_category", Text),
+    Column("error_message", Text),
+    Column("source_bulk_task_item_id", BigInteger),
+    Column("finished_at", DateTime(timezone=True)),
     Column("created_at", DateTime(timezone=True)),
 )
 

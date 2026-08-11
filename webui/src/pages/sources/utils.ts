@@ -9,7 +9,16 @@ export function unwrapActionResult(response: Record<string, unknown>) {
 export const SOURCE_TYPES = ["profile", "user_media", "likes", "bookmarks", "search", "manual"] as const;
 export const SOURCE_DELETED_FILTERS = ["active", "deleted", "all"] as const;
 export type SourceDeletedFilter = (typeof SOURCE_DELETED_FILTERS)[number];
-export type SourceSortBy = "manual_order" | "updated_at" | "created_at";
+export type SourceSortBy =
+  | "manual_order"
+  | "updated_at"
+  | "created_at"
+  | "latest_tweet_published_at"
+  | "last_success_at"
+  | "unsubmitted_tweet_count"
+  | "pending_download_count"
+  | "schedule_next_run_at";
+export type SourceOperationalFilter = "" | "due" | "waiting_download" | "running" | "error" | "scheduled";
 
 export function parseRecordUrls(value: string) {
   const seen = new Set<string>();
@@ -31,6 +40,8 @@ export function sourceQueryString(
   deleted: SourceDeletedFilter,
   sortBy: SourceSortBy,
   sortDirection: "asc" | "desc",
+  searchText: string,
+  operationalFilter: SourceOperationalFilter,
   limit: number,
   offset: number,
 ) {
@@ -39,6 +50,8 @@ export function sourceQueryString(
   if (deleted !== "active") search.set("deleted", deleted);
   search.set("sort_by", sortBy);
   search.set("sort_direction", sortDirection);
+  if (searchText.trim()) search.set("search", searchText.trim());
+  if (operationalFilter) search.set("operational_filter", operationalFilter);
   return search.toString();
 }
 

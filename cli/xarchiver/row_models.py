@@ -6,7 +6,7 @@
 
 from __future__ import annotations
 
-from datetime import datetime
+from datetime import datetime, time
 from typing import Any
 
 from pydantic import BaseModel, ConfigDict
@@ -275,6 +275,73 @@ class ArchiveSourceListRow(ArchiveSourceRow):
     discovered_media_count: int
     scan_batch_count: int = 0
     latest_discovered_at: datetime | None = None
+    latest_tweet_published_at: datetime | None = None
+    last_success_at: datetime | None = None
+    last_error_at: datetime | None = None
+    pending_download_count: int = 0
+    processing_download_count: int = 0
+    failed_download_count: int = 0
+    schedule_enabled: bool = False
+    schedule_next_run_at: datetime | None = None
+    schedule_policy_label: str | None = None
+    active_bulk_task_item_status: str | None = None
+
+
+class SourceBulkTaskRow(RowModel):
+    id: int
+    task_type: str
+    trigger_type: str
+    status: str
+    schedule_policy_id: int | None = None
+    source_filter: dict[str, Any]
+    options: dict[str, Any]
+    total_count: int
+    error_category: str | None = None
+    error_message: str | None = None
+    started_at: datetime | None = None
+    finished_at: datetime | None = None
+    created_at: datetime
+    updated_at: datetime
+
+
+class SourceBulkTaskItemRow(RowModel):
+    id: int
+    task_id: int
+    source_id: int
+    position: int
+    wave_index: int
+    status: str
+    scan_run_ids: list[int]
+    archive_run_id: int | None = None
+    discovered_count: int
+    new_tweet_count: int
+    submitted_count: int
+    skip_reason: str | None = None
+    error_category: str | None = None
+    error_message: str | None = None
+    started_at: datetime | None = None
+    finished_at: datetime | None = None
+    created_at: datetime
+    updated_at: datetime
+
+
+class SourceSchedulePolicyRow(RowModel):
+    id: int
+    label: str
+    action: str
+    frequency_kind: str
+    interval_minutes: int | None = None
+    local_time: time | None = None
+    weekday: int | None = None
+    timezone: str
+    jitter_seconds: int
+    max_downloads_per_source: int
+    max_downloads_per_task: int
+    enabled: bool
+    next_run_at: datetime | None = None
+    last_run_at: datetime | None = None
+    created_at: datetime
+    updated_at: datetime
 
 
 class SourceDiscoveryRow(RowModel):

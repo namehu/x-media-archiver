@@ -8,6 +8,8 @@ from xarchiver.services.queue import (
     cancel_run_items,
     claim_next_items,
     get_run_detail,
+    has_pending_download_work,
+    has_runnable_download_work,
     heartbeat_archive_items,
     list_runs,
     list_runs_page,
@@ -194,6 +196,31 @@ class QueueIntegrationTests(unittest.TestCase):
         detail = get_run_detail(int(submitted["run_id"]))
         self.assertEqual(process.call_args.args[0], [self.tweet_ids[0]])
         self.assertEqual(detail["status"], "queued")
+
+    def test_claims_rotate_across_runnable_runs(self) -> None:
+        first = submit_archive_batch(
+            [self.record(self.tweet_ids[0]), self.record(self.tweet_ids[1])],
+            "test_queue_fair_first",
+        )
+        second = submit_archive_batch(
+            [self.record(self.tweet_ids[2])],
+            "test_queue_fair_second",
+        )
+
+        first_claim = claim_next_items(retry_limit=3, batch_size=1, worker_id="fair-worker")
+        second_claim = claim_next_items(retry_limit=3, batch_size=1, worker_id="fair-worker")
+
+        self.assertEqual(first_claim[0]["archive_run_id"], first["run_id"])
+        self.assertEqual(second_claim[0]["archive_run_id"], second["run_id"])
+
+    def test_paused_items_are_pending_but_not_runnable(self) -> None:
+        submitted = submit_archive_batch([self.record(self.tweet_ids[0])], "test_queue_paused_due")
+        self.assertTrue(has_runnable_download_work())
+
+        pause_run(int(submitted["run_id"]))
+
+        self.assertTrue(has_pending_download_work())
+        self.assertFalse(has_runnable_download_work())
 
     def test_worker_claims_multiple_items_up_to_queue_batch_size(self) -> None:
         submitted = submit_archive_batch(

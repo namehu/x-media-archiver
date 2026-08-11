@@ -31,6 +31,8 @@ flowchart LR
 - 扫描、暂停、停止、恢复必须可恢复、可审计。
 - 同一来源同一时间只允许一个可运行下载 run；后续来源下载 run 必须进入 blocked。
 - WebUI 必须把普通用户操作收敛到“扫描控制、下载工作台、发现列表”三个区域。
+- 来源列表批量操作必须创建持久化父任务，而不是由浏览器循环调用单来源接口。
+- “更新并下载本轮新增”必须使用扫描运行关联精确确定成员，不能按时间窗口推测。
 
 非目标：
 
@@ -57,6 +59,7 @@ flowchart LR
 - 同一 Tweet 同一时间只能存在一个 active item，重复提交应返回 linked/skipped 统计。
 - 下载媒体文件到 `archive/media/<author_id>/<tweet_id>/`。
 - 写入 `media_assets`、下载尝试记录、校验状态、item 进度和控制状态。
+- 处理批量任务明确提交的“当前缺失项”或“本轮新增”；普通扫描仍不会隐式创建下载 run。
 
 扫描发现的媒体数量来自页面元数据，是下载前预估。最终媒体数量和状态以下载后的 `media_assets` 与文件校验结果为准。
 
@@ -86,6 +89,11 @@ Sources 详情页统一使用“扫描来源”面板，不再区分“基础扫
 erDiagram
     archive_sources ||--o{ source_scan_runs : audits
     archive_sources ||--o{ source_discovered_tweets : discovers
+    archive_sources ||--o{ source_bulk_task_items : executes
+    source_bulk_tasks ||--o{ source_bulk_task_items : contains
+    source_bulk_task_items ||--o{ source_scan_runs : scans
+    source_schedule_policies ||--o{ source_bulk_tasks : triggers
+    source_schedule_policies }o--o{ archive_sources : assigns
     tweets ||--o{ source_discovered_tweets : referenced_by
     source_scan_runs }o--|| operation_log_streams : logs
     archive_runs ||--o{ archive_run_items : queues
@@ -110,6 +118,7 @@ erDiagram
         int range_end
         jsonb cursor_before
         jsonb cursor_after
+        int source_bulk_task_item_id
     }
 
     source_discovered_tweets {
@@ -117,9 +126,40 @@ erDiagram
         int source_id
         text tweet_id
         int archive_run_id
+        int first_discovered_scan_run_id
         jsonb raw_payload
     }
+
+    source_bulk_tasks {
+        int id
+        text task_type
+        text trigger_type
+        text status
+        jsonb source_filter
+        jsonb options
+    }
+
+    source_bulk_task_items {
+        int id
+        int task_id
+        int source_id
+        int wave_index
+        text status
+        bigint_array scan_run_ids
+        int archive_run_id
+    }
+
+    source_schedule_policies {
+        int id
+        text action
+        text frequency_kind
+        text timezone
+        bool enabled
+        timestamptz next_run_at
+    }
 ```
+
+`source_bulk_tasks.source_filter` 保存用户创建任务时的筛选条件用于审计，真正执行的来源集合在创建时冻结到 `source_bulk_task_items`。`source_discovered_tweets.first_discovered_scan_run_id` 只在首次插入时写入，重复扫描只合并 payload，因此组合任务可以精确选择本轮首次发现项。
 
 ### 4.2 cursor_state 结构
 
@@ -192,8 +232,6 @@ stateDiagram-v2
 ```mermaid
 stateDiagram-v2
     [*] --> running: start / resume
-    running --> waiting_downloads: download queue busy
-    waiting_downloads --> running: next scheduled attempt
     running --> retry_wait: transient failure
     retry_wait --> running: retry after delay
     running --> paused: user pause
@@ -237,52 +275,62 @@ stateDiagram-v2
 
 ```mermaid
 sequenceDiagram
-    participant W as Source Scan Worker
+    participant O as Bulk Orchestrator
+    participant W as Network Worker
     participant DB as Postgres
-    participant Q as Download Queue
-    participant G as gallery-dl
-    participant L as Operation Logs
+    participant X as gallery-dl / yt-dlp
 
-    W->>DB: fetch active source where automation_enabled=true
-    DB-->>W: source + cursor_state
-    W->>Q: has_pending_download_work()
-    alt download queue busy
-        W->>DB: insert source_scan_runs(status=waiting_downloads)
-        W->>DB: schedule next_scan_at
-    else download queue idle
-        W->>DB: insert source_scan_runs(status=running)
-        W->>L: create log stream
-        W->>G: run scan with session cursor and post range
-        G-->>W: stdout records + stderr cursor/logs
-        W->>L: append verbose logs
-        W->>DB: upsert tweets and discoveries
-        W->>DB: update session cursor_state
-        W->>DB: finish source_scan_runs
-        alt session completed or paused
-            W->>DB: disable or pause automation
-        else continue
-            W->>DB: schedule next_scan_at with random delay
+    O->>DB: 创建任务并冻结来源快照
+    O->>DB: 当前波次至多派发 10 个来源
+    loop 每轮 worker tick
+        O->>DB: 收敛扫描与下载结果
+        W->>DB: 检查到期扫描和可领取下载
+        alt 两类工作都就绪
+            W->>W: 与上一轮相反的类型
+        else 只有一类就绪
+            W->>W: 选择该类型
         end
+        W->>DB: 原子领取一个扫描批次或一个下载 run 批次
+        W->>X: 执行唯一的外部网络子进程
+        X-->>W: 结果、cursor 与日志
+        W->>DB: 持久化结果并释放 lease
+        O->>DB: 推进任务项或下一波
     end
 ```
 
 调度规则：
 
-1. 读取当前 active scan session。
-2. 依据 session mode 映射 `trigger_type`。
-3. 依据 active session cursor 计算当前批次窗口，例如 `1-20`、`21-40`。
-4. 检查下载队列是否存在 pending 或 processing 任务。
-5. 下载队列忙时写入 `waiting_downloads` 审计记录并延后扫描。
-6. 下载队列空闲时调用 `gallery-dl`。
-7. 子进程完整返回后解析、去重、落库。
-8. 按 session 规则决定继续、暂停、停止或完成。
-9. 未完成时根据 `SOURCE_SCAN_SLEEP_MIN_SECONDS` 和 `SOURCE_SCAN_SLEEP_MAX_SECONDS` 随机延后下一批。
+1. API 进程只启动一个网络 worker，避免扫描 `gallery-dl` 与下载 `gallery-dl` / `yt-dlp` 并发争用 cookies、带宽和限流额度。
+2. 只有扫描就绪时执行扫描，只有下载就绪时执行下载；两类同时就绪时严格交替，防止任一类别长期饥饿。
+3. 下载 worker 每次只从一个 run 领取至多 `QUEUE_BATCH_SIZE` 条，run 按 `last_dispatched_at nulls first` 排序，因此多个来源会轮转获得进度。
+4. 批量任务默认每 10 个来源形成一波。前一波仍有 queued、scanning、waiting_download 或 downloading 项时，不派发下一波。
+5. `refresh_latest` 完成扫描后直接成功；`download_missing` 提交当前缺失项；`refresh_and_download_new` 只提交与该任务项扫描运行关联的首次发现 Tweet。
+6. 普通详情页扫描与下载仍是两个显式动作。只有组合批量任务或已启用的同类定时策略会自动衔接本轮新增下载。
+7. 未完成扫描仍根据 `SOURCE_SCAN_SLEEP_MIN_SECONDS` 和 `SOURCE_SCAN_SLEEP_MAX_SECONDS` 随机延后下一批；计划时间表示 not-before。
+
+定时策略规则：
+
+- 支持固定间隔、每日和每周锚点；数据库保存 UTC，WebUI 默认按 `Asia/Shanghai` 创建和展示。
+- 策略默认关闭。停机错过多次或上一次任务尚未结束时只合并补跑一次，不追赶每个历史触发点。
+- 计划任务只支持更新最新推文，或更新并下载本轮新增，不自动下载历史缺失积压。
+- 定时下载默认每来源最多 50 条、每任务最多 1000 条；人工“下载当前缺失项”预计超过 500 条时要求确认。
+- 失败来源重试保留原任务的安全属性：定时任务仍受 50/1000 上限约束；人工缺失下载在重试时重新估算，超过 500 条仍需显式确认。
+- 同一父任务出现 3 个 `auth_required` 或 `rate_limited` 来源项后进入 blocked，等待用户处理 cookies/限流并手工恢复。
 
 运行中的批次会把 `gallery-dl --verbose` 日志写入 `archive/logs/source-scan-logs/` 下的 JSONL 文件。数据库保存日志流索引和摘要。Sources 详情页通过“查看最新扫描日志”打开弹层，`Operations -> Logs` 可查看同一日志流。
 
 ## 7. WebUI 交互需求
 
-### 7.1 页面状态与按钮
+### 7.1 来源列表与批量任务
+
+- 列表支持逐项勾选和“当前筛选全部”。后者在服务端冻结成员，最多 200 个；超过上限时要求先缩小筛选。
+- 已删除来源不参与批量选择。`profile`、`user_media`、`likes` 可刷新；不支持扫描的来源在刷新任务中逐项跳过，不让父任务整体失败。
+- 列表时间必须区分：`latest_tweet_published_at` 是最新 Tweet 发布时间，`last_success_at` 是最近成功同步；`updated_at` 不能用于表达数据新鲜度。
+- 下载积压同时展示未提交、排队、处理中和失败数量；失败数按来源内每个 Tweet 的最新下载条目计算，后续成功不会保留历史失败告警；任务状态与下次执行时间在列表直接可见。
+- 任务中心展示父任务进度和逐来源结果，支持暂停、恢复、取消，以及只用失败来源创建重试任务。
+- 三个批量动作分别是“更新最新推文”“下载当前缺失项”“更新并下载本轮新增”。前两者互不隐式依赖，组合动作由服务端保证顺序。
+
+### 7.2 页面状态与按钮
 
 | 页面状态 | 主按钮 | 说明 |
 | --- | --- | --- |
@@ -293,7 +341,7 @@ sequenceDiagram
 | 历史扫描完成 | 补充最新推文、从头扫描/补断层 | 从头扫描属于修复入口 |
 | 补最新完成 | 再次补充最新推文 | 表示已补到已知记录 |
 
-### 7.2 展示指标
+### 7.3 展示指标
 
 | 指标 | 含义 |
 | --- | --- |
@@ -308,7 +356,7 @@ sequenceDiagram
 | 累计新增 Tweet | 扫描批次首次发现并写入当前来源的 Tweet 数 |
 | 最近成功扫描 / 最近扫描错误 | 用于判断后台停止增长的原因 |
 
-### 7.3 下载工作台交互
+### 7.4 下载工作台交互
 
 | 场景 | 系统行为 | 用户可见结果 |
 | --- | --- | --- |
@@ -321,7 +369,7 @@ sequenceDiagram
 | 取消选中 | pending/blocked 变 `cancelled`，processing 标记取消请求 | 当前子进程自然结束 |
 | 停止下载 | 取消未开始 item，processing 自然结束 | 后续 blocked run 可被释放 |
 
-### 7.4 交互约束
+### 7.5 交互约束
 
 - 运行中只允许暂停、停止、查看日志，不展示新的扫描入口。
 - 暂停后允许恢复当前会话或停止当前会话。
@@ -355,6 +403,15 @@ sequenceDiagram
 | `POST /api/v1/archive-runs/{run_id}/resume` | 恢复暂停下载 run | `ArchiveRunControlResponse` |
 | `POST /api/v1/archive-runs/{run_id}/stop` | 停止下载 run，取消未开始 item | `ArchiveRunControlResponse` |
 | `POST /api/v1/archive-runs/{run_id}/items/cancel` | 取消 pending/blocked item，processing item 仅标记取消请求 | `ArchiveRunControlResponse` |
+| `POST /api/v1/source-bulk-tasks` | 按显式来源 ID 或当前筛选快照创建批量任务 | `SourceBulkTaskResponse` |
+| `GET /api/v1/source-bulk-tasks` | 分页查看父任务和聚合进度 | `SourceBulkTasksPageResponse` |
+| `GET /api/v1/source-bulk-tasks/{task_id}` | 查看父任务与逐来源任务项 | `SourceBulkTaskResponse` |
+| `POST /api/v1/source-bulk-tasks/{task_id}/control` | 暂停、恢复或取消父任务 | `SourceBulkTaskResponse` |
+| `POST /api/v1/source-bulk-tasks/{task_id}/retry` | 仅冻结原任务失败来源创建重试任务；大型人工下载通过 `confirm_large_download` 再确认 | `SourceBulkTaskResponse` |
+| `GET/POST /api/v1/source-schedule-policies` | 列出或创建命名定时策略 | `SourceSchedulePolicyResponse` |
+| `PATCH /api/v1/source-schedule-policies/{policy_id}` | 修改策略并重算下次执行 | `SourceSchedulePolicyResponse` |
+| `PUT /api/v1/source-schedule-policies/{policy_id}/sources` | 替换策略成员 | `SourceSchedulePolicyResponse` |
+| `DELETE /api/v1/source-schedule-policies/{policy_id}` | 删除策略并保留历史任务 | `204` |
 
 接口约束：
 
@@ -373,7 +430,7 @@ sequenceDiagram
 
 | 场景 | 系统行为 | 用户可见结果 |
 | --- | --- | --- |
-| 下载队列忙 | 写入 `waiting_downloads` 批次记录，延后扫描 | 扫描状态显示等待下载队列清空 |
+| 扫描与下载同时就绪 | 单网络 worker 与上一轮相反类型交替执行 | 两类任务都持续获得进度且不并发外部子进程 |
 | `gallery-dl` 限流 | 当前会话暂停，记录 `rate_limited` | 用户可恢复或停止 |
 | 认证失败 | 当前会话暂停，记录 `auth_required` | 用户更新 cookie 后恢复 |
 | 网络或临时失败 | 记录错误，按 retry wait 调度 | 用户可查看批次错误和日志 |
@@ -384,6 +441,10 @@ sequenceDiagram
 | 下载 run 停止 | pending/blocked/failed_retryable 变 cancelled，processing 标记取消请求 | 下载工作台显示已停止，后续 blocked run 释放 |
 | 重复点击下载 | 事务锁和唯一 active item 约束阻止重复 item | 返回已有任务和已归档统计 |
 | 同一来源已有 active run | 新来源 run 进入 blocked | 页面显示等待前序任务 |
+| 批量任务包含不支持扫描或已暂停来源 | 对应来源项标记 skipped | 父任务继续处理其他来源并显示原因 |
+| 批量任务部分来源失败 | 父任务完成为 `completed_with_issues` | 用户可仅重试失败来源 |
+| 连续 3 个认证/限流来源失败 | 父任务进入 `blocked` | 更新 cookies 或等待限流解除后手工继续 |
+| 定时策略执行重叠或停机错过多次 | 合并为至多一个新任务并推进锚点 | 不积压一串补跑任务 |
 
 扫描网络请求默认使用 `SOURCE_SCAN_HTTP_TIMEOUT_SECONDS=15` 和
 `SOURCE_SCAN_HTTP_RETRIES=2`。gallery-dl 可能在 HTTP 重试耗尽后仍返回退出码 0；
@@ -397,9 +458,13 @@ worker 会额外识别末次重试错误，将整批标记为 `network_error`，
 - `history`、`latest_refresh`、`from_start` 各自独立保存 cursor。
 - `latest_refresh` 只有在单批 `duplicate_count > 5` 或来源末尾时完成。
 - `from_start` 遇到重复 Tweet 不提前完成。
-- `waiting_downloads` 和扫描失败审计必须使用 active session 的范围。
+- 兼容路径产生的 `waiting_downloads` 与扫描失败审计必须使用 active session 的范围。
 - 暂停、恢复、停止接口必须通过 FastAPI response model 校验。
 - 新增 `trigger_type` 必须有 Alembic revision 更新数据库约束。
+- 批量任务的来源成员必须在创建时冻结，页面关闭或后续筛选变化不能改变成员。
+- `refresh_and_download_new` 只能提交 `first_discovered_scan_run_id` 属于该任务项的发现记录。
+- 波次未收敛前不得派发下一波；多个下载 run 必须轮转领取。
+- 定时策略默认关闭，重叠/错过合并，且下载上限与认证熔断可审计。
 
 前端验收：
 
@@ -413,6 +478,9 @@ worker 会额外识别末次重试错误，将整批标记为 `network_error`，
 - 补最新完成时显示“补充最新推文已完成”，不能误显示“历史扫描已完成”。
 - 下一批范围优先读取 active session。
 - 日志弹层和 `Operations -> Logs` 能打开同一日志流。
+- Sources 列表在桌面展示最新内容、最近同步、下载积压、任务和下次执行；窄屏保留核心摘要。
+- 批量任务中心支持暂停、恢复、取消和仅重试失败项；关闭页面后任务仍继续。
+- 当前筛选全部超过 200 个时不能静默只操作已加载 50 个来源。
 
 建议验证命令：
 
