@@ -15,7 +15,6 @@ import { StatusDot } from "../../components/ui/status-dot";
 const StatusDistributionCard = lazy(() =>
   import("./components/dashboard-charts").then((module) => ({ default: module.StatusDistributionCard })),
 );
-const ActivityCard = lazy(() => import("./components/dashboard-charts").then((module) => ({ default: module.ActivityCard })));
 
 export function DashboardPage() {
   const events = useServerEvents(["archive_runs", "sources", "source_scans", "worker"]);
@@ -34,7 +33,7 @@ export function DashboardPage() {
       <section className="flex flex-col justify-between gap-4 md:flex-row md:items-end">
         <div>
           <h1 className="text-2xl font-bold tracking-tight text-fg-primary">仪表盘</h1>
-          <p className="mt-1 text-sm text-fg-secondary">归档队列、媒体库与来源扫描的实时总览。</p>
+          <p className="mt-1 text-sm text-fg-secondary">归档队列、媒体库与来源扫描的当前状态总览。</p>
         </div>
         <LiveIndicator
           state={
@@ -51,20 +50,16 @@ export function DashboardPage() {
 
       <section className="grid gap-4 md:grid-cols-2 xl:grid-cols-4">
         <StatCard
-          label="媒体文件"
+          label="媒体资产"
           value={data.media_count.toLocaleString()}
-          detail="本地媒体库索引"
+          detail="数据库索引（全部状态）"
           icon={<Images className="h-4 w-4" />}
-          sparklineData={model.mediaSparkline}
-          trend={{ value: "已同步", direction: "up" }}
         />
         <StatCard
           label="失败队列"
           value={data.failure_count.toLocaleString()}
           detail={data.failure_count ? "需要排查或重试" : "暂无失败项"}
           icon={<FileWarning className="h-4 w-4" />}
-          sparklineData={model.failureSparkline}
-          trend={{ value: data.failure_count ? "需处理" : "清洁", direction: data.failure_count ? "down" : "flat" }}
           tone={data.failure_count ? "danger" : "success"}
         />
         <StatCard
@@ -72,8 +67,6 @@ export function DashboardPage() {
           value={model.statusTotal.toLocaleString()}
           detail={`${model.statusEntries.length} 种状态`}
           icon={<ListChecks className="h-4 w-4" />}
-          sparklineData={model.statusSparkline}
-          trend={{ value: "已索引", direction: "up" }}
           tone="success"
         />
         <StatCard
@@ -81,13 +74,11 @@ export function DashboardPage() {
           value={formatBytes(model.exportBytes)}
           detail={`${data.exports.length} 个文件`}
           icon={<Archive className="h-4 w-4" />}
-          sparklineData={model.exportSparkline}
-          trend={{ value: "快照", direction: "flat" }}
           tone="brand"
         />
       </section>
 
-      <section className="grid gap-4 xl:grid-cols-[1.05fr_1fr_0.95fr]">
+      <section className="grid gap-4 xl:grid-cols-[1.1fr_0.9fr]">
         <Suspense fallback={<Skeleton className="h-72" />}>
           <StatusDistributionCard
             title="状态分布"
@@ -97,18 +88,10 @@ export function DashboardPage() {
           />
         </Suspense>
 
-        <Suspense fallback={<Skeleton className="h-72" />}>
-          <ActivityCard
-            title="24h 活动"
-            description="归档与失败趋势概览。"
-            activity={model.activity}
-          />
-        </Suspense>
-
         <Card>
           <CardHeader>
-            <CardTitle>实时事件</CardTitle>
-            <CardDescription>由 WebSocket 事件与 REST 摘要合成。</CardDescription>
+            <CardTitle>库状态摘要</CardTitle>
+            <CardDescription>来自当前 REST 摘要；实时连接状态显示在页头。</CardDescription>
           </CardHeader>
           <CardContent className="space-y-3">
             {model.feed.map((item) => (
@@ -158,7 +141,7 @@ export function DashboardPage() {
             </div>
             <div className="mt-4 flex items-center gap-2 text-xs text-fg-tertiary">
               <AlertTriangle className="h-3.5 w-3.5" />
-              WebUI 不提供媒体删除能力，维护动作需显式确认。
+              媒体删除仅在帖子浏览、媒体库和重复媒体中提供，并始终要求显式确认。
             </div>
           </CardContent>
         </Card>
@@ -193,28 +176,17 @@ function buildDashboardModel(data: Summary) {
     .sort((a, b) => b.count - a.count);
   const statusTotal = statusEntries.reduce((sum, entry) => sum + entry.count, 0);
   const exportBytes = data.exports.reduce((sum, file) => sum + file.size, 0);
-  const seed = Math.max(1, data.media_count + data.failure_count + statusTotal + data.exports.length);
-  const series = (base: number, spread = 7) => Array.from({ length: 12 }, (_, index) => Math.max(0, Math.round(base * (0.72 + ((seed + index * spread) % 9) / 20))));
 
   return {
     statusEntries,
     statusTotal,
     exportBytes,
-    mediaSparkline: series(Math.max(1, data.media_count / 12)),
-    failureSparkline: series(Math.max(1, data.failure_count || 1), 5),
-    statusSparkline: series(Math.max(1, statusTotal / 12), 3),
-    exportSparkline: series(Math.max(1, data.exports.length || 1), 4),
-    activity: Array.from({ length: 8 }, (_, index) => ({
-      label: `${index * 3}h`,
-      archived: Math.max(1, Math.round((data.media_count / 48) * (0.55 + ((seed + index) % 6) / 10))),
-      failed: Math.max(0, Math.round((data.failure_count / 10) * (((seed + index * 2) % 4) / 4))),
-    })),
     feed: [
       {
         id: "media",
         tone: "running" as const,
-        title: `${data.media_count.toLocaleString()} 个媒体文件已标记为${statusLabel("downloaded")}`,
-        detail: "Library 摘要会随实时事件或轮询刷新。",
+        title: `数据库登记了 ${data.media_count.toLocaleString()} 个媒体资产`,
+        detail: "计数包含已校验、缺失、损坏、处理中等全部状态。",
       },
       {
         id: "failure",

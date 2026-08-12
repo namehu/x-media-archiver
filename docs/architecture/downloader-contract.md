@@ -309,4 +309,18 @@ gallery-dl version: 1.32.1
    continuation 批次 `21-40` 返回 20 Tweet / 36 媒体；第二批使用并更新了首批保存的 cursor。
 ```
 
-详细验收记录见 [`source-scanning-acceptance.md`](source-scanning-acceptance.md)。
+详细验收记录见 [`source-scanning-acceptance.md`](../testing/source-scanning-acceptance.md)。
+
+## M0 隔离闭环验收补充
+
+验证时间：2026-08-12。
+
+在用户明确授权的 `user_media` 来源上限制发现和提交 5 条，并使用独立数据库与隔离归档目录执行完整链路。已确认：
+
+1. latest refresh 只写 5 条 discovery，不隐式创建归档 run，也不推进 history checkpoint。
+2. history 批次返回 continuation cursor 时保持未完成，并持久化下一批位置；暂停和 API 重启不会丢失 checkpoint。
+3. 人工提交后仅创建 1 个 run 和 5 个唯一 item；下载 worker 只领取这 5 项。
+4. 5 个下载 attempt 均为 `downloaded`，scoped backfill 与 verify 后 5 个 item、Tweet 和媒体资产均为 `verified`。
+5. 物理路径均符合 `archive/media/<author_id>/<tweet_id>/`；隔离目录全量复核结果为 verified 5、missing 0、corrupt 0。
+
+本次真实验收未主动制造 `rate_limited`、`auth_required` 或 `network_error`，避免无必要地扩大外部请求；定向测试覆盖限流/认证暂停及网络错误不推进 cursor，其余页面展示和人工恢复仍按手工清单验收。详细记录见 [`../testing/source-scanning-acceptance.md`](../testing/source-scanning-acceptance.md)。

@@ -57,6 +57,7 @@ from xarchiver.services.source_bulk_tasks import (
 from xarchiver.services.sources import (
     process_next_source_history_scan,
     recover_expired_source_scan_leases,
+    recover_interrupted_source_scan_runs,
 )
 
 logger = logging.getLogger(__name__)
@@ -77,13 +78,18 @@ async def app_lifespan(_: FastAPI):
             logger.warning("Admin is not initialized. One-time setup token: %s", setup_token)
     worker_id = make_worker_id()
     expired_items = count_expired_archive_item_leases()
+    interrupted_scans = recover_interrupted_source_scan_runs()
     expired_scans = recover_expired_source_scan_leases()
-    if expired_items or expired_scans:
+    if expired_items or interrupted_scans or expired_scans:
         logger.warning(
-            "Found expired worker leases on startup.",
+            "Recovered interrupted or expired worker leases on startup.",
             extra={
                 "event": "worker.lease.expired_found",
-                "details": {"archive_items": expired_items, "source_scans": expired_scans},
+                "details": {
+                    "archive_items": expired_items,
+                    "interrupted_source_scans": interrupted_scans,
+                    "expired_source_scans": expired_scans,
+                },
             },
         )
     workers = [

@@ -28,6 +28,7 @@ git diff --check
 完整后端验证：
 
 ```bash
+bash scripts/lint_python.sh
 docker-compose run --rm --entrypoint python xarchiver -m unittest discover -s /app/tests
 ```
 
@@ -59,6 +60,7 @@ npm run check
 
 ### Dashboard
 - [ ] 页面可以加载摘要统计。
+- [ ] 页面只展示 API 返回的真实快照和状态分布，不根据当前总数生成伪造趋势或“24h 活动”。
 - [ ] API 失败时显示错误状态，而不是空白页面。
 - [ ] SSE 状态在顶部可见：连接中、已连接、离线轮询。
 - [ ] 顶部健康状态可见：写操作、队列、扫描、错误计数。
@@ -107,8 +109,8 @@ npm run check
 - [ ] 系统状态面板能显示写操作锁、队列积压、来源扫描、最近批次、最近扫描和最近错误。
 - [ ] 最近错误中的链接可正常跳转。
 - [ ] Full backfill 和 Full verify 保留显式确认语义。
-- [ ] WebUI 不提供媒体文件删除能力。
-- [ ] 后端写操作互斥：已有写操作执行时，新写操作返回 `409 write_action_in_progress`。
+- [ ] Feed、Library 和 Duplicates 的媒体删除均按明确选择的 `media_assets.id` 执行，限制在 `archive/media`，要求二次确认并保留 Tweet、任务历史和删除审计。
+- [ ] 后端写操作按作用域互斥：同一来源冲突，或全局维护动作与任一 scoped 写操作冲突时返回 `409 write_action_in_progress`；不同来源的 scoped 操作可以并行。
 
 ### OpenAPI / WebUI 类型
 - [ ] 后端 schema 变更后执行 `npm run generate:api-types`，确认 `webui/src/api/generated.ts` 同步更新；OpenAPI JSON 是被忽略的本地临时产物。
@@ -134,3 +136,9 @@ npm run check
   - [ ] 用 profile /timeline 验证 native cursor 语义。
   - [ ] 验证到达结尾、停止/恢复和 API 重启后的 cursor 延续。
   - [ ] 后续验收按空库或清理后的新项目状态执行，不再保留旧数字 checkpoint 的兼容分支。
+
+### 2026-08-12 M0 受控验收
+
+使用用户明确授权的 `user_media` 来源和最多 5 条上限，在独立空库与隔离归档目录完成了发现、人工提交、下载、scoped 回填与校验闭环。5 个 Archive Queue item、5 个 Tweet 和 5 个媒体资产最终均为 `verified`；暂停与 API 重启后 continuation cursor 和下一批位置保持不变。真实验收未主动制造限流、认证失败或网络故障；定向测试覆盖限流/认证暂停及网络错误不推进 cursor，其余页面展示和人工恢复继续按本清单手工验收。
+
+完整环境、步骤、结果和遗留项见 [`source-scanning-acceptance.md`](source-scanning-acceptance.md)。

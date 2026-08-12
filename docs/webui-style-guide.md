@@ -84,7 +84,7 @@ New pages should import from `components/ui/...`. Do not create a parallel compo
 Dashboard:
 
 - StatCards first.
-- Charts and recent activity below.
+- Only fact-backed charts and current-state summaries below; do not synthesize trends or recent activity from current totals.
 - Live event state visible near the top.
 
 Library:
@@ -108,7 +108,7 @@ Sources:
 
 Operations:
 
-- Three tabs: maintenance, system status, database tools.
+- Five tabs: maintenance, system status, logs, Cookies, database tools.
 - System status must show worker/write lock, queue backlog, source scans, recent errors.
 - Database tools must show DB pool active, idle, and waiting metrics.
 
@@ -152,11 +152,9 @@ Minimum expectations:
 - Avoid hiding important state in hover-only content.
 - Respect reduced-motion via the global CSS rule in `styles.css`.
 
-## Internationalization
+## Visible Copy
 
-New visible copy should be added to `webui/src/locales/zh.ts` and `webui/src/locales/en.ts`.
-
-English may be concise, but keys must exist. Avoid relying on fallback keys for production UI.
+WebUI 当前只维护中文文案。用户可见文本直接写在对应页面或组件中，不新增 `locales`、翻译 key、`I18nProvider` 或 `useI18n`。浏览器扩展仍继续使用 Chrome 原生 i18n，两者边界不要混淆。
 
 ## What Not To Reintroduce
 
@@ -165,7 +163,7 @@ English may be concise, but keys must exist. Avoid relying on fallback keys for 
 - One-off hardcoded brand colors.
 - Marketing landing-page sections.
 - UI cards nested inside other UI cards.
-- Media deletion outside the Library/Feed explicit, audited confirmation flow.
+- Media deletion outside the Library/Feed/Duplicates explicit, audited confirmation flow.
 - Implicit full archive scans without explicit confirmation.
 
 ## Verification Checklist

@@ -1565,13 +1565,20 @@ def recover_interrupted_source_scan_runs() -> int:
                 set status = 'failed',
                     error_category = 'interrupted',
                     error_message = 'API 在当前扫描批次结束前已停止。',
-                    finished_at = now()
+                    finished_at = now(),
+                    worker_id = null,
+                    lease_expires_at = null
                 where status = 'running'
+                returning log_stream_id
                 """
             )
-            recovered = cur.rowcount
+            recovered_rows = cur.fetchall()
+            close_recovered_source_scan_log_streams(
+                cur,
+                [row["log_stream_id"] for row in recovered_rows],
+            )
         conn.commit()
-    return recovered
+    return len(recovered_rows)
 
 
 def recover_expired_source_scan_leases() -> int:
@@ -1592,12 +1599,33 @@ def recover_expired_source_scan_leases() -> int:
                     status = 'running' and (lease_expires_at is null or lease_expires_at < now())
                   ) or (
                     status = 'waiting_downloads' and lease_expires_at < now()
-                  )
+                )
+                returning log_stream_id
                 """
             )
-            recovered = cur.rowcount
+            recovered_rows = cur.fetchall()
+            close_recovered_source_scan_log_streams(
+                cur,
+                [row["log_stream_id"] for row in recovered_rows],
+            )
         conn.commit()
-    return recovered
+    return len(recovered_rows)
+
+
+def close_recovered_source_scan_log_streams(cur: Any, stream_ids: list[object]) -> None:
+    """在扫描恢复事务内关闭关联日志流，避免失败 run 被永久轮询。"""
+
+    normalized_ids = [int(stream_id) for stream_id in stream_ids if stream_id is not None]
+    if not normalized_ids:
+        return
+    cur.execute(
+        """
+        update operation_log_streams
+        set closed_at = coalesce(closed_at, now())
+        where id = any(%s)
+        """,
+        (normalized_ids,),
+    )
 
 
 def count_expired_source_scan_leases() -> int:
@@ -2130,7 +2158,21 @@ def finish_scan_source_result(
     if not records:
         lease.ensure_active()
         scan_succeeded = scan_meta.get("exit_code") == 0 and not scan_meta.get("error_category")
-        completed = scan_succeeded and advances_history
+        completed = bool(
+            scan_succeeded
+            and advances_history
+            and (
+                is_scan_session_complete(
+                    session_mode,
+                    scan_meta,
+                    scan_range,
+                    discovered_count=0,
+                    duplicate_count=0,
+                )
+                if session_mode
+                else is_source_scan_complete(scan_meta, scan_range, discovered_count=0)
+            )
+        )
         ensure_source_scan_lease(scan_run_id, worker_id)
         cursor_after = (
             update_source_cursor(

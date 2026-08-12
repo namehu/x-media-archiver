@@ -42,10 +42,14 @@ from xarchiver.services.sources import (
     normalize_source_type,
     normalize_source_url,
     parse_gallery_dl_records,
+    pause_source_scan_session,
+    process_next_source_history_scan,
     record_source_discoveries,
     record_waiting_downloads_scan,
     recover_expired_source_scan_leases,
+    recover_interrupted_source_scan_runs,
     reorder_sources,
+    resume_source_scan_session,
     run_gallery_dl_streaming,
     scan_run_status,
     scan_source,
@@ -685,6 +689,93 @@ time.sleep(60)
             error_message=None,
             worker_id=None,
         )
+
+    def test_history_empty_batch_with_continuation_cursor_does_not_complete(self) -> None:
+        cursor = {
+            "active_scan_mode": "history",
+            "automation_enabled": True,
+            "scan_sessions": {
+                "history": {
+                    "mode": "history",
+                    "state": "running",
+                    "limit": 20,
+                    "next_start_index": 21,
+                    "extractor_cursor": "current-cursor",
+                }
+            },
+        }
+        settings = SimpleNamespace(
+            source_scan_sleep_min_seconds=2,
+            source_scan_sleep_max_seconds=6,
+            source_scan_http_timeout_seconds=15,
+            source_scan_http_retries=2,
+        )
+        with (
+            patch(
+                "xarchiver.services.sources.get_source",
+                return_value={
+                    "status": "active",
+                    "source_type": "user_media",
+                    "source_url": "https://x.com/example/media",
+                    "cursor_state": cursor,
+                },
+            ),
+            patch("xarchiver.services.sources.start_source_scan_run", return_value=11),
+            patch(
+                "xarchiver.services.sources.discover_records_with_gallery_dl",
+                return_value=(
+                    [],
+                    {
+                        "exit_code": 0,
+                        "scan_url": "https://x.com/example/media",
+                        "cursor_mode": "native",
+                        "continuation_cursor": "next-cursor",
+                    },
+                ),
+            ),
+            patch("xarchiver.services.sources.prepare_cookies", return_value=None),
+            patch("xarchiver.services.sources.update_source_cursor", return_value=cursor) as update_cursor,
+            patch("xarchiver.services.sources.mark_source_scan_result"),
+            patch("xarchiver.services.sources.finish_source_scan_run") as finish_run,
+        ):
+            result = scan_source(1, 20, settings=settings, session_mode="history")
+
+        self.assertFalse(result["completed"])
+        self.assertFalse(update_cursor.call_args.kwargs["completed"])
+        finish_run.assert_called_once_with(
+            11,
+            "succeeded",
+            cursor_after=cursor,
+            error_category=None,
+            error_message=None,
+            worker_id=None,
+        )
+
+    def test_persistent_scan_errors_pause_automation(self) -> None:
+        settings = SimpleNamespace(source_scan_batch_size=20)
+        source = {
+            "id": 7,
+            "cursor_state": {
+                "active_scan_mode": "history",
+                "scan_sessions": {"history": {"limit": 20}},
+            },
+        }
+        for category in ("rate_limited", "auth_required"):
+            with (
+                self.subTest(category=category),
+                patch("xarchiver.services.sources.fetch_due_history_source", return_value=source),
+                patch(
+                    "xarchiver.services.sources.scan_source",
+                    return_value={"completed": False, "scanner": {"error_category": category}},
+                ),
+                patch("xarchiver.services.sources.pause_history_scan_for_error") as pause,
+                patch("xarchiver.services.sources.schedule_next_history_scan") as schedule,
+            ):
+                result = process_next_source_history_scan(settings, allow_during_downloads=True)
+
+            self.assertEqual(result["scanner"]["error_category"], category)
+            pause.assert_called_once_with(7, category)
+            schedule.assert_not_called()
 
     def test_zero_exit_network_error_does_not_advance_cursor(self) -> None:
         cursor = {"next_start_index": 21, "last_completed": False}
@@ -1361,6 +1452,101 @@ class SourceDiscoveryIntegrationTests(unittest.TestCase):
         self.assertEqual(stopped["cursor_state"]["automation_state"], "stopped")
         self.assertEqual(stopped["cursor_state"]["scan_sessions"]["from_start"]["state"], "stopped")
 
+    def test_pause_and_resume_scan_session_preserve_checkpoint(self) -> None:
+        source = create_source("user_media", self.source_urls[0])
+        started = start_source_scan_session(int(source["id"]), "history", limit=20)
+        cursor_state = {
+            **started["cursor_state"],
+            "next_start_index": 41,
+            "extractor_cursor": "checkpoint-cursor",
+            "scan_sessions": {
+                **started["cursor_state"]["scan_sessions"],
+                "history": {
+                    **started["cursor_state"]["scan_sessions"]["history"],
+                    "next_start_index": 41,
+                    "extractor_cursor": "checkpoint-cursor",
+                },
+            },
+        }
+        with connect() as conn:
+            with conn.cursor() as cur:
+                cur.execute(
+                    "update archive_sources set cursor_state = %s where id = %s",
+                    (Jsonb(cursor_state), source["id"]),
+                )
+            conn.commit()
+
+        paused = pause_source_scan_session(int(source["id"]))
+        resumed = resume_source_scan_session(int(source["id"]))
+
+        self.assertEqual(paused["status"], "paused")
+        self.assertEqual(paused["cursor_state"]["automation_state"], "paused")
+        self.assertEqual(resumed["status"], "active")
+        self.assertEqual(resumed["cursor_state"]["automation_state"], "running")
+        self.assertEqual(resumed["cursor_state"]["extractor_cursor"], "checkpoint-cursor")
+        self.assertEqual(
+            resumed["cursor_state"]["scan_sessions"]["history"]["extractor_cursor"],
+            "checkpoint-cursor",
+        )
+
+    def test_restart_recovery_preserves_runnable_scan_session(self) -> None:
+        source = create_source("profile", self.source_urls[2])
+        started = start_source_scan_session(int(source["id"]), "history", limit=20)
+        cursor_state = {
+            **started["cursor_state"],
+            "next_start_index": 41,
+            "extractor_cursor": "restart-cursor",
+            "scan_sessions": {
+                **started["cursor_state"]["scan_sessions"],
+                "history": {
+                    **started["cursor_state"]["scan_sessions"]["history"],
+                    "next_start_index": 41,
+                    "extractor_cursor": "restart-cursor",
+                },
+            },
+        }
+        with connect() as conn:
+            with conn.cursor() as cur:
+                cur.execute(
+                    "update archive_sources set cursor_state = %s where id = %s",
+                    (Jsonb(cursor_state), source["id"]),
+                )
+            conn.commit()
+        scan_run_id = start_source_scan_run(
+            int(source["id"]),
+            "history_worker",
+            {"start": 41, "end": 60, "limit": 20},
+            cursor_state,
+            worker_id="worker-before-restart",
+        )
+
+        recovered = recover_interrupted_source_scan_runs()
+        detail = get_source(int(source["id"]))
+        with connect() as conn:
+            with conn.cursor() as cur:
+                cur.execute(
+                    """
+                    select r.status, r.error_category, r.worker_id, r.lease_expires_at,
+                           l.closed_at as log_closed_at
+                    from source_scan_runs r
+                    left join operation_log_streams l on l.id = r.log_stream_id
+                    where r.id = %s
+                    """,
+                    (scan_run_id,),
+                )
+                run = cur.fetchone()
+
+        self.assertEqual(recovered, 1)
+        self.assertEqual(run["status"], "failed")
+        self.assertEqual(run["error_category"], "interrupted")
+        self.assertIsNone(run["worker_id"])
+        self.assertIsNone(run["lease_expires_at"])
+        self.assertIsNotNone(run["log_closed_at"])
+        self.assertEqual(detail["status"], "active")
+        self.assertTrue(detail["cursor_state"]["automation_enabled"])
+        self.assertEqual(detail["cursor_state"]["extractor_cursor"], "restart-cursor")
+        self.assertEqual(detail["cursor_state"]["automation_state"], "running")
+
     def test_start_scan_session_accepts_likes_source(self) -> None:
         source = create_source("likes", "https://x.com/sourcefixture/likes")
 
@@ -1936,35 +2122,47 @@ class SourceDiscoveryIntegrationTests(unittest.TestCase):
 
     def test_recover_expired_source_scan_lease_marks_run_failed(self) -> None:
         source = create_source("profile", self.source_urls[2])
+        scan_run_id = start_source_scan_run(
+            int(source["id"]),
+            "history_worker",
+            {"start": 1, "end": 20, "limit": 20},
+            {},
+            worker_id="worker-old",
+        )
         with connect() as conn:
             with conn.cursor() as cur:
                 cur.execute(
                     """
-                    insert into source_scan_runs (
-                      source_id, trigger_type, status, requested_limit,
-                      worker_id, claimed_at, lease_expires_at
-                    )
-                    values (
-                      %s, 'history_worker', 'running', 20,
-                      'worker-old', now() - interval '2 minutes', now() - interval '1 second'
-                    )
-                    returning id
+                    update source_scan_runs
+                    set claimed_at = now() - interval '2 minutes',
+                        lease_expires_at = now() - interval '1 second'
+                    where id = %s
                     """,
-                    (source["id"],),
+                    (scan_run_id,),
                 )
-                scan_run_id = int(cur.fetchone()["id"])
             conn.commit()
 
         recovered = recover_expired_source_scan_leases()
 
         with connect() as conn:
             with conn.cursor() as cur:
-                cur.execute("select status, error_category, worker_id from source_scan_runs where id = %s", (scan_run_id,))
+                cur.execute(
+                    """
+                    select r.status, r.error_category, r.worker_id, r.lease_expires_at,
+                           l.closed_at as log_closed_at
+                    from source_scan_runs r
+                    left join operation_log_streams l on l.id = r.log_stream_id
+                    where r.id = %s
+                    """,
+                    (scan_run_id,),
+                )
                 row = cur.fetchone()
         self.assertEqual(recovered, 1)
         self.assertEqual(row["status"], "failed")
         self.assertEqual(row["error_category"], "worker_lease_expired")
         self.assertIsNone(row["worker_id"])
+        self.assertIsNone(row["lease_expires_at"])
+        self.assertIsNotNone(row["log_closed_at"])
 
 if __name__ == "__main__":
     unittest.main()

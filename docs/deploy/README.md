@@ -4,7 +4,7 @@
 
 本手册是 x-media-archiver 生产环境的统一操作指南。**推荐用预构建镜像部署**：一个自包含镜像同时含 FastAPI 后端与构建好的 WebUI（同源 serve），服务器只需 `docker pull` + 一份 compose 即可启动，并支持随镜像附带 Postgres 或接外部 Supabase。手册同时保留从源码运行的开发路径。
 
-如果只想快速试用，请先看仓库根目录的 [README.zh-CN.md](../../README.zh-CN.md)；本手册面向长期、可恢复的生产归档。
+如果只想快速试用，请先看仓库根目录的 [README.md](../../README.md)；本手册面向长期、可恢复的生产归档。
 
 ## 目录
 
@@ -355,7 +355,7 @@ archive/exports/   CSV / HTML 图库导出
 archive/state/     下载器状态与运行时 cookie 副本
 ```
 
-主目录名使用稳定的 `author_id`；用户名保存在 Postgres 元数据中用于搜索与展示。来源扫描与下载的业务边界见 [../source-scanning-workflow.md](../source-scanning-workflow.md)。
+主目录名使用稳定的 `author_id`；用户名保存在 Postgres 元数据中用于搜索与展示。来源扫描与下载的业务边界见 [source-scanning-workflow.md](../architecture/source-scanning-workflow.md)。
 
 ---
 
@@ -522,8 +522,10 @@ WS  /api/v1/runtime/ws     只读 snapshot/patch/heartbeat 通道；每 60 秒�
 
 ### 10.2 后台 worker 与崩溃恢复
 
-`serve` 在进程内拉起两个 daemon：归档队列 worker 与来源扫描 worker。两者用持久化 lease
-和心跳续约防止进程崩溃后任务永久卡死，重启后过期 lease 的行会被新 worker 重新认领。
+`serve` 在进程内拉起一个 `archive-network-worker`，在归档下载与来源扫描之间轮换选择工作，
+避免并发启动两个外部网络下载器。归档 item 使用持久化 lease 与心跳续约；API 启动时会恢复过期
+item lease。上个 API 进程遗留的 `running` 来源扫描 run 会立即标记为 `failed/interrupted`，清除
+worker/lease 并关闭日志流，同时保留来源扫描 session 与 checkpoint，供后续批次继续。
 若仍有遗留卡住的任务：
 
 ```bash
@@ -533,7 +535,9 @@ docker compose --env-file .env.production -f docker-compose.prod.yml run --rm ap
 
 ### 10.3 写操作并发
 
-写动作由进程内锁串行化。已有写动作运行时，写 API 返回 `409 write_action_in_progress`，重试即可。
+写操作使用进程内作用域锁：不同来源的 scoped 操作可以并行，同一来源互斥；全局维护动作与所有
+scoped 写操作互斥。发生锁冲突时写 API 返回 `409 write_action_in_progress`，重试即可。该锁模型仍以
+单 API 进程为边界，不支持多进程共享。
 
 ### 10.4 状态规则（用于排查）
 
@@ -558,7 +562,7 @@ Tweet 状态由其子媒体资产聚合：
 
 ### 10.5 CI 与测试隔离
 
-CI 会构建后端镜像、运行后端 ruff lint、在重置后的测试库上跑后端测试，并在 `webui/` 与 `extension/` 执行 `npm run check`，外加 API 契约校验。详见 [../engineering-ci-and-test-isolation.md](../engineering-ci-and-test-isolation.md)。
+CI 会构建后端镜像、运行后端 ruff lint、在重置后的测试库上跑后端测试，并在 `webui/` 与 `extension/` 执行 `npm run check`，外加 API 契约校验。详见 [engineering-ci-and-test-isolation.md](../testing/engineering-ci-and-test-isolation.md)。
 
 > 重要：不要在 CI 中提供真实 X/Twitter cookies。测试必须使用 mock、fixture 或本地文件。
 

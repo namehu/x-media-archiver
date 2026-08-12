@@ -43,10 +43,7 @@ const navGroups = [
   },
   {
     labelKey: "维护",
-    items: [
-      { to: "/operations", label: "操作" },
-      { to: "/demo", label: "组件预览" },
-    ],
+    items: [{ to: "/operations", label: "操作" }],
   },
 ];
 

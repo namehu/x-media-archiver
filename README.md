@@ -172,7 +172,7 @@ docker-compose logs xarchiver
 
 VS Code 可通过一个调试入口构建 API 镜像、启动 API 容器、附加 Python 调试器并启动 WebUI 开发服务器。打开"运行和调试"，选择 `Dev: API + WebUI`，按 F5 启动。API 通过 `debugpy` 在 `127.0.0.1:5678` 上启动并立即响应请求；VS Code 附加后即可命中断点。该调试入口有意不启用 uvicorn reload，因此在 Python 代码变更后需重启调试会话。WebUI 仍通过 Vite 在本地运行，将 API 请求代理到 `http://127.0.0.1:18000`，可手动在 `http://127.0.0.1:5173` 打开。
 
-可用的只读 API endpoints：
+主要读取 API endpoints（完整契约以 `/openapi.json` 为准）：
 
 ```text
 GET /health
@@ -180,7 +180,6 @@ GET /api/v1/library/summary
 GET /api/v1/library/media
 GET /api/v1/library/authors
 GET /api/v1/library/posts
-DELETE /api/v1/library/media
 GET /api/v1/library/tweets/{tweet_id}
 GET /api/v1/library/failures
 GET /api/v1/library/failures/{tweet_id}/actions
@@ -192,12 +191,18 @@ GET /api/v1/sources
 GET /api/v1/sources/{source_id}
 GET /api/v1/sources/{source_id}/discovered
 GET /api/v1/sources/{source_id}/downloads
+GET /api/v1/sources/{source_id}/scan-runs
+GET /api/v1/source-bulk-tasks
+GET /api/v1/source-schedule-policies
+GET /api/v1/log-streams
 GET /api/v1/events
 GET /api/v1/settings/download-policy
 GET /api/v1/health/detail
+GET /api/v1/runtime/snapshot
+GET /api/v1/runtime/diagnostics
 ```
 
-可用的写 API endpoints 由进程内锁串行化。如果已有写动作正在运行，API 返回 `409 write_action_in_progress`。
+主要写 API endpoints 由相应的作用域锁或任务控制语义保护；需要全局互斥的维护动作冲突时返回 `409 write_action_in_progress`。
 
 ```text
 POST /api/v1/actions/verify
@@ -206,10 +211,15 @@ POST /api/v1/actions/recover-interrupted
 POST /api/v1/actions/export
 POST /api/v1/archive-runs
 POST /api/v1/archive-runs/{run_id}/retry
+POST /api/v1/archive-runs/{run_id}/pause
+POST /api/v1/archive-runs/{run_id}/resume
+POST /api/v1/archive-runs/{run_id}/stop
+DELETE /api/v1/library/media
 POST /api/v1/library/failures/ignore
 POST /api/v1/library/failures/restore
 POST /api/v1/library/failures/retry
 POST /api/v1/sources
+DELETE /api/v1/sources/{source_id}
 POST /api/v1/sources/{source_id}/records
 POST /api/v1/sources/{source_id}/downloads
 POST /api/v1/sources/{source_id}/submit-discovered
@@ -222,6 +232,12 @@ POST /api/v1/sources/{source_id}/scan-sessions
 POST /api/v1/sources/{source_id}/scan-sessions/pause
 POST /api/v1/sources/{source_id}/scan-sessions/resume
 POST /api/v1/sources/{source_id}/scan-sessions/stop
+POST /api/v1/source-bulk-tasks
+POST /api/v1/source-bulk-tasks/{task_id}/control
+POST /api/v1/source-schedule-policies
+PATCH /api/v1/source-schedule-policies/{policy_id}
+PUT /api/v1/source-schedule-policies/{policy_id}/sources
+DELETE /api/v1/source-schedule-policies/{policy_id}
 POST /api/v1/maintenance/backfill
 POST /api/v1/maintenance/verify
 ```
@@ -248,6 +264,7 @@ Failures 是可操作的失败工作台：默认只展示待处理项，可切�
 
 ```text
 Dashboard
+Feed
 Library
 Tweet detail
 Failures
@@ -267,7 +284,7 @@ Sources 列表支持勾选已加载来源，或冻结最多 200 个“当前筛�
 
 2026-05-27 的真实验证表明，数值区间不是深层媒体历史的高效延续机制。source collector 现已持久化 Twitter extractor 的原生 continuation cursor，并将其用于历史批次。每次 source scan 尝试都会写入 `source_scan_runs`，包含其 range、cursor 快照、计数、结果与错误摘要。Sources 详情页展示最近 20 次扫描事件与累计统计，使得停滞的 history scan 可在重启后脱离容器日志进行诊断。运行中的扫描会将完整的 `gallery-dl` 日志以 JSONL 操作日志流形式写入 `archive/logs/source-scan-logs/`；下载任务同样会把脱敏后的 `gallery-dl` / `yt-dlp` stdout 与 stderr 写入 `archive/logs/download-logs/`。数据库仅存储日志流 ID、相对路径、各级别计数器、最新进度等摘要字段。WebUI 的 source 日志面板、推文详情和 `Operations -> Logs` 通过 API 读取这些日志流；升级前已完成的下载任务仅保留错误摘要。
 
-按钮含义与操作流程见 [`docs/source-scanning-workflow.md`](docs/source-scanning-workflow.md)，真实验证中发现的原生 cursor 阻塞问题见 [`docs/source-scanning-acceptance.md`](docs/source-scanning-acceptance.md)。
+按钮含义与操作流程见 [`docs/architecture/source-scanning-workflow.md`](docs/architecture/source-scanning-workflow.md)，原生 cursor 与受控真实链路的验收记录见 [`docs/testing/source-scanning-acceptance.md`](docs/testing/source-scanning-acceptance.md)。
 
 ## 命令
 
@@ -444,7 +461,7 @@ verify aggregation rules
 missing/corrupt/recovery integration flow
 ```
 
-GitHub Actions CI 流水线会在重置后的测试数据库上运行同一套后端测试，并在 `webui/` 与 `extension/` 中执行 `npm run check`。测试隔离契约见 [`docs/engineering-ci-and-test-isolation.md`](docs/engineering-ci-and-test-isolation.md)。
+GitHub Actions CI 流水线会在重置后的测试数据库上运行同一套后端测试，并在 `webui/` 与 `extension/` 中执行 `npm run check`。测试隔离契约见 [`docs/testing/engineering-ci-and-test-isolation.md`](docs/testing/engineering-ci-and-test-isolation.md)。
 
 ## 浏览器扩展
 

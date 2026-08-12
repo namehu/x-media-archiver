@@ -1,6 +1,6 @@
 # x-media-archiver WebUI
 
-Local archive console for Phase 2.
+Local-first archive console for x-media-archiver.
 
 ## Stack
 
@@ -44,7 +44,7 @@ Generate OpenAPI schema and TypeScript types:
 npm run generate:api-types
 ```
 
-This uses the Docker backend environment and writes `src/api/openapi.json` and `src/api/generated.ts`. The handwritten API facade in
+This uses the Docker backend environment and writes the ignored temporary file `.openapi.json` plus `src/api/generated.ts`. The handwritten API facade in
 `src/lib/api.ts` remains the stable import path for pages, while shared request behavior lives in
 `src/api/client.ts`.
 
@@ -54,12 +54,14 @@ Current pages:
 
 ```text
 Dashboard
+Feed
 Library
 Tweet detail
 Failures
 Duplicates
 Operations
 Archive Queue
+Sources
 ```
 
 Operations can trigger:
@@ -71,7 +73,7 @@ export database snapshot
 full backfill / full verify under Maintenance only
 ```
 
-Write actions are serialized by the local API. The WebUI does not expose destructive file deletion.
+Maintenance writes are protected by the local API's locking rules. Feed, Library, and Duplicates expose explicit, audited media deletion by `media_assets.id`; each flow requires confirmation and preserves Tweet and task history.
 
 The Archive Queue page submits pasted URLs or browser-parsed TXT/JSONL records to the database
 queue, displays per-run task states, and creates auditable retry runs. The API process owns a
@@ -79,3 +81,5 @@ background worker that consumes queued tasks while it is running.
 
 The Operations page separates full-disk maintenance from routine actions. Full media backfill and
 full file verification require explicit confirmation because they scan the entire archive.
+
+Sources supports resumable source scans, discovered-Tweet review, bulk update/download tasks, and named schedule policies. Runtime progress is projected through a read-only WebSocket channel with REST snapshot fallback.
