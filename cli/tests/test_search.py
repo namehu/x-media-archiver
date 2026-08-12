@@ -10,6 +10,8 @@ from xarchiver.search import (
     build_post_feed_media_query,
     build_post_feed_query,
     build_search_query,
+    build_tweet_library_search_count_query,
+    build_tweet_library_search_query,
     compact_text,
 )
 
@@ -138,6 +140,71 @@ class SearchUnitTests(unittest.TestCase):
     def test_search_media_row_rejects_missing_required_fields(self) -> None:
         with self.assertRaises(ValidationError):
             SearchMediaRow.model_validate({"id": 1, "tweet_id": "1"})
+
+    def test_tweet_search_combines_full_text_trigram_and_structured_filters(self) -> None:
+        date_from = datetime(2026, 1, 1, tzinfo=UTC)
+        date_to = datetime(2026, 2, 1, tzinfo=UTC)
+        sql, params = build_tweet_library_search_query(
+            query="量子 chaos",
+            source_id=4,
+            date_from=date_from,
+            date_to=date_to,
+            media_type="video",
+            tweet_status="missing",
+            tag_id=6,
+            collection_id=8,
+            sort="relevance",
+            limit=25,
+            offset=50,
+        )
+        normalized_sql = sql.lower()
+
+        self.assertIn("websearch_to_tsquery", normalized_sql)
+        self.assertIn("tweet_search_documents.search_vector @@", normalized_sql)
+        self.assertIn("word_similarity", normalized_sql)
+        self.assertIn("source_discovered_tweets", normalized_sql)
+        self.assertIn("tweet_tags", normalized_sql)
+        self.assertIn("collection_tweets", normalized_sql)
+        self.assertIn("order by", normalized_sql)
+        self.assertIn("relevance desc", normalized_sql)
+        self.assertEqual(params["search_query"], "量子 chaos")
+        self.assertEqual(params["search_source_id"], 4)
+        self.assertEqual(params["search_media_type"], "video")
+        self.assertEqual(params["search_tweet_status"], "missing")
+        self.assertEqual(params["search_tag_id"], 6)
+        self.assertEqual(params["search_collection_id"], 8)
+        self.assertEqual(params["limit"], 25)
+        self.assertEqual(params["offset"], 50)
+
+    def test_tweet_search_without_query_defaults_to_newest_and_all_status_skips_filter(self) -> None:
+        sql, params = build_tweet_library_search_query(
+            query=None,
+            tweet_status="all",
+            sort="auto",
+            limit=20,
+        )
+
+        self.assertNotIn("websearch_to_tsquery", sql.lower())
+        self.assertNotIn("search_tweet_status", params)
+        self.assertIn("tweets.published_at desc nulls last", sql.lower())
+
+    def test_tweet_search_count_has_no_sort_or_pagination(self) -> None:
+        sql, params = build_tweet_library_search_count_query(query="physics")
+
+        self.assertNotIn(" order by ", sql.lower())
+        self.assertNotIn(" limit ", sql.lower())
+        self.assertNotIn("limit", params)
+        self.assertEqual(params["search_query"], "physics")
+
+    def test_tweet_search_uses_literal_substring_matching_for_wildcards(self) -> None:
+        sql, params = build_tweet_library_search_query(query="50%_off", limit=10)
+
+        self.assertIn(" like ", sql.lower())
+        self.assertIn("escape '!'", sql.lower())
+        self.assertNotIn("websearch_to_tsquery", sql.lower())
+        self.assertNotIn("word_similarity", sql.lower())
+        self.assertNotIn("search_query", params)
+        self.assertEqual(params["search_substring_pattern"], "%50!%!_off%")
 
 
 if __name__ == "__main__":

@@ -42,6 +42,7 @@ class MigrationTests(unittest.TestCase):
                 "018_add_failure_triage.py",
                 "019_harden_failure_triage.py",
                 "020_add_failure_timestamps.py",
+                "021_add_tweet_search.py",
             ],
         )
         upgrade.assert_called_once()
@@ -53,7 +54,7 @@ class MigrationTests(unittest.TestCase):
 
         with (
             patch("xarchiver.migrations.get_settings", return_value=settings),
-            patch("xarchiver.migrations.current_alembic_revision", return_value="020_add_failure_timestamps"),
+            patch("xarchiver.migrations.current_alembic_revision", return_value="021_add_tweet_search"),
             patch("xarchiver.migrations.command.upgrade") as upgrade,
         ):
             self.assertEqual(migrate(), [])
@@ -97,6 +98,7 @@ class MigrationTests(unittest.TestCase):
                 "018_add_failure_triage.py",
                 "019_harden_failure_triage.py",
                 "020_add_failure_timestamps.py",
+                "021_add_tweet_search.py",
             ],
         )
 
@@ -361,6 +363,30 @@ class MigrationTests(unittest.TestCase):
         downgrade_sql = captured_sql[0]
         self.assertIn("drop trigger if exists trg_tweets_set_failure_at", downgrade_sql)
         self.assertIn("drop column if exists failure_at", downgrade_sql)
+
+    def test_tweet_search_revision_adds_indexes_and_refresh_triggers(self) -> None:
+        module = importlib.import_module("xarchiver.alembic.versions.021_add_tweet_search")
+        captured_sql: list[str] = []
+
+        with patch.object(module.op, "execute", side_effect=captured_sql.append):
+            module.upgrade()
+
+        sql = captured_sql[0]
+        self.assertIn("create extension if not exists pg_trgm", sql)
+        self.assertIn("create table if not exists tweet_search_documents", sql)
+        self.assertIn("using gin(search_vector)", sql)
+        self.assertIn("gin_trgm_ops", sql)
+        self.assertIn("xma_refresh_tweet_search_document", sql)
+        self.assertIn("trg_tweet_notes_refresh_search", sql)
+
+        captured_sql.clear()
+        with patch.object(module.op, "execute", side_effect=captured_sql.append):
+            module.downgrade()
+
+        downgrade_sql = captured_sql[0]
+        self.assertIn("drop table if exists tweet_search_documents", downgrade_sql)
+        self.assertIn("drop table if exists collections", downgrade_sql)
+        self.assertNotIn("drop extension", downgrade_sql)
 
 
 if __name__ == "__main__":

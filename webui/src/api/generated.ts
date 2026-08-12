@@ -205,6 +205,46 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/api/v1/library/search": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * Search Tweets
+         * @description 执行 Tweet 级中英文全文与模糊搜索。
+         */
+        get: operations["search_tweets_api_v1_library_search_get"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/library/search/options": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * Search Options
+         * @description 返回全局搜索页面使用的标签和合集筛选项。
+         */
+        get: operations["search_options_api_v1_library_search_options_get"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/api/v1/library/tweets/{tweet_id}": {
         parameters: {
             query?: never;
@@ -3826,6 +3866,86 @@ export interface components {
         } & {
             [key: string]: unknown;
         };
+        /** TweetSearchCollectionOptionResponse */
+        TweetSearchCollectionOptionResponse: {
+            /** Id */
+            id: number;
+            /** Name */
+            name: string;
+            /** Tweet Count */
+            tweet_count: number;
+        } & {
+            [key: string]: unknown;
+        };
+        /** TweetSearchOptionsResponse */
+        TweetSearchOptionsResponse: {
+            /** Tags */
+            tags?: components["schemas"]["TweetSearchTagOptionResponse"][];
+            /** Collections */
+            collections?: components["schemas"]["TweetSearchCollectionOptionResponse"][];
+        } & {
+            [key: string]: unknown;
+        };
+        /** TweetSearchPageResponse */
+        TweetSearchPageResponse: {
+            /** Count */
+            count: number;
+            /** Total Count */
+            total_count: number;
+            /** Limit */
+            limit: number;
+            /** Offset */
+            offset: number;
+            /** Rows */
+            rows: components["schemas"]["TweetSearchRowResponse"][];
+        } & {
+            [key: string]: unknown;
+        };
+        /** TweetSearchRowResponse */
+        TweetSearchRowResponse: {
+            /** Tweet Id */
+            tweet_id: string;
+            /** Tweet Url */
+            tweet_url: string;
+            /** Author Username */
+            author_username?: string | null;
+            /** Author Display Name */
+            author_display_name?: string | null;
+            /** Published At */
+            published_at?: string | null;
+            /** Tweet Text */
+            tweet_text: string;
+            /** Tweet Status */
+            tweet_status: string;
+            /** Media */
+            media: components["schemas"]["PostFeedMediaResponse"][];
+            /**
+             * Relevance
+             * @default 0
+             */
+            relevance: number;
+            /** Tags */
+            tags?: string[];
+            /** Collections */
+            collections?: string[];
+            /** Note Excerpt */
+            note_excerpt?: string | null;
+        } & {
+            [key: string]: unknown;
+        };
+        /** TweetSearchTagOptionResponse */
+        TweetSearchTagOptionResponse: {
+            /** Id */
+            id: number;
+            /** Name */
+            name: string;
+            /** Color */
+            color?: string | null;
+            /** Tweet Count */
+            tweet_count: number;
+        } & {
+            [key: string]: unknown;
+        };
         /** UpdateCookiesRequest */
         UpdateCookiesRequest: {
             /** Content */
@@ -4202,6 +4322,68 @@ export interface operations {
                 };
                 content: {
                     "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    search_tweets_api_v1_library_search_get: {
+        parameters: {
+            query?: {
+                q?: string | null;
+                source_id?: number | null;
+                date_from?: string | null;
+                date_to?: string | null;
+                media_type?: string | null;
+                tweet_status?: string | null;
+                tag_id?: number | null;
+                collection_id?: number | null;
+                sort?: string;
+                client_utc_offset_minutes?: number;
+                limit?: number;
+                offset?: number;
+            };
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["TweetSearchPageResponse"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    search_options_api_v1_library_search_options_get: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["TweetSearchOptionsResponse"];
                 };
             };
         };

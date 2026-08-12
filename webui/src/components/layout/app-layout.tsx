@@ -35,6 +35,7 @@ const navGroups = [
   {
     labelKey: "数据",
     items: [
+      { to: "/search", label: "全局搜索" },
       { to: "/feed", label: "帖子浏览" },
       { to: "/library", label: "媒体库" },
       { to: "/failures", label: "失败项" },
@@ -130,6 +131,12 @@ export function AppLayout() {
         label: "仪表盘",
         description: "/",
         onSelect: () => navigate("/"),
+      },
+      {
+        id: "search",
+        label: "全局搜索",
+        description: "/search",
+        onSelect: () => navigate("/search"),
       },
       {
         id: "feed",

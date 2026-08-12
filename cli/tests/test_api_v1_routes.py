@@ -2,7 +2,7 @@ import asyncio
 import json
 import os
 import unittest
-from datetime import UTC, datetime
+from datetime import UTC, date, datetime
 from unittest.mock import ANY, patch
 from uuid import uuid4
 
@@ -30,6 +30,8 @@ from xarchiver.api.schemas import (
     SourceScanRunsPageResponse,
     SourcesPageResponse,
     SourceStatusRequest,
+    TweetSearchOptionsResponse,
+    TweetSearchPageResponse,
     UpdateCookiesRequest,
     VerifyRequest,
 )
@@ -76,6 +78,8 @@ class V1RouterSmokeTests(unittest.TestCase):
             "/api/v1/library/media",
             "/api/v1/library/authors",
             "/api/v1/library/posts",
+            "/api/v1/library/search",
+            "/api/v1/library/search/options",
             "/api/v1/library/tweets/{tweet_id}",
             "/api/v1/library/failures",
             "/api/v1/library/failures/{tweet_id}/actions",
@@ -332,6 +336,102 @@ class V1RouterSmokeTests(unittest.TestCase):
             limit=20,
             offset=0,
         )
+
+    def test_v1_library_search_delegates_filters_and_validates_response(self):
+        response = {
+            "rows": [
+                {
+                    "tweet_id": "123",
+                    "tweet_url": "https://x.com/alice/status/123",
+                    "author_username": "alice",
+                    "published_at": datetime(2026, 1, 1, tzinfo=UTC),
+                    "tweet_text": "quantum chaos",
+                    "tweet_status": "verified",
+                    "relevance": 1.5,
+                    "tags": ["物理"],
+                    "collections": ["研究"],
+                    "note_excerpt": "稍后复习",
+                    "media": [],
+                }
+            ],
+            "count": 1,
+            "total_count": 1,
+            "limit": 20,
+            "offset": 0,
+        }
+        with (
+            patch("xarchiver.api.v1.library.get_settings", return_value=object()),
+            patch(
+                "xarchiver.api.v1.library.search_tweets_page",
+                return_value=response,
+            ) as mock,
+        ):
+            result = self.get_paths["/api/v1/library/search"](
+                q="quantum",
+                source_id=4,
+                date_from=date(2026, 1, 1),
+                date_to=date(2026, 1, 31),
+                media_type="video",
+                tweet_status="verified",
+                tag_id=6,
+                collection_id=8,
+                sort="relevance",
+                client_utc_offset_minutes=-480,
+                limit=20,
+                offset=0,
+            )
+
+        payload = TweetSearchPageResponse.model_validate(result).model_dump(mode="json")
+        self.assertEqual(payload["rows"][0]["tags"], ["物理"])
+        mock.assert_called_once_with(
+            ANY,
+            query="quantum",
+            source_id=4,
+            date_from=date(2026, 1, 1),
+            date_to=date(2026, 1, 31),
+            media_type="video",
+            tweet_status="verified",
+            tag_id=6,
+            collection_id=8,
+            sort="relevance",
+            client_utc_offset_minutes=-480,
+            limit=20,
+            offset=0,
+        )
+
+    def test_v1_library_search_rejects_reversed_date_range(self):
+        with self.assertRaises(HTTPException) as error:
+            self.get_paths["/api/v1/library/search"](
+                q=None,
+                source_id=None,
+                date_from=date(2026, 2, 1),
+                date_to=date(2026, 1, 1),
+                media_type=None,
+                tweet_status="verified",
+                tag_id=None,
+                collection_id=None,
+                sort="auto",
+                client_utc_offset_minutes=0,
+                limit=20,
+                offset=0,
+            )
+
+        self.assertEqual(error.exception.status_code, 400)
+        self.assertEqual(error.exception.detail, "invalid_search_date_range")
+
+    def test_v1_library_search_options_validate_response(self):
+        response = {
+            "tags": [{"id": 1, "name": "物理", "color": None, "tweet_count": 2}],
+            "collections": [{"id": 2, "name": "研究", "tweet_count": 3}],
+        }
+        with patch(
+            "xarchiver.api.v1.library.get_tweet_search_options",
+            return_value=response,
+        ):
+            result = self.get_paths["/api/v1/library/search/options"]()
+
+        payload = TweetSearchOptionsResponse.model_validate(result).model_dump(mode="json")
+        self.assertEqual(payload["collections"][0]["tweet_count"], 3)
 
     def test_v1_duplicates_response_uses_complete_groups_with_media_ids(self):
         page = {
@@ -641,6 +741,8 @@ class V1RouterSmokeTests(unittest.TestCase):
         self.assertIn("/api/v1/library/media", paths)
         self.assertIn("/api/v1/library/authors", paths)
         self.assertIn("/api/v1/library/posts", paths)
+        self.assertIn("/api/v1/library/search", paths)
+        self.assertIn("/api/v1/library/search/options", paths)
         self.assertIn("/api/v1/actions/verify", paths)
         self.assertIn("/api/v1/health/detail", paths)
         self.assertIn("/api/v1/runtime/snapshot", paths)

@@ -1,4 +1,4 @@
-import { useMemo, useRef, useState } from "react";
+import { type ReactNode, useMemo, useRef, useState } from "react";
 import { Copy, ExternalLink, MoreHorizontal, Trash2 } from "lucide-react";
 import { toast } from "sonner";
 import type { PostFeedRow } from "@/lib/api";
@@ -45,6 +45,11 @@ export function PostCard({
   onPreview,
   getVideoState,
   updateVideoState,
+  allowDelete = true,
+  tweetTextContent,
+  contextContent,
+  authorNameContent,
+  authorUsernameContent,
 }: {
   post: PostFeedRow;
   activeVideoId: string | null;
@@ -53,6 +58,11 @@ export function PostCard({
   onActivateVideo: (videoId: string | null) => void;
   onRequestDelete: () => void;
   onPreview: (index: number) => void;
+  allowDelete?: boolean;
+  tweetTextContent?: ReactNode;
+  contextContent?: ReactNode;
+  authorNameContent?: ReactNode;
+  authorUsernameContent?: ReactNode;
 } & FeedVideoPlaybackStateApi) {
   const debugRedactionEnabled = useDebugRedactionEnabled();
   const [expanded, setExpanded] = useState(false);
@@ -96,7 +106,7 @@ export function PostCard({
   };
 
   const handleLongPressStart = (event: React.PointerEvent<HTMLElement>) => {
-    if (deleted) return;
+    if (deleted || !allowDelete) return;
     if (event.pointerType === "mouse" || event.button !== 0) return;
     if (isLongPressExcludedTarget(event.target)) return;
 
@@ -147,7 +157,9 @@ export function PostCard({
             <div className="min-w-0 flex-1" {...getDebugRedactProps(debugRedactionEnabled)}>
               <div className="flex flex-col">
                 <div className="flex items-center gap-1.5">
-                  <span className="truncate font-semibold text-fg-primary text-[15px]">{authorName}</span>
+                  <span className="truncate font-semibold text-fg-primary text-[15px]">
+                    {authorNameContent ?? authorName}
+                  </span>
                   {deleted ? (
                     <Badge tone="secondary" className="h-4 px-1 text-[10px]">
                       已删除
@@ -155,7 +167,9 @@ export function PostCard({
                   ) : null}
                 </div>
                 <div className="flex items-center gap-1.5 text-[13px] text-fg-secondary">
-                  {post.author_username ? <span className="truncate">@{post.author_username}</span> : null}
+                  {post.author_username ? (
+                    <span className="truncate">@{authorUsernameContent ?? post.author_username}</span>
+                  ) : null}
                   <span className="text-fg-tertiary">·</span>
                   <time
                     dateTime={post.published_at || undefined}
@@ -189,11 +203,19 @@ export function PostCard({
                 >
                   <ExternalLink data-icon="inline-start" />在 X 中查看
                 </DropdownMenuItem>
-                <DropdownMenuSeparator />
-                <DropdownMenuItem disabled={deleted} className="text-danger focus:text-danger" onSelect={requestDelete}>
-                  <Trash2 data-icon="inline-start" />
-                  {deleted ? "本地媒体已删除" : "删除本地媒体"}
-                </DropdownMenuItem>
+                {allowDelete ? (
+                  <>
+                    <DropdownMenuSeparator />
+                    <DropdownMenuItem
+                      disabled={deleted}
+                      className="text-danger focus:text-danger"
+                      onSelect={requestDelete}
+                    >
+                      <Trash2 data-icon="inline-start" />
+                      {deleted ? "本地媒体已删除" : "删除本地媒体"}
+                    </DropdownMenuItem>
+                  </>
+                ) : null}
               </DropdownMenuGroup>
             </DropdownMenuContent>
           </DropdownMenu>
@@ -207,7 +229,7 @@ export function PostCard({
                 !expanded && isLong ? "whitespace-normal line-clamp-6" : "whitespace-pre-wrap",
               )}
             >
-              {tweetText}
+              {tweetTextContent ?? tweetText}
             </p>
             {isLong ? (
               <button
@@ -218,6 +240,12 @@ export function PostCard({
                 {expanded ? "收起" : "展开"}
               </button>
             ) : null}
+          </div>
+        ) : null}
+
+        {!deleted && contextContent ? (
+          <div className="mt-1" {...getDebugRedactProps(debugRedactionEnabled)}>
+            {contextContent}
           </div>
         ) : null}
 
@@ -238,25 +266,27 @@ export function PostCard({
           </div>
         )}
       </div>
-      <Drawer open={mobileActionsOpen} onOpenChange={setMobileActionsOpen}>
-        <DrawerContent className="border-border-subtle bg-bg-elevated text-fg-primary">
-          <DrawerHeader>
-            <DrawerTitle>帖子操作</DrawerTitle>
-            <DrawerDescription className="text-fg-secondary">对这篇本地归档帖子执行操作。</DrawerDescription>
-          </DrawerHeader>
-          <DrawerFooter>
-            <Button type="button" variant="destructive" disabled={deleted} onClick={requestDelete}>
-              <Trash2 data-icon="inline-start" />
-              {deleted ? "本地媒体已删除" : "删除本地媒体"}
-            </Button>
-            <DrawerClose asChild>
-              <Button type="button" variant="outline">
-                取消
+      {allowDelete ? (
+        <Drawer open={mobileActionsOpen} onOpenChange={setMobileActionsOpen}>
+          <DrawerContent className="border-border-subtle bg-bg-elevated text-fg-primary">
+            <DrawerHeader>
+              <DrawerTitle>帖子操作</DrawerTitle>
+              <DrawerDescription className="text-fg-secondary">对这篇本地归档帖子执行操作。</DrawerDescription>
+            </DrawerHeader>
+            <DrawerFooter>
+              <Button type="button" variant="destructive" disabled={deleted} onClick={requestDelete}>
+                <Trash2 data-icon="inline-start" />
+                {deleted ? "本地媒体已删除" : "删除本地媒体"}
               </Button>
-            </DrawerClose>
-          </DrawerFooter>
-        </DrawerContent>
-      </Drawer>
+              <DrawerClose asChild>
+                <Button type="button" variant="outline">
+                  取消
+                </Button>
+              </DrawerClose>
+            </DrawerFooter>
+          </DrawerContent>
+        </Drawer>
+      ) : null}
     </article>
   );
 }

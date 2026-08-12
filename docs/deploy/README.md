@@ -305,6 +305,8 @@ db downgrade --revision base     -> roll back all revisions
 新增 schema 变更时**新增 Alembic revision**，不要修改已发布的 revision。镜像启动时
 自动运行；也可手动 `... run --rm app db migrate`。
 
+Tweet 全局搜索从 revision `021_add_tweet_search` 起依赖 PostgreSQL `pg_trgm` 扩展。迁移会执行 `create extension if not exists pg_trgm`；使用外部 Postgres / Supabase 时，应先确认连接用户有安装或使用该扩展的权限。Supabase 可在项目的 Database Extensions 中预先启用 `pg_trgm`。降级不会删除该扩展，因为它可能被同库中的其他 schema 或应用共用。
+
 本项目不再使用仓库根目录的顺序 `sql/*.sql` migration。一次性本地验证可用
 `db reset --yes` 删除 public schema 并重新应用 Alembic baseline 与后续 revision；该命令只适合可丢弃数据库。
 

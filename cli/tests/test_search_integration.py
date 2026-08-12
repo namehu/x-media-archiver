@@ -1,10 +1,17 @@
 import unittest
+from datetime import UTC, date, datetime
 from pathlib import Path
 from types import SimpleNamespace
 
 from xarchiver.db import connect
-from xarchiver.search import list_author_options, search_media, search_post_feed
-from xarchiver.services.library import get_tweet_detail, list_posts_page
+from xarchiver.search import (
+    list_author_options,
+    list_tweet_search_options,
+    search_media,
+    search_post_feed,
+    search_tweet_library,
+)
+from xarchiver.services.library import get_tweet_detail, list_posts_page, search_tweets_page
 
 
 class SearchIntegrationTests(unittest.TestCase):
@@ -12,6 +19,8 @@ class SearchIntegrationTests(unittest.TestCase):
     extra_tweet_id = "search-fixture-2"
     duplicate_tweet_id = "search-fixture-3"
     feed_tweet_id = "search-feed-fixture-4"
+    wildcard_literal_tweet_id = "search-wildcard-literal-5"
+    wildcard_near_tweet_id = "search-wildcard-near-6"
 
     def setUp(self) -> None:
         self.cleanup_db()
@@ -46,13 +55,33 @@ class SearchIntegrationTests(unittest.TestCase):
                     (self.tweet_id,),
                 )
                 cur.execute(
+                    "insert into tags (name, color) values ('量子物理', '#3366ff') returning id"
+                )
+                self.tag_id = int(cur.fetchone()["id"])
+                cur.execute(
+                    "insert into tweet_tags (tweet_id, tag_id) values (%s, %s)",
+                    (self.tweet_id, self.tag_id),
+                )
+                cur.execute(
+                    "insert into collections (name, description) values ('研究稍后看', '测试合集') returning id"
+                )
+                self.collection_id = int(cur.fetchone()["id"])
+                cur.execute(
+                    "insert into collection_tweets (collection_id, tweet_id) values (%s, %s)",
+                    (self.collection_id, self.tweet_id),
+                )
+                cur.execute(
+                    "insert into tweet_notes (tweet_id, content) values (%s, '中文私人备注：叠加态实验')",
+                    (self.tweet_id,),
+                )
+                cur.execute(
                     """
                     insert into tweets (
                         tweet_id, url, author_username, author_display_name, text,
                         published_at, imported_at, download_status
                     )
                     values (%s, %s, 'feed_author', 'Feed Author', 'video feed sample',
-                            now(), now(), 'verified')
+                            '2026-08-12 00:30:00+00', '2026-08-12 00:30:00+00', 'verified')
                     """,
                     (self.feed_tweet_id, f"https://x.com/feed_author/status/{self.feed_tweet_id}"),
                 )
@@ -145,17 +174,28 @@ class SearchIntegrationTests(unittest.TestCase):
     def cleanup_db(self) -> None:
         with connect() as conn:
             with conn.cursor() as cur:
-                cur.execute("delete from archive_sources where source_url in (%s, %s)", (
-                    "https://x.com/feed_author/likes",
-                    "manual://feed-test",
-                ))
+                cur.execute(
+                    "delete from archive_sources where source_url in (%s, %s)",
+                    (
+                        "https://x.com/feed_author/likes",
+                        "manual://feed-test",
+                    ),
+                )
                 for tweet_id in (
                     self.tweet_id,
                     self.extra_tweet_id,
                     self.duplicate_tweet_id,
                     self.feed_tweet_id,
+                    self.wildcard_literal_tweet_id,
+                    self.wildcard_near_tweet_id,
                 ):
                     cur.execute("delete from tweets where tweet_id = %s", (tweet_id,))
+                cur.execute(
+                    "delete from tags where name in ('量子物理', '重命名标签')"
+                )
+                cur.execute(
+                    "delete from collections where name in ('研究稍后看', '重命名合集')"
+                )
             conn.commit()
 
     def test_search_media_filters_author_text_and_type(self) -> None:
@@ -230,6 +270,213 @@ class SearchIntegrationTests(unittest.TestCase):
         self.assertEqual(detail["tweet"]["tweet_id"], self.tweet_id)
         self.assertEqual(detail["media"][0]["media_status"], "verified")
         self.assertEqual(detail["attempts"][0]["status"], "succeeded")
+
+    def test_tweet_search_finds_text_author_tag_collection_and_note(self) -> None:
+        for query in (
+            "chaos",
+            "search_author",
+            "量子物理",
+            "研究稍后看",
+            "叠加态",
+            "chao",
+        ):
+            with self.subTest(query=query):
+                rows, media, organization, total_count = search_tweet_library(
+                    query=query,
+                    tweet_status="verified",
+                    limit=10,
+                )
+
+                self.assertIn(self.tweet_id, {row.tweet_id for row in rows})
+                self.assertGreaterEqual(total_count, 1)
+                self.assertIn(self.tweet_id, {row.tweet_id for row in media})
+                self.assertIn("量子物理", organization[self.tweet_id]["tags"])
+                self.assertIn("研究稍后看", organization[self.tweet_id]["collections"])
+                self.assertIn("叠加态", str(organization[self.tweet_id]["note_excerpt"]))
+
+    def test_tweet_search_treats_like_wildcards_as_literal_characters(self) -> None:
+        with connect() as conn:
+            with conn.cursor() as cur:
+                for tweet_id, text in (
+                    (self.wildcard_literal_tweet_id, "sale 50%_off today"),
+                    (self.wildcard_near_tweet_id, "sale 50 off today"),
+                ):
+                    cur.execute(
+                        """
+                        insert into tweets (
+                            tweet_id, url, author_username, text, download_status
+                        )
+                        values (%s, %s, 'wildcard_fixture', %s, 'verified')
+                        """,
+                        (tweet_id, f"https://x.com/wildcard_fixture/status/{tweet_id}", text),
+                    )
+            conn.commit()
+
+        rows, _, _, total_count = search_tweet_library(query="50%_off", limit=10)
+
+        self.assertEqual([row.tweet_id for row in rows], [self.wildcard_literal_tweet_id])
+        self.assertEqual(total_count, 1)
+
+    def test_tweet_search_filters_tag_collection_source_and_status(self) -> None:
+        page = search_tweets_page(
+            settings=SimpleNamespace(archive_dir=Path("/app/archive")),
+            query="叠加态",
+            tag_id=self.tag_id,
+            collection_id=self.collection_id,
+            tweet_status="verified",
+            limit=10,
+        )
+        no_match = search_tweets_page(
+            settings=SimpleNamespace(archive_dir=Path("/app/archive")),
+            query="叠加态",
+            source_id=self.likes_source_id,
+            tweet_status="verified",
+            limit=10,
+        )
+
+        self.assertEqual(page["total_count"], 1)
+        self.assertEqual(page["rows"][0]["tweet_id"], self.tweet_id)
+        self.assertEqual(page["rows"][0]["tags"], ["量子物理"])
+        self.assertEqual(no_match["total_count"], 0)
+
+    def test_tweet_search_filters_browser_local_date_media_and_status(self) -> None:
+        local_day = search_tweets_page(
+            settings=SimpleNamespace(archive_dir=Path("/app/archive")),
+            query="video feed sample",
+            date_from=date(2026, 8, 12),
+            date_to=date(2026, 8, 12),
+            client_utc_offset_minutes=-480,
+            media_type="video",
+            tweet_status="verified",
+            limit=10,
+        )
+        next_local_day = search_tweets_page(
+            settings=SimpleNamespace(archive_dir=Path("/app/archive")),
+            query="video feed sample",
+            date_from=date(2026, 8, 13),
+            date_to=date(2026, 8, 13),
+            client_utc_offset_minutes=-480,
+            media_type="video",
+            tweet_status="verified",
+            limit=10,
+        )
+        wrong_media, _, _, _ = search_tweet_library(
+            query="video feed sample",
+            media_type="audio",
+            tweet_status="verified",
+            limit=10,
+        )
+        wrong_status, _, _, _ = search_tweet_library(
+            query="video feed sample",
+            media_type="video",
+            tweet_status="pending",
+            limit=10,
+        )
+
+        self.assertEqual(local_day["total_count"], 1)
+        self.assertEqual(local_day["rows"][0]["tweet_id"], self.feed_tweet_id)
+        self.assertEqual(next_local_day["total_count"], 0)
+        self.assertEqual(wrong_media, [])
+        self.assertEqual(wrong_status, [])
+
+    def test_tweet_search_sorts_and_paginates_with_consistent_count(self) -> None:
+        with connect() as conn:
+            with conn.cursor() as cur:
+                for tweet_id, text, published_at in (
+                    (
+                        self.wildcard_literal_tweet_id,
+                        "ordering fixture older",
+                        datetime(2026, 1, 1, tzinfo=UTC),
+                    ),
+                    (
+                        self.wildcard_near_tweet_id,
+                        "ordering fixture newer",
+                        datetime(2026, 2, 1, tzinfo=UTC),
+                    ),
+                ):
+                    cur.execute(
+                        """
+                        insert into tweets (
+                            tweet_id, url, author_username, text, published_at, download_status
+                        )
+                        values (%s, %s, 'ordering_fixture', %s, %s, 'verified')
+                        """,
+                        (
+                            tweet_id,
+                            f"https://x.com/ordering_fixture/status/{tweet_id}",
+                            text,
+                            published_at,
+                        ),
+                    )
+            conn.commit()
+
+        newest, _, _, newest_count = search_tweet_library(
+            query="ordering fixture",
+            sort="newest",
+            limit=1,
+            offset=0,
+        )
+        second, _, _, second_count = search_tweet_library(
+            query="ordering fixture",
+            sort="newest",
+            limit=1,
+            offset=1,
+        )
+        oldest, _, _, oldest_count = search_tweet_library(
+            query="ordering fixture",
+            sort="oldest",
+            limit=1,
+            offset=0,
+        )
+
+        self.assertEqual([row.tweet_id for row in newest], [self.wildcard_near_tweet_id])
+        self.assertEqual([row.tweet_id for row in second], [self.wildcard_literal_tweet_id])
+        self.assertEqual([row.tweet_id for row in oldest], [self.wildcard_literal_tweet_id])
+        self.assertEqual((newest_count, second_count, oldest_count), (2, 2, 2))
+
+    def test_tweet_search_document_refreshes_after_organization_updates(self) -> None:
+        with connect() as conn:
+            with conn.cursor() as cur:
+                cur.execute("update tags set name = '重命名标签' where id = %s", (self.tag_id,))
+                cur.execute(
+                    "update collections set name = '重命名合集' where id = %s",
+                    (self.collection_id,),
+                )
+                cur.execute(
+                    "update tweet_notes set content = '更新后的备注关键词' where tweet_id = %s",
+                    (self.tweet_id,),
+                )
+            conn.commit()
+
+        for query in ("重命名标签", "重命名合集", "更新后的备注"):
+            rows, _, _, _ = search_tweet_library(query=query, limit=10)
+            self.assertIn(self.tweet_id, {row.tweet_id for row in rows})
+
+    def test_tweet_search_document_refreshes_after_organization_links_are_removed(self) -> None:
+        with connect() as conn:
+            with conn.cursor() as cur:
+                cur.execute(
+                    "delete from tweet_tags where tweet_id = %s and tag_id = %s",
+                    (self.tweet_id, self.tag_id),
+                )
+                cur.execute(
+                    "delete from collection_tweets where tweet_id = %s and collection_id = %s",
+                    (self.tweet_id, self.collection_id),
+                )
+                cur.execute("delete from tweet_notes where tweet_id = %s", (self.tweet_id,))
+            conn.commit()
+
+        for query in ("量子物理", "研究稍后看", "叠加态"):
+            rows, _, _, _ = search_tweet_library(query=query, limit=10)
+            self.assertNotIn(self.tweet_id, {row.tweet_id for row in rows})
+
+    def test_tweet_search_options_return_counts(self) -> None:
+        tag_rows, collection_rows = list_tweet_search_options()
+
+        tag = next(row for row in tag_rows if row.id == self.tag_id)
+        collection = next(row for row in collection_rows if row.id == self.collection_id)
+        self.assertEqual(tag.tweet_count, 1)
+        self.assertEqual(collection.tweet_count, 1)
 
 
 if __name__ == "__main__":

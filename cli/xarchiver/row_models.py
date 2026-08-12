@@ -75,6 +75,10 @@ class PostFeedRow(RowModel):
     tweet_status: str
 
 
+class TweetSearchRow(PostFeedRow):
+    relevance: float = 0.0
+
+
 class PostFeedMediaRow(RowModel):
     id: int
     tweet_id: str
@@ -87,6 +91,29 @@ class PostFeedMediaRow(RowModel):
     width: int | None = None
     height: int | None = None
     duration_ms: int | None = None
+
+
+class TweetSearchLabelRow(RowModel):
+    tweet_id: str
+    name: str
+
+
+class TweetSearchNoteRow(RowModel):
+    tweet_id: str
+    note_excerpt: str
+
+
+class TweetSearchTagOptionRow(RowModel):
+    id: int
+    name: str
+    color: str | None = None
+    tweet_count: int
+
+
+class TweetSearchCollectionOptionRow(RowModel):
+    id: int
+    name: str
+    tweet_count: int
 
 
 class TweetDetailRow(RowModel):

@@ -54,6 +54,7 @@ Current pages:
 
 ```text
 Dashboard
+Search
 Feed
 Library
 Tweet detail
@@ -63,6 +64,8 @@ Operations
 Archive Queue
 Sources
 ```
+
+Search is Tweet-first and uses the local PostgreSQL full-text and trigram indexes across Tweet text, authors, tags, collections, and private notes. Its keyword, filters, sort, and pagination state are URL-backed; the default status is verified content. The result list reuses the Feed post card and full-screen media preview.
 
 Operations can trigger:
 

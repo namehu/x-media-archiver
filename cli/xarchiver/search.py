@@ -2,10 +2,13 @@
 
 from __future__ import annotations
 
+from datetime import datetime
+
 from sqlalchemy import (
     Integer,
     and_,
     bindparam,
+    case,
     exists,
     func,
     literal_column,
@@ -15,9 +18,30 @@ from sqlalchemy import (
 from sqlalchemy.sql import ColumnElement, Select
 
 from xarchiver.db import connect
-from xarchiver.row_models import AuthorOptionRow, PostFeedMediaRow, PostFeedRow, SearchMediaRow
+from xarchiver.row_models import (
+    AuthorOptionRow,
+    PostFeedMediaRow,
+    PostFeedRow,
+    SearchMediaRow,
+    TweetSearchCollectionOptionRow,
+    TweetSearchLabelRow,
+    TweetSearchNoteRow,
+    TweetSearchRow,
+    TweetSearchTagOptionRow,
+)
 from xarchiver.sql_builder import compile_query
-from xarchiver.tables import archive_sources, media_assets, source_discovered_tweets, tweets
+from xarchiver.tables import (
+    archive_sources,
+    collection_tweets,
+    collections,
+    media_assets,
+    source_discovered_tweets,
+    tags,
+    tweet_notes,
+    tweet_search_documents,
+    tweet_tags,
+    tweets,
+)
 
 
 def search_media(
@@ -432,6 +456,390 @@ def build_post_feed_conditions(
             )
         conditions.append(exists(membership))
     return conditions
+
+
+def search_tweet_library(
+    query: str | None = None,
+    source_id: int | None = None,
+    date_from: datetime | None = None,
+    date_to: datetime | None = None,
+    media_type: str | None = None,
+    tweet_status: str | None = "verified",
+    tag_id: int | None = None,
+    collection_id: int | None = None,
+    sort: str = "auto",
+    limit: int = 20,
+    offset: int = 0,
+) -> tuple[
+    list[TweetSearchRow],
+    list[PostFeedMediaRow],
+    dict[str, dict[str, object]],
+    int,
+]:
+    """以 Tweet 为单位执行全文、trigram 和结构化筛选查询。"""
+
+    page_sql, page_params = build_tweet_library_search_query(
+        query=query,
+        source_id=source_id,
+        date_from=date_from,
+        date_to=date_to,
+        media_type=media_type,
+        tweet_status=tweet_status,
+        tag_id=tag_id,
+        collection_id=collection_id,
+        sort=sort,
+        limit=limit,
+        offset=offset,
+    )
+    count_sql, count_params = build_tweet_library_search_count_query(
+        query=query,
+        source_id=source_id,
+        date_from=date_from,
+        date_to=date_to,
+        media_type=media_type,
+        tweet_status=tweet_status,
+        tag_id=tag_id,
+        collection_id=collection_id,
+    )
+    with connect() as conn:
+        with conn.cursor() as cur:
+            cur.execute(page_sql, page_params)
+            rows = [TweetSearchRow.model_validate(dict(row)) for row in cur.fetchall()]
+            cur.execute(count_sql, count_params)
+            total_count = int(cur.fetchone()["count"])
+            if not rows:
+                return rows, [], {}, total_count
+
+            tweet_ids = [row.tweet_id for row in rows]
+            media_sql, media_params = build_post_feed_media_query(tweet_ids)
+            cur.execute(media_sql, media_params)
+            media = [PostFeedMediaRow.model_validate(dict(row)) for row in cur.fetchall()]
+            organization = fetch_tweet_search_organization(cur, tweet_ids)
+    return rows, media, organization, total_count
+
+
+def build_tweet_library_search_query(
+    query: str | None = None,
+    source_id: int | None = None,
+    date_from: datetime | None = None,
+    date_to: datetime | None = None,
+    media_type: str | None = None,
+    tweet_status: str | None = "verified",
+    tag_id: int | None = None,
+    collection_id: int | None = None,
+    sort: str = "auto",
+    limit: int = 20,
+    offset: int = 0,
+) -> tuple[str, dict[str, object]]:
+    """构造 Tweet 级全局搜索分页查询。"""
+
+    normalized_query = str(query or "").strip()
+    relevance = build_tweet_search_relevance(normalized_query).label("relevance")
+    statement = (
+        select(
+            tweets.c.tweet_id,
+            tweets.c.url.label("tweet_url"),
+            tweets.c.author_username,
+            tweets.c.author_display_name,
+            tweets.c.published_at,
+            func.coalesce(tweets.c.text, literal_column("''")).label("tweet_text"),
+            tweets.c.download_status.label("tweet_status"),
+            relevance,
+        )
+        .select_from(
+            tweets.join(
+                tweet_search_documents,
+                tweet_search_documents.c.tweet_id == tweets.c.tweet_id,
+            )
+        )
+        .where(
+            *build_tweet_library_search_conditions(
+                normalized_query,
+                source_id,
+                date_from,
+                date_to,
+                media_type,
+                tweet_status,
+                tag_id,
+                collection_id,
+            )
+        )
+        .limit(bindparam("limit", limit))
+        .offset(bindparam("offset", offset))
+    )
+
+    resolved_sort = "relevance" if sort == "auto" and normalized_query else sort
+    if resolved_sort == "relevance" and normalized_query:
+        statement = statement.order_by(
+            relevance.desc(),
+            tweets.c.published_at.desc().nulls_last(),
+            tweets.c.tweet_id.desc(),
+        )
+    elif resolved_sort == "oldest":
+        statement = statement.order_by(
+            tweets.c.published_at.asc().nulls_last(),
+            tweets.c.imported_at.asc(),
+            tweets.c.tweet_id.asc(),
+        )
+    else:
+        statement = statement.order_by(
+            tweets.c.published_at.desc().nulls_last(),
+            tweets.c.imported_at.desc(),
+            tweets.c.tweet_id.desc(),
+        )
+    return compile_query(statement)
+
+
+def build_tweet_library_search_count_query(
+    query: str | None = None,
+    source_id: int | None = None,
+    date_from: datetime | None = None,
+    date_to: datetime | None = None,
+    media_type: str | None = None,
+    tweet_status: str | None = "verified",
+    tag_id: int | None = None,
+    collection_id: int | None = None,
+) -> tuple[str, dict[str, object]]:
+    """构造 Tweet 级全局搜索总数查询。"""
+
+    normalized_query = str(query or "").strip()
+    statement = (
+        select(func.count().cast(Integer).label("count"))
+        .select_from(
+            tweets.join(
+                tweet_search_documents,
+                tweet_search_documents.c.tweet_id == tweets.c.tweet_id,
+            )
+        )
+        .where(
+            *build_tweet_library_search_conditions(
+                normalized_query,
+                source_id,
+                date_from,
+                date_to,
+                media_type,
+                tweet_status,
+                tag_id,
+                collection_id,
+            )
+        )
+    )
+    return compile_query(statement)
+
+
+def build_tweet_search_relevance(query: str) -> ColumnElement[float]:
+    """组合全文相关度、子串命中和 trigram 相似度。"""
+
+    if not query:
+        return literal_column("0.0")
+    normalized_document = func.lower(tweet_search_documents.c.search_text)
+    substring_match = normalized_document.like(
+        bindparam("search_substring_pattern", literal_contains_pattern(query)),
+        escape="!",
+    )
+    if requires_literal_substring(query):
+        return case((substring_match, 1.0), else_=0.0)
+
+    query_param = bindparam("search_query", query)
+    ts_query = func.websearch_to_tsquery(literal_column("'simple'::regconfig"), query_param)
+    return (
+        func.ts_rank_cd(tweet_search_documents.c.search_vector, ts_query) * 2.0
+        + case((substring_match, 1.0), else_=0.0)
+        + func.word_similarity(func.lower(query_param), normalized_document)
+    )
+
+
+def build_tweet_library_search_conditions(
+    query: str,
+    source_id: int | None,
+    date_from: datetime | None,
+    date_to: datetime | None,
+    media_type: str | None,
+    tweet_status: str | None,
+    tag_id: int | None,
+    collection_id: int | None,
+) -> list[ColumnElement[bool]]:
+    """构造全局搜索的文本与结构化条件。"""
+
+    conditions: list[ColumnElement[bool]] = []
+    if query:
+        query_param = bindparam("search_query", query)
+        normalized_document = func.lower(tweet_search_documents.c.search_text)
+        ts_query = func.websearch_to_tsquery(literal_column("'simple'::regconfig"), query_param)
+        substring_match = normalized_document.like(
+            bindparam("search_substring_pattern", literal_contains_pattern(query)),
+            escape="!",
+        )
+        if requires_literal_substring(query):
+            conditions.append(substring_match)
+        else:
+            conditions.append(
+                or_(
+                    tweet_search_documents.c.search_vector.op("@@")(ts_query),
+                    substring_match,
+                    func.lower(query_param).op("<%")(normalized_document),
+                )
+            )
+    if source_id is not None:
+        source_membership = (
+            select(source_discovered_tweets.c.id)
+            .select_from(
+                source_discovered_tweets.join(
+                    archive_sources,
+                    archive_sources.c.id == source_discovered_tweets.c.source_id,
+                )
+            )
+            .where(
+                source_discovered_tweets.c.tweet_id == tweets.c.tweet_id,
+                source_discovered_tweets.c.source_id == bindparam("search_source_id", source_id),
+                archive_sources.c.deleted_at.is_(None),
+            )
+        )
+        conditions.append(exists(source_membership))
+    if date_from is not None:
+        conditions.append(tweets.c.published_at >= bindparam("search_date_from", date_from))
+    if date_to is not None:
+        conditions.append(tweets.c.published_at < bindparam("search_date_to", date_to))
+    if media_type:
+        matching_media = select(media_assets.c.id).where(
+            media_assets.c.tweet_id == tweets.c.tweet_id,
+            media_assets.c.media_type == bindparam("search_media_type", media_type),
+        )
+        conditions.append(exists(matching_media))
+    if tweet_status and tweet_status != "all":
+        conditions.append(
+            tweets.c.download_status == bindparam("search_tweet_status", tweet_status)
+        )
+    if tag_id is not None:
+        conditions.append(
+            exists(
+                select(tweet_tags.c.tweet_id).where(
+                    tweet_tags.c.tweet_id == tweets.c.tweet_id,
+                    tweet_tags.c.tag_id == bindparam("search_tag_id", tag_id),
+                )
+            )
+        )
+    if collection_id is not None:
+        conditions.append(
+            exists(
+                select(collection_tweets.c.tweet_id).where(
+                    collection_tweets.c.tweet_id == tweets.c.tweet_id,
+                    collection_tweets.c.collection_id
+                    == bindparam("search_collection_id", collection_id),
+                )
+            )
+        )
+    return conditions
+
+
+def literal_contains_pattern(value: str) -> str:
+    """构造使用 ``!`` 转义的 LIKE 子串模式，保留用户输入的字面语义。"""
+
+    escaped = value.lower().replace("!", "!!").replace("%", "!%").replace("_", "!_")
+    return f"%{escaped}%"
+
+
+def requires_literal_substring(value: str) -> bool:
+    """含 SQL LIKE 通配符的用户输入必须整体按字面子串解释。"""
+
+    return "%" in value or "_" in value
+
+
+def fetch_tweet_search_organization(
+    cursor: object,
+    tweet_ids: list[str],
+) -> dict[str, dict[str, object]]:
+    """批量读取搜索结果所需的标签、合集和备注摘要。"""
+
+    result = {
+        tweet_id: {"tags": [], "collections": [], "note_excerpt": None}
+        for tweet_id in tweet_ids
+    }
+
+    tag_statement = (
+        select(tweet_tags.c.tweet_id, tags.c.name)
+        .select_from(tweet_tags.join(tags, tags.c.id == tweet_tags.c.tag_id))
+        .where(tweet_tags.c.tweet_id.in_(tweet_ids))
+        .order_by(tweet_tags.c.tweet_id, tags.c.normalized_name)
+    )
+    sql, params = compile_query(tag_statement)
+    cursor.execute(sql, params)
+    for row in (TweetSearchLabelRow.model_validate(dict(value)) for value in cursor.fetchall()):
+        result[row.tweet_id]["tags"].append(row.name)
+
+    collection_statement = (
+        select(collection_tweets.c.tweet_id, collections.c.name)
+        .select_from(
+            collection_tweets.join(
+                collections,
+                collections.c.id == collection_tweets.c.collection_id,
+            )
+        )
+        .where(collection_tweets.c.tweet_id.in_(tweet_ids))
+        .order_by(collection_tweets.c.tweet_id, collections.c.normalized_name)
+    )
+    sql, params = compile_query(collection_statement)
+    cursor.execute(sql, params)
+    for row in (TweetSearchLabelRow.model_validate(dict(value)) for value in cursor.fetchall()):
+        result[row.tweet_id]["collections"].append(row.name)
+
+    note_statement = select(
+        tweet_notes.c.tweet_id,
+        func.substr(tweet_notes.c.content, 1, 240).label("note_excerpt"),
+    ).where(tweet_notes.c.tweet_id.in_(tweet_ids))
+    sql, params = compile_query(note_statement)
+    cursor.execute(sql, params)
+    for row in (TweetSearchNoteRow.model_validate(dict(value)) for value in cursor.fetchall()):
+        result[row.tweet_id]["note_excerpt"] = row.note_excerpt
+    return result
+
+
+def list_tweet_search_options() -> tuple[
+    list[TweetSearchTagOptionRow],
+    list[TweetSearchCollectionOptionRow],
+]:
+    """返回全局搜索筛选器使用的标签与合集候选项。"""
+
+    tag_count = func.count(tweet_tags.c.tweet_id).cast(Integer).label("tweet_count")
+    tag_statement = (
+        select(tags.c.id, tags.c.name, tags.c.color, tag_count)
+        .select_from(tags.outerjoin(tweet_tags, tweet_tags.c.tag_id == tags.c.id))
+        .group_by(tags.c.id, tags.c.name, tags.c.color, tags.c.normalized_name)
+        .order_by(tag_count.desc(), tags.c.normalized_name)
+    )
+    collection_count = (
+        func.count(collection_tweets.c.tweet_id).cast(Integer).label("tweet_count")
+    )
+    collection_statement = (
+        select(collections.c.id, collections.c.name, collection_count)
+        .select_from(
+            collections.outerjoin(
+                collection_tweets,
+                collection_tweets.c.collection_id == collections.c.id,
+            )
+        )
+        .group_by(
+            collections.c.id,
+            collections.c.name,
+            collections.c.normalized_name,
+        )
+        .order_by(collection_count.desc(), collections.c.normalized_name)
+    )
+    with connect() as conn:
+        with conn.cursor() as cur:
+            sql, params = compile_query(tag_statement)
+            cur.execute(sql, params)
+            tag_rows = [
+                TweetSearchTagOptionRow.model_validate(dict(row))
+                for row in cur.fetchall()
+            ]
+            sql, params = compile_query(collection_statement)
+            cur.execute(sql, params)
+            collection_rows = [
+                TweetSearchCollectionOptionRow.model_validate(dict(row))
+                for row in cur.fetchall()
+            ]
+    return tag_rows, collection_rows
 
 
 def compact_text(value: object, max_length: int = 90) -> str:

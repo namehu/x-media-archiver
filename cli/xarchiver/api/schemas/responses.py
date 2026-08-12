@@ -448,6 +448,35 @@ class PostFeedPageResponse(PageMetaResponse):
     rows: list[PostFeedRowResponse]
 
 
+class TweetSearchRowResponse(PostFeedRowResponse):
+    relevance: float = 0.0
+    tags: list[str] = Field(default_factory=list)
+    collections: list[str] = Field(default_factory=list)
+    note_excerpt: str | None = None
+
+
+class TweetSearchPageResponse(PageMetaResponse):
+    rows: list[TweetSearchRowResponse]
+
+
+class TweetSearchTagOptionResponse(FlexibleResponse):
+    id: int
+    name: str
+    color: str | None = None
+    tweet_count: int
+
+
+class TweetSearchCollectionOptionResponse(FlexibleResponse):
+    id: int
+    name: str
+    tweet_count: int
+
+
+class TweetSearchOptionsResponse(FlexibleResponse):
+    tags: list[TweetSearchTagOptionResponse] = Field(default_factory=list)
+    collections: list[TweetSearchCollectionOptionResponse] = Field(default_factory=list)
+
+
 class MediaAssetResponse(FlexibleResponse):
     id: int
     media_index: int | None = None

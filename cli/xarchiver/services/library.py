@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+from datetime import UTC, date, datetime, time, timedelta
 from pathlib import Path
 
 from xarchiver.archive import ensure_archive_dirs
@@ -17,7 +18,14 @@ from xarchiver.exporter import (
     fetch_export_rows,
 )
 from xarchiver.row_models import DownloadAttemptRow, RowModel, TweetDetailRow, TweetMediaAssetRow
-from xarchiver.search import count_search_media, list_author_options, search_media, search_post_feed
+from xarchiver.search import (
+    count_search_media,
+    list_author_options,
+    list_tweet_search_options,
+    search_media,
+    search_post_feed,
+    search_tweet_library,
+)
 from xarchiver.services.operation_logs import redact_sensitive_text
 from xarchiver.status import get_media_count, get_media_status_counts, get_status_counts
 
@@ -157,6 +165,85 @@ def list_posts_page(
         "total_count": total_count,
         "limit": limit,
         "offset": offset,
+    }
+
+
+def search_tweets_page(
+    settings: Settings,
+    query: str | None = None,
+    source_id: int | None = None,
+    date_from: date | None = None,
+    date_to: date | None = None,
+    media_type: str | None = None,
+    tweet_status: str | None = "verified",
+    tag_id: int | None = None,
+    collection_id: int | None = None,
+    sort: str = "auto",
+    client_utc_offset_minutes: int = 0,
+    limit: int = 20,
+    offset: int = 0,
+) -> dict[str, object]:
+    """返回 Tweet 级全局搜索结果；日期按浏览器本地日界线换算为 UTC。"""
+
+    client_offset = timedelta(minutes=client_utc_offset_minutes)
+    start_at = (
+        datetime.combine(date_from, time.min, tzinfo=UTC) + client_offset
+        if date_from
+        else None
+    )
+    end_at = (
+        datetime.combine(date_to + timedelta(days=1), time.min, tzinfo=UTC)
+        + client_offset
+        if date_to
+        else None
+    )
+    rows, media_rows, organization, total_count = search_tweet_library(
+        query=query,
+        source_id=source_id,
+        date_from=start_at,
+        date_to=end_at,
+        media_type=media_type,
+        tweet_status=tweet_status,
+        tag_id=tag_id,
+        collection_id=collection_id,
+        sort=sort,
+        limit=limit,
+        offset=offset,
+    )
+    media_by_tweet: dict[str, list[dict[str, object]]] = {}
+    for media_row in media_rows:
+        media_by_tweet.setdefault(media_row.tweet_id, []).append(
+            attach_media_url(media_row, settings.archive_dir)
+        )
+    result_rows = []
+    for row in rows:
+        labels = organization.get(
+            row.tweet_id,
+            {"tags": [], "collections": [], "note_excerpt": None},
+        )
+        result_rows.append(
+            {
+                **dict(row),
+                **labels,
+                "media": media_by_tweet.get(row.tweet_id, []),
+            }
+        )
+    return {
+        "rows": result_rows,
+        "count": len(result_rows),
+        "total_count": total_count,
+        "limit": limit,
+        "offset": offset,
+    }
+
+
+def get_tweet_search_options() -> dict[str, object]:
+    """返回全局搜索页面的标签与合集筛选项。"""
+
+    tag_rows, collection_rows = list_tweet_search_options()
+    return {
+        "tags": [dict(row) for row in tag_rows],
+        "collections": [dict(row) for row in collection_rows],
     }
 
 

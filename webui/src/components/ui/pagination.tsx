@@ -25,10 +25,10 @@ export function Pagination({
     <div className="flex flex-wrap items-center justify-between gap-3 text-sm text-fg-secondary">
       <span>{label.replace("{start}", String(start)).replace("{end}", String(end)).replace("{total}", String(totalCount))}</span>
       <div className="flex items-center gap-2">
-        <Button variant="outline" size="icon" disabled={!canPrevious} onClick={() => onOffsetChange(Math.max(0, offset - pageSize))} aria-label="Previous">
+        <Button variant="outline" size="icon" disabled={!canPrevious} onClick={() => onOffsetChange(Math.max(0, offset - pageSize))} aria-label="上一页">
           <ChevronLeft className="h-4 w-4" />
         </Button>
-        <Button variant="outline" size="icon" disabled={!canNext} onClick={() => onOffsetChange(offset + pageSize)} aria-label="Next">
+        <Button variant="outline" size="icon" disabled={!canNext} onClick={() => onOffsetChange(offset + pageSize)} aria-label="下一页">
           <ChevronRight className="h-4 w-4" />
         </Button>
       </div>

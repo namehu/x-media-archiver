@@ -14,7 +14,7 @@ export function ErrorState({ title, detail, onRetry }: { title: string; detail?:
           {detail ? <p className="mt-1 text-sm text-fg-secondary">{detail}</p> : null}
           {onRetry ? (
             <Button className="mt-3" variant="outline" size="sm" onClick={onRetry}>
-              Retry
+              重试
             </Button>
           ) : null}
         </div>

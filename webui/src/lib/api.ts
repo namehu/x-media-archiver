@@ -78,6 +78,33 @@ export type PostFeedRow = {
 
 export type PostFeedPageResponse = PageResponse<PostFeedRow>;
 
+export type TweetSearchRow = PostFeedRow & {
+  relevance: number;
+  tags: string[];
+  collections: string[];
+  note_excerpt?: string | null;
+};
+
+export type TweetSearchPageResponse = PageResponse<TweetSearchRow>;
+
+export type TweetSearchTagOption = {
+  id: number;
+  name: string;
+  color?: string | null;
+  tweet_count: number;
+};
+
+export type TweetSearchCollectionOption = {
+  id: number;
+  name: string;
+  tweet_count: number;
+};
+
+export type TweetSearchOptionsResponse = {
+  tags: TweetSearchTagOption[];
+  collections: TweetSearchCollectionOption[];
+};
+
 export type FailureRow = {
   tweet_id: string;
   tweet_url?: string | null;

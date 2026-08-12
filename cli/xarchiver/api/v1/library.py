@@ -6,6 +6,8 @@
 
 from __future__ import annotations
 
+from datetime import date
+
 from fastapi import APIRouter, HTTPException, Query
 
 from xarchiver.api.deps import execute_write_action, raise_api_error
@@ -21,6 +23,8 @@ from xarchiver.api.schemas import (
     PostFeedPageResponse,
     SummaryResponse,
     TweetDetailResponse,
+    TweetSearchOptionsResponse,
+    TweetSearchPageResponse,
     WriteActionResponse,
 )
 from xarchiver.config import get_settings
@@ -37,9 +41,11 @@ from xarchiver.services.library import (
     get_author_options,
     get_summary,
     get_tweet_detail,
+    get_tweet_search_options,
     list_duplicates_page,
     list_media_page,
     list_posts_page,
+    search_tweets_page,
 )
 from xarchiver.services.media_deletion import delete_media_assets
 
@@ -114,6 +120,55 @@ def posts(
         limit=limit,
         offset=offset,
     )
+
+
+@router.get("/search", response_model=TweetSearchPageResponse)
+def search_tweets(
+    q: str | None = Query(None, max_length=500),
+    source_id: int | None = Query(None, ge=1),
+    date_from: date | None = None,
+    date_to: date | None = None,
+    media_type: str | None = Query(None, pattern="^(photo|video)$"),
+    tweet_status: str | None = Query(
+        "verified",
+        pattern=(
+            "^(all|pending|downloading|downloaded|partial|failed_retryable|"
+            "failed_permanent|verified|missing|corrupt|skipped)$"
+        ),
+    ),
+    tag_id: int | None = Query(None, ge=1),
+    collection_id: int | None = Query(None, ge=1),
+    sort: str = Query("auto", pattern="^(auto|relevance|newest|oldest)$"),
+    client_utc_offset_minutes: int = Query(0, ge=-840, le=840),
+    limit: int = Query(20, ge=1, le=50),
+    offset: int = Query(0, ge=0),
+) -> dict[str, object]:
+    """执行 Tweet 级中英文全文与模糊搜索。"""
+
+    if date_from and date_to and date_from > date_to:
+        raise HTTPException(status_code=400, detail="invalid_search_date_range")
+    return search_tweets_page(
+        get_settings(),
+        query=q,
+        source_id=source_id,
+        date_from=date_from,
+        date_to=date_to,
+        media_type=media_type,
+        tweet_status=tweet_status,
+        tag_id=tag_id,
+        collection_id=collection_id,
+        sort=sort,
+        client_utc_offset_minutes=client_utc_offset_minutes,
+        limit=limit,
+        offset=offset,
+    )
+
+
+@router.get("/search/options", response_model=TweetSearchOptionsResponse)
+def search_options() -> dict[str, object]:
+    """返回全局搜索页面使用的标签和合集筛选项。"""
+
+    return get_tweet_search_options()
 
 
 @router.delete("/media", response_model=WriteActionResponse)

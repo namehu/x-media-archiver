@@ -180,6 +180,8 @@ GET /api/v1/library/summary
 GET /api/v1/library/media
 GET /api/v1/library/authors
 GET /api/v1/library/posts
+GET /api/v1/library/search
+GET /api/v1/library/search/options
 GET /api/v1/library/tweets/{tweet_id}
 GET /api/v1/library/failures
 GET /api/v1/library/failures/{tweet_id}/actions
@@ -264,6 +266,7 @@ Failures 是可操作的失败工作台：默认只展示待处理项，可切�
 
 ```text
 Dashboard
+Search
 Feed
 Library
 Tweet detail
@@ -273,6 +276,8 @@ Operations
 Archive Queue
 Sources
 ```
+
+Search 以 Tweet 为结果单位，使用 PostgreSQL 全文检索与 trigram 搜索正文、作者、标签、合集和私人备注；支持来源、日期、媒体类型、归档状态、标签、合集与排序筛选。关键词和全部筛选条件会同步到 URL，默认只展示已校验归档内容。搜索需要先应用最新数据库迁移；10 万条纯合成数据的基准与页面验收记录见 [`docs/testing/tweet-search-acceptance.md`](docs/testing/tweet-search-acceptance.md)。
 
 Archive Queue 支持粘贴 URL 或选择本地 TXT/JSONL 文件（浏览器侧解析后提交）来创建结构化的数据库任务。Operations 可触发 requeue、recover-interrupted 与数据库快照 export。完整 backfill 与完整 verify 被隔离在 Maintenance 下，并要求显式确认磁盘扫描。媒体库和重复媒体页均支持显式勾选并批量永久删除最多 200 个媒体项；重复媒体页按完整 SHA-256 组分页，可为每组保留建议项并选择其余副本。删除会清理主文件、对应元数据、标准缩略图和派生视频预览图，保留 Tweet、来源和下载历史，将 Tweet 标记为 `missing`，并写入幂等删除审计。
 

@@ -18,7 +18,7 @@ from sqlalchemy import (
     Text,
     Time,
 )
-from sqlalchemy.dialects.postgresql import ARRAY, JSONB, UUID
+from sqlalchemy.dialects.postgresql import ARRAY, JSONB, TSVECTOR, UUID
 
 metadata = MetaData()
 
@@ -109,6 +109,70 @@ media_assets = Table(
     Column("height", Integer),
     Column("duration_ms", Integer),
     Column("updated_at", DateTime(timezone=True)),
+)
+
+# Tweet 整理与检索
+tags = Table(
+    "tags",
+    metadata,
+    Column("id", BigInteger, primary_key=True),
+    Column("name", Text, nullable=False),
+    Column("normalized_name", Text, nullable=False),
+    Column("color", Text),
+    Column("description", Text),
+    Column("created_at", DateTime(timezone=True), nullable=False),
+    Column("updated_at", DateTime(timezone=True), nullable=False),
+)
+
+collections = Table(
+    "collections",
+    metadata,
+    Column("id", BigInteger, primary_key=True),
+    Column("name", Text, nullable=False),
+    Column("normalized_name", Text, nullable=False),
+    Column("description", Text),
+    Column("cover_media_id", BigInteger, ForeignKey("media_assets.id", ondelete="SET NULL")),
+    Column("created_at", DateTime(timezone=True), nullable=False),
+    Column("updated_at", DateTime(timezone=True), nullable=False),
+)
+
+tweet_tags = Table(
+    "tweet_tags",
+    metadata,
+    Column("tweet_id", Text, ForeignKey("tweets.tweet_id", ondelete="CASCADE"), primary_key=True),
+    Column("tag_id", BigInteger, ForeignKey("tags.id", ondelete="CASCADE"), primary_key=True),
+    Column("created_at", DateTime(timezone=True), nullable=False),
+)
+
+collection_tweets = Table(
+    "collection_tweets",
+    metadata,
+    Column(
+        "collection_id",
+        BigInteger,
+        ForeignKey("collections.id", ondelete="CASCADE"),
+        primary_key=True,
+    ),
+    Column("tweet_id", Text, ForeignKey("tweets.tweet_id", ondelete="CASCADE"), primary_key=True),
+    Column("created_at", DateTime(timezone=True), nullable=False),
+)
+
+tweet_notes = Table(
+    "tweet_notes",
+    metadata,
+    Column("tweet_id", Text, ForeignKey("tweets.tweet_id", ondelete="CASCADE"), primary_key=True),
+    Column("content", Text, nullable=False),
+    Column("created_at", DateTime(timezone=True), nullable=False),
+    Column("updated_at", DateTime(timezone=True), nullable=False),
+)
+
+tweet_search_documents = Table(
+    "tweet_search_documents",
+    metadata,
+    Column("tweet_id", Text, ForeignKey("tweets.tweet_id", ondelete="CASCADE"), primary_key=True),
+    Column("search_text", Text, nullable=False),
+    Column("search_vector", TSVECTOR, nullable=False),
+    Column("updated_at", DateTime(timezone=True), nullable=False),
 )
 
 media_delete_operations = Table(
