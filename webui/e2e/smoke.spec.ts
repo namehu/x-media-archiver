@@ -5,6 +5,7 @@ const apiBaseUrl = process.env.XMA_API_BASE_URL ?? "http://127.0.0.1:18000";
 const routes = [
   { path: "/", label: "仪表盘", text: "媒体文件" },
   { path: "/library", label: "媒体库", text: "webui-e2e fixture tweet" },
+  { path: "/collections", label: "合集", text: "还没有合集" },
   { path: "/failures", label: "失败项", text: "webui-e2e-failed" },
   { path: "/duplicates", label: "重复媒体", text: "重复媒体" },
   { path: "/queue", label: "归档队列", text: "Run #" },

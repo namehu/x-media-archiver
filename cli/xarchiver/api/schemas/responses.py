@@ -441,6 +441,9 @@ class PostFeedRowResponse(FlexibleResponse):
     published_at: datetime | None = None
     tweet_text: str
     tweet_status: str
+    tags: list[str] = Field(default_factory=list)
+    collection_count: int = 0
+    has_note: bool = False
     media: list[PostFeedMediaResponse]
 
 
@@ -477,6 +480,58 @@ class TweetSearchOptionsResponse(FlexibleResponse):
     collections: list[TweetSearchCollectionOptionResponse] = Field(default_factory=list)
 
 
+class OrganizationTagResponse(FlexibleResponse):
+    id: int
+    name: str
+    normalized_name: str
+    color: str | None = None
+    description: str | None = None
+    tweet_count: int | None = None
+    created_at: datetime | None = None
+    updated_at: datetime | None = None
+
+
+class OrganizationCoverResponse(FlexibleResponse):
+    id: int
+    media_type: str | None = None
+    media_url: str
+
+
+class OrganizationCollectionResponse(FlexibleResponse):
+    id: int
+    name: str
+    normalized_name: str
+    description: str | None = None
+    cover_media_id: int | None = None
+    cover: OrganizationCoverResponse | None = None
+    tweet_count: int | None = None
+    created_at: datetime | None = None
+    updated_at: datetime | None = None
+
+
+class TweetNoteResponse(FlexibleResponse):
+    content: str
+    created_at: datetime
+    updated_at: datetime
+
+
+class TweetOrganizationResponse(FlexibleResponse):
+    tweet_id: str
+    tags: list[OrganizationTagResponse] = Field(default_factory=list)
+    collections: list[OrganizationCollectionResponse] = Field(default_factory=list)
+    note: TweetNoteResponse | None = None
+
+
+class OrganizationCatalogResponse(FlexibleResponse):
+    tags: list[OrganizationTagResponse] = Field(default_factory=list)
+    collections: list[OrganizationCollectionResponse] = Field(default_factory=list)
+
+
+class OrganizationCollectionPageResponse(PageMetaResponse):
+    collection: OrganizationCollectionResponse
+    rows: list[TweetSearchRowResponse]
+
+
 class MediaAssetResponse(FlexibleResponse):
     id: int
     media_index: int | None = None
@@ -504,6 +559,7 @@ class TweetDetailResponse(FlexibleResponse):
     tweet: TweetResponse
     media: list[MediaAssetResponse]
     attempts: list[DownloadAttemptResponse]
+    organization: TweetOrganizationResponse
 
 
 class FailureRowResponse(FlexibleResponse):

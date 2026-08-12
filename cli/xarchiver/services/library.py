@@ -20,6 +20,7 @@ from xarchiver.exporter import (
 from xarchiver.row_models import DownloadAttemptRow, RowModel, TweetDetailRow, TweetMediaAssetRow
 from xarchiver.search import (
     count_search_media,
+    fetch_tweet_search_organization,
     list_author_options,
     list_tweet_search_options,
     search_media,
@@ -27,6 +28,7 @@ from xarchiver.search import (
     search_tweet_library,
 )
 from xarchiver.services.operation_logs import redact_sensitive_text
+from xarchiver.services.organization import get_tweet_organization, list_organization_catalog
 from xarchiver.status import get_media_count, get_media_status_counts, get_status_counts
 
 VIDEO_EXTENSIONS = {".mp4", ".mov", ".m4v", ".webm"}
@@ -152,9 +154,18 @@ def list_posts_page(
         media_by_tweet.setdefault(media_row.tweet_id, []).append(
             attach_media_url(media_row, settings.archive_dir)
         )
+    organization: dict[str, dict[str, object]] = {}
+    if posts:
+        with connect() as conn:
+            with conn.cursor() as cur:
+                organization = fetch_tweet_search_organization(
+                    cur,
+                    [post.tweet_id for post in posts],
+                )
     rows = [
         {
             **dict(post),
+            **feed_organization_summary(organization.get(post.tweet_id)),
             "media": media_by_tweet.get(post.tweet_id, []),
         }
         for post in posts
@@ -165,6 +176,17 @@ def list_posts_page(
         "total_count": total_count,
         "limit": limit,
         "offset": offset,
+    }
+
+
+def feed_organization_summary(labels: dict[str, object] | None) -> dict[str, object]:
+    """把完整整理信息压缩成帖子卡片所需的三项摘要。"""
+
+    values = labels or {"tags": [], "collections": [], "note_excerpt": None}
+    return {
+        "tags": list(values.get("tags") or [])[:3],
+        "collection_count": len(list(values.get("collections") or [])),
+        "has_note": bool(values.get("note_excerpt")),
     }
 
 
@@ -244,6 +266,68 @@ def get_tweet_search_options() -> dict[str, object]:
     return {
         "tags": [dict(row) for row in tag_rows],
         "collections": [dict(row) for row in collection_rows],
+    }
+
+
+def list_organization_catalog_page(settings: Settings) -> dict[str, object]:
+    """返回整理页使用的完整标签与合集目录。"""
+
+    return list_organization_catalog(settings.archive_dir)
+
+
+def list_collection_tweets_page(
+    settings: Settings,
+    collection_id: int,
+    *,
+    limit: int = 20,
+    offset: int = 0,
+) -> dict[str, object]:
+    """返回单个合集的 Tweet 级帖子流。"""
+
+    from xarchiver.services.organization import collection_page_metadata
+
+    collection, total_count = collection_page_metadata(collection_id)
+    if total_count == 0 or offset >= total_count:
+        return {
+            "collection": collection,
+            "rows": [],
+            "count": 0,
+            "total_count": total_count,
+            "limit": limit,
+            "offset": offset,
+        }
+    rows, media_rows, organization, _ = search_tweet_library(
+        collection_id=collection_id,
+        tweet_status="all",
+        sort="newest",
+        limit=limit,
+        offset=offset,
+    )
+    media_by_tweet: dict[str, list[dict[str, object]]] = {}
+    for media_row in media_rows:
+        media_by_tweet.setdefault(media_row.tweet_id, []).append(
+            attach_media_url(media_row, settings.archive_dir)
+        )
+    result_rows = []
+    for row in rows:
+        labels = organization.get(
+            row.tweet_id,
+            {"tags": [], "collections": [], "note_excerpt": None},
+        )
+        result_rows.append(
+            {
+                **dict(row),
+                **labels,
+                "media": media_by_tweet.get(row.tweet_id, []),
+            }
+        )
+    return {
+        "collection": collection,
+        "rows": result_rows,
+        "count": len(result_rows),
+        "total_count": total_count,
+        "limit": limit,
+        "offset": offset,
     }
 
 
@@ -328,7 +412,14 @@ def get_tweet_detail(settings: Settings, tweet_id: str) -> dict[str, object] | N
                 value["stderr_excerpt"] = redact_sensitive_text(value.get("stderr_excerpt")) or None
                 attempts.append(dict(DownloadAttemptRow.model_validate(value)))
 
-    return {"tweet": dict(tweet), "media": media, "attempts": attempts}
+    organization = get_tweet_organization(tweet_id)
+    assert organization is not None
+    return {
+        "tweet": dict(tweet),
+        "media": media,
+        "attempts": attempts,
+        "organization": organization,
+    }
 
 
 def list_export_media(settings: Settings, status: str | None = "verified") -> list[dict[str, object]]:

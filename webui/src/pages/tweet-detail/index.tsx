@@ -1,6 +1,16 @@
 import { useMemo, useState } from "react";
 import { useQuery } from "@tanstack/react-query";
-import { CalendarDays, ExternalLink, FileText, Image as ImageIcon, Images, Loader2, RotateCcw } from "lucide-react";
+import {
+  CalendarDays,
+  ExternalLink,
+  FileText,
+  FolderClosed,
+  Image as ImageIcon,
+  Images,
+  Loader2,
+  RotateCcw,
+  Tags,
+} from "lucide-react";
 import { Link, useParams } from "react-router-dom";
 import { apiGet, type MediaRow, type TweetDetail } from "../../lib/api";
 import { errorLabel, mediaTypeLabel, statusLabel } from "../../lib/formatters";
@@ -23,6 +33,7 @@ import {
 import { ImagePreviewDialog } from "./components/image-preview-dialog";
 import { MediaDetails } from "./components/media-details";
 import { VideoMediaPlayer } from "./components/video-media-player";
+import { OrganizationEditorDialog } from "../../components/organization/organization-editor-dialog";
 
 type Attempt = TweetDetail["attempts"][number];
 type Tone = "default" | "secondary" | "success" | "warning" | "danger";
@@ -31,6 +42,7 @@ type DotStatus = "running" | "success" | "warning" | "danger" | "idle";
 export function TweetDetailPage() {
   const debugRedactionEnabled = useDebugRedactionEnabled();
   const { tweetId } = useParams();
+  const [organizeOpen, setOrganizeOpen] = useState(false);
   const { data, isLoading, error } = useQuery({
     queryKey: ["tweet", tweetId],
     queryFn: () => apiGet<TweetDetail>(`/api/v1/library/tweets/${tweetId}`),
@@ -108,6 +120,10 @@ export function TweetDetailPage() {
       <div className="grid gap-6 xl:grid-cols-[minmax(0,1fr)_360px]">
         <MediaGrid media={data.media} title="媒体" emptyText="暂无预览" />
         <aside className="space-y-4 xl:sticky xl:top-4 xl:self-start">
+          <OrganizationCard
+            organization={data.organization ?? { tweet_id: data.tweet.tweet_id, tags: [], collections: [], note: null }}
+            onEdit={() => setOrganizeOpen(true)}
+          />
           <MetadataCard
             tweet={data.tweet}
             labels={{
@@ -121,7 +137,81 @@ export function TweetDetailPage() {
           <AttemptsTimeline attempts={data.attempts} title="最近尝试" emptyText="没有记录下载尝试。" />
         </aside>
       </div>
+      <OrganizationEditorDialog tweetId={tweetId ?? null} open={organizeOpen} onOpenChange={setOrganizeOpen} />
     </div>
+  );
+}
+
+function OrganizationCard({
+  organization,
+  onEdit,
+}: {
+  organization: TweetDetail["organization"];
+  onEdit: () => void;
+}) {
+  const debugRedactionEnabled = useDebugRedactionEnabled();
+  return (
+    <Card>
+      <CardHeader>
+        <div className="flex items-start justify-between gap-3">
+          <div className="flex flex-col gap-1">
+            <CardTitle>整理信息</CardTitle>
+            <CardDescription>标签、合集与仅保存在本地的备注</CardDescription>
+          </div>
+          <Button type="button" variant="outline" size="sm" onClick={onEdit}>
+            <Tags data-icon="inline-start" />
+            编辑整理
+          </Button>
+        </div>
+      </CardHeader>
+      <CardContent className="flex flex-col gap-4">
+        <section className="flex flex-col gap-2">
+          <p className="flex items-center gap-2 text-xs font-semibold text-fg-secondary">
+            <Tags />标签
+          </p>
+          {organization.tags.length ? (
+            <div className="flex flex-wrap gap-1.5">
+              {organization.tags.map((tag) => (
+                <Badge key={tag.id} tone="secondary">
+                  {tag.name}
+                </Badge>
+              ))}
+            </div>
+          ) : (
+            <p className="text-sm text-fg-tertiary">暂无标签</p>
+          )}
+        </section>
+        <section className="flex flex-col gap-2">
+          <p className="flex items-center gap-2 text-xs font-semibold text-fg-secondary">
+            <FolderClosed />合集
+          </p>
+          {organization.collections.length ? (
+            <div className="flex flex-wrap gap-1.5">
+              {organization.collections.map((collection) => (
+                <Badge key={collection.id} tone="secondary">
+                  {collection.name}
+                </Badge>
+              ))}
+            </div>
+          ) : (
+            <p className="text-sm text-fg-tertiary">尚未加入合集</p>
+          )}
+        </section>
+        <section className="flex flex-col gap-2" {...getDebugRedactProps(debugRedactionEnabled)}>
+          <p className="flex items-center gap-2 text-xs font-semibold text-fg-secondary">
+            <FileText />私人备注
+          </p>
+          <p className="whitespace-pre-wrap break-words text-sm leading-relaxed text-fg-primary">
+            {organization.note?.content || "暂无私人备注"}
+          </p>
+          {organization.note ? (
+            <time className="text-xs text-fg-tertiary" dateTime={organization.note.updated_at}>
+              更新于 {formatDateTime(organization.note.updated_at)}
+            </time>
+          ) : null}
+        </section>
+      </CardContent>
+    </Card>
   );
 }
 

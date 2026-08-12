@@ -31,6 +31,8 @@ type MediaGridProps = {
   onRetryLoadMore: () => void;
   onStateChanged: (state: GridStateSnapshot) => void;
   selectedIds: Set<number>;
+  selectedTweetIds: Set<string>;
+  selectionMode: "organize" | "delete";
   onToggleSelected: (row: MediaRow) => void;
 };
 
@@ -49,6 +51,8 @@ export function MediaGrid({
   onRetryLoadMore,
   onStateChanged,
   selectedIds,
+  selectedTweetIds,
+  selectionMode,
   onToggleSelected,
 }: MediaGridProps) {
   const scrollParent = useAppScrollContainer();
@@ -82,7 +86,12 @@ export function MediaGrid({
       computeItemKey={mediaItemKey}
       endReached={requestLoadMore}
       itemContent={(_, row) => (
-        <MediaCard row={row} selected={selectedIds.has(row.id)} onToggleSelected={onToggleSelected} />
+        <MediaCard
+          row={row}
+          selected={selectionMode === "organize" ? selectedTweetIds.has(row.tweet_id) : selectedIds.has(row.id)}
+          selectionMode={selectionMode}
+          onToggleSelected={onToggleSelected}
+        />
       )}
       restoreStateFrom={restoreStateFrom}
       stateChanged={onStateChanged}
@@ -171,10 +180,12 @@ function mediaItemKey(index: number, row: MediaRow) {
 function MediaCard({
   row,
   selected,
+  selectionMode,
   onToggleSelected,
 }: {
   row: MediaRow;
   selected: boolean;
+  selectionMode: "organize" | "delete";
   onToggleSelected: (row: MediaRow) => void;
 }) {
   const navigate = useNavigate();
@@ -201,7 +212,10 @@ function MediaCard({
         onClick={(event) => event.stopPropagation()}
       >
         <Checkbox
-          aria-label={getDebugSelectionLabel(debugRedactionEnabled, `选择媒体 ${row.id}`)}
+          aria-label={getDebugSelectionLabel(
+            debugRedactionEnabled,
+            selectionMode === "organize" ? `选择 Tweet ${row.tweet_id}` : `选择媒体 ${row.id}`,
+          )}
           checked={selected}
           onCheckedChange={() => onToggleSelected(row)}
         />

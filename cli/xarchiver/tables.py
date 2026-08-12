@@ -175,6 +175,18 @@ tweet_search_documents = Table(
     Column("updated_at", DateTime(timezone=True), nullable=False),
 )
 
+organization_action_events = Table(
+    "organization_action_events",
+    metadata,
+    Column("id", BigInteger, primary_key=True),
+    Column("action", Text, nullable=False),
+    Column("target_type", Text, nullable=False),
+    Column("target_id", Text),
+    Column("tweet_ids", JSONB, nullable=False),
+    Column("details", JSONB, nullable=False),
+    Column("created_at", DateTime(timezone=True), nullable=False),
+)
+
 media_delete_operations = Table(
     "media_delete_operations",
     metadata,

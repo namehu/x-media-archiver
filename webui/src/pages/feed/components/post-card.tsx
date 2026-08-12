@@ -1,5 +1,5 @@
 import { type ReactNode, useMemo, useRef, useState } from "react";
-import { Copy, ExternalLink, MoreHorizontal, Trash2 } from "lucide-react";
+import { Copy, ExternalLink, FileText, FolderClosed, MoreHorizontal, Tags, Trash2 } from "lucide-react";
 import { toast } from "sonner";
 import type { PostFeedRow } from "@/lib/api";
 import { Avatar, AvatarFallback } from "@/components/ui/avatar";
@@ -42,6 +42,7 @@ export function PostCard({
   deleted,
   onActivateVideo,
   onRequestDelete,
+  onRequestOrganize,
   onPreview,
   getVideoState,
   updateVideoState,
@@ -57,6 +58,7 @@ export function PostCard({
   deleted: boolean;
   onActivateVideo: (videoId: string | null) => void;
   onRequestDelete: () => void;
+  onRequestOrganize?: () => void;
   onPreview: (index: number) => void;
   allowDelete?: boolean;
   tweetTextContent?: ReactNode;
@@ -74,6 +76,7 @@ export function PostCard({
   const tweetUrl = getDebugExternalHref(debugRedactionEnabled, post.tweet_url);
   const isLong = tweetText.length > 280 || (tweetText.match(/\n/g)?.length ?? 0) > 5;
   const relativeTime = useMemo(() => formatRelativeTime(post.published_at), [post.published_at]);
+  const organizationSummary = contextContent ?? <OrganizationSummary post={post} />;
 
   const copyLink = async () => {
     if (!tweetUrl) {
@@ -106,7 +109,7 @@ export function PostCard({
   };
 
   const handleLongPressStart = (event: React.PointerEvent<HTMLElement>) => {
-    if (deleted || !allowDelete) return;
+    if (deleted || (!allowDelete && !onRequestOrganize)) return;
     if (event.pointerType === "mouse" || event.button !== 0) return;
     if (isLongPressExcludedTarget(event.target)) return;
 
@@ -203,6 +206,12 @@ export function PostCard({
                 >
                   <ExternalLink data-icon="inline-start" />在 X 中查看
                 </DropdownMenuItem>
+                {onRequestOrganize ? (
+                  <DropdownMenuItem onSelect={onRequestOrganize}>
+                    <Tags data-icon="inline-start" />
+                    整理标签、合集与备注
+                  </DropdownMenuItem>
+                ) : null}
                 {allowDelete ? (
                   <>
                     <DropdownMenuSeparator />
@@ -243,9 +252,9 @@ export function PostCard({
           </div>
         ) : null}
 
-        {!deleted && contextContent ? (
+        {!deleted && organizationSummary ? (
           <div className="mt-1" {...getDebugRedactProps(debugRedactionEnabled)}>
-            {contextContent}
+            {organizationSummary}
           </div>
         ) : null}
 
@@ -266,7 +275,7 @@ export function PostCard({
           </div>
         )}
       </div>
-      {allowDelete ? (
+      {allowDelete || onRequestOrganize ? (
         <Drawer open={mobileActionsOpen} onOpenChange={setMobileActionsOpen}>
           <DrawerContent className="border-border-subtle bg-bg-elevated text-fg-primary">
             <DrawerHeader>
@@ -274,10 +283,26 @@ export function PostCard({
               <DrawerDescription className="text-fg-secondary">对这篇本地归档帖子执行操作。</DrawerDescription>
             </DrawerHeader>
             <DrawerFooter>
-              <Button type="button" variant="destructive" disabled={deleted} onClick={requestDelete}>
-                <Trash2 data-icon="inline-start" />
-                {deleted ? "本地媒体已删除" : "删除本地媒体"}
-              </Button>
+              {onRequestOrganize ? (
+                <Button
+                  type="button"
+                  variant="secondary"
+                  disabled={deleted}
+                  onClick={() => {
+                    setMobileActionsOpen(false);
+                    onRequestOrganize();
+                  }}
+                >
+                  <Tags data-icon="inline-start" />
+                  整理标签、合集与备注
+                </Button>
+              ) : null}
+              {allowDelete ? (
+                <Button type="button" variant="destructive" disabled={deleted} onClick={requestDelete}>
+                  <Trash2 data-icon="inline-start" />
+                  {deleted ? "本地媒体已删除" : "删除本地媒体"}
+                </Button>
+              ) : null}
               <DrawerClose asChild>
                 <Button type="button" variant="outline">
                   取消
@@ -288,6 +313,35 @@ export function PostCard({
         </Drawer>
       ) : null}
     </article>
+  );
+}
+
+function OrganizationSummary({ post }: { post: PostFeedRow }) {
+  const tags = post.tags ?? [];
+  const collectionCount = post.collection_count ?? 0;
+  const hasNote = post.has_note ?? false;
+  if (!tags.length && !collectionCount && !hasNote) return null;
+
+  return (
+    <div className="flex flex-wrap items-center gap-1.5" aria-label="整理摘要">
+      {tags.slice(0, 3).map((tag) => (
+        <Badge key={tag} tone="secondary" className="max-w-40 truncate">
+          {tag}
+        </Badge>
+      ))}
+      {collectionCount ? (
+        <span className="inline-flex items-center gap-1 text-xs text-fg-tertiary">
+          <FolderClosed />
+          {collectionCount} 个合集
+        </span>
+      ) : null}
+      {hasNote ? (
+        <span className="inline-flex items-center gap-1 text-xs text-fg-tertiary">
+          <FileText />
+          有私人备注
+        </span>
+      ) : null}
+    </div>
   );
 }
 

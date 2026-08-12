@@ -54,6 +54,40 @@ class FailureIgnoreRequest(FailureSelectionRequest):
     note: str | None = Field(default=None, max_length=500)
 
 
+# Tweet 整理请求
+class TagWriteRequest(BaseModel):
+    name: str = Field(min_length=1, max_length=100)
+    color: str | None = Field(default=None, pattern=r"^#[0-9A-Fa-f]{6}$")
+    description: str | None = Field(default=None, max_length=500)
+
+
+class CollectionWriteRequest(BaseModel):
+    name: str = Field(min_length=1, max_length=100)
+    description: str | None = Field(default=None, max_length=500)
+    cover_media_id: int | None = Field(default=None, ge=1)
+
+
+class OrganizationDeleteRequest(BaseModel):
+    confirm_delete: bool = False
+
+
+class TweetLabelsRequest(BaseModel):
+    tag_ids: list[int] = Field(default_factory=list, max_length=200)
+    collection_ids: list[int] = Field(default_factory=list, max_length=200)
+
+
+class TweetNoteRequest(BaseModel):
+    content: str = Field(max_length=10_000)
+
+
+class BulkOrganizationRequest(BaseModel):
+    tweet_ids: list[str] = Field(min_length=1, max_length=200)
+    add_tag_ids: list[int] = Field(default_factory=list, max_length=200)
+    remove_tag_ids: list[int] = Field(default_factory=list, max_length=200)
+    add_collection_ids: list[int] = Field(default_factory=list, max_length=200)
+    remove_collection_ids: list[int] = Field(default_factory=list, max_length=200)
+
+
 # 归档队列请求
 class ArchiveRecord(BaseModel):
     url: str

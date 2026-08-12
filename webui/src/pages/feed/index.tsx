@@ -13,6 +13,7 @@ import {
   type SourcePageResponse,
 } from "@/lib/api";
 import { Button } from "@/components/ui/button";
+import { OrganizationEditorDialog } from "@/components/organization/organization-editor-dialog";
 import { EmptyState } from "@/components/ui/empty-state";
 import { ErrorState } from "@/components/ui/error-state";
 import { Sheet, SheetContent, SheetDescription, SheetHeader, SheetTitle } from "@/components/ui/sheet";
@@ -54,6 +55,7 @@ export function FeedPage() {
   const [deleteDialogOpen, setDeleteDialogOpen] = useState(false);
   const [deleteOperationId, setDeleteOperationId] = useState<string | null>(null);
   const [deletedTweetIds, setDeletedTweetIds] = useState<Set<string>>(() => new Set());
+  const [organizeTweetId, setOrganizeTweetId] = useState<string | null>(null);
   const filtersRef = useRef(filters);
   const submittedRef = useRef(submitted);
   const listStateRef = useRef<StateSnapshot | null>(restoreListState);
@@ -363,6 +365,7 @@ export function FeedPage() {
               onStateChanged={handleListStateChanged}
               onActivateVideo={setActiveVideoId}
               onRequestDelete={openPostDeleteDialog}
+              onRequestOrganize={setOrganizeTweetId}
               getVideoState={getVideoState}
               updateVideoState={updateVideoState}
               onPreview={(post, index) => {
@@ -456,6 +459,13 @@ export function FeedPage() {
         }}
         onConfirm={() => {
           if (deleteOperationId) deleteMutation.mutate(deleteOperationId);
+        }}
+      />
+      <OrganizationEditorDialog
+        tweetId={organizeTweetId}
+        open={Boolean(organizeTweetId)}
+        onOpenChange={(open) => {
+          if (!open) setOrganizeTweetId(null);
         }}
       />
     </div>

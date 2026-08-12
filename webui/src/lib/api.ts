@@ -73,6 +73,9 @@ export type PostFeedRow = {
   published_at?: string | null;
   tweet_text: string;
   tweet_status: string;
+  tags: string[];
+  collection_count: number;
+  has_note: boolean;
   media: PostFeedMedia[];
 };
 
@@ -103,6 +106,51 @@ export type TweetSearchCollectionOption = {
 export type TweetSearchOptionsResponse = {
   tags: TweetSearchTagOption[];
   collections: TweetSearchCollectionOption[];
+};
+
+export type OrganizationTag = {
+  id: number;
+  name: string;
+  normalized_name: string;
+  color?: string | null;
+  description?: string | null;
+  tweet_count?: number | null;
+  created_at?: string | null;
+  updated_at?: string | null;
+};
+
+export type OrganizationCollection = {
+  id: number;
+  name: string;
+  normalized_name: string;
+  description?: string | null;
+  cover_media_id?: number | null;
+  cover?: { id: number; media_type?: string | null; media_url: string } | null;
+  tweet_count?: number | null;
+  created_at?: string | null;
+  updated_at?: string | null;
+};
+
+export type TweetOrganization = {
+  tweet_id: string;
+  tags: OrganizationTag[];
+  collections: OrganizationCollection[];
+  note?: { content: string; created_at: string; updated_at: string } | null;
+};
+
+export type OrganizationCatalog = {
+  tags: OrganizationTag[];
+  collections: OrganizationCollection[];
+};
+
+export type OrganizationCollectionPage = PageResponse<TweetSearchRow> & {
+  collection: OrganizationCollection;
+};
+
+export type WriteActionResponse<T = Record<string, unknown>> = {
+  action: string;
+  status: string;
+  result: T;
 };
 
 export type FailureRow = {
@@ -221,6 +269,7 @@ export type TweetDetail = {
     log_stream_id?: number | null;
     finished_at?: string | null;
   }>;
+  organization: TweetOrganization;
 };
 
 export type ActionResponse = {

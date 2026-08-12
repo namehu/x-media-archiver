@@ -245,6 +245,214 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/api/v1/library/organization": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * Organization Catalog
+         * @description 返回标签与合集管理目录。
+         */
+        get: operations["organization_catalog_api_v1_library_organization_get"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/library/organization/tags": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Add Tag
+         * @description 创建平面标签。
+         */
+        post: operations["add_tag_api_v1_library_organization_tags_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/library/organization/tags/{tag_id}": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        /**
+         * Edit Tag
+         * @description 更新标签元数据。
+         */
+        put: operations["edit_tag_api_v1_library_organization_tags__tag_id__put"];
+        post?: never;
+        /**
+         * Remove Tag
+         * @description 解除标签关联并删除标签本身。
+         */
+        delete: operations["remove_tag_api_v1_library_organization_tags__tag_id__delete"];
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/library/organization/collections": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Add Collection
+         * @description 创建手工合集。
+         */
+        post: operations["add_collection_api_v1_library_organization_collections_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/library/organization/collections/{collection_id}": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        /**
+         * Edit Collection
+         * @description 更新合集元数据与封面。
+         */
+        put: operations["edit_collection_api_v1_library_organization_collections__collection_id__put"];
+        post?: never;
+        /**
+         * Remove Collection
+         * @description 解除合集成员关系并删除合集本身。
+         */
+        delete: operations["remove_collection_api_v1_library_organization_collections__collection_id__delete"];
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/library/organization/collections/{collection_id}/tweets": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * Collection Tweets Page
+         * @description 返回合集内的 Tweet 级帖子流。
+         */
+        get: operations["collection_tweets_page_api_v1_library_organization_collections__collection_id__tweets_get"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/library/tweets/{tweet_id}/organization": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * Tweet Organization
+         * @description 返回单条 Tweet 的标签、合集和私人备注。
+         */
+        get: operations["tweet_organization_api_v1_library_tweets__tweet_id__organization_get"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/library/tweets/{tweet_id}/organization/labels": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        /**
+         * Update Tweet Labels
+         * @description 替换单条 Tweet 的标签与合集集合。
+         */
+        put: operations["update_tweet_labels_api_v1_library_tweets__tweet_id__organization_labels_put"];
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/library/tweets/{tweet_id}/organization/note": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        /**
+         * Update Tweet Note
+         * @description 保存单条纯文本私人备注。
+         */
+        put: operations["update_tweet_note_api_v1_library_tweets__tweet_id__organization_note_put"];
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/library/organization/bulk": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Bulk Organize
+         * @description 对最多 200 条 Tweet 批量加减标签与合集。
+         */
+        post: operations["bulk_organize_api_v1_library_organization_bulk_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/api/v1/library/tweets/{tweet_id}": {
         parameters: {
             query?: never;
@@ -2018,6 +2226,28 @@ export interface components {
              */
             normalize_files: boolean;
         };
+        /** BulkOrganizationRequest */
+        BulkOrganizationRequest: {
+            /** Tweet Ids */
+            tweet_ids: string[];
+            /** Add Tag Ids */
+            add_tag_ids?: number[];
+            /** Remove Tag Ids */
+            remove_tag_ids?: number[];
+            /** Add Collection Ids */
+            add_collection_ids?: number[];
+            /** Remove Collection Ids */
+            remove_collection_ids?: number[];
+        };
+        /** CollectionWriteRequest */
+        CollectionWriteRequest: {
+            /** Name */
+            name: string;
+            /** Description */
+            description?: string | null;
+            /** Cover Media Id */
+            cover_media_id?: number | null;
+        };
         /** CookieConfigResponse */
         CookieConfigResponse: {
             /** Configured */
@@ -2662,6 +2892,93 @@ export interface components {
         } & {
             [key: string]: unknown;
         };
+        /** OrganizationCatalogResponse */
+        OrganizationCatalogResponse: {
+            /** Tags */
+            tags?: components["schemas"]["OrganizationTagResponse"][];
+            /** Collections */
+            collections?: components["schemas"]["OrganizationCollectionResponse"][];
+        } & {
+            [key: string]: unknown;
+        };
+        /** OrganizationCollectionPageResponse */
+        OrganizationCollectionPageResponse: {
+            /** Count */
+            count: number;
+            /** Total Count */
+            total_count: number;
+            /** Limit */
+            limit: number;
+            /** Offset */
+            offset: number;
+            collection: components["schemas"]["OrganizationCollectionResponse"];
+            /** Rows */
+            rows: components["schemas"]["TweetSearchRowResponse"][];
+        } & {
+            [key: string]: unknown;
+        };
+        /** OrganizationCollectionResponse */
+        OrganizationCollectionResponse: {
+            /** Id */
+            id: number;
+            /** Name */
+            name: string;
+            /** Normalized Name */
+            normalized_name: string;
+            /** Description */
+            description?: string | null;
+            /** Cover Media Id */
+            cover_media_id?: number | null;
+            cover?: components["schemas"]["OrganizationCoverResponse"] | null;
+            /** Tweet Count */
+            tweet_count?: number | null;
+            /** Created At */
+            created_at?: string | null;
+            /** Updated At */
+            updated_at?: string | null;
+        } & {
+            [key: string]: unknown;
+        };
+        /** OrganizationCoverResponse */
+        OrganizationCoverResponse: {
+            /** Id */
+            id: number;
+            /** Media Type */
+            media_type?: string | null;
+            /** Media Url */
+            media_url: string;
+        } & {
+            [key: string]: unknown;
+        };
+        /** OrganizationDeleteRequest */
+        OrganizationDeleteRequest: {
+            /**
+             * Confirm Delete
+             * @default false
+             */
+            confirm_delete: boolean;
+        };
+        /** OrganizationTagResponse */
+        OrganizationTagResponse: {
+            /** Id */
+            id: number;
+            /** Name */
+            name: string;
+            /** Normalized Name */
+            normalized_name: string;
+            /** Color */
+            color?: string | null;
+            /** Description */
+            description?: string | null;
+            /** Tweet Count */
+            tweet_count?: number | null;
+            /** Created At */
+            created_at?: string | null;
+            /** Updated At */
+            updated_at?: string | null;
+        } & {
+            [key: string]: unknown;
+        };
         /** PostFeedMediaResponse */
         PostFeedMediaResponse: {
             /** Id */
@@ -2728,6 +3045,18 @@ export interface components {
             tweet_text: string;
             /** Tweet Status */
             tweet_status: string;
+            /** Tags */
+            tags?: string[];
+            /**
+             * Collection Count
+             * @default 0
+             */
+            collection_count: number;
+            /**
+             * Has Note
+             * @default false
+             */
+            has_note: boolean;
             /** Media */
             media: components["schemas"]["PostFeedMediaResponse"][];
         } & {
@@ -3823,6 +4152,15 @@ export interface components {
         } & {
             [key: string]: unknown;
         };
+        /** TagWriteRequest */
+        TagWriteRequest: {
+            /** Name */
+            name: string;
+            /** Color */
+            color?: string | null;
+            /** Description */
+            description?: string | null;
+        };
         /** TweetDetailResponse */
         TweetDetailResponse: {
             tweet: components["schemas"]["TweetResponse"];
@@ -3830,6 +4168,48 @@ export interface components {
             media: components["schemas"]["MediaAssetResponse"][];
             /** Attempts */
             attempts: components["schemas"]["DownloadAttemptResponse"][];
+            organization: components["schemas"]["TweetOrganizationResponse"];
+        } & {
+            [key: string]: unknown;
+        };
+        /** TweetLabelsRequest */
+        TweetLabelsRequest: {
+            /** Tag Ids */
+            tag_ids?: number[];
+            /** Collection Ids */
+            collection_ids?: number[];
+        };
+        /** TweetNoteRequest */
+        TweetNoteRequest: {
+            /** Content */
+            content: string;
+        };
+        /** TweetNoteResponse */
+        TweetNoteResponse: {
+            /** Content */
+            content: string;
+            /**
+             * Created At
+             * Format: date-time
+             */
+            created_at: string;
+            /**
+             * Updated At
+             * Format: date-time
+             */
+            updated_at: string;
+        } & {
+            [key: string]: unknown;
+        };
+        /** TweetOrganizationResponse */
+        TweetOrganizationResponse: {
+            /** Tweet Id */
+            tweet_id: string;
+            /** Tags */
+            tags?: components["schemas"]["OrganizationTagResponse"][];
+            /** Collections */
+            collections?: components["schemas"]["OrganizationCollectionResponse"][];
+            note?: components["schemas"]["TweetNoteResponse"] | null;
         } & {
             [key: string]: unknown;
         };
@@ -3917,6 +4297,18 @@ export interface components {
             tweet_text: string;
             /** Tweet Status */
             tweet_status: string;
+            /** Tags */
+            tags?: string[];
+            /**
+             * Collection Count
+             * @default 0
+             */
+            collection_count: number;
+            /**
+             * Has Note
+             * @default false
+             */
+            has_note: boolean;
             /** Media */
             media: components["schemas"]["PostFeedMediaResponse"][];
             /**
@@ -3924,8 +4316,6 @@ export interface components {
              * @default 0
              */
             relevance: number;
-            /** Tags */
-            tags?: string[];
             /** Collections */
             collections?: string[];
             /** Note Excerpt */
@@ -4384,6 +4774,400 @@ export interface operations {
                 };
                 content: {
                     "application/json": components["schemas"]["TweetSearchOptionsResponse"];
+                };
+            };
+        };
+    };
+    organization_catalog_api_v1_library_organization_get: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["OrganizationCatalogResponse"];
+                };
+            };
+        };
+    };
+    add_tag_api_v1_library_organization_tags_post: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["TagWriteRequest"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["WriteActionResponse"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    edit_tag_api_v1_library_organization_tags__tag_id__put: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                tag_id: number;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["TagWriteRequest"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["WriteActionResponse"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    remove_tag_api_v1_library_organization_tags__tag_id__delete: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                tag_id: number;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["OrganizationDeleteRequest"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["WriteActionResponse"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    add_collection_api_v1_library_organization_collections_post: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["CollectionWriteRequest"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["WriteActionResponse"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    edit_collection_api_v1_library_organization_collections__collection_id__put: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                collection_id: number;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["CollectionWriteRequest"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["WriteActionResponse"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    remove_collection_api_v1_library_organization_collections__collection_id__delete: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                collection_id: number;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["OrganizationDeleteRequest"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["WriteActionResponse"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    collection_tweets_page_api_v1_library_organization_collections__collection_id__tweets_get: {
+        parameters: {
+            query?: {
+                limit?: number;
+                offset?: number;
+            };
+            header?: never;
+            path: {
+                collection_id: number;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["OrganizationCollectionPageResponse"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    tweet_organization_api_v1_library_tweets__tweet_id__organization_get: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                tweet_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["TweetOrganizationResponse"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    update_tweet_labels_api_v1_library_tweets__tweet_id__organization_labels_put: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                tweet_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["TweetLabelsRequest"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["WriteActionResponse"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    update_tweet_note_api_v1_library_tweets__tweet_id__organization_note_put: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                tweet_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["TweetNoteRequest"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["WriteActionResponse"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    bulk_organize_api_v1_library_organization_bulk_post: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["BulkOrganizationRequest"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["WriteActionResponse"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
                 };
             };
         };

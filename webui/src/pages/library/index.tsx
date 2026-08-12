@@ -1,5 +1,5 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
-import { Grid2X2, ListFilter, SlidersHorizontal } from "lucide-react";
+import { Grid2X2, ListFilter, SlidersHorizontal, Tags, Trash2 } from "lucide-react";
 import { toast } from "sonner";
 import { useInfiniteQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import { useLocation, useNavigationType } from "react-router-dom";
@@ -31,7 +31,10 @@ import {
 } from "../../lib/media-deletion";
 import { Collapsible, CollapsibleContent, CollapsibleTrigger } from "../../components/ui/collapsible";
 import { Button } from "../../components/ui/button";
+import { ToggleGroup, ToggleGroupItem } from "../../components/ui/toggle-group";
 import { getLibraryBrowseState, saveLibraryBrowseState } from "./library-browse-state";
+import { BulkOrganizationDialog } from "./components/bulk-organization-dialog";
+import { OrganizationSelectionBar } from "./components/organization-selection-bar";
 
 const PAGE_SIZE = 60;
 const MAX_DELETE_SELECTION = 200;
@@ -55,6 +58,9 @@ export function LibraryPage() {
   const [gridVersion, setGridVersion] = useState(0);
   const [mobileFiltersOpen, setMobileFiltersOpen] = useState(false);
   const [selectedIds, setSelectedIds] = useState<Set<number>>(() => new Set());
+  const [selectedTweetIds, setSelectedTweetIds] = useState<Set<string>>(() => new Set());
+  const [selectionMode, setSelectionMode] = useState<"organize" | "delete">("organize");
+  const [bulkDialogOpen, setBulkDialogOpen] = useState(false);
   const [deleteDialogOpen, setDeleteDialogOpen] = useState(false);
   const [deleteOperationId, setDeleteOperationId] = useState<string | null>(null);
   const filtersRef = useRef(filters);
@@ -143,6 +149,7 @@ export function LibraryPage() {
   const applyFilters = () => {
     const nextFilters = { ...filters };
     setSelectedIds(new Set());
+    setSelectedTweetIds(new Set());
     resetGridAndQuery(nextFilters);
     setSubmitted(nextFilters);
   };
@@ -150,26 +157,39 @@ export function LibraryPage() {
   const resetFilters = () => {
     const nextFilters = { ...DEFAULT_LIBRARY_FILTERS };
     setSelectedIds(new Set());
+    setSelectedTweetIds(new Set());
     resetGridAndQuery(nextFilters);
     setFilters(nextFilters);
     setSubmitted(nextFilters);
   };
 
   const toggleSelected = useCallback((row: MediaRow) => {
+    if (selectionMode === "organize") {
+      setSelectedTweetIds((current) => {
+        const next = new Set(current);
+        if (next.has(row.tweet_id)) next.delete(row.tweet_id);
+        else if (next.size >= MAX_DELETE_SELECTION) toast.error("单次最多选择 200 条 Tweet。");
+        else next.add(row.tweet_id);
+        return next;
+      });
+      return;
+    }
     setSelectedIds((current) => {
       const next = new Set(current);
-      if (next.has(row.id)) {
-        next.delete(row.id);
-      } else if (next.size >= MAX_DELETE_SELECTION) {
-        toast.error("单次最多选择 200 个媒体项。");
-      } else {
-        next.add(row.id);
-      }
+      if (next.has(row.id)) next.delete(row.id);
+      else if (next.size >= MAX_DELETE_SELECTION) toast.error("单次最多选择 200 个媒体项。");
+      else next.add(row.id);
       return next;
     });
-  }, []);
+  }, [selectionMode]);
 
   const selectLoaded = () => {
+    if (selectionMode === "organize") {
+      const tweetIds = Array.from(new Set(rows.map((row) => row.tweet_id))).slice(0, MAX_DELETE_SELECTION);
+      setSelectedTweetIds(new Set(tweetIds));
+      if (new Set(rows.map((row) => row.tweet_id)).size > MAX_DELETE_SELECTION) toast.info("已选择前 200 条已加载 Tweet。");
+      return;
+    }
     const ids = rows.slice(0, MAX_DELETE_SELECTION).map((row) => row.id);
     setSelectedIds(new Set(ids));
     if (rows.length > MAX_DELETE_SELECTION) toast.info("已选择前 200 个已加载媒体项。");
@@ -200,6 +220,21 @@ export function LibraryPage() {
           <h1 className="text-2xl font-bold tracking-tight text-fg-primary">媒体库</h1>
           <p className="mt-1 text-sm text-fg-secondary">按作者、文本、状态快速收敛本地已归档媒体。</p>
         </div>
+        <ToggleGroup
+          type="single"
+          variant="outline"
+          value={selectionMode}
+          onValueChange={(value) => {
+            if (value !== "organize" && value !== "delete") return;
+            setSelectionMode(value);
+            setSelectedIds(new Set());
+            setSelectedTweetIds(new Set());
+          }}
+          aria-label="媒体库选择模式"
+        >
+          <ToggleGroupItem value="organize"><Tags />整理 Tweet</ToggleGroupItem>
+          <ToggleGroupItem value="delete"><Trash2 />删除媒体</ToggleGroupItem>
+        </ToggleGroup>
       </section>
 
       <section className="grid gap-4 lg:grid-cols-[280px_minmax(0,1fr)]">
@@ -248,9 +283,10 @@ export function LibraryPage() {
                 loadedCount={rows.length}
                 totalCount={totalCount}
                 onReset={resetFilters}
-                selectedCount={selectedIds.size}
+                selectedCount={selectionMode === "organize" ? selectedTweetIds.size : selectedIds.size}
                 onSelectLoaded={selectLoaded}
-                onClearSelection={() => setSelectedIds(new Set())}
+                onClearSelection={() => selectionMode === "organize" ? setSelectedTweetIds(new Set()) : setSelectedIds(new Set())}
+                selectionLabel={selectionMode === "organize" ? " Tweet" : "媒体"}
               />
               {rows.length ? (
                 <MediaGrid
@@ -264,6 +300,8 @@ export function LibraryPage() {
                   onRetryLoadMore={() => void mediaQuery.fetchNextPage()}
                   onStateChanged={handleGridStateChanged}
                   selectedIds={selectedIds}
+                  selectedTweetIds={selectedTweetIds}
+                  selectionMode={selectionMode}
                   onToggleSelected={toggleSelected}
                 />
               ) : (
@@ -273,12 +311,20 @@ export function LibraryPage() {
           ) : null}
         </main>
       </section>
-      <MediaSelectionBar
-        count={selectedIds.size}
-        estimatedBytes={selectedBytes}
-        onClear={() => setSelectedIds(new Set())}
-        onDelete={openDeleteDialog}
-      />
+      {selectionMode === "delete" ? (
+        <MediaSelectionBar
+          count={selectedIds.size}
+          estimatedBytes={selectedBytes}
+          onClear={() => setSelectedIds(new Set())}
+          onDelete={openDeleteDialog}
+        />
+      ) : (
+        <OrganizationSelectionBar
+          count={selectedTweetIds.size}
+          onClear={() => setSelectedTweetIds(new Set())}
+          onOrganize={() => setBulkDialogOpen(true)}
+        />
+      )}
       <MediaDeleteDialog
         open={deleteDialogOpen}
         count={selectedIds.size}
@@ -292,6 +338,12 @@ export function LibraryPage() {
         onConfirm={() => {
           if (deleteOperationId) deleteMutation.mutate(deleteOperationId);
         }}
+      />
+      <BulkOrganizationDialog
+        tweetIds={Array.from(selectedTweetIds)}
+        open={bulkDialogOpen}
+        onOpenChange={setBulkDialogOpen}
+        onCompleted={() => setSelectedTweetIds(new Set())}
       />
     </div>
   );

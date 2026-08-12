@@ -59,6 +59,13 @@ ERROR_HTTP_STATUS_BY_CODE = {
     "media_delete_active_work": 409,
     "media_delete_operation_in_progress": 409,
     "media_assets_not_found": 404,
+    "tag_name_exists": 409,
+    "collection_name_exists": 409,
+    "tag_not_found": 404,
+    "collection_not_found": 404,
+    "tweets_not_found": 404,
+    "tags_not_found": 404,
+    "collections_not_found": 404,
 }
 
 

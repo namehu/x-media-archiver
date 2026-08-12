@@ -20,6 +20,7 @@ export function FeedList({
   onStateChanged,
   onActivateVideo,
   onRequestDelete,
+  onRequestOrganize,
   onPreview,
   getVideoState,
   updateVideoState,
@@ -37,6 +38,7 @@ export function FeedList({
   onStateChanged: (state: StateSnapshot) => void;
   onActivateVideo: (videoId: string | null) => void;
   onRequestDelete: (post: PostFeedRow) => void;
+  onRequestOrganize: (tweetId: string) => void;
   onPreview: (post: PostFeedRow, index: number) => void;
 } & FeedVideoPlaybackStateApi) {
   const scrollParent = useAppScrollContainer();
@@ -76,6 +78,7 @@ export function FeedList({
           deleted={deletedTweetIds.has(post.tweet_id) || post.media.length === 0}
           onActivateVideo={onActivateVideo}
           onRequestDelete={() => onRequestDelete(post)}
+          onRequestOrganize={() => onRequestOrganize(post.tweet_id)}
           onPreview={(index) => onPreview(post, index)}
           getVideoState={getVideoState}
           updateVideoState={updateVideoState}

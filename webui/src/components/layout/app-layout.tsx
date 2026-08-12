@@ -38,6 +38,7 @@ const navGroups = [
       { to: "/search", label: "全局搜索" },
       { to: "/feed", label: "帖子浏览" },
       { to: "/library", label: "媒体库" },
+      { to: "/collections", label: "合集" },
       { to: "/failures", label: "失败项" },
       { to: "/duplicates", label: "重复媒体" },
     ],
@@ -149,6 +150,12 @@ export function AppLayout() {
         label: "媒体库",
         description: "/library",
         onSelect: () => navigate("/library"),
+      },
+      {
+        id: "collections",
+        label: "合集",
+        description: "/collections",
+        onSelect: () => navigate("/collections"),
       },
       {
         id: "queue",

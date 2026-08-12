@@ -116,6 +116,7 @@ test.describe("Library infinite loading", () => {
     });
 
     await page.goto("/library");
+    await page.getByRole("radio", { name: "删除媒体" }).click();
     await page.getByRole("checkbox", { name: "选择媒体 1" }).click();
     await expect(page.getByText("已选 1 项")).toBeVisible();
     await page.getByRole("button", { name: "删除" }).click();

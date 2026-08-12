@@ -43,6 +43,7 @@ class MigrationTests(unittest.TestCase):
                 "019_harden_failure_triage.py",
                 "020_add_failure_timestamps.py",
                 "021_add_tweet_search.py",
+                "022_add_organization_audit.py",
             ],
         )
         upgrade.assert_called_once()
@@ -54,7 +55,7 @@ class MigrationTests(unittest.TestCase):
 
         with (
             patch("xarchiver.migrations.get_settings", return_value=settings),
-            patch("xarchiver.migrations.current_alembic_revision", return_value="021_add_tweet_search"),
+            patch("xarchiver.migrations.current_alembic_revision", return_value="022_add_organization_audit"),
             patch("xarchiver.migrations.command.upgrade") as upgrade,
         ):
             self.assertEqual(migrate(), [])
@@ -99,6 +100,7 @@ class MigrationTests(unittest.TestCase):
                 "019_harden_failure_triage.py",
                 "020_add_failure_timestamps.py",
                 "021_add_tweet_search.py",
+                "022_add_organization_audit.py",
             ],
         )
 
@@ -124,6 +126,20 @@ class MigrationTests(unittest.TestCase):
         self.assertIn("create table if not exists media_assets", sql)
         self.assertIn("create table if not exists archive_run_items", sql)
         self.assertIn("create table if not exists source_scan_runs", sql)
+
+    def test_organization_audit_revision_is_reversible(self) -> None:
+        module = importlib.import_module("xarchiver.alembic.versions.022_add_organization_audit")
+        upgrade_sql: list[str] = []
+        downgrade_sql: list[str] = []
+
+        with patch.object(module.op, "execute", side_effect=upgrade_sql.append):
+            module.upgrade()
+        with patch.object(module.op, "execute", side_effect=downgrade_sql.append):
+            module.downgrade()
+
+        self.assertIn("create table if not exists organization_action_events", upgrade_sql[0])
+        self.assertIn("idx_organization_action_events_created", upgrade_sql[0])
+        self.assertIn("drop table if exists organization_action_events", downgrade_sql[0])
 
     def test_download_job_log_stream_revision_is_idempotent(self) -> None:
         module = importlib.import_module("xarchiver.alembic.versions.012_add_download_job_log_stream")

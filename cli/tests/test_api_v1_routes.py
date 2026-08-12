@@ -15,10 +15,12 @@ from xarchiver.api.schemas import (
     ArchiveSourceDetailResponse,
     AuthorOptionsResponse,
     BackfillRequest,
+    BulkOrganizationRequest,
     DuplicatesPageResponse,
     FailureIgnoreRequest,
     FailureSelectionRequest,
     MediaDeleteRequest,
+    OrganizationDeleteRequest,
     PostFeedPageResponse,
     SourceBulkTaskCreateRequest,
     SourceBulkTaskRetryRequest,
@@ -30,6 +32,9 @@ from xarchiver.api.schemas import (
     SourceScanRunsPageResponse,
     SourcesPageResponse,
     SourceStatusRequest,
+    TagWriteRequest,
+    TweetLabelsRequest,
+    TweetNoteRequest,
     TweetSearchOptionsResponse,
     TweetSearchPageResponse,
     UpdateCookiesRequest,
@@ -80,7 +85,10 @@ class V1RouterSmokeTests(unittest.TestCase):
             "/api/v1/library/posts",
             "/api/v1/library/search",
             "/api/v1/library/search/options",
+            "/api/v1/library/organization",
+            "/api/v1/library/organization/collections/{collection_id}/tweets",
             "/api/v1/library/tweets/{tweet_id}",
+            "/api/v1/library/tweets/{tweet_id}/organization",
             "/api/v1/library/failures",
             "/api/v1/library/failures/{tweet_id}/actions",
             "/api/v1/library/duplicates",
@@ -129,6 +137,9 @@ class V1RouterSmokeTests(unittest.TestCase):
             "/api/v1/library/failures/ignore",
             "/api/v1/library/failures/restore",
             "/api/v1/library/failures/retry",
+            "/api/v1/library/organization/tags",
+            "/api/v1/library/organization/collections",
+            "/api/v1/library/organization/bulk",
             "/api/v1/actions/requeue",
             "/api/v1/actions/recover-interrupted",
             "/api/v1/actions/export",
@@ -148,11 +159,123 @@ class V1RouterSmokeTests(unittest.TestCase):
         self.assertIn("/api/v1/settings/cookies", self.delete_paths)
         self.assertIn("/api/v1/library/media", self.delete_paths)
         self.assertIn("/api/v1/sources/{source_id}", self.delete_paths)
+        self.assertIn("/api/v1/library/organization/tags/{tag_id}", self.delete_paths)
+        self.assertIn(
+            "/api/v1/library/organization/collections/{collection_id}",
+            self.delete_paths,
+        )
         self.assertIn("/api/v1/source-schedule-policies/{policy_id}", self.delete_paths)
 
     def test_v1_source_task_update_routes_registered(self):
         self.assertIn("/api/v1/source-schedule-policies/{policy_id}", self.patch_paths)
         self.assertIn("/api/v1/source-schedule-policies/{policy_id}/sources", self.put_paths)
+        self.assertIn("/api/v1/library/organization/tags/{tag_id}", self.put_paths)
+        self.assertIn(
+            "/api/v1/library/organization/collections/{collection_id}",
+            self.put_paths,
+        )
+        self.assertIn(
+            "/api/v1/library/tweets/{tweet_id}/organization/labels",
+            self.put_paths,
+        )
+        self.assertIn(
+            "/api/v1/library/tweets/{tweet_id}/organization/note",
+            self.put_paths,
+        )
+
+    def test_v1_organization_routes_delegate_through_write_boundary(self):
+        with patch("xarchiver.api.v1.library.execute_write_action") as execute:
+            execute.side_effect = lambda name, action, **_kwargs: {
+                "action": name,
+                "status": "completed",
+                "result": action(),
+            }
+            with (
+                patch("xarchiver.api.v1.library.create_tag", return_value={"id": 1}) as create,
+                patch("xarchiver.api.v1.library.bulk_update_labels", return_value={"selected_tweet_count": 2}) as bulk,
+            ):
+                tag_result = self.post_paths["/api/v1/library/organization/tags"](
+                    TagWriteRequest(name="物理", color="#3366ff")
+                )
+                bulk_result = self.post_paths["/api/v1/library/organization/bulk"](
+                    BulkOrganizationRequest(tweet_ids=["1", "2"], add_tag_ids=[1])
+                )
+
+        self.assertEqual(tag_result["result"]["id"], 1)
+        self.assertEqual(bulk_result["result"]["selected_tweet_count"], 2)
+        create.assert_called_once_with("物理", "#3366ff", None)
+        bulk.assert_called_once_with(
+            ["1", "2"],
+            add_tag_ids=[1],
+            remove_tag_ids=[],
+            add_collection_ids=[],
+            remove_collection_ids=[],
+        )
+        self.assertTrue(all(call.kwargs["scope"] == "library-organization" for call in execute.call_args_list))
+
+    def test_v1_organization_errors_use_conflict_and_not_found_statuses(self):
+        route = self.post_paths["/api/v1/library/organization/tags"]
+        with (
+            patch(
+                "xarchiver.api.v1.library.execute_write_action",
+                side_effect=ValueError("tag_name_exists"),
+            ),
+            self.assertRaises(HTTPException) as duplicate,
+        ):
+            route(TagWriteRequest(name="重复"))
+        self.assertEqual(duplicate.exception.status_code, 409)
+
+        route = self.put_paths["/api/v1/library/tweets/{tweet_id}/organization/labels"]
+        with (
+            patch(
+                "xarchiver.api.v1.library.execute_write_action",
+                side_effect=ValueError("tweets_not_found"),
+            ),
+            self.assertRaises(HTTPException) as missing,
+        ):
+            route("missing", TweetLabelsRequest())
+        self.assertEqual(missing.exception.status_code, 404)
+
+    def test_v1_organization_delete_forwards_confirmation(self):
+        with (
+            patch("xarchiver.api.v1.library.execute_write_action") as execute,
+            patch("xarchiver.api.v1.library.delete_tag", return_value={"id": 8}) as delete,
+        ):
+            execute.side_effect = lambda name, action, **_kwargs: {
+                "action": name,
+                "status": "completed",
+                "result": action(),
+            }
+            result = self.delete_paths["/api/v1/library/organization/tags/{tag_id}"](
+                8,
+                OrganizationDeleteRequest(confirm_delete=True),
+            )
+
+        self.assertEqual(result["result"]["id"], 8)
+        delete.assert_called_once_with(8, confirmed=True)
+
+    def test_v1_tweet_organization_updates_delegate(self):
+        with patch("xarchiver.api.v1.library.execute_write_action") as execute:
+            execute.side_effect = lambda name, action, **_kwargs: {
+                "action": name,
+                "status": "completed",
+                "result": action(),
+            }
+            with (
+                patch("xarchiver.api.v1.library.replace_tweet_labels", return_value={"tweet_id": "1"}) as labels,
+                patch("xarchiver.api.v1.library.save_tweet_note", return_value={"tweet_id": "1"}) as note,
+            ):
+                self.put_paths["/api/v1/library/tweets/{tweet_id}/organization/labels"](
+                    "1",
+                    TweetLabelsRequest(tag_ids=[2], collection_ids=[3]),
+                )
+                self.put_paths["/api/v1/library/tweets/{tweet_id}/organization/note"](
+                    "1",
+                    TweetNoteRequest(content="private note"),
+                )
+
+        labels.assert_called_once_with("1", [2], [3])
+        note.assert_called_once_with("1", "private note")
 
     def test_v1_source_bulk_task_creation_delegates_frozen_selection(self):
         result = {"id": 41, "status": "queued"}

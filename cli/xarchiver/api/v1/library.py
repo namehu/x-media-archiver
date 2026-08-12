@@ -6,6 +6,7 @@
 
 from __future__ import annotations
 
+from collections.abc import Callable
 from datetime import date
 
 from fastapi import APIRouter, HTTPException, Query
@@ -13,6 +14,8 @@ from fastapi import APIRouter, HTTPException, Query
 from xarchiver.api.deps import execute_write_action, raise_api_error
 from xarchiver.api.schemas import (
     AuthorOptionsResponse,
+    BulkOrganizationRequest,
+    CollectionWriteRequest,
     DuplicatesPageResponse,
     FailureActionsResponse,
     FailureIgnoreRequest,
@@ -20,9 +23,16 @@ from xarchiver.api.schemas import (
     FailureSelectionRequest,
     MediaDeleteRequest,
     MediaPageResponse,
+    OrganizationCatalogResponse,
+    OrganizationCollectionPageResponse,
+    OrganizationDeleteRequest,
     PostFeedPageResponse,
     SummaryResponse,
+    TagWriteRequest,
     TweetDetailResponse,
+    TweetLabelsRequest,
+    TweetNoteRequest,
+    TweetOrganizationResponse,
     TweetSearchOptionsResponse,
     TweetSearchPageResponse,
     WriteActionResponse,
@@ -42,12 +52,26 @@ from xarchiver.services.library import (
     get_summary,
     get_tweet_detail,
     get_tweet_search_options,
+    list_collection_tweets_page,
     list_duplicates_page,
     list_media_page,
+    list_organization_catalog_page,
     list_posts_page,
     search_tweets_page,
 )
 from xarchiver.services.media_deletion import delete_media_assets
+from xarchiver.services.organization import (
+    bulk_update_labels,
+    create_collection,
+    create_tag,
+    delete_collection,
+    delete_tag,
+    get_tweet_organization,
+    replace_tweet_labels,
+    save_tweet_note,
+    update_collection,
+    update_tag,
+)
 
 router = APIRouter(prefix="/library", tags=["library"])
 
@@ -171,6 +195,146 @@ def search_options() -> dict[str, object]:
     return get_tweet_search_options()
 
 
+@router.get("/organization", response_model=OrganizationCatalogResponse)
+def organization_catalog() -> dict[str, object]:
+    """返回标签与合集管理目录。"""
+
+    return list_organization_catalog_page(get_settings())
+
+
+@router.post("/organization/tags", response_model=WriteActionResponse)
+def add_tag(request: TagWriteRequest) -> dict[str, object]:
+    """创建平面标签。"""
+
+    return _organization_write(
+        "create-tag",
+        lambda: create_tag(request.name, request.color, request.description),
+    )
+
+
+@router.put("/organization/tags/{tag_id}", response_model=WriteActionResponse)
+def edit_tag(tag_id: int, request: TagWriteRequest) -> dict[str, object]:
+    """更新标签元数据。"""
+
+    return _organization_write(
+        "update-tag",
+        lambda: update_tag(tag_id, request.name, request.color, request.description),
+    )
+
+
+@router.delete("/organization/tags/{tag_id}", response_model=WriteActionResponse)
+def remove_tag(tag_id: int, request: OrganizationDeleteRequest) -> dict[str, object]:
+    """解除标签关联并删除标签本身。"""
+
+    return _organization_write(
+        "delete-tag",
+        lambda: delete_tag(tag_id, confirmed=request.confirm_delete),
+    )
+
+
+@router.post("/organization/collections", response_model=WriteActionResponse)
+def add_collection(request: CollectionWriteRequest) -> dict[str, object]:
+    """创建手工合集。"""
+
+    return _organization_write(
+        "create-collection",
+        lambda: create_collection(request.name, request.description),
+    )
+
+
+@router.put("/organization/collections/{collection_id}", response_model=WriteActionResponse)
+def edit_collection(collection_id: int, request: CollectionWriteRequest) -> dict[str, object]:
+    """更新合集元数据与封面。"""
+
+    return _organization_write(
+        "update-collection",
+        lambda: update_collection(
+            collection_id,
+            request.name,
+            request.description,
+            request.cover_media_id,
+        ),
+    )
+
+
+@router.delete("/organization/collections/{collection_id}", response_model=WriteActionResponse)
+def remove_collection(collection_id: int, request: OrganizationDeleteRequest) -> dict[str, object]:
+    """解除合集成员关系并删除合集本身。"""
+
+    return _organization_write(
+        "delete-collection",
+        lambda: delete_collection(collection_id, confirmed=request.confirm_delete),
+    )
+
+
+@router.get(
+    "/organization/collections/{collection_id}/tweets",
+    response_model=OrganizationCollectionPageResponse,
+)
+def collection_tweets_page(
+    collection_id: int,
+    limit: int = Query(20, ge=1, le=50),
+    offset: int = Query(0, ge=0),
+) -> dict[str, object]:
+    """返回合集内的 Tweet 级帖子流。"""
+
+    try:
+        return list_collection_tweets_page(
+            get_settings(),
+            collection_id,
+            limit=limit,
+            offset=offset,
+        )
+    except ValueError as exc:
+        raise_api_error(exc, default_status=404)
+
+
+@router.get("/tweets/{tweet_id}/organization", response_model=TweetOrganizationResponse)
+def tweet_organization(tweet_id: str) -> dict[str, object]:
+    """返回单条 Tweet 的标签、合集和私人备注。"""
+
+    result = get_tweet_organization(tweet_id)
+    if result is None:
+        raise HTTPException(status_code=404, detail="tweet_not_found")
+    return result
+
+
+@router.put("/tweets/{tweet_id}/organization/labels", response_model=WriteActionResponse)
+def update_tweet_labels(tweet_id: str, request: TweetLabelsRequest) -> dict[str, object]:
+    """替换单条 Tweet 的标签与合集集合。"""
+
+    return _organization_write(
+        "update-tweet-labels",
+        lambda: replace_tweet_labels(tweet_id, request.tag_ids, request.collection_ids),
+    )
+
+
+@router.put("/tweets/{tweet_id}/organization/note", response_model=WriteActionResponse)
+def update_tweet_note(tweet_id: str, request: TweetNoteRequest) -> dict[str, object]:
+    """保存单条纯文本私人备注。"""
+
+    return _organization_write(
+        "update-tweet-note",
+        lambda: save_tweet_note(tweet_id, request.content),
+    )
+
+
+@router.post("/organization/bulk", response_model=WriteActionResponse)
+def bulk_organize(request: BulkOrganizationRequest) -> dict[str, object]:
+    """对最多 200 条 Tweet 批量加减标签与合集。"""
+
+    return _organization_write(
+        "bulk-organize-tweets",
+        lambda: bulk_update_labels(
+            request.tweet_ids,
+            add_tag_ids=request.add_tag_ids,
+            remove_tag_ids=request.remove_tag_ids,
+            add_collection_ids=request.add_collection_ids,
+            remove_collection_ids=request.remove_collection_ids,
+        ),
+    )
+
+
 @router.delete("/media", response_model=WriteActionResponse)
 def delete_media(request: MediaDeleteRequest) -> dict[str, object]:
     """按媒体 ID 执行受确认保护的物理删除。"""
@@ -276,3 +440,15 @@ def duplicates(
     """分页返回重复媒体分组。"""
 
     return list_duplicates_page(get_settings(), limit=limit, offset=offset)
+
+
+def _organization_write(
+    name: str,
+    action: Callable[[], dict[str, object]],
+) -> dict[str, object]:
+    """在 library 细粒度写锁下执行整理写操作。"""
+
+    try:
+        return execute_write_action(name, action, scope="library-organization")
+    except (ArchiverError, ValueError) as exc:
+        raise_api_error(exc)
