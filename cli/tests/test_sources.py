@@ -26,6 +26,7 @@ from xarchiver.services.sources import (
     create_source,
     delete_source,
     detect_gallery_dl_exhausted_retry,
+    detect_gallery_dl_soft_error,
     discover_records_with_gallery_dl,
     extract_gallery_dl_cursor,
     format_sleep_range,
@@ -572,6 +573,157 @@ time.sleep(60)
         )
         self.assertEqual(detected, ("network_error", "[twitter][debug] SSLError: UNEXPECTED_EOF_WHILE_READING (3/3)"))
 
+    def test_detect_gallery_dl_soft_error_rejects_zero_exit_upstream_api_failure(self) -> None:
+        detected = detect_gallery_dl_soft_error(
+            "[urllib3.connectionpool][debug] https://x.com:443 \"GET "
+            "/i/api/graphql/query-hash/UserMedia?features=private HTTP/1.1\" 404 0\n"
+            "[twitter][debug] API error: 'Unspecified'\n"
+        )
+
+        self.assertEqual(detected[0], "upstream_api_error")
+        self.assertIn("UserMedia API 返回 HTTP 404", detected[1])
+        self.assertIn("API error: 'Unspecified'", detected[1])
+        self.assertNotIn("features=private", detected[1])
+
+    def test_detect_gallery_dl_soft_error_keeps_known_error_categories(self) -> None:
+        self.assertEqual(
+            detect_gallery_dl_soft_error(
+                '[urllib3.connectionpool][debug] "GET /UserMedia HTTP/1.1" 403 0\n'
+            )[0],
+            "auth_required",
+        )
+        self.assertEqual(
+            detect_gallery_dl_soft_error(
+                '[urllib3.connectionpool][debug] "GET /UserMedia HTTP/1.1" 401 0\n'
+            )[0],
+            "auth_required",
+        )
+        self.assertEqual(
+            detect_gallery_dl_soft_error(
+                '[urllib3.connectionpool][debug] "GET /UserMedia HTTP/1.1" 503 0\n'
+            )[0],
+            "network_error",
+        )
+        self.assertEqual(
+            detect_gallery_dl_soft_error(
+                '[urllib3.connectionpool][debug] "GET /UserMedia HTTP/1.1" 429 0\n'
+            )[0],
+            "rate_limited",
+        )
+        self.assertEqual(
+            detect_gallery_dl_soft_error(
+                '[urllib3.connectionpool][debug] "GET /UserByScreenName HTTP/1.1" 404 0\n'
+            )[0],
+            "invalid_url",
+        )
+        self.assertEqual(
+            detect_gallery_dl_soft_error("[twitter][debug] API error: 'Unspecified'\n")[0],
+            "upstream_api_error",
+        )
+        self.assertIsNone(detect_gallery_dl_soft_error("[twitter][info] No results\n"))
+
+    def test_detect_gallery_dl_soft_error_uses_final_success_signal(self) -> None:
+        self.assertIsNone(
+            detect_gallery_dl_soft_error(
+                '[urllib3.connectionpool][debug] "GET /UserMedia HTTP/1.1" 503 0\n'
+                "[twitter][debug] API error: 'Temporary failure'\n"
+                '[urllib3.connectionpool][debug] "GET /UserMedia HTTP/1.1" 200 1024\n'
+            )
+        )
+        self.assertIsNone(
+            detect_gallery_dl_soft_error(
+                '[urllib3.connectionpool][debug] "GET /UserByScreenName HTTP/1.1" 404 0\n'
+                '[urllib3.connectionpool][debug] "GET /UserMedia HTTP/1.1" 200 1024\n'
+            )
+        )
+
+    def test_discover_records_keeps_output_after_transient_http_failure_recovers(self) -> None:
+        completed = SimpleNamespace(
+            returncode=0,
+            stdout='[[2, {"tweet_id": 123, "content": "hello", "author": {"name": "alice"}}]]',
+            stderr=(
+                '[urllib3.connectionpool][debug] "GET /UserMedia HTTP/1.1" 503 0\n'
+                "[twitter][debug] API error: 'Temporary failure'\n"
+                '[urllib3.connectionpool][debug] "GET /UserMedia HTTP/1.1" 200 1024\n'
+            ),
+        )
+        with (
+            patch("xarchiver.services.sources.shutil.which", return_value="/usr/bin/gallery-dl"),
+            patch("xarchiver.services.sources.subprocess.run", return_value=completed),
+        ):
+            rows, meta = discover_records_with_gallery_dl("https://x.com/alice/timeline", 1, 20)
+
+        self.assertEqual([row["tweet_id"] for row in rows], ["123"])
+        self.assertEqual(meta["exit_code"], 0)
+        self.assertNotIn("error_category", meta)
+
+    def test_discover_records_keeps_genuine_zero_exit_empty_batch(self) -> None:
+        completed = SimpleNamespace(
+            returncode=0,
+            stdout="",
+            stderr="[twitter][info] No results\n",
+        )
+        with (
+            patch("xarchiver.services.sources.shutil.which", return_value="/usr/bin/gallery-dl"),
+            patch("xarchiver.services.sources.subprocess.run", return_value=completed),
+        ):
+            rows, meta = discover_records_with_gallery_dl("https://x.com/empty/media", 1, 20)
+
+        self.assertEqual(rows, [])
+        self.assertEqual(meta["exit_code"], 0)
+        self.assertEqual(meta["raw_record_count"], 0)
+        self.assertNotIn("error_category", meta)
+
+    def test_discover_records_discards_partial_output_after_zero_exit_api_error(self) -> None:
+        completed = SimpleNamespace(
+            returncode=0,
+            stdout='[[2, {"tweet_id": 123, "author": {"name": "alice"}}]]',
+            stderr=(
+                '[urllib3.connectionpool][debug] https://x.com:443 "GET '
+                '/i/api/graphql/query-hash/UserMedia?auth_token=secret-query-token HTTP/1.1" 404 0\n'
+                "Authorization: Bearer secret-bearer-token\n"
+                "[twitter][debug] API error: 'Unspecified'\n"
+            ),
+        )
+        with (
+            patch("xarchiver.services.sources.shutil.which", return_value="/usr/bin/gallery-dl"),
+            patch("xarchiver.services.sources.subprocess.run", return_value=completed),
+        ):
+            rows, meta = discover_records_with_gallery_dl("https://x.com/alice/media", 1, 20)
+
+        self.assertEqual(rows, [])
+        self.assertEqual(meta["exit_code"], 0)
+        self.assertEqual(meta["error_category"], "upstream_api_error")
+        self.assertIn("UserMedia API 返回 HTTP 404", str(meta["error_message"]))
+        self.assertNotIn("secret-query-token", str(meta))
+        self.assertNotIn("secret-bearer-token", str(meta))
+        self.assertIn("auth_token=[redacted]", str(meta["stderr_excerpt"]))
+        self.assertIn("Authorization: Bearer [redacted]", str(meta["stderr_excerpt"]))
+
+    def test_discover_records_redacts_stderr_after_nonzero_exit(self) -> None:
+        completed = SimpleNamespace(
+            returncode=1,
+            stdout="",
+            stderr=(
+                '[urllib3.connectionpool][debug] "GET '
+                '/UserMedia?ct0=secret-csrf-token HTTP/1.1" 401 0\n'
+                "Authorization: Bearer secret-bearer-token\n"
+            ),
+        )
+        with (
+            patch("xarchiver.services.sources.shutil.which", return_value="/usr/bin/gallery-dl"),
+            patch("xarchiver.services.sources.subprocess.run", return_value=completed),
+        ):
+            rows, meta = discover_records_with_gallery_dl("https://x.com/alice/media", 1, 20)
+
+        self.assertEqual(rows, [])
+        self.assertEqual(meta["exit_code"], 1)
+        self.assertEqual(meta["error_category"], "auth_required")
+        self.assertNotIn("secret-csrf-token", str(meta))
+        self.assertNotIn("secret-bearer-token", str(meta))
+        self.assertIn("ct0=[redacted]", str(meta["stderr_excerpt"]))
+        self.assertIn("Authorization: Bearer [redacted]", str(meta["error_message"]))
+
     def test_merge_discovery_payload_retains_media_across_ranges(self) -> None:
         merged = merge_discovery_payload(
             {"media_items": [{"type": "photo", "url": "photo-1"}]},
@@ -588,6 +740,7 @@ time.sleep(60)
         self.assertEqual(scan_run_status({"error_category": "rate_limited"}, False), "rate_limited")
         self.assertEqual(scan_run_status({"error_category": "network_error"}, False), "network_error")
         self.assertEqual(scan_run_status({"exit_code": 0, "error_category": "network_error"}, True), "network_error")
+        self.assertEqual(scan_run_status({"exit_code": 0, "error_category": "upstream_api_error"}, True), "failed")
         self.assertEqual(scan_run_status({"error_category": "command_not_found"}, False), "failed")
 
     def test_count_discovered_media_sums_batch_estimates(self) -> None:
@@ -760,7 +913,7 @@ time.sleep(60)
                 "scan_sessions": {"history": {"limit": 20}},
             },
         }
-        for category in ("rate_limited", "auth_required"):
+        for category in ("rate_limited", "auth_required", "invalid_url", "upstream_api_error"):
             with (
                 self.subTest(category=category),
                 patch("xarchiver.services.sources.fetch_due_history_source", return_value=source),
@@ -827,6 +980,67 @@ time.sleep(60)
             cursor_after=cursor,
             error_category="network_error",
             error_message="Read timed out. (3/3)",
+            worker_id=None,
+        )
+
+    def test_zero_exit_upstream_api_error_does_not_complete_or_advance_cursor(self) -> None:
+        cursor = {
+            "active_scan_mode": "history",
+            "automation_enabled": True,
+            "next_start_index": 21,
+        }
+        settings = SimpleNamespace(
+            source_scan_sleep_min_seconds=2,
+            source_scan_sleep_max_seconds=6,
+            source_scan_http_timeout_seconds=15,
+            source_scan_http_retries=2,
+        )
+        message = (
+            "X UserMedia API 返回 HTTP 404；gallery-dl 报告 API error: 'Unspecified'；"
+            "gallery-dl 退出码为 0，但本批不能视为成功"
+        )
+        with (
+            patch(
+                "xarchiver.services.sources.get_source",
+                return_value={
+                    "status": "active",
+                    "source_type": "user_media",
+                    "source_url": "https://x.com/example/media",
+                    "cursor_state": cursor,
+                },
+            ),
+            patch("xarchiver.services.sources.start_source_scan_run", return_value=13),
+            patch(
+                "xarchiver.services.sources.discover_records_with_gallery_dl",
+                return_value=(
+                    [],
+                    {
+                        "exit_code": 0,
+                        "error_category": "upstream_api_error",
+                        "error_message": message,
+                    },
+                ),
+            ),
+            patch("xarchiver.services.sources.prepare_cookies", return_value=None),
+            patch("xarchiver.services.sources.update_source_cursor") as update_cursor,
+            patch("xarchiver.services.sources.mark_source_scan_result") as mark_result,
+            patch("xarchiver.services.sources.finish_source_scan_run") as finish_run,
+        ):
+            result = scan_source(1, 20, settings=settings, session_mode="history")
+
+        self.assertFalse(result["completed"])
+        update_cursor.assert_not_called()
+        mark_result.assert_called_once_with(
+            1,
+            error_category="upstream_api_error",
+            error_message=message,
+        )
+        finish_run.assert_called_once_with(
+            13,
+            "failed",
+            cursor_after=cursor,
+            error_category="upstream_api_error",
+            error_message=message,
             worker_id=None,
         )
 

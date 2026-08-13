@@ -214,7 +214,7 @@ erDiagram
 stateDiagram-v2
     [*] --> inactive: 来源已登记
     inactive --> active: start scan session
-    active --> paused: pause / rate_limited / auth_required
+    active --> paused: pause / invalid_url / rate_limited / auth_required / upstream_api_error
     paused --> active: resume current session
     active --> stopped: stop session
     paused --> stopped: stop session
@@ -235,7 +235,7 @@ stateDiagram-v2
     running --> retry_wait: transient failure
     retry_wait --> running: retry after delay
     running --> paused: user pause
-    running --> paused: rate_limited / auth_required
+    running --> paused: invalid_url / rate_limited / auth_required / upstream_api_error
     paused --> running: resume
     running --> stopped: user stop
     paused --> stopped: user stop
@@ -433,6 +433,8 @@ sequenceDiagram
 | 扫描与下载同时就绪 | 单网络 worker 与上一轮相反类型交替执行 | 两类任务都持续获得进度且不并发外部子进程 |
 | `gallery-dl` 限流 | 当前会话暂停，记录 `rate_limited` | 用户可恢复或停止 |
 | 认证失败 | 当前会话暂停，记录 `auth_required` | 用户更新 cookie 后恢复 |
+| 来源账号不存在或 URL 无效 | 当前会话暂停，记录 `invalid_url` | 用户修正来源配置后再恢复 |
+| X 上游接口返回异常但 gallery-dl 以 0 退出 | 当前会话暂停，记录 `upstream_api_error`，不推进 cursor | 用户检查 cookie / gallery-dl 兼容性后恢复 |
 | 网络或临时失败 | 记录错误，按 retry wait 调度 | 用户可查看批次错误和日志 |
 | API 中途停止 | 启动恢复逻辑标记遗留 running scan 为 interrupted | 后续可从已保存 cursor 继续 |
 | 用户暂停 | 当前批次自然结束，下一轮不再调度 | 页面显示已收到暂停状态 |
@@ -447,9 +449,9 @@ sequenceDiagram
 | 定时策略执行重叠或停机错过多次 | 合并为至多一个新任务并推进锚点 | 不积压一串补跑任务 |
 
 扫描网络请求默认使用 `SOURCE_SCAN_HTTP_TIMEOUT_SECONDS=15` 和
-`SOURCE_SCAN_HTTP_RETRIES=2`。gallery-dl 可能在 HTTP 重试耗尽后仍返回退出码 0；
-worker 会额外识别末次重试错误，将整批标记为 `network_error`，不保存不完整输出，
-也不推进 continuation cursor。
+`SOURCE_SCAN_HTTP_RETRIES=2`。gallery-dl 可能在 HTTP 重试耗尽或 X GraphQL API
+明确返回错误后仍以 0 退出；worker 会继续检查 stderr，记录对应的认证、限流、
+网络或上游接口错误类别，不保存不完整输出，也不推进 continuation cursor。
 
 ## 10. 验收要求
 

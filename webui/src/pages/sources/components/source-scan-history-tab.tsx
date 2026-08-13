@@ -2,7 +2,7 @@ import { Virtuoso } from "react-virtuoso";
 import type { SourceScanRun } from "@/lib/api";
 import { Badge } from "@/components/ui/badge";
 import { formatDateTime } from "@/lib/utils";
-import { scanStatusLabel, scanTriggerLabel } from "@/lib/formatters";
+import { errorLabel, scanStatusLabel, scanTriggerLabel } from "@/lib/formatters";
 import { formatElapsed, formatRunRange, scanStatusTone } from "../utils";
 
 export function SourceScanHistoryTab({
@@ -95,7 +95,10 @@ export function SourceScanHistoryTab({
               </div>
               {run.error_message ? (
                 <div className="mt-1 rounded-md border border-danger/20 bg-danger/5 p-2 text-xs text-danger">
-                  <span className="font-semibold">{run.error_category || "失败"}:</span> {run.error_message}
+                  <span className="font-semibold">
+                    {run.error_category ? errorLabel(run.error_category) : "失败"}:
+                  </span>{" "}
+                  {run.error_message}
                 </div>
               ) : null}
               {run.progress_message ? (

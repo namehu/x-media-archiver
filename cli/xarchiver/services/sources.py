@@ -123,6 +123,12 @@ SOURCE_SCAN_LOG_BATCH_SIZE = 100
 SOURCE_SCAN_LOG_FLUSH_SECONDS = 1.0
 SOURCE_SCAN_LOG_QUEUE_SIZE = 1000
 SOURCE_SCAN_LOG_QUEUE_PUT_TIMEOUT_SECONDS = 0.1
+PERSISTENT_SCAN_ERROR_CATEGORIES = {
+    ErrorCategory.AUTH_REQUIRED.value,
+    ErrorCategory.INVALID_URL.value,
+    ErrorCategory.RATE_LIMITED.value,
+    ErrorCategory.UPSTREAM_API_ERROR.value,
+}
 SOURCE_SCAN_PROCESS_STOP_TIMEOUT_SECONDS = 5.0
 SOURCE_SCAN_READER_JOIN_TIMEOUT_SECONDS = 5.0
 SOURCE_SCAN_READER_DRAIN_TIMEOUT_SECONDS = 10.0
@@ -1545,7 +1551,7 @@ def process_next_source_history_scan(
         schedule_next_history_scan(source_id, settings, "retry_wait")
         raise
     error_category = result.get("scanner", {}).get("error_category") if isinstance(result.get("scanner"), dict) else None
-    if error_category in {"rate_limited", "auth_required"}:
+    if error_category in PERSISTENT_SCAN_ERROR_CATEGORIES:
         pause_history_scan_for_error(source_id, str(error_category))
     elif result.get("completed"):
         finish_history_scan(source_id)
@@ -2340,24 +2346,27 @@ def discover_records_with_gallery_dl(
         if scan_run_id is not None
         else subprocess.run(command, capture_output=True, text=True, check=False)
     )
-    stderr_excerpt = result.stderr[-4000:] if result.stderr else None
+    raw_stderr_excerpt = result.stderr[-4000:] if result.stderr else None
+    stderr_excerpt = redact_sensitive_text(raw_stderr_excerpt) or None
     if result.returncode != 0:
         return [], {
             "exit_code": result.returncode,
-            "error_category": classify_source_error(stderr_excerpt),
+            "error_category": classify_source_error(raw_stderr_excerpt),
             "error_message": stderr_excerpt or f"gallery-dl exited with {result.returncode}",
+            "stderr_excerpt": stderr_excerpt,
         }
     # gallery-dl 在 HTTP 重试耗尽后仍可能返回 0，因此在判定成功前，
     # 仍需要检查 stderr。
-    soft_error = detect_gallery_dl_exhausted_retry(result.stderr)
+    soft_error = detect_gallery_dl_soft_error(result.stderr)
     if soft_error is not None:
         error_category, error_message = soft_error
+        error_message = redact_sensitive_text(error_message) or "gallery-dl 返回上游请求错误"
         if scan_run_id is not None:
             append_source_scan_log(
                 scan_run_id,
                 "error",
                 "source-scan",
-                f"gallery-dl exhausted HTTP retries despite exit code 0: {error_message}",
+                f"gallery-dl 以 0 退出但包含上游失败信号：{error_message}",
                 worker_id=worker_id,
             )
         return [], {
@@ -2388,8 +2397,89 @@ def detect_gallery_dl_exhausted_retry(stderr: str | None) -> tuple[str, str] | N
             continue
         category = classify_source_error(line)
         if category != ErrorCategory.UNKNOWN.value:
-            return category, line[-1000:]
+            return category, redact_sensitive_text(line[-1000:])
     return None
+
+
+def detect_gallery_dl_soft_error(stderr: str | None) -> tuple[str, str] | None:
+    """识别 gallery-dl 以退出码 0 掩盖的上游请求错误。"""
+
+    lines = (stderr or "").splitlines()
+    http_signals: list[tuple[int, int, str]] = []
+    api_signals: list[tuple[int, str]] = []
+    retry_signals: list[tuple[int, str, str]] = []
+    for index, line in enumerate(lines):
+        http_match = re.search(r'HTTP/\d(?:\.\d+)?["\']?\s+([1-5]\d{2})\b', line)
+        if http_match is not None:
+            http_signals.append((index, int(http_match.group(1)), line))
+        if re.search(r"\bAPI error\s*:", line, re.IGNORECASE):
+            api_signals.append((index, line))
+        retry_match = re.search(r"\((\d+)/(\d+)\)\s*$", line)
+        if retry_match is not None and retry_match.group(1) == retry_match.group(2):
+            retry_category = classify_source_error(line)
+            if retry_category != ErrorCategory.UNKNOWN.value:
+                retry_signals.append((index, retry_category, line))
+
+    latest_http = http_signals[-1] if http_signals else None
+    latest_api = api_signals[-1] if api_signals else None
+    latest_retry = retry_signals[-1] if retry_signals else None
+    final_signals = [
+        (signal[0], kind)
+        for kind, signal in (
+            ("http", latest_http),
+            ("api", latest_api),
+            ("retry", latest_retry),
+        )
+        if signal is not None
+    ]
+    if not final_signals:
+        return None
+    final_kind = max(final_signals)[1]
+    if final_kind == "http" and latest_http is not None and latest_http[1] < 400:
+        return None
+    if final_kind == "retry" and latest_retry is not None:
+        return latest_retry[1], redact_sensitive_text(latest_retry[2][-1000:])
+
+    relevant_http = latest_http
+    if final_kind == "api" and relevant_http is not None and relevant_http[1] < 400:
+        relevant_http = None
+    status_code = relevant_http[1] if relevant_http is not None else None
+    http_line = relevant_http[2] if relevant_http is not None else ""
+    api_error_line = latest_api[1] if final_kind == "api" and latest_api is not None else None
+    combined_error = "\n".join(part for part in (http_line, api_error_line) if part)
+    classified = classify_source_error(combined_error)
+    if status_code in {401, 403}:
+        category = ErrorCategory.AUTH_REQUIRED.value
+    elif status_code == 429:
+        category = ErrorCategory.RATE_LIMITED.value
+    elif status_code == 408 or (status_code is not None and status_code >= 500):
+        category = ErrorCategory.NETWORK_ERROR.value
+    elif status_code == 404 and "UserByScreenName" in http_line:
+        category = ErrorCategory.INVALID_URL.value
+    elif status_code is not None:
+        category = ErrorCategory.UPSTREAM_API_ERROR.value
+    elif classified in {
+        ErrorCategory.AUTH_REQUIRED.value,
+        ErrorCategory.RATE_LIMITED.value,
+        ErrorCategory.NETWORK_ERROR.value,
+    }:
+        category = classified
+    else:
+        category = ErrorCategory.UPSTREAM_API_ERROR.value
+
+    operation_match = re.search(r"/i/api/graphql/[^/\s\"?]+/([^?\s\"]+)", http_line)
+    operation = operation_match.group(1) if operation_match is not None else None
+    details: list[str] = []
+    if status_code is not None:
+        target = f"X {operation} API" if operation else "X 上游 API"
+        details.append(f"{target} 返回 HTTP {status_code}")
+    if api_error_line is not None:
+        api_match = re.search(r"API error\s*:\s*(.+)$", api_error_line, re.IGNORECASE)
+        api_message = api_match.group(1).strip() if api_match is not None else "未指定错误"
+        safe_api_message = redact_sensitive_text(api_message[:300]) or "未指定错误"
+        details.append(f"gallery-dl 报告 API error: {safe_api_message}")
+    details.append("gallery-dl 退出码为 0，但本批不能视为成功")
+    return category, "；".join(details)
 
 
 def run_gallery_dl_streaming(command: list[str], scan_run_id: int, worker_id: str | None) -> subprocess.CompletedProcess[str]:
@@ -2746,6 +2836,8 @@ def scan_run_status(scan_meta: dict[str, object], completed: bool) -> str:
     category = str(scan_meta.get("error_category") or "")
     if category in {"rate_limited", "auth_required", "network_error"}:
         return category
+    if category:
+        return "failed"
     if completed:
         return "completed_empty_batch" if int(scan_meta.get("raw_record_count") or 0) == 0 else "completed_end_of_source"
     if scan_meta.get("exit_code") == 0:

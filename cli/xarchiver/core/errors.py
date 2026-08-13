@@ -18,6 +18,7 @@ class ErrorCategory(StrEnum):
     NETWORK_ERROR = "network_error"
     RATE_LIMITED = "rate_limited"
     UNSUPPORTED_MEDIA = "unsupported_media"
+    UPSTREAM_API_ERROR = "upstream_api_error"
     UNKNOWN = "unknown"
     WORKER_ERROR = "worker_error"
 

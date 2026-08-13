@@ -5,6 +5,18 @@ const runId = 7701;
 const tweetIds = Array.from({ length: 10 }, (_, index) => `follow-tweet-${index}`);
 
 test.describe("Source download following", () => {
+  test("shows masked upstream API failures as failed scans instead of empty completion", async ({ page }) => {
+    await mockSourceApis(page);
+    await openSource(page);
+
+    await page.getByRole("tab", { name: "扫描历史", exact: true }).click();
+
+    await expect(page.getByText("X 上游接口异常:", { exact: true })).toBeVisible();
+    await expect(page.getByText(/X UserMedia API 返回 HTTP 404/)).toBeVisible();
+    await expect(page.getByText("失败", { exact: true })).toBeVisible();
+    await expect(page.getByText("空批，已到结尾", { exact: true })).toHaveCount(0);
+  });
+
   test("keeps automatic following monotonic when the worker revisits an older item", async ({ page }) => {
     const fixture = await mockSourceApis(page);
     await openSource(page);
@@ -102,6 +114,7 @@ async function mockSourceApis(page: Page) {
       return json(route, { rows: [sourceBase()], count: 1, total_count: 1, limit: 50, offset: 0 });
     }
     if (path === `/api/v1/sources/${sourceId}`) return json(route, sourceDetail());
+    if (path === `/api/v1/sources/${sourceId}/scan-runs`) return json(route, failedScanRunsPage());
     if (path === `/api/v1/sources/${sourceId}/discovered`) {
       const rows = discoveredRows(submittedAt > 0);
       return json(route, { rows, count: rows.length, total_count: rows.length, limit: 50, offset: 0 });
@@ -166,6 +179,41 @@ function sourceDetail() {
     scan_summary: { batch_count: 1, added_tweet_count: tweetIds.length },
     active_scan_run: null,
     cursor_state: { last_limit: 20 },
+  };
+}
+
+function failedScanRunsPage() {
+  return {
+    count: 1,
+    total_count: 1,
+    limit: 20,
+    offset: 0,
+    rows: [
+      {
+        id: 8801,
+        trigger_type: "latest_refresh",
+        status: "failed",
+        range_start: 1,
+        range_end: 20,
+        requested_limit: 20,
+        cursor_before: { next_start_index: 1 },
+        cursor_after: { next_start_index: 1 },
+        discovered_tweet_count: 0,
+        new_tweet_count: 0,
+        duplicate_tweet_count: 0,
+        discovered_media_count: 0,
+        error_category: "upstream_api_error",
+        error_message:
+          "X UserMedia API 返回 HTTP 404；gallery-dl 报告 API error: 'Unspecified'；gallery-dl 退出码为 0，但本批不能视为成功",
+        progress_message: "gallery-dl 已退出，退出码为 0。",
+        log_stream_id: 9901,
+        log_path: "logs/source-scan-logs/source-91/scan-run-8801.jsonl",
+        last_log_at: "2026-08-13T07:34:07Z",
+        started_at: "2026-08-13T07:34:03Z",
+        finished_at: "2026-08-13T07:34:07Z",
+        created_at: "2026-08-13T07:34:03Z",
+      },
+    ],
   };
 }
 

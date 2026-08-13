@@ -28,7 +28,7 @@
 - [x] 暂停、恢复和 API 重启后从已持久化 checkpoint 继续。
 - [x] 停止与在途批次竞态不会覆盖更新后的控制状态。
 - [x] 扫描和下载共享同一网络 worker，不并发启动外部网络子进程，并以轮换策略避免饥饿。
-- [x] `rate_limited` 与 `auth_required` 会暂停自动历史扫描；`network_error` 不推进 cursor，并进入退避重试调度。
+- [x] `invalid_url`、`rate_limited`、`auth_required` 与 `upstream_api_error` 会暂停自动历史扫描；`network_error` 不推进 cursor，并进入退避重试调度。
 - [x] 普通扫描只写 discovered 记录，不隐式创建下载 run。
 - [x] 人工提交 5 条发现记录后，Archive Queue 可追踪对应 run、item 和 attempt。
 - [x] 完成项的文件路径符合 `archive/media/<author_id>/<tweet_id>/`。
@@ -44,7 +44,7 @@
 
 ### 自动化覆盖
 
-- `test_sources.py` 的 75 个定向测试通过，覆盖 native cursor 完成条件、带 continuation cursor 的空批、latest refresh 不改写历史 checkpoint、停止竞态、暂停/恢复和重启恢复；错误路径明确覆盖限流/认证暂停及网络错误不推进 cursor。
+- `test_sources.py` 覆盖 native cursor 完成条件、带 continuation cursor 的空批、latest refresh 不改写历史 checkpoint、停止竞态、暂停/恢复和重启恢复；错误路径明确覆盖限流/认证/上游 API 异常暂停，以及网络错误不推进 cursor。
 - `test_api_app.py` 的 17 个定向测试通过，包含来源扫描和归档下载同时就绪时的轮换选择。
 - API 启动现在会立即恢复上个进程遗留的 `running` 扫描 run；恢复只结束失联 run，不清空可继续的扫描 session 和 checkpoint。
 
@@ -62,6 +62,7 @@
 
 - 修正了空记录批次绕过 continuation cursor 完成条件的问题，避免仍有下一页时误标历史扫描完成。
 - 修正了 API 启动仅等待 lease 超时才处理上个进程遗留扫描 run 的问题；现在启动即恢复，保留 session checkpoint。
+- 修正了 gallery-dl 在 X 时间线 GraphQL 请求返回未归类 4xx / API error 后仍以 0 退出时被误判为空批完成的问题；此类批次现在保留 checkpoint、丢弃不完整输出并记录 `upstream_api_error`。
 - 本次真实样本没有故意触发限流、认证失效或网络错误；限流/认证暂停及网络错误不推进 cursor 由可控模拟覆盖。错误信息的全部 WebUI 展示状态和人工恢复流程仍留在对应页面的手工验收清单中。
 - 手机锁屏、飞牛 NAS、Traefik/应用重启和完整备份恢复仍属于并行验收项，不阻塞 M1。
 - 隔离数据库与 5 个媒体文件暂时保留供复查；清理属于破坏性动作，不在本次验收中自动执行。

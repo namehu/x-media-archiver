@@ -36,6 +36,7 @@ const ERROR_MAP: Record<string, string> = {
   auth_required: "需要登录或 cookies 无效",
   rate_limited: "访问频率受限",
   network_error: "网络错误",
+  upstream_api_error: "X 上游接口异常",
   unsupported_media: "没有可下载媒体",
   unknown: "未知错误",
   command_not_found: "下载器命令不存在",
