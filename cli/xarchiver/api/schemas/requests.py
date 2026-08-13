@@ -80,6 +80,12 @@ class TweetNoteRequest(BaseModel):
     content: str = Field(max_length=10_000)
 
 
+class TweetOrganizationWriteRequest(BaseModel):
+    tag_ids: list[int] = Field(default_factory=list, max_length=200)
+    collection_ids: list[int] = Field(default_factory=list, max_length=200)
+    note_content: str = Field(default="", max_length=10_000)
+
+
 class BulkOrganizationRequest(BaseModel):
     tweet_ids: list[str] = Field(min_length=1, max_length=200)
     add_tag_ids: list[int] = Field(default_factory=list, max_length=200)

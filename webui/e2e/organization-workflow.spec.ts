@@ -1,6 +1,6 @@
 import { expect, test, type Page, type Route } from "@playwright/test";
 
-test("feed saves a private note before labels when the user submits immediately", async ({ page }) => {
+test("feed saves tags, collections, and a private note with one request", async ({ page }) => {
   const requests: Array<{ path: string; body: Record<string, unknown> }> = [];
   await mockOrganizationApis(page, requests);
 
@@ -13,39 +13,91 @@ test("feed saves a private note before labels when the user submits immediately"
   await page.getByLabel("私人备注").fill("需要稍后复盘");
   await page.getByRole("button", { name: "保存整理" }).click();
 
-  await expect(page.getByText("标签与合集已保存")).toBeVisible();
+  await expect(page.getByText("整理信息已保存")).toBeVisible();
   await expect(page.getByRole("dialog")).toHaveCount(0);
   expect(requests).toEqual([
     {
-      path: "/api/v1/library/tweets/organization-workflow/organization/note",
-      body: { content: "需要稍后复盘" },
-    },
-    {
-      path: "/api/v1/library/tweets/organization-workflow/organization/labels",
-      body: { tag_ids: [1], collection_ids: [2] },
+      path: "/api/v1/library/tweets/organization-workflow/organization",
+      body: { tag_ids: [1], collection_ids: [2], note_content: "需要稍后复盘" },
     },
   ]);
 });
 
-test("a failed note autosave waits for another edit before retrying", async ({ page }) => {
+test("closing a dirty organization dialog requires explicit discard", async ({ page }) => {
   const requests: Array<{ path: string; body: Record<string, unknown> }> = [];
-  await mockOrganizationApis(page, requests, { failFirstNoteSave: true });
+  await mockOrganizationApis(page, requests);
 
   await page.goto("/feed");
   await page.getByRole("button", { name: "帖子操作" }).click();
   await page.getByRole("menuitem", { name: "整理标签、合集与备注" }).click();
+  await page.getByText("重点", { exact: true }).click();
+  await page.getByLabel("私人备注").fill("尚未保存的备注");
+  await page.waitForTimeout(1_000);
+  expect(requests).toHaveLength(0);
+
+  await page.getByRole("button", { name: "取消" }).click();
+  await expect(page.getByText("放弃未保存的整理更改？")).toBeVisible();
+  await page.getByRole("button", { name: "继续编辑" }).click();
+  await expect(page.getByText("放弃未保存的整理更改？")).toHaveCount(0);
+  await expect(page.getByLabel("私人备注")).toHaveValue("尚未保存的备注");
+  expect(requests).toHaveLength(0);
+
+  await page.keyboard.press("Escape");
+  await expect(page.getByText("放弃未保存的整理更改？")).toBeVisible();
+  await page.getByRole("button", { name: "继续编辑" }).click();
+  await expect(page.getByText("放弃未保存的整理更改？")).toHaveCount(0);
+  await page.getByRole("button", { name: "关闭" }).click();
+  await expect(page.getByText("放弃未保存的整理更改？")).toBeVisible();
+  await page.getByRole("button", { name: "放弃更改" }).click();
+
+  await expect(page.getByRole("dialog")).toHaveCount(0);
+  expect(requests).toHaveLength(0);
+});
+
+test("a failed unified save keeps the form intact and allows an explicit retry", async ({ page }) => {
+  const requests: Array<{ path: string; body: Record<string, unknown> }> = [];
+  await mockOrganizationApis(page, requests, { failFirstOrganizationSave: true });
+
+  await page.goto("/feed");
+  await page.getByRole("button", { name: "帖子操作" }).click();
+  await page.getByRole("menuitem", { name: "整理标签、合集与备注" }).click();
+  await page.getByText("重点", { exact: true }).click();
   await page.getByLabel("私人备注").fill("第一次保存会失败");
+  await page.getByRole("button", { name: "保存整理" }).click();
 
-  await expect(page.getByText("自动保存失败，将在继续编辑后重试")).toBeVisible();
-  await page.waitForTimeout(1_500);
-  expect(noteSaveRequests(requests)).toHaveLength(1);
+  await expect(page.getByText("保存整理失败")).toBeVisible();
+  await expect(page.getByLabel("私人备注")).toHaveValue("第一次保存会失败");
+  await expect(page.getByRole("dialog")).toBeVisible();
+  expect(requests).toHaveLength(1);
 
-  await page.getByLabel("私人备注").fill("继续编辑后只重试一次");
-  await expect(page.getByText("已自动保存")).toBeVisible();
-  expect(noteSaveRequests(requests)).toEqual([
-    { content: "第一次保存会失败" },
-    { content: "继续编辑后只重试一次" },
-  ]);
+  await page.getByRole("button", { name: "保存整理" }).click();
+  await expect(page.getByText("整理信息已保存")).toBeVisible();
+  await expect(page.getByRole("dialog")).toHaveCount(0);
+  expect(requests).toHaveLength(2);
+});
+
+test("opening a slow second Tweet does not inherit the discarded first Tweet state", async ({ page }) => {
+  const requests: Array<{ path: string; body: Record<string, unknown> }> = [];
+  await mockOrganizationApis(page, requests, {
+    includeSecondTweet: true,
+    secondOrganizationDelayMs: 2_000,
+  });
+
+  await page.goto("/feed");
+  await page.getByRole("button", { name: "帖子操作" }).nth(0).click();
+  await page.getByRole("menuitem", { name: "整理标签、合集与备注" }).click();
+  await page.getByLabel("私人备注").fill("只属于第一条的未保存内容");
+  await page.getByRole("button", { name: "取消" }).click();
+  await page.getByRole("button", { name: "放弃更改" }).click();
+
+  await page.getByRole("button", { name: "帖子操作" }).nth(1).click();
+  await page.getByRole("menuitem", { name: "整理标签、合集与备注" }).click();
+  await expect(page.getByText("正在读取整理信息…")).toBeVisible();
+  await page.getByRole("button", { name: "取消" }).click();
+
+  await expect(page.getByRole("dialog")).toHaveCount(0);
+  await expect(page.getByText("放弃未保存的整理更改？")).toHaveCount(0);
+  expect(requests).toHaveLength(0);
 });
 
 test("library keeps Tweet organization and media deletion as separate selection modes", async ({ page }) => {
@@ -79,9 +131,13 @@ test("library keeps Tweet organization and media deletion as separate selection 
 async function mockOrganizationApis(
   page: Page,
   requests: Array<{ path: string; body: Record<string, unknown> }>,
-  options: { failFirstNoteSave?: boolean } = {},
+  options: {
+    failFirstOrganizationSave?: boolean;
+    includeSecondTweet?: boolean;
+    secondOrganizationDelayMs?: number;
+  } = {},
 ) {
-  let noteSaveAttempts = 0;
+  let organizationSaveAttempts = 0;
   await page.route("**/api/v1/**", async (route) => {
     const request = route.request();
     const url = new URL(request.url());
@@ -120,9 +176,11 @@ async function mockOrganizationApis(
     }
     if (url.pathname === "/api/v1/library/posts") {
       return json(route, {
-        rows: [postRow()],
-        count: 1,
-        total_count: 1,
+        rows: options.includeSecondTweet
+          ? [postRow(), postRow("organization-workflow-2", "second organization workflow fixture", 10)]
+          : [postRow()],
+        count: options.includeSecondTweet ? 2 : 1,
+        total_count: options.includeSecondTweet ? 2 : 1,
         limit: 20,
         offset: 0,
       });
@@ -142,14 +200,24 @@ async function mockOrganizationApis(
         collections: [{ id: 2, name: "研究资料", normalized_name: "研究资料", tweet_count: 0 }],
       });
     }
-    if (url.pathname === "/api/v1/library/tweets/organization-workflow/organization") {
+    if (
+      url.pathname === "/api/v1/library/tweets/organization-workflow/organization" &&
+      request.method() === "GET"
+    ) {
       return json(route, { tweet_id: "organization-workflow", tags: [], collections: [], note: null });
+    }
+    if (
+      url.pathname === "/api/v1/library/tweets/organization-workflow-2/organization" &&
+      request.method() === "GET"
+    ) {
+      await new Promise((resolve) => setTimeout(resolve, options.secondOrganizationDelayMs ?? 0));
+      return json(route, { tweet_id: "organization-workflow-2", tags: [], collections: [], note: null });
     }
     if (request.method() !== "GET" && url.pathname.includes("organization")) {
       requests.push({ path: url.pathname, body: request.postDataJSON() as Record<string, unknown> });
-      if (url.pathname.endsWith("/organization/note")) {
-        noteSaveAttempts += 1;
-        if (options.failFirstNoteSave && noteSaveAttempts === 1) {
+      if (url.pathname === "/api/v1/library/tweets/organization-workflow/organization") {
+        organizationSaveAttempts += 1;
+        if (options.failFirstOrganizationSave && organizationSaveAttempts === 1) {
           return json(route, { detail: "temporary failure" }, 500);
         }
       }
@@ -168,30 +236,34 @@ async function mockOrganizationApis(
   });
 }
 
-function postRow() {
+function postRow(
+  tweetId = "organization-workflow",
+  text = "organization workflow fixture",
+  mediaIdOffset = 0,
+) {
   return {
-    tweet_id: "organization-workflow",
-    tweet_url: "https://x.com/example/status/organization-workflow",
+    tweet_id: tweetId,
+    tweet_url: `https://x.com/example/status/${tweetId}`,
     author_username: "example",
     author_display_name: "示例作者",
     published_at: "2026-01-01T00:00:00Z",
-    tweet_text: "organization workflow fixture",
+    tweet_text: text,
     tweet_status: "verified",
     tags: [],
     collection_count: 0,
     has_note: false,
-    media: [mediaRow(11, 0), mediaRow(12, 1)].map((row) => ({
+    media: [mediaRow(11 + mediaIdOffset, 0, tweetId), mediaRow(12 + mediaIdOffset, 1, tweetId)].map((row) => ({
       ...row,
-      media_relative_path: `media/example/organization-workflow/${row.media_index}.jpg`,
+      media_relative_path: `media/example/${tweetId}/${row.media_index}.jpg`,
     })),
   };
 }
 
-function mediaRow(id: number, index: number) {
+function mediaRow(id: number, index: number, tweetId = "organization-workflow") {
   return {
     id,
-    tweet_id: "organization-workflow",
-    tweet_url: "https://x.com/example/status/organization-workflow",
+    tweet_id: tweetId,
+    tweet_url: `https://x.com/example/status/${tweetId}`,
     author_username: "example",
     author_display_name: "示例作者",
     published_at: "2026-01-01T00:00:00Z",
@@ -200,8 +272,8 @@ function mediaRow(id: number, index: number) {
     media_index: index,
     media_type: "photo",
     media_status: "verified",
-    local_path: `/archive/media/example/organization-workflow/${index}.jpg`,
-    media_url: `/api/v1/media-file/media/example/organization-workflow/${index}.jpg`,
+    local_path: `/archive/media/example/${tweetId}/${index}.jpg`,
+    media_url: `/api/v1/media-file/media/example/${tweetId}/${index}.jpg`,
     preview_url: "data:image/gif;base64,R0lGODlhAQABAAAAACw=",
     file_size: 1024,
   };
@@ -209,10 +281,4 @@ function mediaRow(id: number, index: number) {
 
 function json(route: Route, body: unknown, status = 200) {
   return route.fulfill({ status, contentType: "application/json", body: JSON.stringify(body) });
-}
-
-function noteSaveRequests(requests: Array<{ path: string; body: Record<string, unknown> }>) {
-  return requests
-    .filter((request) => request.path.endsWith("/organization/note"))
-    .map((request) => request.body);
 }

@@ -1,6 +1,7 @@
 import unittest
 from pathlib import Path
 from types import SimpleNamespace
+from unittest.mock import patch
 from uuid import uuid4
 
 from xarchiver.db import connect
@@ -15,6 +16,7 @@ from xarchiver.services.organization import (
     get_tweet_organization,
     list_organization_catalog,
     replace_tweet_labels,
+    replace_tweet_organization,
     save_tweet_note,
     update_collection,
 )
@@ -124,6 +126,55 @@ class OrganizationIntegrationTests(unittest.TestCase):
             create_tag("Organization-Test-Bad-Color", "red")
         with self.assertRaisesRegex(ValueError, "collection_name_exists"):
             create_collection("organization-test-unique collection")
+
+    def test_unified_tweet_organization_save_is_atomic_and_audited(self) -> None:
+        tag = create_tag("Organization-Test-Atomic")
+        collection = create_collection("Organization-Test-Atomic Collection")
+
+        saved = replace_tweet_organization(
+            self.tweet_ids[0],
+            [int(tag["id"])],
+            [int(collection["id"])],
+            " atomic private note ",
+        )
+
+        self.assertEqual([row["id"] for row in saved["tags"]], [tag["id"]])
+        self.assertEqual([row["id"] for row in saved["collections"]], [collection["id"]])
+        self.assertEqual(saved["note"]["content"], "atomic private note")
+        with connect() as conn:
+            with conn.cursor() as cur:
+                cur.execute(
+                    """
+                    select action
+                    from organization_action_events
+                    where target_id = %s
+                    order by id desc
+                    limit 2
+                    """,
+                    (self.tweet_ids[0],),
+                )
+                self.assertEqual(
+                    {row["action"] for row in cur.fetchall()},
+                    {"tweet_labels_updated", "tweet_note_updated"},
+                )
+
+        with (
+            patch(
+                "xarchiver.services.organization._insert_audit",
+                side_effect=RuntimeError("audit failed"),
+            ),
+            self.assertRaisesRegex(RuntimeError, "audit failed"),
+        ):
+            replace_tweet_organization(self.tweet_ids[0], [], [], "should roll back")
+
+        preserved = get_tweet_organization(self.tweet_ids[0])
+        assert preserved is not None
+        self.assertEqual([row["id"] for row in preserved["tags"]], [tag["id"]])
+        self.assertEqual(
+            [row["id"] for row in preserved["collections"]],
+            [collection["id"]],
+        )
+        self.assertEqual(preserved["note"]["content"], "atomic private note")
 
     def test_collection_cover_must_be_an_existing_member(self) -> None:
         collection = create_collection("Organization-Test-Cover")

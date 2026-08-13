@@ -38,6 +38,7 @@ from xarchiver.api.schemas.requests import (
     TagWriteRequest,
     TweetLabelsRequest,
     TweetNoteRequest,
+    TweetOrganizationWriteRequest,
     UpdateCookiesRequest,
     VerifyRequest,
 )
@@ -227,6 +228,7 @@ __all__ = [
     "TweetLabelsRequest",
     "TweetNoteRequest",
     "TweetNoteResponse",
+    "TweetOrganizationWriteRequest",
     "TweetOrganizationResponse",
     "TweetResponse",
     "TweetSearchOptionsResponse",

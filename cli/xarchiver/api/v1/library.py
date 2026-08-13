@@ -33,6 +33,7 @@ from xarchiver.api.schemas import (
     TweetLabelsRequest,
     TweetNoteRequest,
     TweetOrganizationResponse,
+    TweetOrganizationWriteRequest,
     TweetSearchOptionsResponse,
     TweetSearchPageResponse,
     WriteActionResponse,
@@ -68,6 +69,7 @@ from xarchiver.services.organization import (
     delete_tag,
     get_tweet_organization,
     replace_tweet_labels,
+    replace_tweet_organization,
     save_tweet_note,
     update_collection,
     update_tag,
@@ -297,6 +299,24 @@ def tweet_organization(tweet_id: str) -> dict[str, object]:
     if result is None:
         raise HTTPException(status_code=404, detail="tweet_not_found")
     return result
+
+
+@router.put("/tweets/{tweet_id}/organization", response_model=WriteActionResponse)
+def update_tweet_organization(
+    tweet_id: str,
+    request: TweetOrganizationWriteRequest,
+) -> dict[str, object]:
+    """在一个事务中保存单条 Tweet 的标签、合集和私人备注。"""
+
+    return _organization_write(
+        "update-tweet-organization",
+        lambda: replace_tweet_organization(
+            tweet_id,
+            request.tag_ids,
+            request.collection_ids,
+            request.note_content,
+        ),
+    )
 
 
 @router.put("/tweets/{tweet_id}/organization/labels", response_model=WriteActionResponse)

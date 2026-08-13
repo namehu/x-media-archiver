@@ -35,6 +35,7 @@ from xarchiver.api.schemas import (
     TagWriteRequest,
     TweetLabelsRequest,
     TweetNoteRequest,
+    TweetOrganizationWriteRequest,
     TweetSearchOptionsResponse,
     TweetSearchPageResponse,
     UpdateCookiesRequest,
@@ -175,6 +176,10 @@ class V1RouterSmokeTests(unittest.TestCase):
             self.put_paths,
         )
         self.assertIn(
+            "/api/v1/library/tweets/{tweet_id}/organization",
+            self.put_paths,
+        )
+        self.assertIn(
             "/api/v1/library/tweets/{tweet_id}/organization/labels",
             self.put_paths,
         )
@@ -262,9 +267,21 @@ class V1RouterSmokeTests(unittest.TestCase):
                 "result": action(),
             }
             with (
+                patch(
+                    "xarchiver.api.v1.library.replace_tweet_organization",
+                    return_value={"tweet_id": "1"},
+                ) as organization,
                 patch("xarchiver.api.v1.library.replace_tweet_labels", return_value={"tweet_id": "1"}) as labels,
                 patch("xarchiver.api.v1.library.save_tweet_note", return_value={"tweet_id": "1"}) as note,
             ):
+                self.put_paths["/api/v1/library/tweets/{tweet_id}/organization"](
+                    "1",
+                    TweetOrganizationWriteRequest(
+                        tag_ids=[2],
+                        collection_ids=[3],
+                        note_content="private note",
+                    ),
+                )
                 self.put_paths["/api/v1/library/tweets/{tweet_id}/organization/labels"](
                     "1",
                     TweetLabelsRequest(tag_ids=[2], collection_ids=[3]),
@@ -274,6 +291,7 @@ class V1RouterSmokeTests(unittest.TestCase):
                     TweetNoteRequest(content="private note"),
                 )
 
+        organization.assert_called_once_with("1", [2], [3], "private note")
         labels.assert_called_once_with("1", [2], [3])
         note.assert_called_once_with("1", "private note")
 

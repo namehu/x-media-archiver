@@ -385,7 +385,11 @@ export interface paths {
          * @description 返回单条 Tweet 的标签、合集和私人备注。
          */
         get: operations["tweet_organization_api_v1_library_tweets__tweet_id__organization_get"];
-        put?: never;
+        /**
+         * Update Tweet Organization
+         * @description 在一个事务中保存单条 Tweet 的标签、合集和私人备注。
+         */
+        put: operations["update_tweet_organization_api_v1_library_tweets__tweet_id__organization_put"];
         post?: never;
         delete?: never;
         options?: never;
@@ -4213,6 +4217,18 @@ export interface components {
         } & {
             [key: string]: unknown;
         };
+        /** TweetOrganizationWriteRequest */
+        TweetOrganizationWriteRequest: {
+            /** Tag Ids */
+            tag_ids?: number[];
+            /** Collection Ids */
+            collection_ids?: number[];
+            /**
+             * Note Content
+             * @default
+             */
+            note_content: string;
+        };
         /** TweetResponse */
         TweetResponse: {
             /** Tweet Id */
@@ -5056,6 +5072,41 @@ export interface operations {
                 };
                 content: {
                     "application/json": components["schemas"]["TweetOrganizationResponse"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    update_tweet_organization_api_v1_library_tweets__tweet_id__organization_put: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                tweet_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["TweetOrganizationWriteRequest"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["WriteActionResponse"];
                 };
             };
             /** @description Validation Error */

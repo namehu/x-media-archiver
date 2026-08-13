@@ -351,13 +351,7 @@ def replace_tweet_labels(tweet_id: str, tag_ids: list[int], collection_ids: list
             _lock_tweets(cur, [tweet_id])
             _validate_target_ids(cur, tags, normalized_tags, "tags_not_found")
             _validate_target_ids(cur, collections, normalized_collections, "collections_not_found")
-            cur.execute(*compile_query(delete(tweet_tags).where(tweet_tags.c.tweet_id == tweet_id)))
-            cur.execute(
-                *compile_query(delete(collection_tweets).where(collection_tweets.c.tweet_id == tweet_id))
-            )
-            _insert_link_rows(cur, tweet_tags, tweet_id, normalized_tags, "tag_id")
-            _insert_link_rows(cur, collection_tweets, tweet_id, normalized_collections, "collection_id")
-            _clear_invalid_collection_covers(cur)
+            _replace_tweet_label_rows(cur, tweet_id, normalized_tags, normalized_collections)
             _insert_audit(
                 cur,
                 "tweet_labels_updated",
@@ -376,23 +370,11 @@ def replace_tweet_labels(tweet_id: str, tag_ids: list[int], collection_ids: list
 def save_tweet_note(tweet_id: str, content: str) -> dict[str, object]:
     """保存或清空单条纯文本私人备注。"""
 
-    normalized = str(content).strip()
-    if len(normalized) > MAX_NOTE_LENGTH:
-        raise ValueError("tweet_note_too_long")
+    normalized = _normalize_note(content)
     with connect() as conn:
         with conn.cursor() as cur:
             _lock_tweets(cur, [tweet_id])
-            if normalized:
-                statement = postgresql_insert(tweet_notes).values(tweet_id=tweet_id, content=normalized)
-                statement = statement.on_conflict_do_update(
-                    index_elements=[tweet_notes.c.tweet_id],
-                    set_={"content": normalized, "updated_at": func.now()},
-                ).returning(tweet_notes.c.content, tweet_notes.c.created_at, tweet_notes.c.updated_at)
-                cur.execute(*compile_query(statement))
-                note = dict(cur.fetchone())
-            else:
-                cur.execute(*compile_query(delete(tweet_notes).where(tweet_notes.c.tweet_id == tweet_id)))
-                note = None
+            note = _write_tweet_note_row(cur, tweet_id, normalized)
             _insert_audit(
                 cur,
                 "tweet_note_updated",
@@ -404,6 +386,47 @@ def save_tweet_note(tweet_id: str, content: str) -> dict[str, object]:
         conn.commit()
     publish_event("library", "library.organization_updated", {"tweet_ids": [tweet_id]})
     return {"tweet_id": tweet_id, "note": note}
+
+
+def replace_tweet_organization(
+    tweet_id: str,
+    tag_ids: list[int],
+    collection_ids: list[int],
+    note_content: str,
+) -> dict[str, object]:
+    """在一个数据库事务中替换单条 Tweet 的全部整理信息。"""
+
+    normalized_tags = _normalize_ids(tag_ids)
+    normalized_collections = _normalize_ids(collection_ids)
+    normalized_note = _normalize_note(note_content)
+    with connect() as conn:
+        with conn.cursor() as cur:
+            _lock_tweets(cur, [tweet_id])
+            _validate_target_ids(cur, tags, normalized_tags, "tags_not_found")
+            _validate_target_ids(cur, collections, normalized_collections, "collections_not_found")
+            _replace_tweet_label_rows(cur, tweet_id, normalized_tags, normalized_collections)
+            _write_tweet_note_row(cur, tweet_id, normalized_note)
+            _insert_audit(
+                cur,
+                "tweet_labels_updated",
+                "tweet",
+                tweet_id,
+                [tweet_id],
+                {"tag_ids": normalized_tags, "collection_ids": normalized_collections},
+            )
+            _insert_audit(
+                cur,
+                "tweet_note_updated",
+                "tweet",
+                tweet_id,
+                [tweet_id],
+                {"has_note": bool(normalized_note), "content_length": len(normalized_note)},
+            )
+        conn.commit()
+    publish_event("library", "library.organization_updated", {"tweet_ids": [tweet_id]})
+    result = get_tweet_organization(tweet_id)
+    assert result is not None
+    return result
 
 
 def bulk_update_labels(
@@ -526,6 +549,13 @@ def _normalize_ids(values: Iterable[int]) -> list[int]:
     return list(dict.fromkeys(int(value) for value in values))
 
 
+def _normalize_note(content: str) -> str:
+    normalized = str(content).strip()
+    if len(normalized) > MAX_NOTE_LENGTH:
+        raise ValueError("tweet_note_too_long")
+    return normalized
+
+
 def _normalize_tweet_ids(values: Iterable[str]) -> list[str]:
     selected = list(dict.fromkeys(str(value).strip() for value in values if str(value).strip()))
     if not selected or len(selected) > MAX_ORGANIZATION_TWEETS:
@@ -562,6 +592,32 @@ def _insert_link_rows(cur: object, table: object, tweet_id: str, ids: list[int],
     rows = [{"tweet_id": tweet_id, id_column: value} for value in ids]
     statement = postgresql_insert(table).values(rows).on_conflict_do_nothing()
     cur.execute(*compile_query(statement))
+
+
+def _replace_tweet_label_rows(
+    cur: object,
+    tweet_id: str,
+    tag_ids: list[int],
+    collection_ids: list[int],
+) -> None:
+    cur.execute(*compile_query(delete(tweet_tags).where(tweet_tags.c.tweet_id == tweet_id)))
+    cur.execute(*compile_query(delete(collection_tweets).where(collection_tweets.c.tweet_id == tweet_id)))
+    _insert_link_rows(cur, tweet_tags, tweet_id, tag_ids, "tag_id")
+    _insert_link_rows(cur, collection_tweets, tweet_id, collection_ids, "collection_id")
+    _clear_invalid_collection_covers(cur)
+
+
+def _write_tweet_note_row(cur: object, tweet_id: str, content: str) -> dict[str, object] | None:
+    if content:
+        statement = postgresql_insert(tweet_notes).values(tweet_id=tweet_id, content=content)
+        statement = statement.on_conflict_do_update(
+            index_elements=[tweet_notes.c.tweet_id],
+            set_={"content": content, "updated_at": func.now()},
+        ).returning(tweet_notes.c.content, tweet_notes.c.created_at, tweet_notes.c.updated_at)
+        cur.execute(*compile_query(statement))
+        return dict(cur.fetchone())
+    cur.execute(*compile_query(delete(tweet_notes).where(tweet_notes.c.tweet_id == tweet_id)))
+    return None
 
 
 def _bulk_insert_links(cur: object, table: object, tweet_ids: list[str], ids: list[int], id_column: str) -> int:
