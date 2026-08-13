@@ -34,7 +34,7 @@ Postgres（自带或 Supabase） -> tweet、media、job、source 与 attempt 元
 本地 archive/               -> 下载的图片/视频、下载器状态、生成的导出
 ```
 
-只恢复数据库备份无法找回媒体文件；只备份媒体也无法还原归档状态。两者都要纳入备份策略。
+只恢复数据库备份无法找回媒体文件；只备份媒体也无法还原归档状态。完整恢复业务状态与媒体的必需集合是 Postgres 和 `archive/media/`；日志、原始输入、运行状态和导出物按第 9 节分级处理。
 
 运行时由同一套 Python 内核（CLI 与 FastAPI 共用）驱动。生产镜像中，FastAPI 在同一进程、同一端口上既提供 API（`/api/v1/*`、`/health`）又托管构建好的 WebUI 静态资源（根路径 `/`，带 SPA fallback），因此前后端**同源**，无需单独部署前端：
 
@@ -451,9 +451,9 @@ OPERATION_LOG_MAX_BYTES=10485760 # 单个任务日志流 JSONL 文件大小上�
 
 ### 9.1 大规模归档前
 
-1. 将 `archive/media/` 和 `archive/state/` 备份到独立磁盘或其他位置。
+1. 将必需的 `archive/media/` 备份到独立磁盘或其他位置；需要保留诊断和输入历史时再备份 `archive/logs/`、`archive/raw/`，需要延续下载器状态时再备份 `archive/state/`。`archive/exports/` 可从数据库重建。
 2. 执行迁移或批量修改元数据前，先创建数据库逻辑导出。
-3. 不要把 `secrets/cookies.txt`、包含 `cookie_config.content` 的数据库备份、数据库密码和证书放进会被共享的备份位置。
+3. 不要把 `secrets/cookies.txt`、`archive/state/runtime-cookies.txt`、包含 `cookie_config.content` 的数据库备份、数据库密码和证书放进会被共享的备份位置；备份目标也应按凭据级敏感数据保护。
 
 ### 9.2 数据库逻辑备份
 
@@ -495,7 +495,7 @@ select version_num from alembic_version;
 挂载一份本地 `archive/` 备份副本并运行（不要指向唯一的那份媒体数据）：
 
 ```bash
-docker compose --env-file .env.production -f docker-compose.prod.yml run --rm app verify
+docker compose --env-file .env.production -f docker-compose.prod.yml run --rm app verify --full
 docker compose --env-file .env.production -f docker-compose.prod.yml run --rm app export --format csv --status all
 ```
 
@@ -504,6 +504,7 @@ docker compose --env-file .env.production -f docker-compose.prod.yml run --rm ap
 - 数据库表和迁移历史都已恢复到位。
 - 推文和媒体记录数量与备份前导出结果大致相符。
 - 本地媒体备份已单独恢复。
+- 需要保留的操作日志和运行状态文件已恢复，或已明确接受丢弃这些诊断历史。
 - `verify` 输出的 verified/missing/corrupt 状态符合预期。
 - 恢复出的项目提升为正式环境后，数据库密码及所有自定义角色密码已重置。
 
@@ -524,10 +525,11 @@ WS  /api/v1/runtime/ws     只读 snapshot/patch/heartbeat 通道；每 60 秒�
 
 ### 10.2 后台 worker 与崩溃恢复
 
-`serve` 在进程内拉起一个 `archive-network-worker`，在归档下载与来源扫描之间轮换选择工作，
-避免并发启动两个外部网络下载器。归档 item 使用持久化 lease 与心跳续约；API 启动时会恢复过期
-item lease。上个 API 进程遗留的 `running` 来源扫描 run 会立即标记为 `failed/interrupted`，清除
-worker/lease 并关闭日志流，同时保留来源扫描 session 与 checkpoint，供后续批次继续。
+`serve` 在进程内拉起一个 `archive-network-worker`，在后台 archive queue 下载与历史/计划来源扫描之间轮换选择工作，
+避免这两类后台任务彼此并发启动外部工具。即时扫描 API、Cookie 检测以及直接执行的 CLI `sources scan`、`download`、`retry`
+会绕过这个 worker；Cookie 检测的独立进程内锁也不会阻止扫描或下载。运维时不得将这些旁路与活跃后台任务并行执行。归档 item 使用持久化 lease 与心跳续约；API 启动时只统计
+过期 item 并告警，后续领取查询负责原子接管。上个 API 进程遗留的 `running` 来源扫描 run 会立即标记为
+`failed/interrupted`，清除 worker/lease 并关闭日志流，同时保留来源扫描 session 与 checkpoint，供后续批次继续。
 若仍有遗留卡住的任务：
 
 ```bash
@@ -537,9 +539,10 @@ docker compose --env-file .env.production -f docker-compose.prod.yml run --rm ap
 
 ### 10.3 写操作并发
 
-写操作使用进程内作用域锁：不同来源的 scoped 操作可以并行，同一来源互斥；全局维护动作与所有
-scoped 写操作互斥。发生锁冲突时写 API 返回 `409 write_action_in_progress`，重试即可。该锁模型仍以
-单 API 进程为边界，不支持多进程共享。
+写操作使用进程内作用域锁：相同 scope 由同一把锁串行化，不同来源的 scoped 操作可以并行。若检查时
+已经持有冲突的 `global` 或细粒度锁，写 API 返回 `409 write_action_in_progress`。但冲突检查与取得不同
+scope 锁并非原子操作，并发进入时仍有竞态；这只是单 API 进程内的尽力型冲突抑制，不是数据正确性
+防线，也不支持多进程共享。正确性仍由数据库事务、约束、行锁与 advisory lock 保证。
 
 ### 10.4 状态规则（用于排查）
 
@@ -584,7 +587,7 @@ CI 会构建后端镜像、运行后端 ruff lint、在重置后的测试库上�
 - [ ] 如保留 LAN HTTP，HTTP router 只允许家庭内网 CIDR，并已接受该入口的登录凭据与会话为局域网明文流量。
 - [ ] Traefik 保留 Host，WS Origin 校验通过，应用与数据库未向 WAN 直接发布端口。
 - [ ] API 端口未直接暴露公网；远程访问经过反向代理或隧道。
-- [ ] 数据库逻辑备份保存在仓库之外，本地 `archive/` 已单独备份。
+- [ ] 数据库逻辑备份保存在仓库之外，必需的 `archive/media/` 已单独备份；可选目录已按保留策略处理。
 - [ ] 恢复演练在可丢弃库上完成，未指向唯一的媒体数据副本。
 - [ ] 发布镜像所需的 Docker Hub secrets（如使用）已在仓库配置。
 

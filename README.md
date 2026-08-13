@@ -6,6 +6,13 @@
 tweet URLs -> scoped download -> scoped media_assets backfill -> scoped verify
 ```
 
+架构入口：
+
+- [系统架构总览](docs/architecture/system-overview.md)
+- [核心数据模型](docs/architecture/data-model.md)
+- [可靠性与一致性设计](docs/architecture/reliability-and-consistency.md)
+- [架构文档索引](docs/architecture/README.md)与[架构决策记录](docs/adr/README.md)
+
 ## 快速开始
 
 构建 CLI 镜像并初始化本地归档目录：
@@ -269,6 +276,7 @@ Dashboard
 Search
 Feed
 Library
+Collections
 Tweet detail
 Failures
 Duplicates
