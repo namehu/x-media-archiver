@@ -21,6 +21,7 @@ from xarchiver.api.schemas import (
     FailureIgnoreRequest,
     FailurePageResponse,
     FailureSelectionRequest,
+    LibraryInsightsResponse,
     MediaDeleteRequest,
     MediaPageResponse,
     OrganizationCatalogResponse,
@@ -50,6 +51,7 @@ from xarchiver.services.failures import (
 )
 from xarchiver.services.library import (
     get_author_options,
+    get_library_insights,
     get_summary,
     get_tweet_detail,
     get_tweet_search_options,
@@ -83,6 +85,13 @@ def summary() -> dict[str, object]:
     """返回媒体库首页摘要数据。"""
 
     return get_summary(get_settings())
+
+
+@router.get("/insights", response_model=LibraryInsightsResponse)
+def insights() -> dict[str, object]:
+    """返回只读归档洞察；不扫描磁盘，不触发下载或外部请求。"""
+
+    return get_library_insights()
 
 
 @router.get("/media", response_model=MediaPageResponse)

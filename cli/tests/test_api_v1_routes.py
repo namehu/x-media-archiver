@@ -19,6 +19,7 @@ from xarchiver.api.schemas import (
     DuplicatesPageResponse,
     FailureIgnoreRequest,
     FailureSelectionRequest,
+    LibraryInsightsResponse,
     MediaDeleteRequest,
     OrganizationDeleteRequest,
     PostFeedPageResponse,
@@ -81,6 +82,7 @@ class V1RouterSmokeTests(unittest.TestCase):
     def test_v1_get_routes_registered(self):
         expected = [
             "/api/v1/library/summary",
+            "/api/v1/library/insights",
             "/api/v1/library/media",
             "/api/v1/library/authors",
             "/api/v1/library/posts",
@@ -217,6 +219,52 @@ class V1RouterSmokeTests(unittest.TestCase):
             remove_collection_ids=[],
         )
         self.assertTrue(all(call.kwargs["scope"] == "library-organization" for call in execute.call_args_list))
+
+    def test_v1_library_insights_is_a_read_only_delegation(self):
+        response = {
+            "overview": {
+                "tweet_count": 0,
+                "media_count": 0,
+                "known_media_bytes": 0,
+                "known_video_duration_ms": 0,
+                "author_count": 0,
+                "source_count": 0,
+            },
+            "media_types": [],
+            "media_statuses": [],
+            "published_months": [],
+            "imported_months": [],
+            "top_authors": [],
+            "organization": {
+                "total_count": 0,
+                "tagged_count": 0,
+                "collected_count": 0,
+                "noted_count": 0,
+                "organized_count": 0,
+            },
+            "completeness": {
+                "tweet_count": 0,
+                "published_at_count": 0,
+                "author_count": 0,
+                "text_count": 0,
+                "media_count": 0,
+                "media_file_size_count": 0,
+                "media_sha256_count": 0,
+                "media_dimensions_count": 0,
+                "video_count": 0,
+                "video_duration_count": 0,
+            },
+            "discovery": {
+                "discovered_count": 0,
+                "submitted_count": 0,
+                "verified_count": 0,
+            },
+        }
+        with patch("xarchiver.api.v1.library.get_library_insights", return_value=response) as get:
+            result = self.get_paths["/api/v1/library/insights"]()
+
+        self.assertEqual(LibraryInsightsResponse.model_validate(result).overview.tweet_count, 0)
+        get.assert_called_once_with()
 
     def test_v1_organization_errors_use_conflict_and_not_found_statuses(self):
         route = self.post_paths["/api/v1/library/organization/tags"]
@@ -884,6 +932,7 @@ class V1RouterSmokeTests(unittest.TestCase):
         self.assertIn("/api/v1/library/posts", paths)
         self.assertIn("/api/v1/library/search", paths)
         self.assertIn("/api/v1/library/search/options", paths)
+        self.assertIn("/api/v1/library/insights", paths)
         self.assertIn("/api/v1/actions/verify", paths)
         self.assertIn("/api/v1/health/detail", paths)
         self.assertIn("/api/v1/runtime/snapshot", paths)

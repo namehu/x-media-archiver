@@ -208,7 +208,7 @@ sequenceDiagram
 
 ```mermaid
 flowchart LR
-    query["Feed、Search、Library、Tweet Detail"] --> api["Library API"]
+    query["Feed、Search、Insights、Library、Tweet Detail"] --> api["Library API"]
     api --> facts[("Tweet 与媒体事实")]
     api --> search[("全文与 trigram 搜索投影")]
     organize["标签、合集、私人备注"] --> api

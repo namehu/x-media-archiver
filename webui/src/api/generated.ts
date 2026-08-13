@@ -141,6 +141,26 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/api/v1/library/insights": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * Insights
+         * @description 返回只读归档洞察；不扫描磁盘，不触发下载或外部请求。
+         */
+        get: operations["insights_api_v1_library_insights_get"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/api/v1/library/media": {
         parameters: {
             query?: never;
@@ -2616,6 +2636,126 @@ export interface components {
         } & {
             [key: string]: unknown;
         };
+        /** InsightAuthorResponse */
+        InsightAuthorResponse: {
+            /** Author Username */
+            author_username: string;
+            /** Tweet Count */
+            tweet_count: number;
+            /** Media Count */
+            media_count: number;
+            /** Known Bytes */
+            known_bytes: number;
+        } & {
+            [key: string]: unknown;
+        };
+        /** InsightDiscoverySummaryResponse */
+        InsightDiscoverySummaryResponse: {
+            /** Discovered Count */
+            discovered_count: number;
+            /** Submitted Count */
+            submitted_count: number;
+            /** Verified Count */
+            verified_count: number;
+        } & {
+            [key: string]: unknown;
+        };
+        /** InsightDistributionResponse */
+        InsightDistributionResponse: {
+            /** Key */
+            key: string;
+            /** Count */
+            count: number;
+            /** Known Bytes */
+            known_bytes: number;
+        } & {
+            [key: string]: unknown;
+        };
+        /** InsightMetadataCompletenessResponse */
+        InsightMetadataCompletenessResponse: {
+            /** Tweet Count */
+            tweet_count: number;
+            /** Published At Count */
+            published_at_count: number;
+            /** Author Count */
+            author_count: number;
+            /** Text Count */
+            text_count: number;
+            /** Media Count */
+            media_count: number;
+            /** Media File Size Count */
+            media_file_size_count: number;
+            /** Media Sha256 Count */
+            media_sha256_count: number;
+            /** Media Dimensions Count */
+            media_dimensions_count: number;
+            /** Video Count */
+            video_count: number;
+            /** Video Duration Count */
+            video_duration_count: number;
+        } & {
+            [key: string]: unknown;
+        };
+        /** InsightMonthResponse */
+        InsightMonthResponse: {
+            /**
+             * Month
+             * Format: date-time
+             */
+            month: string;
+            /** Count */
+            count: number;
+        } & {
+            [key: string]: unknown;
+        };
+        /** InsightOrganizationCoverageResponse */
+        InsightOrganizationCoverageResponse: {
+            /** Total Count */
+            total_count: number;
+            /** Tagged Count */
+            tagged_count: number;
+            /** Collected Count */
+            collected_count: number;
+            /** Noted Count */
+            noted_count: number;
+            /** Organized Count */
+            organized_count: number;
+        } & {
+            [key: string]: unknown;
+        };
+        /** InsightOverviewResponse */
+        InsightOverviewResponse: {
+            /** Tweet Count */
+            tweet_count: number;
+            /** Media Count */
+            media_count: number;
+            /** Known Media Bytes */
+            known_media_bytes: number;
+            /** Known Video Duration Ms */
+            known_video_duration_ms: number;
+            /** Author Count */
+            author_count: number;
+            /** Source Count */
+            source_count: number;
+        } & {
+            [key: string]: unknown;
+        };
+        /** InsightPublishedMonthResponse */
+        InsightPublishedMonthResponse: {
+            /**
+             * Month
+             * Format: date-time
+             */
+            month: string;
+            /** Count */
+            count: number;
+            /** Media Count */
+            media_count: number;
+            /** Known Bytes */
+            known_bytes: number;
+        } & {
+            [key: string]: unknown;
+        };
         /** LatestRunResponse */
         LatestRunResponse: {
             /** Id */
@@ -2661,6 +2801,25 @@ export interface components {
              * Format: date-time
              */
             created_at: string;
+        } & {
+            [key: string]: unknown;
+        };
+        /** LibraryInsightsResponse */
+        LibraryInsightsResponse: {
+            overview: components["schemas"]["InsightOverviewResponse"];
+            /** Media Types */
+            media_types: components["schemas"]["InsightDistributionResponse"][];
+            /** Media Statuses */
+            media_statuses: components["schemas"]["InsightDistributionResponse"][];
+            /** Published Months */
+            published_months: components["schemas"]["InsightPublishedMonthResponse"][];
+            /** Imported Months */
+            imported_months: components["schemas"]["InsightMonthResponse"][];
+            /** Top Authors */
+            top_authors: components["schemas"]["InsightAuthorResponse"][];
+            organization: components["schemas"]["InsightOrganizationCoverageResponse"];
+            completeness: components["schemas"]["InsightMetadataCompletenessResponse"];
+            discovery: components["schemas"]["InsightDiscoverySummaryResponse"];
         } & {
             [key: string]: unknown;
         };
@@ -4588,6 +4747,26 @@ export interface operations {
                 };
                 content: {
                     "application/json": components["schemas"]["SummaryResponse"];
+                };
+            };
+        };
+    };
+    insights_api_v1_library_insights_get: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["LibraryInsightsResponse"];
                 };
             };
         };

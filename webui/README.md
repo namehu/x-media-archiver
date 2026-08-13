@@ -55,8 +55,10 @@ Current pages:
 ```text
 Dashboard
 Search
+Insights
 Feed
 Library
+Collections
 Tweet detail
 Failures
 Duplicates

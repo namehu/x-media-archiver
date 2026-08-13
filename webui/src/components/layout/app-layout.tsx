@@ -36,6 +36,7 @@ const navGroups = [
     labelKey: "数据",
     items: [
       { to: "/search", label: "全局搜索" },
+      { to: "/insights", label: "归档洞察" },
       { to: "/feed", label: "帖子浏览" },
       { to: "/library", label: "媒体库" },
       { to: "/collections", label: "合集" },
@@ -144,6 +145,12 @@ export function AppLayout() {
         label: "帖子浏览",
         description: "/feed",
         onSelect: () => navigate("/feed"),
+      },
+      {
+        id: "insights",
+        label: "归档洞察",
+        description: "/insights",
+        onSelect: () => navigate("/insights"),
       },
       {
         id: "library",

@@ -536,6 +536,66 @@ class DownloadStatusCountRow(RowModel):
     count: int
 
 
+class InsightTweetStatsRow(RowModel):
+    tweet_count: int
+    published_at_count: int
+    author_present_count: int
+    text_count: int
+    author_count: int
+
+
+class InsightMediaStatsRow(RowModel):
+    media_count: int
+    known_media_bytes: int
+    known_video_duration_ms: int
+    media_file_size_count: int
+    media_sha256_count: int
+    media_dimensions_count: int
+    video_count: int
+    video_duration_count: int
+
+
+class InsightCountRow(RowModel):
+    count: int
+
+
+class InsightDistributionRow(RowModel):
+    key: str
+    count: int
+    known_bytes: int
+
+
+class InsightMonthRow(RowModel):
+    month: datetime
+    count: int
+
+
+class InsightPublishedMonthRow(InsightMonthRow):
+    media_count: int
+    known_bytes: int
+
+
+class InsightAuthorRow(RowModel):
+    author_username: str
+    tweet_count: int
+    media_count: int
+    known_bytes: int
+
+
+class InsightOrganizationCoverageRow(RowModel):
+    total_count: int
+    tagged_count: int
+    collected_count: int
+    noted_count: int
+    organized_count: int
+
+
+class InsightDiscoverySummaryRow(RowModel):
+    discovered_count: int
+    submitted_count: int
+    verified_count: int
+
+
 class QueueLatestRunRow(RowModel):
     id: int
     trigger_type: str

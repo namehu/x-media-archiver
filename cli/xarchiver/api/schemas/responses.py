@@ -43,6 +43,77 @@ class ExportSummaryResponse(FlexibleResponse):
     modified_at: float
 
 
+class InsightOverviewResponse(FlexibleResponse):
+    tweet_count: int
+    media_count: int
+    known_media_bytes: int
+    known_video_duration_ms: int
+    author_count: int
+    source_count: int
+
+
+class InsightDistributionResponse(FlexibleResponse):
+    key: str
+    count: int
+    known_bytes: int
+
+
+class InsightMonthResponse(FlexibleResponse):
+    month: datetime
+    count: int
+
+
+class InsightPublishedMonthResponse(InsightMonthResponse):
+    media_count: int
+    known_bytes: int
+
+
+class InsightAuthorResponse(FlexibleResponse):
+    author_username: str
+    tweet_count: int
+    media_count: int
+    known_bytes: int
+
+
+class InsightOrganizationCoverageResponse(FlexibleResponse):
+    total_count: int
+    tagged_count: int
+    collected_count: int
+    noted_count: int
+    organized_count: int
+
+
+class InsightMetadataCompletenessResponse(FlexibleResponse):
+    tweet_count: int
+    published_at_count: int
+    author_count: int
+    text_count: int
+    media_count: int
+    media_file_size_count: int
+    media_sha256_count: int
+    media_dimensions_count: int
+    video_count: int
+    video_duration_count: int
+
+
+class InsightDiscoverySummaryResponse(FlexibleResponse):
+    discovered_count: int
+    submitted_count: int
+    verified_count: int
+
+
+class LibraryInsightsResponse(FlexibleResponse):
+    overview: InsightOverviewResponse
+    media_types: list[InsightDistributionResponse]
+    media_statuses: list[InsightDistributionResponse]
+    published_months: list[InsightPublishedMonthResponse]
+    imported_months: list[InsightMonthResponse]
+    top_authors: list[InsightAuthorResponse]
+    organization: InsightOrganizationCoverageResponse
+    completeness: InsightMetadataCompletenessResponse
+    discovery: InsightDiscoverySummaryResponse
+
+
 class DownloadPolicyResponse(FlexibleResponse):
     queue_batch_size: int
     downloader_sleep_min_seconds: float

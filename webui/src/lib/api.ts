@@ -8,6 +8,62 @@ export type Summary = {
   exports: Array<{ name: string; path: string; size: number; modified_at: number }>;
 };
 
+export type InsightDistribution = {
+  key: string;
+  count: number;
+  known_bytes: number;
+};
+
+export type LibraryInsights = {
+  overview: {
+    tweet_count: number;
+    media_count: number;
+    known_media_bytes: number;
+    known_video_duration_ms: number;
+    author_count: number;
+    source_count: number;
+  };
+  media_types: InsightDistribution[];
+  media_statuses: InsightDistribution[];
+  published_months: Array<{
+    month: string;
+    count: number;
+    media_count: number;
+    known_bytes: number;
+  }>;
+  imported_months: Array<{ month: string; count: number }>;
+  top_authors: Array<{
+    author_username: string;
+    tweet_count: number;
+    media_count: number;
+    known_bytes: number;
+  }>;
+  organization: {
+    total_count: number;
+    tagged_count: number;
+    collected_count: number;
+    noted_count: number;
+    organized_count: number;
+  };
+  completeness: {
+    tweet_count: number;
+    published_at_count: number;
+    author_count: number;
+    text_count: number;
+    media_count: number;
+    media_file_size_count: number;
+    media_sha256_count: number;
+    media_dimensions_count: number;
+    video_count: number;
+    video_duration_count: number;
+  };
+  discovery: {
+    discovered_count: number;
+    submitted_count: number;
+    verified_count: number;
+  };
+};
+
 export type MediaRow = {
   id: number;
   tweet_id: string;

@@ -26,6 +26,7 @@ const RUNTIME_PERSISTENT_QUERY_ROOTS = new Set([
   "archive-runs",
   "archive-run",
   "health-detail",
+  "library-insights",
 ]);
 
 export function invalidateRuntimePersistentQueries(queryClient: QueryClient) {
@@ -61,6 +62,7 @@ export function invalidateForEvent(queryClient: QueryClient, event: ServerEvent)
       void queryClient.invalidateQueries({ queryKey: ["source-discovered"] });
     }
     void queryClient.invalidateQueries({ queryKey: ["summary"] });
+    void queryClient.invalidateQueries({ queryKey: ["library-insights"] });
     void queryClient.invalidateQueries({ queryKey: ["health-detail"] });
     if (shouldRefreshLibraryForRunEvent(eventType)) {
       void queryClient.invalidateQueries({ queryKey: ["media"] });
@@ -88,6 +90,7 @@ export function invalidateForEvent(queryClient: QueryClient, event: ServerEvent)
       void queryClient.invalidateQueries({ queryKey: sourceId ? ["source-scan-runs", sourceId] : ["source-scan-runs"] });
     }
     void queryClient.invalidateQueries({ queryKey: ["summary"] });
+    void queryClient.invalidateQueries({ queryKey: ["library-insights"] });
     void queryClient.invalidateQueries({ queryKey: ["health-detail"] });
     return;
   }
@@ -96,6 +99,7 @@ export function invalidateForEvent(queryClient: QueryClient, event: ServerEvent)
     void queryClient.invalidateQueries({ queryKey: ["archive-runs"] });
     void queryClient.invalidateQueries({ queryKey: ["sources"] });
     void queryClient.invalidateQueries({ queryKey: ["summary"] });
+    void queryClient.invalidateQueries({ queryKey: ["library-insights"] });
     void queryClient.invalidateQueries({ queryKey: ["health-detail"] });
   }
 
@@ -110,6 +114,7 @@ export function invalidateForEvent(queryClient: QueryClient, event: ServerEvent)
     }
     void queryClient.invalidateQueries({ queryKey: ["tweet"] });
     void queryClient.invalidateQueries({ queryKey: ["summary"] });
+    void queryClient.invalidateQueries({ queryKey: ["library-insights"] });
     void queryClient.invalidateQueries({ queryKey: ["failures"] });
     void queryClient.invalidateQueries({ queryKey: ["duplicates"] });
     void queryClient.invalidateQueries({ queryKey: ["source-discovered"] });

@@ -5,6 +5,8 @@ from __future__ import annotations
 from datetime import UTC, date, datetime, time, timedelta
 from pathlib import Path
 
+from sqlalchemy import and_, func, select
+
 from xarchiver.archive import ensure_archive_dirs
 from xarchiver.config import Settings
 from xarchiver.db import connect
@@ -17,7 +19,21 @@ from xarchiver.exporter import (
     fetch_duplicate_rows,
     fetch_export_rows,
 )
-from xarchiver.row_models import DownloadAttemptRow, RowModel, TweetDetailRow, TweetMediaAssetRow
+from xarchiver.row_models import (
+    DownloadAttemptRow,
+    InsightAuthorRow,
+    InsightCountRow,
+    InsightDiscoverySummaryRow,
+    InsightDistributionRow,
+    InsightMediaStatsRow,
+    InsightMonthRow,
+    InsightOrganizationCoverageRow,
+    InsightPublishedMonthRow,
+    InsightTweetStatsRow,
+    RowModel,
+    TweetDetailRow,
+    TweetMediaAssetRow,
+)
 from xarchiver.search import (
     count_search_media,
     fetch_tweet_search_organization,
@@ -29,7 +45,17 @@ from xarchiver.search import (
 )
 from xarchiver.services.operation_logs import redact_sensitive_text
 from xarchiver.services.organization import get_tweet_organization, list_organization_catalog
+from xarchiver.sql_builder import compile_query
 from xarchiver.status import get_media_count, get_media_status_counts, get_status_counts
+from xarchiver.tables import (
+    archive_sources,
+    collection_tweets,
+    media_assets,
+    source_discovered_tweets,
+    tweet_notes,
+    tweet_tags,
+    tweets,
+)
 
 VIDEO_EXTENSIONS = {".mp4", ".mov", ".m4v", ".webm"}
 
@@ -57,6 +83,215 @@ def get_library_snapshot() -> dict[str, int]:
     return {
         "media_total": sum(media_status_counts.values()),
         "verified_total": media_status_counts.get("verified", 0),
+    }
+
+
+def get_library_insights() -> dict[str, object]:
+    """返回只依赖数据库事实的归档洞察，不扫描文件系统或访问外部网络。"""
+
+    with connect() as conn:
+        with conn.cursor() as cur:
+            # SQLAlchemy Core 没有事务级只读/快照声明；这里用 PostgreSQL 原生命令保证整组聚合一致且拒绝写入。
+            cur.execute("set transaction isolation level repeatable read, read only")
+            tweet_stats_statement = select(
+                func.count().label("tweet_count"),
+                func.count().filter(tweets.c.published_at.is_not(None)).label("published_at_count"),
+                func.count()
+                .filter(func.nullif(func.btrim(tweets.c.author_username), "").is_not(None))
+                .label("author_present_count"),
+                func.count()
+                .filter(func.nullif(func.btrim(tweets.c.text), "").is_not(None))
+                .label("text_count"),
+                func.count(func.distinct(tweets.c.author_username))
+                .filter(func.nullif(func.btrim(tweets.c.author_username), "").is_not(None))
+                .label("author_count"),
+            ).select_from(tweets)
+            cur.execute(*compile_query(tweet_stats_statement))
+            tweet_stats = InsightTweetStatsRow.model_validate(dict(cur.fetchone()))
+
+            media_stats_statement = select(
+                func.count().label("media_count"),
+                func.coalesce(func.sum(media_assets.c.file_size), 0).label("known_media_bytes"),
+                func.coalesce(func.sum(media_assets.c.duration_ms).filter(media_assets.c.media_type == "video"), 0)
+                .label("known_video_duration_ms"),
+                func.count().filter(media_assets.c.file_size.is_not(None)).label("media_file_size_count"),
+                func.count()
+                .filter(func.nullif(func.btrim(media_assets.c.sha256), "").is_not(None))
+                .label("media_sha256_count"),
+                func.count()
+                .filter(and_(media_assets.c.width.is_not(None), media_assets.c.height.is_not(None)))
+                .label("media_dimensions_count"),
+                func.count().filter(media_assets.c.media_type == "video").label("video_count"),
+                func.count()
+                .filter(and_(media_assets.c.media_type == "video", media_assets.c.duration_ms.is_not(None)))
+                .label("video_duration_count"),
+            ).select_from(media_assets)
+            cur.execute(*compile_query(media_stats_statement))
+            media_stats = InsightMediaStatsRow.model_validate(dict(cur.fetchone()))
+
+            source_count_statement = (
+                select(func.count().label("count"))
+                .select_from(archive_sources)
+                .where(archive_sources.c.deleted_at.is_(None))
+            )
+            cur.execute(*compile_query(source_count_statement))
+            source_count = InsightCountRow.model_validate(dict(cur.fetchone())).count
+
+            media_type_key = func.coalesce(media_assets.c.media_type, "unknown")
+            media_types_statement = (
+                select(
+                    media_type_key.label("key"),
+                    func.count().label("count"),
+                    func.coalesce(func.sum(media_assets.c.file_size), 0).label("known_bytes"),
+                )
+                .select_from(media_assets)
+                .group_by(media_type_key)
+                .order_by(func.count().desc(), media_type_key)
+            )
+            cur.execute(*compile_query(media_types_statement))
+            media_types = [
+                dict(InsightDistributionRow.model_validate(dict(row)))
+                for row in cur.fetchall()
+            ]
+
+            media_status_key = func.coalesce(media_assets.c.download_status, "unknown")
+            media_statuses_statement = (
+                select(
+                    media_status_key.label("key"),
+                    func.count().label("count"),
+                    func.coalesce(func.sum(media_assets.c.file_size), 0).label("known_bytes"),
+                )
+                .select_from(media_assets)
+                .group_by(media_status_key)
+                .order_by(func.count().desc(), media_status_key)
+            )
+            cur.execute(*compile_query(media_statuses_statement))
+            media_statuses = [
+                dict(InsightDistributionRow.model_validate(dict(row)))
+                for row in cur.fetchall()
+            ]
+
+            published_month = func.date_trunc("month", tweets.c.published_at, "UTC")
+            published_statement = (
+                select(
+                    published_month.label("month"),
+                    func.count(func.distinct(tweets.c.tweet_id)).label("count"),
+                    func.count(media_assets.c.id).label("media_count"),
+                    func.coalesce(func.sum(media_assets.c.file_size), 0).label("known_bytes"),
+                )
+                .select_from(tweets.outerjoin(media_assets, media_assets.c.tweet_id == tweets.c.tweet_id))
+                .where(tweets.c.published_at.is_not(None))
+                .group_by(published_month)
+                .order_by(published_month.desc())
+                .limit(24)
+            )
+            cur.execute(*compile_query(published_statement))
+            published_months = [
+                dict(InsightPublishedMonthRow.model_validate(dict(row)))
+                for row in reversed(cur.fetchall())
+            ]
+
+            imported_month = func.date_trunc("month", tweets.c.imported_at, "UTC")
+            imported_statement = (
+                select(imported_month.label("month"), func.count().label("count"))
+                .select_from(tweets)
+                .where(tweets.c.imported_at.is_not(None))
+                .group_by(imported_month)
+                .order_by(imported_month.desc())
+                .limit(24)
+            )
+            cur.execute(*compile_query(imported_statement))
+            imported_months = [
+                dict(InsightMonthRow.model_validate(dict(row)))
+                for row in reversed(cur.fetchall())
+            ]
+
+            known_bytes = func.coalesce(func.sum(media_assets.c.file_size), 0)
+            top_authors_statement = (
+                select(
+                    tweets.c.author_username,
+                    func.count(func.distinct(tweets.c.tweet_id)).label("tweet_count"),
+                    func.count(media_assets.c.id).label("media_count"),
+                    known_bytes.label("known_bytes"),
+                )
+                .select_from(tweets.join(media_assets, media_assets.c.tweet_id == tweets.c.tweet_id))
+                .where(func.nullif(func.btrim(tweets.c.author_username), "").is_not(None))
+                .group_by(tweets.c.author_username)
+                .order_by(known_bytes.desc(), func.count(media_assets.c.id).desc(), tweets.c.author_username)
+                .limit(10)
+            )
+            cur.execute(*compile_query(top_authors_statement))
+            top_authors = [
+                dict(InsightAuthorRow.model_validate(dict(row)))
+                for row in cur.fetchall()
+            ]
+
+            tagged = select(tweet_tags.c.tweet_id).where(tweet_tags.c.tweet_id == tweets.c.tweet_id).exists()
+            collected = (
+                select(collection_tweets.c.tweet_id)
+                .where(collection_tweets.c.tweet_id == tweets.c.tweet_id)
+                .exists()
+            )
+            noted = select(tweet_notes.c.tweet_id).where(tweet_notes.c.tweet_id == tweets.c.tweet_id).exists()
+            organization_statement = select(
+                func.count().label("total_count"),
+                func.count().filter(tagged).label("tagged_count"),
+                func.count().filter(collected).label("collected_count"),
+                func.count().filter(noted).label("noted_count"),
+                func.count().filter(tagged | collected | noted).label("organized_count"),
+            ).select_from(tweets)
+            cur.execute(*compile_query(organization_statement))
+            organization = InsightOrganizationCoverageRow.model_validate(dict(cur.fetchone()))
+
+            discovered_tweet_id = func.distinct(source_discovered_tweets.c.tweet_id)
+            discovery_statement = (
+                select(
+                    func.count(discovered_tweet_id).label("discovered_count"),
+                    func.count(discovered_tweet_id)
+                    .filter(source_discovered_tweets.c.archive_run_id.is_not(None))
+                    .label("submitted_count"),
+                    func.count(discovered_tweet_id)
+                    .filter(tweets.c.download_status == "verified")
+                    .label("verified_count"),
+                )
+                .select_from(
+                    source_discovered_tweets.join(
+                        tweets,
+                        tweets.c.tweet_id == source_discovered_tweets.c.tweet_id,
+                    )
+                )
+            )
+            cur.execute(*compile_query(discovery_statement))
+            discovery = InsightDiscoverySummaryRow.model_validate(dict(cur.fetchone()))
+
+    return {
+        "overview": {
+            "tweet_count": tweet_stats.tweet_count,
+            "media_count": media_stats.media_count,
+            "known_media_bytes": media_stats.known_media_bytes,
+            "known_video_duration_ms": media_stats.known_video_duration_ms,
+            "author_count": tweet_stats.author_count,
+            "source_count": source_count,
+        },
+        "media_types": media_types,
+        "media_statuses": media_statuses,
+        "published_months": published_months,
+        "imported_months": imported_months,
+        "top_authors": top_authors,
+        "organization": dict(organization),
+        "completeness": {
+            "tweet_count": tweet_stats.tweet_count,
+            "published_at_count": tweet_stats.published_at_count,
+            "author_count": tweet_stats.author_present_count,
+            "text_count": tweet_stats.text_count,
+            "media_count": media_stats.media_count,
+            "media_file_size_count": media_stats.media_file_size_count,
+            "media_sha256_count": media_stats.media_sha256_count,
+            "media_dimensions_count": media_stats.media_dimensions_count,
+            "video_count": media_stats.video_count,
+            "video_duration_count": media_stats.video_duration_count,
+        },
+        "discovery": dict(discovery),
     }
 
 

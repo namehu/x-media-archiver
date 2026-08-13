@@ -12,7 +12,7 @@
 
 1. CLI、API 与 WebUI 共享的数据库归档队列，以及逐 Tweet 下载、回填、校验和重试审计。
 2. 来源发现、原生 cursor 历史扫描、可恢复扫描会话、批量任务和命名定时策略。
-3. Archive Queue、Sources、Feed、Library、Tweet Detail、Failures、Duplicates 与 Operations 页面。
+3. Archive Queue、Sources、Feed、Search、Insights、Library、Collections、Tweet Detail、Failures、Duplicates 与 Operations 页面。
 4. 单管理员认证、Cookies 检测、结构化日志、SSE 与只读 WebSocket 运行态投影。
 5. 按 `media_assets.id` 精确执行的媒体物理删除、SHA-256 重复项治理和删除审计。
 6. Ruff、后端单元/集成测试、WebUI build、扩展 build 与 Playwright E2E 工作流。
@@ -91,6 +91,16 @@
 - [x] 记录队列租约、写锁、外部子进程、媒体删除、启动恢复和实时收敛策略。
 - [x] 建立架构文档与 ADR 索引，补录单网络 worker、双持久化边界和只读运行态投影决策。
 - [x] 使用 Mermaid CLI 验证新增图表可渲染，并执行内部链接与敏感信息检查。
+
+## M4.1：只读归档洞察
+
+目标：先用现有数据库事实回答“归档里有什么、何时产生、整理得怎样”，不引入新的写路径或外部依赖。
+
+- [x] 新增只执行数据库查询的 `GET /api/v1/library/insights`；不扫描文件、不访问 X、不改变归档状态。
+- [x] 分开展示 Tweet 真实发布时间与归档入库时间，避免用当前总数伪造历史趋势。
+- [x] 展示媒体类型/状态、已知体积与视频时长、作者空间占用、整理覆盖率和元数据完整率。
+- [x] 来源发现、来源下载提交和当前校验状态按 Tweet 去重展示，并明确它们不是严格线性漏斗。
+- [x] WebUI 覆盖加载、空、错误、窄屏与调试脱敏状态；后端集成测试证明读取前后事实行不变。
 
 ## 每个里程碑的完成标准
 
