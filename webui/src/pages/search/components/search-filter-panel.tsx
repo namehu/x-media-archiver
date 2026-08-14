@@ -20,6 +20,7 @@ import {
   SelectValue,
 } from "@/components/ui/select";
 import type { SearchFilters } from "../search-state";
+import { HashtagCombobox } from "./hashtag-combobox";
 
 const statusOptions = [
   ["verified", "已校验"],
@@ -83,7 +84,7 @@ export function SearchFilterPanel({
               <Input
                 id={`${fieldId}-query`}
                 value={filters.q}
-                placeholder="正文、作者、标签、合集或备注"
+                placeholder="正文、作者、Hashtag、自定义标签、合集或备注"
                 autoComplete="off"
                 onChange={(event) => onFiltersChange({ ...filters, q: event.target.value })}
               />
@@ -177,17 +178,27 @@ export function SearchFilterPanel({
             </div>
 
             <Field className="gap-2">
-              <FieldLabel htmlFor={`${fieldId}-tag`}>标签</FieldLabel>
+              <FieldLabel htmlFor={`${fieldId}-hashtag`}>平台 Hashtag</FieldLabel>
+              <HashtagCombobox
+                id={`${fieldId}-hashtag`}
+                value={filters.hashtag}
+                onChange={(value) => onFiltersChange({ ...filters, hashtag: value })}
+              />
+              <p className="text-xs text-fg-tertiary">只读平台事实，按单个 Hashtag 精确筛选。</p>
+            </Field>
+
+            <Field className="gap-2">
+              <FieldLabel htmlFor={`${fieldId}-tag`}>自定义标签</FieldLabel>
               <Select
                 value={filters.tag_id || "all"}
                 onValueChange={(value) => onFiltersChange({ ...filters, tag_id: value === "all" ? "" : value })}
               >
                 <SelectTrigger id={`${fieldId}-tag`}>
-                  <SelectValue placeholder="全部标签" />
+                  <SelectValue placeholder="全部自定义标签" />
                 </SelectTrigger>
                 <SelectContent>
                   <SelectGroup>
-                    <SelectItem value="all">全部标签</SelectItem>
+                    <SelectItem value="all">全部自定义标签</SelectItem>
                     {tags.map((tag) => (
                       <SelectItem key={tag.id} value={String(tag.id)}>
                         {tag.name}（{tag.tweet_count}）

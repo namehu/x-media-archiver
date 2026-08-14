@@ -286,9 +286,9 @@ Archive Queue
 Sources
 ```
 
-Search 以 Tweet 为结果单位，使用 PostgreSQL 全文检索与 trigram 搜索正文、作者、自定义标签、平台 Hashtag、合集和私人备注；支持来源、日期、媒体类型、归档状态、自定义标签、合集与排序筛选。后端另提供平台 Hashtag 精确筛选和有界联想；对应 WebUI 展示与 URL 筛选安排在 M5.2。平台 Hashtag 是 gallery-dl 落盘元数据中的只读事实，不与用户可编辑的自定义标签混用。其余关键词和筛选条件会同步到 URL，默认只展示已校验归档内容。搜索需要先应用最新数据库迁移；10 万条纯合成数据的基准与页面验收记录见 [`docs/testing/tweet-search-acceptance.md`](docs/testing/tweet-search-acceptance.md)。
+Search 以 Tweet 为结果单位，使用 PostgreSQL 全文检索与 trigram 搜索正文、作者、自定义标签、平台 Hashtag、合集和私人备注；支持来源、日期、媒体类型、归档状态、单个平台 Hashtag、自定义标签、合集与排序筛选。平台 Hashtag 联想按需加载且每次最多 20 条，点击 Feed、Search、预览或 Tweet Detail 中的平台 Hashtag 会进入可复制、刷新后保持的精确搜索 URL。平台 Hashtag 是 gallery-dl 落盘元数据中的只读事实，不与用户可编辑的自定义标签混用。关键词和全部筛选条件会同步到 URL，默认只展示已校验归档内容；从 Hashtag 徽标进入搜索时会显式使用“全部状态”。搜索需要先应用最新数据库迁移；10 万条纯合成数据的基准与页面验收记录见 [`docs/testing/tweet-search-acceptance.md`](docs/testing/tweet-search-acceptance.md)。
 
-Collections 提供标签、手工合集与私人备注整理。单条 Tweet 的标签、合集和备注只会在点击“保存整理”后通过一个数据库事务同时保存；关闭存在未保存更改的弹窗时会先要求确认放弃，保存失败则保留当前输入以便重试。
+Collections 提供自定义标签、手工合集与私人备注整理。单条 Tweet 的自定义标签、合集和备注只会在点击“保存整理”后通过一个数据库事务同时保存；关闭存在未保存更改的弹窗时会先要求确认放弃，保存失败则保留当前输入以便重试。
 
 Archive Queue 支持粘贴 URL 或选择本地 TXT/JSONL 文件（浏览器侧解析后提交）来创建结构化的数据库任务。Operations 可触发 requeue、recover-interrupted 与数据库快照 export。完整 backfill 与完整 verify 被隔离在 Maintenance 下，并要求显式确认磁盘扫描。媒体库和重复媒体页均支持显式勾选并批量永久删除最多 200 个媒体项；重复媒体页按完整 SHA-256 组分页，可为每组保留建议项并选择其余副本。删除会清理主文件、对应元数据、标准缩略图和派生视频预览图，保留 Tweet、来源和下载历史，将 Tweet 标记为 `missing`，并写入幂等删除审计。
 

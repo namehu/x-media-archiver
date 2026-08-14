@@ -1,6 +1,7 @@
 import { FileText, FolderClosed, Tag } from "lucide-react";
 import { Link } from "react-router-dom";
 import type { TweetSearchRow } from "@/lib/api";
+import { PlatformHashtags } from "@/components/platform-hashtags";
 import { Badge } from "@/components/ui/badge";
 import { PostCard } from "@/pages/feed/components/post-card";
 import type { FeedVideoPlaybackStateApi } from "@/pages/feed/video-playback-state";
@@ -43,8 +44,10 @@ export function SearchResultCard({
       tweetTextContent={<HighlightedText text={row.tweet_text || "暂无帖子正文"} query={query} />}
       contextContent={
         <div className="flex flex-col gap-2">
+          <PlatformHashtags hashtags={row.hashtags ?? []} />
           {row.tags.length || row.collections.length ? (
-            <div className="flex flex-wrap gap-1.5">
+            <div role="group" className="flex flex-wrap items-center gap-1.5" aria-label="自定义整理信息">
+              {row.tags.length ? <span className="text-xs font-semibold text-fg-secondary">自定义标签</span> : null}
               {row.tags.map((tag) => (
                 <Badge key={`tag:${tag}`} tone="secondary" className="gap-1">
                   <Tag data-icon="inline-start" />

@@ -7,7 +7,7 @@ test("feed saves tags, collections, and a private note with one request", async 
   await page.goto("/feed");
   await expect(page.getByText("organization workflow fixture")).toBeVisible();
   await page.getByRole("button", { name: "帖子操作" }).click();
-  await page.getByRole("menuitem", { name: "整理标签、合集与备注" }).click();
+  await page.getByRole("menuitem", { name: "整理自定义标签、合集与备注" }).click();
   await page.getByText("重点", { exact: true }).click();
   await page.getByText("研究资料", { exact: true }).click();
   await page.getByLabel("私人备注").fill("需要稍后复盘");
@@ -29,7 +29,7 @@ test("closing a dirty organization dialog requires explicit discard", async ({ p
 
   await page.goto("/feed");
   await page.getByRole("button", { name: "帖子操作" }).click();
-  await page.getByRole("menuitem", { name: "整理标签、合集与备注" }).click();
+  await page.getByRole("menuitem", { name: "整理自定义标签、合集与备注" }).click();
   await page.getByText("重点", { exact: true }).click();
   await page.getByLabel("私人备注").fill("尚未保存的备注");
   await page.waitForTimeout(1_000);
@@ -60,7 +60,7 @@ test("a failed unified save keeps the form intact and allows an explicit retry",
 
   await page.goto("/feed");
   await page.getByRole("button", { name: "帖子操作" }).click();
-  await page.getByRole("menuitem", { name: "整理标签、合集与备注" }).click();
+  await page.getByRole("menuitem", { name: "整理自定义标签、合集与备注" }).click();
   await page.getByText("重点", { exact: true }).click();
   await page.getByLabel("私人备注").fill("第一次保存会失败");
   await page.getByRole("button", { name: "保存整理" }).click();
@@ -85,13 +85,13 @@ test("opening a slow second Tweet does not inherit the discarded first Tweet sta
 
   await page.goto("/feed");
   await page.getByRole("button", { name: "帖子操作" }).nth(0).click();
-  await page.getByRole("menuitem", { name: "整理标签、合集与备注" }).click();
+  await page.getByRole("menuitem", { name: "整理自定义标签、合集与备注" }).click();
   await page.getByLabel("私人备注").fill("只属于第一条的未保存内容");
   await page.getByRole("button", { name: "取消" }).click();
   await page.getByRole("button", { name: "放弃更改" }).click();
 
   await page.getByRole("button", { name: "帖子操作" }).nth(1).click();
-  await page.getByRole("menuitem", { name: "整理标签、合集与备注" }).click();
+  await page.getByRole("menuitem", { name: "整理自定义标签、合集与备注" }).click();
   await expect(page.getByText("正在读取整理信息…")).toBeVisible();
   await page.getByRole("button", { name: "取消" }).click();
 

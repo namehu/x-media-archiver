@@ -163,7 +163,7 @@ export function OrganizationEditorDialog({
         >
           <DialogHeader>
             <DialogTitle>整理 Tweet</DialogTitle>
-            <DialogDescription>标签、合集和私人备注会在点击“保存整理”后一次性保存。</DialogDescription>
+            <DialogDescription>自定义标签、合集和私人备注会在点击“保存整理”后一次性保存。</DialogDescription>
           </DialogHeader>
 
           {loadError ? (
@@ -183,9 +183,9 @@ export function OrganizationEditorDialog({
                 </Alert>
               ) : null}
               <SelectionField
-                label="标签"
+                label="自定义标签"
                 icon={<Tag />}
-                empty="还没有标签，请先到“合集 → 标签管理”创建。"
+                empty="还没有自定义标签，请先到“合集 → 自定义标签管理”创建。"
                 items={catalogQuery.data?.tags ?? []}
                 selected={tagIds}
                 disabled={busy}
@@ -245,7 +245,7 @@ export function OrganizationEditorDialog({
         <AlertDialogContent onEscapeKeyDown={(event) => event.preventDefault()}>
           <AlertDialogHeader>
             <AlertDialogTitle>放弃未保存的整理更改？</AlertDialogTitle>
-            <AlertDialogDescription>标签、合集和私人备注的本次修改尚未保存。放弃后无法恢复。</AlertDialogDescription>
+            <AlertDialogDescription>自定义标签、合集和私人备注的本次修改尚未保存。放弃后无法恢复。</AlertDialogDescription>
           </AlertDialogHeader>
           <AlertDialogFooter>
             <AlertDialogCancel>继续编辑</AlertDialogCancel>

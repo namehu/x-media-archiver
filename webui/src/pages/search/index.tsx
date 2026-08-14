@@ -116,7 +116,7 @@ export function SearchPage() {
           <div>
             <h1 className="text-2xl font-bold tracking-tight text-fg-primary">全局搜索</h1>
             <p className="mt-1 text-sm text-fg-secondary">
-              搜索 Tweet 正文、作者、标签、合集和私人备注，并用结构化条件继续收窄。
+              搜索 Tweet 正文、作者、平台 Hashtag、自定义标签、合集和私人备注，并用结构化条件继续收窄。
             </p>
           </div>
           <Button
@@ -174,7 +174,7 @@ export function SearchPage() {
         {!resultsQuery.isError && resultsQuery.data && !rows.length ? (
           <EmptyState
             icon={<Search />}
-            title={appliedFilters.q ? "没有找到匹配的 Tweet" : "当前条件下没有 Tweet"}
+            title={appliedFilters.q || appliedFilters.hashtag ? "没有找到匹配的 Tweet" : "当前条件下没有 Tweet"}
             description="可以减少筛选条件、检查关键词，或把归档状态切换为“全部状态”。"
             action={<Button onClick={resetFilters}>重置搜索</Button>}
           />
@@ -199,7 +199,7 @@ export function SearchPage() {
         {sourcesQuery.isError || optionsQuery.isError ? (
           <ErrorState
             title="筛选项加载失败"
-            detail="搜索仍可使用；重试后可恢复来源、标签与合集候选项。"
+            detail="搜索仍可使用；重试后可恢复来源、自定义标签与合集候选项。"
             onRetry={() => void Promise.all([sourcesQuery.refetch(), optionsQuery.refetch()])}
           />
         ) : (

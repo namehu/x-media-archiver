@@ -73,7 +73,7 @@ export function CollectionsPage() {
       });
     },
     onSuccess: async () => {
-      toast.success(`${deleteTarget?.kind === "tag" ? "标签" : "合集"}已删除，Tweet 与媒体均已保留`);
+      toast.success(`${deleteTarget?.kind === "tag" ? "自定义标签" : "合集"}已删除，Tweet 与媒体均已保留`);
       setDeleteTarget(null);
       await Promise.all([
         queryClient.invalidateQueries({ queryKey: ["organization-catalog"] }),
@@ -93,12 +93,12 @@ export function CollectionsPage() {
     <div className="flex flex-col gap-5">
       <header>
         <h1 className="text-2xl font-bold tracking-tight text-fg-primary">合集</h1>
-        <p className="mt-1 text-sm text-fg-secondary">用标签、合集和私人备注组织本地 Tweet，不改变原始归档文件。</p>
+        <p className="mt-1 text-sm text-fg-secondary">用自定义标签、合集和私人备注组织本地 Tweet，不改变原始归档文件。</p>
       </header>
       <Tabs defaultValue="collections">
         <TabsList>
           <TabsTrigger value="collections">合集</TabsTrigger>
-          <TabsTrigger value="tags">标签管理</TabsTrigger>
+          <TabsTrigger value="tags">自定义标签管理</TabsTrigger>
         </TabsList>
         <TabsContent value="collections" className="mt-4">
           <div className="grid items-start gap-4 lg:grid-cols-[320px_minmax(0,1fr)]">
@@ -149,7 +149,7 @@ export function CollectionsPage() {
           <AlertDialogHeader {...getDebugRedactProps(debugRedactionEnabled)}>
             <AlertDialogTitle>删除“{deleteTarget?.item.name}”？</AlertDialogTitle>
             <AlertDialogDescription>
-              将解除 {deleteTarget?.item.tweet_count ?? 0} 条 Tweet 的{deleteTarget?.kind === "tag" ? "标签" : "合集"}关系。
+              将解除 {deleteTarget?.item.tweet_count ?? 0} 条 Tweet 的{deleteTarget?.kind === "tag" ? "自定义标签" : "合集"}关系。
               Tweet、媒体文件、下载任务与私人备注都不会被删除。此目录项本身无法恢复。
             </AlertDialogDescription>
           </AlertDialogHeader>
@@ -191,7 +191,7 @@ function CatalogList({
   onDelete: (item: CatalogItem) => void;
 }) {
   const debugRedactionEnabled = useDebugRedactionEnabled();
-  const label = kind === "tag" ? "标签" : "合集";
+  const label = kind === "tag" ? "自定义标签" : "合集";
   return (
     <Card>
       <CardHeader>

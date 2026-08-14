@@ -2,6 +2,7 @@ import { type ReactNode, useMemo, useRef, useState } from "react";
 import { Copy, ExternalLink, FileText, FolderClosed, MoreHorizontal, Tags, Trash2 } from "lucide-react";
 import { toast } from "sonner";
 import type { PostFeedRow } from "@/lib/api";
+import { PlatformHashtags } from "@/components/platform-hashtags";
 import { Avatar, AvatarFallback } from "@/components/ui/avatar";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
@@ -209,7 +210,7 @@ export function PostCard({
                 {onRequestOrganize ? (
                   <DropdownMenuItem onSelect={onRequestOrganize}>
                     <Tags data-icon="inline-start" />
-                    整理标签、合集与备注
+                    整理自定义标签、合集与备注
                   </DropdownMenuItem>
                 ) : null}
                 {allowDelete ? (
@@ -294,7 +295,7 @@ export function PostCard({
                   }}
                 >
                   <Tags data-icon="inline-start" />
-                  整理标签、合集与备注
+                  整理自定义标签、合集与备注
                 </Button>
               ) : null}
               {allowDelete ? (
@@ -317,29 +318,36 @@ export function PostCard({
 }
 
 function OrganizationSummary({ post }: { post: PostFeedRow }) {
+  const hashtags = post.hashtags ?? [];
   const tags = post.tags ?? [];
   const collectionCount = post.collection_count ?? 0;
   const hasNote = post.has_note ?? false;
-  if (!tags.length && !collectionCount && !hasNote) return null;
+  if (!hashtags.length && !tags.length && !collectionCount && !hasNote) return null;
 
   return (
-    <div className="flex flex-wrap items-center gap-1.5" aria-label="整理摘要">
-      {tags.slice(0, 3).map((tag) => (
-        <Badge key={tag} tone="secondary" className="max-w-40 truncate">
-          {tag}
-        </Badge>
-      ))}
-      {collectionCount ? (
-        <span className="inline-flex items-center gap-1 text-xs text-fg-tertiary">
-          <FolderClosed />
-          {collectionCount} 个合集
-        </span>
-      ) : null}
-      {hasNote ? (
-        <span className="inline-flex items-center gap-1 text-xs text-fg-tertiary">
-          <FileText />
-          有私人备注
-        </span>
+    <div className="flex flex-col gap-2">
+      <PlatformHashtags hashtags={hashtags} />
+      {tags.length || collectionCount || hasNote ? (
+        <div role="group" className="flex flex-wrap items-center gap-1.5" aria-label="自定义整理摘要">
+          {tags.length ? <span className="text-xs font-semibold text-fg-secondary">自定义标签</span> : null}
+          {tags.slice(0, 3).map((tag) => (
+            <Badge key={tag} tone="secondary" className="max-w-40 truncate">
+              {tag}
+            </Badge>
+          ))}
+          {collectionCount ? (
+            <span className="inline-flex items-center gap-1 text-xs text-fg-tertiary">
+              <FolderClosed />
+              {collectionCount} 个合集
+            </span>
+          ) : null}
+          {hasNote ? (
+            <span className="inline-flex items-center gap-1 text-xs text-fg-tertiary">
+              <FileText />
+              有私人备注
+            </span>
+          ) : null}
+        </div>
       ) : null}
     </div>
   );

@@ -5,6 +5,7 @@ import { Swiper, SwiperSlide } from "swiper/react";
 import type { Swiper as SwiperInstance } from "swiper/types";
 import { useLocation } from "react-router-dom";
 import type { PostFeedRow } from "@/lib/api";
+import { PlatformHashtags } from "@/components/platform-hashtags";
 import { Avatar, AvatarFallback } from "@/components/ui/avatar";
 import { Dialog, DialogContent, DialogDescription, DialogHeader, DialogTitle } from "@/components/ui/dialog";
 import { closeDialogHistoryEntry, isDialogHistoryEntry } from "@/lib/dialog-history";
@@ -275,6 +276,11 @@ function PreviewChrome({
               {tweetText}
             </p>
           </button>
+          <PlatformHashtags
+            hashtags={post.hashtags ?? []}
+            appearance="inverse"
+            className="pointer-events-auto mt-3"
+          />
         </div>
       </aside>
     </>

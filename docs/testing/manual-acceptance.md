@@ -145,6 +145,13 @@ npm run check
 - [ ] 精确 `hashtag` 筛选能与关键词和其他筛选按 AND 组合；联想接口最多返回请求上限内的选项，并按 Tweet 去重计数。
 - [ ] Feed、Search 与 Tweet Detail API 的 `hashtags` 和自定义 `tags` 字段同时存在且含义不混淆；物理删除媒体不删除 Tweet 的平台 Hashtag。
 
+### 平台 Hashtag WebUI
+
+- [ ] Feed、Search、媒体预览和 Tweet Detail 明确显示“平台 Hashtag”；人工整理入口和卡片明确显示“自定义标签”，不能只靠颜色区分。
+- [ ] 点击任一平台 Hashtag 后进入精确搜索，URL 含 `hashtag` 与 `tweet_status=all`；刷新和复制该 URL 后筛选保持。
+- [ ] 搜索侧栏的平台 Hashtag 联想仅在展开后请求，每次 `limit=20`；加载、无结果、失败和重试都有明确反馈。
+- [ ] 在窄屏检查长 Hashtag 不撑破卡片或预览；开启媒体调试模式后平台 Hashtag 被遮罩且搜索链接不可用。
+
 ## 6. 来源扫描专项验收与核心结论
 
 > 以下内容提取自 2026-05-27 `earthcurated/media` 受控验证记录。在修改扫描相关逻辑时，必须满足以下硬性结论。

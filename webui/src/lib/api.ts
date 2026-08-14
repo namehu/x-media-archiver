@@ -129,6 +129,7 @@ export type PostFeedRow = {
   published_at?: string | null;
   tweet_text: string;
   tweet_status: string;
+  hashtags: string[];
   tags: string[];
   collection_count: number;
   has_note: boolean;
@@ -157,6 +158,17 @@ export type TweetSearchCollectionOption = {
   id: number;
   name: string;
   tweet_count: number;
+};
+
+export type TweetHashtagOption = {
+  name: string;
+  normalized_name: string;
+  tweet_count: number;
+};
+
+export type TweetHashtagOptionsResponse = {
+  rows: TweetHashtagOption[];
+  count: number;
 };
 
 export type TweetSearchOptionsResponse = {
@@ -312,6 +324,7 @@ export type TweetDetail = {
     imported_at?: string | null;
     updated_at?: string | null;
   };
+  hashtags: string[];
   media: MediaRow[];
   attempts: Array<{
     id: number;

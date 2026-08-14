@@ -108,11 +108,11 @@ export function InsightsPage() {
         <Card>
           <CardHeader>
             <CardTitle>整理覆盖率</CardTitle>
-            <CardDescription>标签、合集和私人备注任一存在即视为已整理；不会读取备注正文。</CardDescription>
+            <CardDescription>自定义标签、合集和私人备注任一存在即视为已整理；不会读取备注正文。</CardDescription>
           </CardHeader>
           <CardContent className="flex flex-col gap-4">
             <CoverageRow label="任一整理" value={data.organization.organized_count} total={data.organization.total_count} />
-            <CoverageRow label="带标签" value={data.organization.tagged_count} total={data.organization.total_count} />
+            <CoverageRow label="带自定义标签" value={data.organization.tagged_count} total={data.organization.total_count} />
             <CoverageRow label="加入合集" value={data.organization.collected_count} total={data.organization.total_count} />
             <CoverageRow label="带备注" value={data.organization.noted_count} total={data.organization.total_count} />
             <div className="flex items-center justify-between gap-3 rounded-md border border-border-subtle bg-bg-surface px-3 py-2">

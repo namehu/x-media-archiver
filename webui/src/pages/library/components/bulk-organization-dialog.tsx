@@ -94,7 +94,7 @@ export function BulkOrganizationDialog({
         {catalogQuery.error ? (
           <ErrorState title="整理目录加载失败" detail={String(catalogQuery.error)} onRetry={() => void catalogQuery.refetch()} />
         ) : catalogQuery.isLoading ? (
-          <p className="py-8 text-center text-sm text-fg-secondary">正在读取标签与合集…</p>
+          <p className="py-8 text-center text-sm text-fg-secondary">正在读取自定义标签与合集…</p>
         ) : (
           <Tabs defaultValue="add" {...getDebugRedactProps(debugRedactionEnabled)}>
             <TabsList className="w-full">
@@ -157,7 +157,7 @@ function BulkFields({
   return (
     <FieldGroup className="gap-5">
       <FieldSet>
-        <FieldLegend className="flex items-center gap-2"><Tags />标签</FieldLegend>
+        <FieldLegend className="flex items-center gap-2"><Tags />自定义标签</FieldLegend>
         <div data-slot="checkbox-group" className="grid max-h-48 gap-2 overflow-y-auto rounded-lg border border-border-subtle p-3 sm:grid-cols-2">
           {catalog.tags.length ? catalog.tags.map((tag) => (
             <Field key={tag.id} orientation="horizontal" data-disabled={disabledTagIds.has(tag.id)}>
@@ -172,7 +172,7 @@ function BulkFields({
                 <span className="truncate">{tag.name}</span>
               </FieldLabel>
             </Field>
-          )) : <p className="text-sm text-fg-tertiary">暂无标签</p>}
+          )) : <p className="text-sm text-fg-tertiary">暂无自定义标签</p>}
         </div>
       </FieldSet>
       <FieldSet>

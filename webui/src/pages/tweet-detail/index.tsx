@@ -13,6 +13,7 @@ import {
 } from "lucide-react";
 import { Link, useParams } from "react-router-dom";
 import { apiGet, type MediaRow, type TweetDetail } from "../../lib/api";
+import { PlatformHashtags } from "../../components/platform-hashtags";
 import { errorLabel, mediaTypeLabel, statusLabel } from "../../lib/formatters";
 import { formatDateTime } from "../../lib/utils";
 import { Badge } from "../../components/ui/badge";
@@ -85,6 +86,7 @@ export function TweetDetailPage() {
               >
                 {tweetText}
               </p>
+              <PlatformHashtags hashtags={data.hashtags ?? []} />
             </div>
             {tweetHref ? (
               <Button
@@ -156,7 +158,7 @@ function OrganizationCard({
         <div className="flex items-start justify-between gap-3">
           <div className="flex flex-col gap-1">
             <CardTitle>整理信息</CardTitle>
-            <CardDescription>标签、合集与仅保存在本地的备注</CardDescription>
+            <CardDescription>自定义标签、合集与仅保存在本地的备注</CardDescription>
           </div>
           <Button type="button" variant="outline" size="sm" onClick={onEdit}>
             <Tags data-icon="inline-start" />
@@ -167,7 +169,7 @@ function OrganizationCard({
       <CardContent className="flex flex-col gap-4">
         <section className="flex flex-col gap-2">
           <p className="flex items-center gap-2 text-xs font-semibold text-fg-secondary">
-            <Tags />标签
+            <Tags />自定义标签
           </p>
           {organization.tags.length ? (
             <div className="flex flex-wrap gap-1.5">
@@ -178,7 +180,7 @@ function OrganizationCard({
               ))}
             </div>
           ) : (
-            <p className="text-sm text-fg-tertiary">暂无标签</p>
+            <p className="text-sm text-fg-tertiary">暂无自定义标签</p>
           )}
         </section>
         <section className="flex flex-col gap-2">

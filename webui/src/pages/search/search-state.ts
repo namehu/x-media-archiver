@@ -5,6 +5,7 @@ export type SearchFilters = {
   date_to: string;
   media_type: string;
   tweet_status: string;
+  hashtag: string;
   tag_id: string;
   collection_id: string;
   sort: string;
@@ -17,6 +18,7 @@ export const DEFAULT_SEARCH_FILTERS: SearchFilters = {
   date_to: "",
   media_type: "",
   tweet_status: "verified",
+  hashtag: "",
   tag_id: "",
   collection_id: "",
   sort: "auto",
@@ -32,6 +34,7 @@ export function readSearchFilters(params: URLSearchParams): SearchFilters {
     date_to: params.get("date_to") ?? "",
     media_type: params.get("media_type") ?? "",
     tweet_status: params.get("tweet_status") ?? "verified",
+    hashtag: params.get("hashtag") ?? "",
     tag_id: params.get("tag_id") ?? "",
     collection_id: params.get("collection_id") ?? "",
     sort: params.get("sort") ?? "auto",
@@ -45,6 +48,7 @@ export function countSearchFilters(filters: SearchFilters) {
     filters.date_from || filters.date_to,
     filters.media_type,
     filters.tweet_status !== "verified" ? filters.tweet_status : "",
+    filters.hashtag,
     filters.tag_id,
     filters.collection_id,
     filters.sort !== "auto" ? filters.sort : "",
