@@ -45,6 +45,7 @@ from xarchiver.core.errors import ArchiverError, error_response_payload
 from xarchiver.core.lock_manager import lock_manager
 from xarchiver.db import close_pool, open_pool
 from xarchiver.services.auth import initialize_setup_token
+from xarchiver.services.hashtags import log_gallery_dl_compatibility
 from xarchiver.services.queue import (
     count_expired_archive_item_leases,
     has_runnable_download_work,
@@ -70,6 +71,7 @@ async def app_lifespan(_: FastAPI):
     stop_worker.clear()
     open_pool()
     settings = get_settings()
+    log_gallery_dl_compatibility()
     if settings.auth_mode == "disabled":
         logger.warning("Authentication is disabled; all Web/API routes are publicly accessible.")
     else:

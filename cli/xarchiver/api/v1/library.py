@@ -31,6 +31,7 @@ from xarchiver.api.schemas import (
     SummaryResponse,
     TagWriteRequest,
     TweetDetailResponse,
+    TweetHashtagOptionsResponse,
     TweetLabelsRequest,
     TweetNoteRequest,
     TweetOrganizationResponse,
@@ -54,6 +55,7 @@ from xarchiver.services.library import (
     get_library_insights,
     get_summary,
     get_tweet_detail,
+    get_tweet_hashtag_options,
     get_tweet_search_options,
     list_collection_tweets_page,
     list_duplicates_page,
@@ -173,6 +175,7 @@ def search_tweets(
     ),
     tag_id: int | None = Query(None, ge=1),
     collection_id: int | None = Query(None, ge=1),
+    hashtag: str | None = Query(None, max_length=512),
     sort: str = Query("auto", pattern="^(auto|relevance|newest|oldest)$"),
     client_utc_offset_minutes: int = Query(0, ge=-840, le=840),
     limit: int = Query(20, ge=1, le=50),
@@ -192,6 +195,7 @@ def search_tweets(
         tweet_status=tweet_status,
         tag_id=tag_id,
         collection_id=collection_id,
+        hashtag=hashtag,
         sort=sort,
         client_utc_offset_minutes=client_utc_offset_minutes,
         limit=limit,
@@ -204,6 +208,16 @@ def search_options() -> dict[str, object]:
     """返回全局搜索页面使用的标签和合集筛选项。"""
 
     return get_tweet_search_options()
+
+
+@router.get("/search/hashtags", response_model=TweetHashtagOptionsResponse)
+def search_hashtag_options(
+    q: str | None = Query(None, max_length=512),
+    limit: int = Query(20, ge=1, le=50),
+) -> dict[str, object]:
+    """返回平台 Hashtag 的有界联想候选。"""
+
+    return get_tweet_hashtag_options(query=q, limit=limit)
 
 
 @router.get("/organization", response_model=OrganizationCatalogResponse)

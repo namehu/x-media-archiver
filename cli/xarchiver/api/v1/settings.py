@@ -7,7 +7,11 @@ from __future__ import annotations
 
 from fastapi import APIRouter
 
-from xarchiver.api.schemas import CookieConfigResponse, UpdateCookiesRequest
+from xarchiver.api.schemas import (
+    CookieConfigResponse,
+    GalleryDlCompatibilityResponse,
+    UpdateCookiesRequest,
+)
 from xarchiver.config import get_settings
 from xarchiver.services.cookies import (
     check_cookie_config,
@@ -15,8 +19,16 @@ from xarchiver.services.cookies import (
     get_cookie_config,
     save_cookie_content,
 )
+from xarchiver.services.hashtags import gallery_dl_compatibility
 
 router = APIRouter(tags=["settings"])
+
+
+@router.get("/settings/gallery-dl", response_model=GalleryDlCompatibilityResponse)
+def gallery_dl_status() -> dict[str, object]:
+    """返回当前 gallery-dl 版本的非阻断契约验证状态。"""
+
+    return gallery_dl_compatibility()
 
 
 @router.get("/settings/cookies", response_model=CookieConfigResponse)

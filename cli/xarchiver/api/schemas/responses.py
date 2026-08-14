@@ -127,6 +127,13 @@ class DownloadPolicyResponse(FlexibleResponse):
     source_scan_http_retries: int
 
 
+class GalleryDlCompatibilityResponse(FlexibleResponse):
+    installed_version: str | None = None
+    tested_versions: list[str] = Field(default_factory=list)
+    validation_status: str
+    warning_code: str | None = None
+
+
 class CookieConfigResponse(FlexibleResponse):
     configured: bool
     source: str
@@ -512,6 +519,7 @@ class PostFeedRowResponse(FlexibleResponse):
     published_at: datetime | None = None
     tweet_text: str
     tweet_status: str
+    hashtags: list[str] = Field(default_factory=list)
     tags: list[str] = Field(default_factory=list)
     collection_count: int = 0
     has_note: bool = False
@@ -544,6 +552,17 @@ class TweetSearchCollectionOptionResponse(FlexibleResponse):
     id: int
     name: str
     tweet_count: int
+
+
+class TweetHashtagOptionResponse(FlexibleResponse):
+    name: str
+    normalized_name: str
+    tweet_count: int
+
+
+class TweetHashtagOptionsResponse(FlexibleResponse):
+    rows: list[TweetHashtagOptionResponse] = Field(default_factory=list)
+    count: int
 
 
 class TweetSearchOptionsResponse(FlexibleResponse):
@@ -628,6 +647,7 @@ class MediaAssetResponse(FlexibleResponse):
 
 class TweetDetailResponse(FlexibleResponse):
     tweet: TweetResponse
+    hashtags: list[str] = Field(default_factory=list)
     media: list[MediaAssetResponse]
     attempts: list[DownloadAttemptResponse]
     organization: TweetOrganizationResponse

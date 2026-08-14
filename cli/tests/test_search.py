@@ -206,6 +206,29 @@ class SearchUnitTests(unittest.TestCase):
         self.assertNotIn("search_query", params)
         self.assertEqual(params["search_substring_pattern"], "%50!%!_off%")
 
+    def test_tweet_search_uses_exact_normalized_platform_hashtag_filter(self) -> None:
+        sql, params = build_tweet_library_search_query(
+            hashtag="#ＡＩ",
+            tweet_status="all",
+            limit=10,
+        )
+        normalized_sql = " ".join(sql.lower().split())
+
+        self.assertIn("tweet_hashtags", normalized_sql)
+        self.assertIn("hashtags", normalized_sql)
+        self.assertEqual(params["search_hashtag"], "ai")
+        self.assertNotIn("search_tweet_status", params)
+
+    def test_blank_platform_hashtag_filter_matches_nothing(self) -> None:
+        sql, params = build_tweet_library_search_query(
+            hashtag="#",
+            tweet_status="all",
+            limit=10,
+        )
+
+        self.assertIn("false", sql.lower())
+        self.assertNotIn("search_hashtag", params)
+
 
 if __name__ == "__main__":
     unittest.main()

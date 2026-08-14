@@ -136,6 +136,15 @@ npm run check
 - [ ] 后端 schema 变更后执行 `npm run generate:api-types`，确认 `webui/src/api/generated.ts` 同步更新；OpenAPI JSON 是被忽略的本地临时产物。
 - [ ] 页面 API 请求仍集中通过 `webui/src/lib/api.ts` 或其兼容导出入口。
 
+### 平台 Hashtag 后端
+
+- [ ] revision 023 可从前一 revision upgrade、downgrade 后再次 upgrade；搜索投影 trigger 随迁移正确建立和移除。
+- [ ] gallery-dl 下载成功并登记元数据后，顶层结构化 Hashtag 被追加到 Tweet；采集异常不会把已成功下载改为失败。
+- [ ] `backfill-hashtags` 默认只 dry-run，只有 `--apply --confirm` 同时出现才写入；重复执行不会新增重复关系或删除旧关系。
+- [ ] 历史维护只读取数据库已登记、位于 `archive/media` 的 gallery-dl 元数据路径，不递归扫描目录、不读取 yt-dlp `.info.json`、不访问 X。
+- [ ] 精确 `hashtag` 筛选能与关键词和其他筛选按 AND 组合；联想接口最多返回请求上限内的选项，并按 Tweet 去重计数。
+- [ ] Feed、Search 与 Tweet Detail API 的 `hashtags` 和自定义 `tags` 字段同时存在且含义不混淆；物理删除媒体不删除 Tweet 的平台 Hashtag。
+
 ## 6. 来源扫描专项验收与核心结论
 
 > 以下内容提取自 2026-05-27 `earthcurated/media` 受控验证记录。在修改扫描相关逻辑时，必须满足以下硬性结论。

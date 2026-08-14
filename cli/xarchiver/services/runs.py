@@ -10,6 +10,7 @@ from xarchiver.exporter import export_duplicates_csv, export_failures_csv, expor
 from xarchiver.importer import import_jsonl, import_urls
 from xarchiver.media import backfill_media_assets
 from xarchiver.recovery import recover_interrupted_runs
+from xarchiver.services.hashtags import run_hashtag_backfill as execute_hashtag_backfill
 from xarchiver.services.queue import submit_jsonl_file, submit_requeue_batch, submit_urls_file
 from xarchiver.verifier import verify_media_assets
 
@@ -57,6 +58,23 @@ def run_backfill(
     """基于归档目录中已存在的文件执行回填。"""
 
     return backfill_media_assets(settings.archive_dir, normalize_files=normalize_files, tweet_ids=tweet_ids)
+
+
+def run_hashtag_backfill(
+    settings: Settings,
+    *,
+    apply: bool = False,
+    confirm_apply: bool = False,
+    batch_size: int = 500,
+) -> dict[str, object]:
+    """显式扫描已登记的 gallery-dl 元数据并维护平台 Hashtag。"""
+
+    return execute_hashtag_backfill(
+        settings,
+        apply=apply,
+        confirm_apply=confirm_apply,
+        batch_size=batch_size,
+    )
 
 
 def run_verify(limit: int | None = None, media_ids: list[int] | None = None) -> dict[str, int]:

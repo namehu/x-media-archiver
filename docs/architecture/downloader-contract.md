@@ -36,6 +36,20 @@ metadata file path: <media-file>.json
 download archive behavior: --download-archive writes a SQLite file at archive/state/gallery-dl-downloaded.txt
 ```
 
+### 平台 Hashtag 元数据契约
+
+已验证的 gallery-dl `1.32.1` Twitter extractor 会在普通 Tweet 与 Note Tweet 的媒体元数据顶层输出可选 `hashtags: list[str]`；值不带前导 `#`，无 Hashtag 时字段可以缺失。项目只在 gallery-dl 下载成功、scoped media backfill 已把元数据路径登记到 `media_assets.metadata_path` 后读取对应磁盘 JSON。
+
+处理规则：
+
+1. 只读取元数据顶层 `hashtags`，不从正文、X Article 正文、引用/转推嵌套对象或任意 `raw_import` 推断。
+2. 只接受字符串数组，每条 Tweet 最多处理 100 项、每项最多 512 字符；移除一个可选前导 `#`，拒绝空白、控制字符和包含空格的值。
+3. 使用 Unicode NFKC + casefold 生成唯一标识；关系保留该 Tweet 首次观察到的原始显示写法和位置。
+4. 写入只增不减。字段缺失、空数组、文件缺失或解析失败都不清理已有关系；Hashtag 采集失败只写告警，不改变下载成功结果。
+5. yt-dlp `.info.json`、来源扫描 `raw_import`、浏览器扩展与 CLI/API 输入不是本契约的数据源。
+
+仓库保留 `1.32.1` 的代表性契约 fixture，但继续允许镜像安装更新版本。应用启动和诊断 API 会报告实际安装版本；不在已验证列表时只产生非阻断告警。版本升级影响字段契约时，应更新 fixture、解析测试与已验证版本列表，不应阻断原有下载。
+
 建议输出模板：
 
 ```text

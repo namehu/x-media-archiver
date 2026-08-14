@@ -10,6 +10,7 @@ from sqlalchemy import (
     bindparam,
     case,
     exists,
+    false,
     func,
     literal_column,
     or_,
@@ -29,14 +30,17 @@ from xarchiver.row_models import (
     TweetSearchRow,
     TweetSearchTagOptionRow,
 )
+from xarchiver.services.hashtags import fetch_tweet_hashtags, normalize_hashtag_query
 from xarchiver.sql_builder import compile_query
 from xarchiver.tables import (
     archive_sources,
     collection_tweets,
     collections,
+    hashtags,
     media_assets,
     source_discovered_tweets,
     tags,
+    tweet_hashtags,
     tweet_notes,
     tweet_search_documents,
     tweet_tags,
@@ -467,6 +471,7 @@ def search_tweet_library(
     tweet_status: str | None = "verified",
     tag_id: int | None = None,
     collection_id: int | None = None,
+    hashtag: str | None = None,
     sort: str = "auto",
     limit: int = 20,
     offset: int = 0,
@@ -487,6 +492,7 @@ def search_tweet_library(
         tweet_status=tweet_status,
         tag_id=tag_id,
         collection_id=collection_id,
+        hashtag=hashtag,
         sort=sort,
         limit=limit,
         offset=offset,
@@ -500,6 +506,7 @@ def search_tweet_library(
         tweet_status=tweet_status,
         tag_id=tag_id,
         collection_id=collection_id,
+        hashtag=hashtag,
     )
     with connect() as conn:
         with conn.cursor() as cur:
@@ -527,6 +534,7 @@ def build_tweet_library_search_query(
     tweet_status: str | None = "verified",
     tag_id: int | None = None,
     collection_id: int | None = None,
+    hashtag: str | None = None,
     sort: str = "auto",
     limit: int = 20,
     offset: int = 0,
@@ -562,6 +570,7 @@ def build_tweet_library_search_query(
                 tweet_status,
                 tag_id,
                 collection_id,
+                hashtag,
             )
         )
         .limit(bindparam("limit", limit))
@@ -599,6 +608,7 @@ def build_tweet_library_search_count_query(
     tweet_status: str | None = "verified",
     tag_id: int | None = None,
     collection_id: int | None = None,
+    hashtag: str | None = None,
 ) -> tuple[str, dict[str, object]]:
     """构造 Tweet 级全局搜索总数查询。"""
 
@@ -621,6 +631,7 @@ def build_tweet_library_search_count_query(
                 tweet_status,
                 tag_id,
                 collection_id,
+                hashtag,
             )
         )
     )
@@ -658,6 +669,7 @@ def build_tweet_library_search_conditions(
     tweet_status: str | None,
     tag_id: int | None,
     collection_id: int | None,
+    hashtag: str | None = None,
 ) -> list[ColumnElement[bool]]:
     """构造全局搜索的文本与结构化条件。"""
 
@@ -729,6 +741,26 @@ def build_tweet_library_search_conditions(
                 )
             )
         )
+    normalized_hashtag = normalize_hashtag_query(hashtag)
+    if hashtag is not None and not normalized_hashtag:
+        conditions.append(false())
+    elif normalized_hashtag:
+        conditions.append(
+            exists(
+                select(tweet_hashtags.c.tweet_id)
+                .select_from(
+                    tweet_hashtags.join(
+                        hashtags,
+                        hashtags.c.id == tweet_hashtags.c.hashtag_id,
+                    )
+                )
+                .where(
+                    tweet_hashtags.c.tweet_id == tweets.c.tweet_id,
+                    hashtags.c.normalized_name
+                    == bindparam("search_hashtag", normalized_hashtag),
+                )
+            )
+        )
     return conditions
 
 
@@ -752,7 +784,7 @@ def fetch_tweet_search_organization(
     """批量读取搜索结果所需的标签、合集和备注摘要。"""
 
     result = {
-        tweet_id: {"tags": [], "collections": [], "note_excerpt": None}
+        tweet_id: {"hashtags": [], "tags": [], "collections": [], "note_excerpt": None}
         for tweet_id in tweet_ids
     }
 
@@ -791,6 +823,8 @@ def fetch_tweet_search_organization(
     cursor.execute(sql, params)
     for row in (TweetSearchNoteRow.model_validate(dict(value)) for value in cursor.fetchall()):
         result[row.tweet_id]["note_excerpt"] = row.note_excerpt
+    for tweet_id, values in fetch_tweet_hashtags(cursor, tweet_ids).items():
+        result[tweet_id]["hashtags"] = values
     return result
 
 

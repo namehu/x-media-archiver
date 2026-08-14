@@ -43,6 +43,7 @@ from xarchiver.search import (
     search_post_feed,
     search_tweet_library,
 )
+from xarchiver.services.hashtags import fetch_tweet_hashtags, list_hashtag_options
 from xarchiver.services.operation_logs import redact_sensitive_text
 from xarchiver.services.organization import get_tweet_organization, list_organization_catalog
 from xarchiver.sql_builder import compile_query
@@ -417,8 +418,9 @@ def list_posts_page(
 def feed_organization_summary(labels: dict[str, object] | None) -> dict[str, object]:
     """把完整整理信息压缩成帖子卡片所需的三项摘要。"""
 
-    values = labels or {"tags": [], "collections": [], "note_excerpt": None}
+    values = labels or {"hashtags": [], "tags": [], "collections": [], "note_excerpt": None}
     return {
+        "hashtags": list(values.get("hashtags") or []),
         "tags": list(values.get("tags") or [])[:3],
         "collection_count": len(list(values.get("collections") or [])),
         "has_note": bool(values.get("note_excerpt")),
@@ -435,6 +437,7 @@ def search_tweets_page(
     tweet_status: str | None = "verified",
     tag_id: int | None = None,
     collection_id: int | None = None,
+    hashtag: str | None = None,
     sort: str = "auto",
     client_utc_offset_minutes: int = 0,
     limit: int = 20,
@@ -463,6 +466,7 @@ def search_tweets_page(
         tweet_status=tweet_status,
         tag_id=tag_id,
         collection_id=collection_id,
+        hashtag=hashtag,
         sort=sort,
         limit=limit,
         offset=offset,
@@ -476,7 +480,7 @@ def search_tweets_page(
     for row in rows:
         labels = organization.get(
             row.tweet_id,
-            {"tags": [], "collections": [], "note_excerpt": None},
+            {"hashtags": [], "tags": [], "collections": [], "note_excerpt": None},
         )
         result_rows.append(
             {
@@ -502,6 +506,13 @@ def get_tweet_search_options() -> dict[str, object]:
         "tags": [dict(row) for row in tag_rows],
         "collections": [dict(row) for row in collection_rows],
     }
+
+
+def get_tweet_hashtag_options(query: str | None = None, limit: int = 20) -> dict[str, object]:
+    """返回有界的平台 Hashtag 联想结果。"""
+
+    rows = [dict(row) for row in list_hashtag_options(query=query, limit=limit)]
+    return {"rows": rows, "count": len(rows)}
 
 
 def list_organization_catalog_page(settings: Settings) -> dict[str, object]:
@@ -547,7 +558,7 @@ def list_collection_tweets_page(
     for row in rows:
         labels = organization.get(
             row.tweet_id,
-            {"tags": [], "collections": [], "note_excerpt": None},
+            {"hashtags": [], "tags": [], "collections": [], "note_excerpt": None},
         )
         result_rows.append(
             {
@@ -647,10 +658,13 @@ def get_tweet_detail(settings: Settings, tweet_id: str) -> dict[str, object] | N
                 value["stderr_excerpt"] = redact_sensitive_text(value.get("stderr_excerpt")) or None
                 attempts.append(dict(DownloadAttemptRow.model_validate(value)))
 
+            hashtags = fetch_tweet_hashtags(cur, [tweet_id])[tweet_id]
+
     organization = get_tweet_organization(tweet_id)
     assert organization is not None
     return {
         "tweet": dict(tweet),
+        "hashtags": hashtags,
         "media": media,
         "attempts": attempts,
         "organization": organization,

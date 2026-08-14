@@ -200,6 +200,8 @@ erDiagram
 erDiagram
     TWEETS ||--o{ TWEET_TAGS : labeled_with
     TAGS ||--o{ TWEET_TAGS : labels
+    TWEETS ||--o{ TWEET_HASHTAGS : observed_with
+    HASHTAGS ||--o{ TWEET_HASHTAGS : identifies
     TWEETS ||--o{ COLLECTION_TWEETS : grouped_in
     COLLECTIONS ||--o{ COLLECTION_TWEETS : contains
     MEDIA_ASSETS o|..o{ COLLECTIONS : covers
@@ -229,6 +231,18 @@ erDiagram
     TWEET_TAGS {
         text tweet_id PK, FK
         bigint tag_id PK, FK
+    }
+    HASHTAGS {
+        bigint id PK
+        text name
+        text normalized_name UK
+    }
+    TWEET_HASHTAGS {
+        text tweet_id PK, FK
+        bigint hashtag_id PK, FK
+        text display_name
+        integer position
+        text metadata_path
     }
     COLLECTIONS {
         bigint id PK
@@ -266,15 +280,18 @@ erDiagram
     }
 ```
 
-标签和合集通过连接表形成多对多关系；删除标签或合集只级联删除连接关系。`collections.cover_media_id` 使用 `ON DELETE SET NULL`，所以媒体物理删除不会删除合集。
+`tags` / `tweet_tags` 是用户可编辑的自定义标签；`hashtags` / `tweet_hashtags` 是从 gallery-dl 已登记落盘元数据观察到的只读平台事实，两者不复用关系或写接口。平台 Hashtag 以 Unicode NFKC + casefold 后的值判重，同时在 Tweet 关系上保留首次观察到的显示写法和顺序。它采用只增不减语义：缺失或空元数据不会删除既有关系。
 
-`tweet_search_documents` 是每 Tweet 一行的派生投影，聚合 Tweet 正文、作者、标签名、合集名和私人备注。数据库 trigger 在相关事实变化后同步刷新 `search_text`，并由生成列构建 `tsvector`；GIN 全文索引和 trigram 索引共同提供中英文混合检索。它可以从业务事实重建，不是独立的用户数据所有者。
+自定义标签和合集通过连接表形成多对多关系；删除标签或合集只级联删除连接关系。`collections.cover_media_id` 使用 `ON DELETE SET NULL`，所以媒体物理删除不会删除合集。平台 Hashtag 与 Tweet 绑定；删除媒体或软删除来源时继续保留，只有 Tweet 被删除时才随 FK cascade 删除。
+
+`tweet_search_documents` 是每 Tweet 一行的派生投影，聚合 Tweet 正文、作者、自定义标签名、平台 Hashtag、合集名和私人备注。数据库 trigger 在相关事实变化后同步刷新 `search_text`，并由生成列构建 `tsvector`；GIN 全文索引和 trigram 索引共同提供中英文混合检索。它可以从业务事实重建，不是独立的用户数据所有者。
 
 ## 6. 认证、配置与追加式审计
 
 ```mermaid
 erDiagram
     AUTH_ADMIN ||--o{ AUTH_SESSIONS : owns
+    HASHTAG_BACKFILL_RUNS o|--o| OPERATION_LOG_STREAMS : writes
 
     AUTH_ADMIN {
         smallint id PK
@@ -310,6 +327,14 @@ erDiagram
         json tweet_ids
         json details
     }
+    HASHTAG_BACKFILL_RUNS {
+        bigint id PK
+        text mode
+        text status
+        bigint last_media_id
+        json result
+        bigint log_stream_id FK
+    }
     OPERATION_LOG_STREAMS {
         bigint id PK
         text scope_type
@@ -322,6 +347,7 @@ erDiagram
 
 - `auth_admin` 是 singleton 管理员；会话只存 token 哈希，修改密码会撤销全部会话。
 - `cookie_config` 是 singleton 配置。其 `content` 是敏感凭据，只能由 Cookie service 使用，不能进入普通查询、日志或导出。
+- `hashtag_backfill_runs` 记录显式历史维护的 dry-run/apply 模式、批次 checkpoint 和摘要；正文日志通过可空 `log_stream_id` 指向 `operation_log_streams`。它不代表 migration 或应用启动会自动扫描历史文件。
 - `media_delete_operations.operation_id` 是客户端提供的幂等键，允许安全重放而不重复删除。
 - `organization_action_events` 与 `media_delete_operations` 使用 JSON 保存动作快照，不设置到业务表的外键，避免后续删除反向抹掉审计证据。
 
@@ -332,7 +358,7 @@ erDiagram
 | 软删除来源 | 设置 `deleted_at`，停止并禁用活动扫描会话，取消置顶并清除下次扫描时间 | Tweet、媒体、发现与下载历史、整理信息 | 来源改为 `paused` 并从普通查询隐藏 |
 | 删除标签 | 标签及 `tweet_tags` 关系 | Tweet、媒体、其他整理信息 | 搜索投影由 trigger 刷新 |
 | 删除合集 | 合集及 `collection_tweets` 关系 | Tweet、媒体、标签、备注 | 搜索投影由 trigger 刷新 |
-| 物理删除媒体 | 精确媒体文件、派生预览及对应 `media_assets` 行 | Tweet、来源、run、attempt、标签、合集关系和备注 | 受影响 Tweet 标记为 `missing`，合集封面置空 |
+| 物理删除媒体 | 精确媒体文件、派生预览及对应 `media_assets` 行 | Tweet、来源、run、attempt、自定义标签、平台 Hashtag、合集关系和备注 | 受影响 Tweet 标记为 `missing`，合集封面置空 |
 | 删除 Tweet | 当前没有常规用户入口；若维护者直接删除数据库行，FK 会级联删除全部 Tweet 子记录，包括 `media_assets` 行、archive queue items、来源发现关系、download attempts、整理关系、失败处置和搜索投影；run/job 外壳可能继续存在 | `archive/media` 中的文件字节不会被数据库 cascade 删除，必须另行安全处置，否则会形成孤儿文件 | 属于架构外且高风险的维护动作 |
 
 ## 8. 文件系统布局
@@ -342,6 +368,7 @@ archive/
   media/<author_id>/<tweet_id>/    媒体、下载器元数据、缩略图与视频预览
   logs/source-scan-logs/           来源扫描 JSONL 操作日志
   logs/download-logs/              下载 JSONL 操作日志
+  logs/hashtag-backfill/           平台 Hashtag 历史维护 JSONL 操作日志
   raw/imports/                     原始导入留档
   raw/downloader_inputs/           下载器 scoped 输入
   state/                           下载器运行时 Cookie 副本与其他本地状态

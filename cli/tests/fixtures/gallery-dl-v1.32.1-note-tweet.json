@@ -1,0 +1,12 @@
+{
+  "tweet_id": 1930000000000000002,
+  "content": "A Note Tweet carrying Unicode platform entities",
+  "hashtags": ["ＡＩ", "量子物理"],
+  "type": "video",
+  "num": 1,
+  "author": {
+    "id": 1001,
+    "name": "fixture_author",
+    "nick": "Fixture Author"
+  }
+}

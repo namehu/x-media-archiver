@@ -19,6 +19,7 @@ from xarchiver.api.schemas import (
     DuplicatesPageResponse,
     FailureIgnoreRequest,
     FailureSelectionRequest,
+    GalleryDlCompatibilityResponse,
     LibraryInsightsResponse,
     MediaDeleteRequest,
     OrganizationDeleteRequest,
@@ -34,6 +35,7 @@ from xarchiver.api.schemas import (
     SourcesPageResponse,
     SourceStatusRequest,
     TagWriteRequest,
+    TweetHashtagOptionsResponse,
     TweetLabelsRequest,
     TweetNoteRequest,
     TweetOrganizationWriteRequest,
@@ -88,6 +90,7 @@ class V1RouterSmokeTests(unittest.TestCase):
             "/api/v1/library/posts",
             "/api/v1/library/search",
             "/api/v1/library/search/options",
+            "/api/v1/library/search/hashtags",
             "/api/v1/library/organization",
             "/api/v1/library/organization/collections/{collection_id}/tweets",
             "/api/v1/library/tweets/{tweet_id}",
@@ -108,6 +111,7 @@ class V1RouterSmokeTests(unittest.TestCase):
             "/api/v1/events",
             "/api/v1/settings/download-policy",
             "/api/v1/settings/cookies",
+            "/api/v1/settings/gallery-dl",
             "/api/v1/health/detail",
             "/api/v1/media-file/{relative_path:path}",
             "/api/v1/auth/session",
@@ -537,6 +541,7 @@ class V1RouterSmokeTests(unittest.TestCase):
                     "tweet_text": "quantum chaos",
                     "tweet_status": "verified",
                     "relevance": 1.5,
+                    "hashtags": ["Quantum"],
                     "tags": ["物理"],
                     "collections": ["研究"],
                     "note_excerpt": "稍后复习",
@@ -564,6 +569,7 @@ class V1RouterSmokeTests(unittest.TestCase):
                 tweet_status="verified",
                 tag_id=6,
                 collection_id=8,
+                hashtag="Quantum",
                 sort="relevance",
                 client_utc_offset_minutes=-480,
                 limit=20,
@@ -582,6 +588,7 @@ class V1RouterSmokeTests(unittest.TestCase):
             tweet_status="verified",
             tag_id=6,
             collection_id=8,
+            hashtag="Quantum",
             sort="relevance",
             client_utc_offset_minutes=-480,
             limit=20,
@@ -599,6 +606,7 @@ class V1RouterSmokeTests(unittest.TestCase):
                 tweet_status="verified",
                 tag_id=None,
                 collection_id=None,
+                hashtag=None,
                 sort="auto",
                 client_utc_offset_minutes=0,
                 limit=20,
@@ -621,6 +629,34 @@ class V1RouterSmokeTests(unittest.TestCase):
 
         payload = TweetSearchOptionsResponse.model_validate(result).model_dump(mode="json")
         self.assertEqual(payload["collections"][0]["tweet_count"], 3)
+
+    def test_v1_library_hashtag_options_are_bounded_and_validate_response(self):
+        response = {
+            "rows": [{"name": "Quantum", "normalized_name": "quantum", "tweet_count": 3}],
+            "count": 1,
+        }
+        with patch(
+            "xarchiver.api.v1.library.get_tweet_hashtag_options",
+            return_value=response,
+        ) as options:
+            result = self.get_paths["/api/v1/library/search/hashtags"](q="qua", limit=10)
+
+        payload = TweetHashtagOptionsResponse.model_validate(result).model_dump(mode="json")
+        self.assertEqual(payload["rows"][0]["normalized_name"], "quantum")
+        options.assert_called_once_with(query="qua", limit=10)
+
+    def test_v1_gallery_dl_status_is_read_only_and_validates_response(self):
+        response = {
+            "installed_version": "1.32.1",
+            "tested_versions": ["1.32.1"],
+            "validation_status": "tested",
+            "warning_code": None,
+        }
+        with patch("xarchiver.api.v1.settings.gallery_dl_compatibility", return_value=response):
+            result = self.get_paths["/api/v1/settings/gallery-dl"]()
+
+        payload = GalleryDlCompatibilityResponse.model_validate(result).model_dump(mode="json")
+        self.assertEqual(payload["validation_status"], "tested")
 
     def test_v1_duplicates_response_uses_complete_groups_with_media_ids(self):
         page = {
@@ -932,11 +968,13 @@ class V1RouterSmokeTests(unittest.TestCase):
         self.assertIn("/api/v1/library/posts", paths)
         self.assertIn("/api/v1/library/search", paths)
         self.assertIn("/api/v1/library/search/options", paths)
+        self.assertIn("/api/v1/library/search/hashtags", paths)
         self.assertIn("/api/v1/library/insights", paths)
         self.assertIn("/api/v1/actions/verify", paths)
         self.assertIn("/api/v1/health/detail", paths)
         self.assertIn("/api/v1/runtime/snapshot", paths)
         self.assertIn("/api/v1/settings/cookies", paths)
+        self.assertIn("/api/v1/settings/gallery-dl", paths)
         self.assertIn("/api/v1/auth/session", paths)
 
     def test_v1_cookies_endpoints_do_not_return_content(self):

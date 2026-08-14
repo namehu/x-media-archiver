@@ -116,6 +116,23 @@ class TweetSearchCollectionOptionRow(RowModel):
     tweet_count: int
 
 
+class TweetHashtagRow(RowModel):
+    tweet_id: str
+    display_name: str
+
+
+class TweetHashtagOptionRow(RowModel):
+    name: str
+    normalized_name: str
+    tweet_count: int
+
+
+class GalleryMetadataPathRow(RowModel):
+    id: int
+    tweet_id: str
+    metadata_path: str
+
+
 class TweetDetailRow(RowModel):
     tweet_id: str
     tweet_url: str

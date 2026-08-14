@@ -24,6 +24,7 @@ from xarchiver.services.runs import (
     run_export_duplicates,
     run_export_failures,
     run_export_media,
+    run_hashtag_backfill,
     run_recover_interrupted,
     run_requeue,
     run_verify,
@@ -422,6 +423,27 @@ def backfill_media_command(
     settings = get_settings()
     result = run_backfill(settings, normalize_files=not no_normalize)
     console.print(result)
+
+
+@app.command("backfill-hashtags")
+def backfill_hashtags_command(
+    apply: bool = typer.Option(False, "--apply", help="Write additive platform Hashtag relationships."),
+    confirm: bool = typer.Option(False, "--confirm", help="Confirm the apply-mode database writes."),
+    batch_size: int = typer.Option(500, min=1, max=500, help="Registered media rows per batch."),
+) -> None:
+    """扫描已登记的 gallery-dl 元数据；默认仅执行 dry-run。"""
+
+    if confirm and not apply:
+        raise typer.BadParameter("--confirm is only valid together with --apply.")
+    if apply and not confirm:
+        raise typer.BadParameter("Re-run with --apply --confirm to write platform Hashtags.")
+    result = run_hashtag_backfill(
+        get_settings(),
+        apply=apply,
+        confirm_apply=confirm,
+        batch_size=batch_size,
+    )
+    console.print_json(data=result)
 
 
 @app.command("verify")

@@ -108,10 +108,48 @@ media_assets = Table(
     Column("width", Integer),
     Column("height", Integer),
     Column("duration_ms", Integer),
+    Column("raw_metadata", JSONB),
     Column("updated_at", DateTime(timezone=True)),
 )
 
 # Tweet 整理与检索
+hashtags = Table(
+    "hashtags",
+    metadata,
+    Column("id", BigInteger, primary_key=True),
+    Column("name", Text, nullable=False),
+    Column("normalized_name", Text, nullable=False),
+    Column("created_at", DateTime(timezone=True), nullable=False),
+)
+
+tweet_hashtags = Table(
+    "tweet_hashtags",
+    metadata,
+    Column("tweet_id", Text, ForeignKey("tweets.tweet_id", ondelete="CASCADE"), primary_key=True),
+    Column("hashtag_id", BigInteger, ForeignKey("hashtags.id", ondelete="CASCADE"), primary_key=True),
+    Column("display_name", Text, nullable=False),
+    Column("position", Integer, nullable=False),
+    Column("source_engine", Text, nullable=False),
+    Column("metadata_path", Text, nullable=False),
+    Column("gallery_dl_version", Text),
+    Column("observed_at", DateTime(timezone=True), nullable=False),
+)
+
+hashtag_backfill_runs = Table(
+    "hashtag_backfill_runs",
+    metadata,
+    Column("id", BigInteger, primary_key=True),
+    Column("mode", Text, nullable=False),
+    Column("status", Text, nullable=False),
+    Column("gallery_dl_version", Text),
+    Column("log_stream_id", BigInteger, ForeignKey("operation_log_streams.id", ondelete="SET NULL")),
+    Column("last_media_id", BigInteger, nullable=False),
+    Column("result", JSONB),
+    Column("error_message", Text),
+    Column("started_at", DateTime(timezone=True), nullable=False),
+    Column("finished_at", DateTime(timezone=True)),
+)
+
 tags = Table(
     "tags",
     metadata,

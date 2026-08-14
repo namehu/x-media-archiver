@@ -307,6 +307,8 @@ db downgrade --revision base     -> roll back all revisions
 
 Tweet 全局搜索从 revision `021_add_tweet_search` 起依赖 PostgreSQL `pg_trgm` 扩展。迁移会执行 `create extension if not exists pg_trgm`；使用外部 Postgres / Supabase 时，应先确认连接用户有安装或使用该扩展的权限。Supabase 可在项目的 Database Extensions 中预先启用 `pg_trgm`。降级不会删除该扩展，因为它可能被同库中的其他 schema 或应用共用。
 
+revision `023_add_platform_hashtags` 只创建平台 Hashtag、Tweet 关系、历史维护审计和搜索刷新 trigger；迁移本身不会扫描历史 JSON、重建既有搜索投影或访问 X。后续新增关系由 trigger 精确刷新对应 Tweet。服务启动会记录实际 gallery-dl 版本；当前契约 fixture 验证 `1.32.1`，其他版本只产生告警而不阻断服务或下载。
+
 本项目不再使用仓库根目录的顺序 `sql/*.sql` migration。一次性本地验证可用
 `db reset --yes` 删除 public schema 并重新应用 Alembic baseline 与后续 revision；该命令只适合可丢弃数据库。
 
@@ -325,6 +327,20 @@ docker compose --env-file .env.production -f docker-compose.prod.yml run --rm ap
 select version_num from alembic_version;
 select download_status, count(*) from tweets group by download_status order by download_status;
 ```
+
+升级至 revision 023 后，如需从历史元数据补充平台 Hashtag，先运行默认 dry-run：
+
+```bash
+docker compose --env-file .env.production -f docker-compose.prod.yml run --rm app backfill-hashtags
+```
+
+核对 `would_insert_relationship_count`、缺失/非法文件数和版本告警后，再显式应用：
+
+```bash
+docker compose --env-file .env.production -f docker-compose.prod.yml run --rm app backfill-hashtags --apply --confirm
+```
+
+命令只分批读取数据库中 gallery-dl `media_assets.metadata_path` 已登记且位于 `archive/media` 的 JSON 文件，不递归扫目录、不访问 X、不改媒体文件；写入只增不减并可重复执行。运行摘要保存在 `hashtag_backfill_runs`，详细日志位于 `archive/logs/hashtag-backfill/`。
 
 ---
 
@@ -441,7 +457,7 @@ OPERATION_LOG_MAX_BYTES=10485760 # 单个任务日志流 JSONL 文件大小上�
 ```
 
 `SOURCE_SCAN_*` 只影响来源发现，不影响下载队列。调高 sleep 区间可降低触发 X/Twitter 限流的风险，代价是吞吐下降。
-来源扫描的详细日志写入 `ARCHIVE_DIR/logs/source-scan-logs/`；下载任务会把脱敏后的下载器 stdout/stderr 写入 `ARCHIVE_DIR/logs/download-logs/`。数据库只保存日志流索引和摘要，单条日志流使用 `OPERATION_LOG_MAX_BYTES` 限制大小。进程异常退出若留下部分 JSON 或部分 UTF-8 尾行，下一次追加会自动恢复到最后一条完整记录并写入告警；文件中间损坏不会自动截断，需要人工检查存储介质或备份。
+来源扫描的详细日志写入 `ARCHIVE_DIR/logs/source-scan-logs/`；下载任务会把脱敏后的下载器 stdout/stderr 写入 `ARCHIVE_DIR/logs/download-logs/`；平台 Hashtag 历史维护摘要写入 `ARCHIVE_DIR/logs/hashtag-backfill/`。数据库只保存日志流索引和摘要，单条日志流使用 `OPERATION_LOG_MAX_BYTES` 限制大小。进程异常退出若留下部分 JSON 或部分 UTF-8 尾行，下一次追加会自动恢复到最后一条完整记录并写入告警；文件中间损坏不会自动截断，需要人工检查存储介质或备份。
 
 ---
 

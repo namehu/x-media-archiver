@@ -1,0 +1,12 @@
+{
+  "tweet_id": 1930000000000000001,
+  "content": "A normal Tweet with #AI and #Science",
+  "hashtags": ["AI", "Science", "ai"],
+  "type": "photo",
+  "num": 1,
+  "author": {
+    "id": 1001,
+    "name": "fixture_author",
+    "nick": "Fixture Author"
+  }
+}

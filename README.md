@@ -286,7 +286,7 @@ Archive Queue
 Sources
 ```
 
-Search 以 Tweet 为结果单位，使用 PostgreSQL 全文检索与 trigram 搜索正文、作者、标签、合集和私人备注；支持来源、日期、媒体类型、归档状态、标签、合集与排序筛选。关键词和全部筛选条件会同步到 URL，默认只展示已校验归档内容。搜索需要先应用最新数据库迁移；10 万条纯合成数据的基准与页面验收记录见 [`docs/testing/tweet-search-acceptance.md`](docs/testing/tweet-search-acceptance.md)。
+Search 以 Tweet 为结果单位，使用 PostgreSQL 全文检索与 trigram 搜索正文、作者、自定义标签、平台 Hashtag、合集和私人备注；支持来源、日期、媒体类型、归档状态、自定义标签、合集与排序筛选。后端另提供平台 Hashtag 精确筛选和有界联想；对应 WebUI 展示与 URL 筛选安排在 M5.2。平台 Hashtag 是 gallery-dl 落盘元数据中的只读事实，不与用户可编辑的自定义标签混用。其余关键词和筛选条件会同步到 URL，默认只展示已校验归档内容。搜索需要先应用最新数据库迁移；10 万条纯合成数据的基准与页面验收记录见 [`docs/testing/tweet-search-acceptance.md`](docs/testing/tweet-search-acceptance.md)。
 
 Collections 提供标签、手工合集与私人备注整理。单条 Tweet 的标签、合集和备注只会在点击“保存整理”后通过一个数据库事务同时保存；关闭存在未保存更改的弹窗时会先要求确认放弃，保存失败则保留当前输入以便重试。
 
@@ -314,6 +314,18 @@ docker-compose run --rm xarchiver download --engine gallery-dl --dry-run
 
 ```bash
 docker-compose run --rm xarchiver backfill-media --full
+```
+
+预览数据库已登记的 gallery-dl 元数据可补充多少平台 Hashtag（不递归扫描磁盘、不访问 X）：
+
+```bash
+docker-compose run --rm xarchiver backfill-hashtags
+```
+
+确认 dry-run 统计后显式写入；该操作只增不减，不会清理既有平台 Hashtag：
+
+```bash
+docker-compose run --rm xarchiver backfill-hashtags --apply --confirm
 ```
 
 校验整个媒体库的文件存在性与哈希（显式全盘维护）：

@@ -1,0 +1,11 @@
+{
+  "tweet_id": 1930000000000000003,
+  "content": "A Tweet whose transformed metadata omits the hashtags field",
+  "type": "photo",
+  "num": 1,
+  "author": {
+    "id": 1001,
+    "name": "fixture_author",
+    "nick": "Fixture Author"
+  }
+}

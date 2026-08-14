@@ -265,6 +265,26 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/api/v1/library/search/hashtags": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * Search Hashtag Options
+         * @description 返回平台 Hashtag 的有界联想候选。
+         */
+        get: operations["search_hashtag_options_api_v1_library_search_hashtags_get"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/api/v1/library/organization": {
         parameters: {
             query?: never;
@@ -1540,6 +1560,26 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/api/v1/settings/gallery-dl": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * Gallery Dl Status
+         * @description 返回当前 gallery-dl 版本的非阻断契约验证状态。
+         */
+        get: operations["gallery_dl_status_api_v1_settings_gallery_dl_get"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/api/v1/settings/cookies": {
         parameters: {
             query?: never;
@@ -2618,6 +2658,19 @@ export interface components {
             /** Tweet Ids */
             tweet_ids: string[];
         };
+        /** GalleryDlCompatibilityResponse */
+        GalleryDlCompatibilityResponse: {
+            /** Installed Version */
+            installed_version?: string | null;
+            /** Tested Versions */
+            tested_versions?: string[];
+            /** Validation Status */
+            validation_status: string;
+            /** Warning Code */
+            warning_code?: string | null;
+        } & {
+            [key: string]: unknown;
+        };
         /** HTTPValidationError */
         HTTPValidationError: {
             /** Detail */
@@ -3208,6 +3261,8 @@ export interface components {
             tweet_text: string;
             /** Tweet Status */
             tweet_status: string;
+            /** Hashtags */
+            hashtags?: string[];
             /** Tags */
             tags?: string[];
             /**
@@ -4327,11 +4382,33 @@ export interface components {
         /** TweetDetailResponse */
         TweetDetailResponse: {
             tweet: components["schemas"]["TweetResponse"];
+            /** Hashtags */
+            hashtags?: string[];
             /** Media */
             media: components["schemas"]["MediaAssetResponse"][];
             /** Attempts */
             attempts: components["schemas"]["DownloadAttemptResponse"][];
             organization: components["schemas"]["TweetOrganizationResponse"];
+        } & {
+            [key: string]: unknown;
+        };
+        /** TweetHashtagOptionResponse */
+        TweetHashtagOptionResponse: {
+            /** Name */
+            name: string;
+            /** Normalized Name */
+            normalized_name: string;
+            /** Tweet Count */
+            tweet_count: number;
+        } & {
+            [key: string]: unknown;
+        };
+        /** TweetHashtagOptionsResponse */
+        TweetHashtagOptionsResponse: {
+            /** Rows */
+            rows?: components["schemas"]["TweetHashtagOptionResponse"][];
+            /** Count */
+            count: number;
         } & {
             [key: string]: unknown;
         };
@@ -4472,6 +4549,8 @@ export interface components {
             tweet_text: string;
             /** Tweet Status */
             tweet_status: string;
+            /** Hashtags */
+            hashtags?: string[];
             /** Tags */
             tags?: string[];
             /**
@@ -4922,6 +5001,7 @@ export interface operations {
                 tweet_status?: string | null;
                 tag_id?: number | null;
                 collection_id?: number | null;
+                hashtag?: string | null;
                 sort?: string;
                 client_utc_offset_minutes?: number;
                 limit?: number;
@@ -4969,6 +5049,38 @@ export interface operations {
                 };
                 content: {
                     "application/json": components["schemas"]["TweetSearchOptionsResponse"];
+                };
+            };
+        };
+    };
+    search_hashtag_options_api_v1_library_search_hashtags_get: {
+        parameters: {
+            query?: {
+                q?: string | null;
+                limit?: number;
+            };
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["TweetHashtagOptionsResponse"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
                 };
             };
         };
@@ -7336,6 +7448,26 @@ export interface operations {
                 };
                 content: {
                     "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    gallery_dl_status_api_v1_settings_gallery_dl_get: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["GalleryDlCompatibilityResponse"];
                 };
             };
         };

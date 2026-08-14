@@ -35,6 +35,7 @@ from xarchiver.db import connect
 from xarchiver.media import backfill_media_assets
 from xarchiver.row_models import DownloadCandidateRow, IdRow
 from xarchiver.services.cookies import resolve_cookie_content
+from xarchiver.services.hashtags import gallery_dl_compatibility, sync_registered_gallery_hashtags
 from xarchiver.services.operation_logs import (
     append_operation_log_entries,
     append_operation_log_entry,
@@ -293,6 +294,14 @@ def download(
             settings.archive_dir,
             tweet_ids=[tweet["tweet_id"] for tweet in tweets],
         )
+        hashtag_result = sync_gallery_hashtags_after_backfill(
+            settings,
+            engine,
+            backfill_result,
+            log_stream_id,
+        )
+        if hashtag_result is not None:
+            backfill_result["hashtags"] = hashtag_result
         media_sizes = fetch_media_sizes([tweet["tweet_id"] for tweet in tweets])
         downloaded_ids = set(backfill_result["tweet_ids"])
         downloaded = [tweet for tweet in tweets if tweet["tweet_id"] in downloaded_ids]
@@ -411,6 +420,82 @@ def download(
         "exit_code": result.returncode,
         "media_backfill": backfill_result if result.returncode == 0 else None,
     }
+
+
+def sync_gallery_hashtags_after_backfill(
+    settings: Settings,
+    engine: str,
+    backfill_result: dict[str, object],
+    log_stream_id: int | None,
+) -> dict[str, int] | None:
+    """尽力补充平台 Hashtag；任何异常都不得改变媒体回填结果。"""
+
+    if engine != "gallery-dl":
+        return None
+    try:
+        compatibility = gallery_dl_compatibility()
+        result = sync_registered_gallery_hashtags(
+            settings.archive_dir,
+            tweet_ids=[str(value) for value in backfill_result.get("tweet_ids", [])],
+            gallery_dl_version=(
+                str(compatibility["installed_version"])
+                if compatibility.get("installed_version")
+                else None
+            ),
+        )
+    except Exception as exc:
+        logger.warning(
+            "Gallery-dl hashtag extraction failed without affecting media backfill.",
+            exc_info=True,
+        )
+        append_hashtag_download_log_best_effort(
+            log_stream_id,
+            "warning",
+            "hashtag",
+            "平台 Hashtag 提取失败；媒体回填结果不受影响。",
+            exception=exc,
+        )
+        return None
+
+    append_hashtag_download_log_best_effort(
+        log_stream_id,
+        "info",
+        "hashtag",
+        "平台 Hashtag 增量提取完成。",
+        context={
+            "observed_count": result["observed_hashtag_count"],
+            "inserted_count": result["inserted_relationship_count"],
+            "invalid_count": result["invalid_hashtag_count"],
+        },
+    )
+    return result
+
+
+def append_hashtag_download_log_best_effort(
+    log_stream_id: int | None,
+    level: str,
+    component: str,
+    message: str,
+    *,
+    context: dict[str, object] | None = None,
+    exception: BaseException | None = None,
+) -> None:
+    """Hashtag 附属日志失败也不得改变主下载流程。"""
+
+    try:
+        append_download_log(
+            log_stream_id,
+            level,
+            component,
+            message,
+            context=context,
+            exception=exception,
+        )
+    except Exception:
+        logger.warning(
+            "Unable to append gallery-dl hashtag log without affecting media backfill.",
+            exc_info=True,
+        )
 
 
 def fetch_download_candidates(
