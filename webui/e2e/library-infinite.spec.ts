@@ -39,7 +39,9 @@ test.describe("Library infinite loading", () => {
     expect(new Set(requestedOffsets).size).toBe(requestedOffsets.length);
 
     const scrollTop = await appScrollTop(page);
-    await page.getByText("媒体 55", { exact: true }).click();
+    await page.getByRole("button", { name: "媒体 55", exact: true }).click();
+    await expect(page.getByRole("dialog")).toContainText("媒体 55");
+    await page.getByRole("button", { name: "Tweet 详情" }).click();
     await expect(page).toHaveURL(/\/tweets\/tweet-55$/);
 
     await page.goBack();
@@ -73,13 +75,43 @@ test.describe("Library infinite loading", () => {
     await page.goto("/library");
     await expect(page.getByText("已加载 60 项")).toBeVisible();
     await scrollUntilLoaded(page, 120);
-    await page.getByText("媒体 55", { exact: true }).click();
+    await page.getByRole("button", { name: "媒体 55", exact: true }).click();
+    await page.getByRole("button", { name: "Tweet 详情" }).click();
     await expect(page).toHaveURL(/\/tweets\/tweet-55$/);
 
     await page.getByRole("link", { name: "媒体库" }).click();
     await expect(page).toHaveURL(/\/library$/);
     await expect.poll(() => appScrollTop(page)).toBe(0);
     expect(await page.evaluate(() => window.scrollY)).toBe(0);
+  });
+
+  test("starts in media-wall browse mode and remembers view preferences", async ({ page }) => {
+    await page.route("**/api/v1/library/media?**", (route) =>
+      route.fulfill({
+        json: {
+          rows: createMediaRows(0, 2),
+          count: 2,
+          total_count: 2,
+          limit: PAGE_SIZE,
+          offset: 0,
+        },
+      }),
+    );
+
+    await page.goto("/library");
+    await expect(page.getByText("已加载 2 项")).toBeVisible();
+    await expect(page.getByRole("checkbox")).toHaveCount(0);
+    await expect(page.getByRole("radio", { name: "媒体墙" })).toBeChecked();
+    await page.getByRole("radio", { name: "紧凑" }).click();
+    await page.getByRole("radio", { name: "详情卡片" }).click();
+    await expect(page.getByRole("heading", { name: "筛选" })).toBeVisible();
+
+    await page.reload();
+    await expect(page.getByRole("radio", { name: "详情卡片" })).toBeChecked();
+    await expect(page.getByRole("heading", { name: "筛选" })).toBeVisible();
+    await page.getByRole("radio", { name: "媒体墙" }).click();
+    await expect(page.getByRole("radio", { name: "紧凑" })).toBeChecked();
+    await expect(page.getByRole("heading", { name: "筛选" })).toHaveCount(0);
   });
 
   test("selects and permanently deletes a media item after confirmation", async ({ page }) => {
@@ -116,9 +148,11 @@ test.describe("Library infinite loading", () => {
     });
 
     await page.goto("/library");
-    await page.getByRole("radio", { name: "删除媒体" }).click();
+    await expect(page.getByRole("checkbox")).toHaveCount(0);
+    await page.getByRole("button", { name: "批量操作" }).click();
+    await page.getByRole("menuitem", { name: "删除媒体" }).click();
     await page.getByRole("checkbox", { name: "选择媒体 1" }).click();
-    await expect(page.getByText("已选 1 项")).toBeVisible();
+    await expect(page.getByText("已选 1 项媒体", { exact: true }).first()).toBeVisible();
     await page.getByRole("button", { name: "删除" }).click();
     await expect(page.getByRole("alertdialog")).toContainText("元数据和标准缩略图");
     await page.getByRole("button", { name: "确认永久删除" }).click();
@@ -126,6 +160,51 @@ test.describe("Library infinite loading", () => {
     await expect(page.getByText("已删除 1 项媒体，释放 1.0 KB")).toBeVisible();
     expect(deleteBody).toMatchObject({ media_ids: [1], confirm_physical_delete: true });
     expect(typeof deleteBody?.operation_id).toBe("string");
+  });
+
+  test("previews a media item and quick-deletes it before advancing", async ({ page }) => {
+    let deleteBody: Record<string, unknown> | null = null;
+    await page.route("**/api/v1/library/media?**", (route) =>
+      route.fulfill({
+        json: {
+          rows: createMediaRows(0, 2),
+          count: 2,
+          total_count: 2,
+          limit: PAGE_SIZE,
+          offset: 0,
+        },
+      }),
+    );
+    await page.route("**/api/v1/library/media", async (route) => {
+      if (route.request().method() !== "DELETE") return route.fallback();
+      deleteBody = route.request().postDataJSON() as Record<string, unknown>;
+      await route.fulfill({
+        json: {
+          action: "delete-library-media",
+          status: "completed",
+          result: {
+            operation_id: deleteBody.operation_id,
+            deleted_media_count: 1,
+            deleted_file_count: 2,
+            deleted_bytes: 1024,
+            missing_file_count: 0,
+            tweet_ids: ["tweet-0"],
+          },
+        },
+      });
+    });
+
+    await page.goto("/library");
+    await expect(page.getByText("已加载 2 项")).toBeVisible();
+    await page.getByRole("button", { name: "媒体 0", exact: true }).click();
+    await expect(page.getByRole("dialog")).toContainText("媒体 0");
+    await page.getByRole("button", { name: "永久删除当前媒体" }).click();
+    await expect(page.getByRole("alertdialog")).toContainText("任务历史和删除审计会保留");
+    await page.getByRole("button", { name: "永久删除此媒体" }).click();
+
+    await expect(page.getByText("已删除 1 项媒体，释放 1.0 KB")).toBeVisible();
+    await expect(page.getByRole("dialog")).toContainText("媒体 1");
+    expect(deleteBody).toMatchObject({ media_ids: [1], confirm_physical_delete: true });
   });
 });
 

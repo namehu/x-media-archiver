@@ -105,8 +105,11 @@ test("library keeps Tweet organization and media deletion as separate selection 
   await mockOrganizationApis(page, requests);
 
   await page.goto("/library");
+  await expect(page.getByRole("checkbox")).toHaveCount(0);
+  await page.getByRole("button", { name: "批量操作" }).click();
+  await page.getByRole("menuitem", { name: "整理 Tweet" }).click();
   await page.getByRole("checkbox", { name: "选择 Tweet organization-workflow" }).first().click();
-  await expect(page.getByText("已选 1 条 Tweet")).toBeVisible();
+  await expect(page.getByText("已选 1 条 Tweet", { exact: true }).first()).toBeVisible();
   await page.getByRole("button", { name: "批量整理" }).click();
   await page.getByText("重点", { exact: true }).click();
   await page.getByRole("button", { name: "应用批量整理" }).click();
@@ -123,7 +126,8 @@ test("library keeps Tweet organization and media deletion as separate selection 
     },
   });
 
-  await page.getByRole("radio", { name: "删除媒体" }).click();
+  await page.getByRole("button", { name: "批量操作" }).click();
+  await page.getByRole("menuitem", { name: "删除媒体" }).click();
   await expect(page.getByRole("checkbox", { name: "选择媒体 11" })).toBeVisible();
   await expect(page.getByRole("checkbox", { name: "选择媒体 12" })).toBeVisible();
 });

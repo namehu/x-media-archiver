@@ -1,4 +1,4 @@
-import { useEffect, useState } from "react";
+import { useEffect, useState, type MouseEventHandler } from "react";
 import { Film, ImageOff, Image as ImageIcon } from "lucide-react";
 import { Badge } from "./badge";
 import { cn } from "@/lib/utils";
@@ -9,12 +9,20 @@ export function MediaThumbnail({
   mediaType,
   className,
   onClick,
+  fit = "cover",
+  aspect = "video",
+  showTypeBadge = true,
+  ariaLabel,
 }: {
   src?: string | null;
   alt: string;
   mediaType?: string | null;
   className?: string;
-  onClick?: () => void;
+  onClick?: MouseEventHandler<HTMLButtonElement>;
+  fit?: "cover" | "contain";
+  aspect?: "video" | "square";
+  showTypeBadge?: boolean;
+  ariaLabel?: string;
 }) {
   const [loaded, setLoaded] = useState(false);
   const [failed, setFailed] = useState(false);
@@ -30,14 +38,20 @@ export function MediaThumbnail({
       type="button"
       disabled={!onClick}
       onClick={onClick}
+      aria-label={ariaLabel || alt}
       className={cn(
-        "group relative flex aspect-video w-full overflow-hidden rounded-lg bg-bg-muted text-left focus:outline-none focus-visible:ring-2 focus-visible:ring-brand/50",
+        "group relative flex w-full overflow-hidden rounded-lg bg-bg-muted text-left focus:outline-none focus-visible:ring-2 focus-visible:ring-brand/50",
+        aspect === "square" ? "aspect-square" : "aspect-video",
         className,
       )}
     >
       {src && !failed ? (
         <img
-          className={cn("h-full w-full object-cover transition duration-base group-hover:scale-[1.02]", loaded ? "opacity-100" : "opacity-0")}
+          className={cn(
+            "h-full w-full transition duration-base",
+            fit === "contain" ? "object-contain" : "object-cover group-hover:scale-[1.02]",
+            loaded ? "opacity-100" : "opacity-0",
+          )}
           src={src}
           loading="lazy"
           alt={alt}
@@ -54,7 +68,7 @@ export function MediaThumbnail({
           )}
         </div>
       )}
-      {src && !failed ? (
+      {src && !failed && showTypeBadge ? (
         <div className="absolute left-2 top-2">
           <Badge tone={isVideo ? "default" : "secondary"} className="gap-1 bg-bg-elevated/90 backdrop-blur">
             {isVideo ? <Film className="h-3 w-3" /> : <ImageIcon className="h-3 w-3" />}
