@@ -62,12 +62,13 @@ export function SearchResultCard({
               ))}
             </div>
           ) : null}
-          <div className="flex flex-wrap items-center gap-2">
-            <Badge tone={statusTone(row.tweet_status)}>{statusLabel(row.tweet_status)}</Badge>
-            {query.trim() ? <span className="text-xs tabular-nums text-fg-tertiary">相关度 {row.relevance.toFixed(2)}</span> : null}
-          </div>
+          {row.tweet_status !== "verified" ? (
+            <div className="flex flex-wrap items-center gap-2">
+              <Badge tone={statusTone(row.tweet_status)}>{statusLabel(row.tweet_status)}</Badge>
+            </div>
+          ) : null}
           {row.note_excerpt ? (
-            <p className="flex items-start gap-1.5 rounded-md bg-bg-muted px-2.5 py-2 text-sm text-fg-secondary">
+            <p className="flex items-start gap-1.5 text-sm text-fg-secondary">
               <FileText data-icon="inline-start" className="mt-0.5 shrink-0" />
               <span className="min-w-0 break-words">
                 <HighlightedText text={row.note_excerpt} query={query} />
@@ -79,7 +80,7 @@ export function SearchResultCard({
               className="text-sm font-medium text-brand hover:text-brand-hover hover:underline focus:outline-none focus-visible:ring-2 focus-visible:ring-brand/50"
               to={`/tweets/${encodeURIComponent(row.tweet_id)}`}
             >
-              查看 Tweet 详情
+              打开详情
             </Link>
           </div>
         </div>

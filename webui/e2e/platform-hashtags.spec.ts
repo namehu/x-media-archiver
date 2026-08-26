@@ -29,23 +29,25 @@ test("search persists one exact Hashtag in the URL and requests bounded suggesti
   await mockPlatformHashtagApis(page, { hashtagRequests: requests });
 
   await page.goto("/search?hashtag=AI&tweet_status=all");
-  await expect(page.getByRole("combobox", { name: "选择平台 Hashtag" }).first()).toContainText("#AI");
+  await page.getByRole("button", { name: /^筛选/ }).click();
+  await expect(page.getByRole("combobox", { name: "选择平台 Hashtag" })).toContainText("#AI");
   await expect(page.getByLabel("平台 Hashtag", { exact: true }).first()).toContainText("#AI");
   await expect(page.getByText("自定义标签", { exact: true }).first()).toBeVisible();
 
-  await page.getByRole("combobox", { name: "选择平台 Hashtag" }).first().click();
+  await page.getByRole("combobox", { name: "选择平台 Hashtag" }).click();
   const optionsList = page.locator("[cmdk-list]");
   await page.getByPlaceholder("搜索平台 Hashtag").fill("Open");
   await expect(optionsList.getByText("#OpenAI", { exact: true })).toBeVisible();
   await optionsList.getByText("#OpenAI", { exact: true }).click();
-  await page.getByRole("button", { name: "搜索", exact: true }).first().click();
+  await page.getByRole("button", { name: "应用筛选", exact: true }).click();
 
   await expect(page).toHaveURL(/hashtag=OpenAI/);
   await expect.poll(() => requests.some((url) => url.searchParams.get("q") === "Open")).toBe(true);
   expect(requests.every((url) => url.searchParams.get("limit") === "20")).toBe(true);
 
   await page.reload();
-  await expect(page.getByRole("combobox", { name: "选择平台 Hashtag" }).first()).toContainText("#OpenAI");
+  await page.getByRole("button", { name: /^筛选/ }).click();
+  await expect(page.getByRole("combobox", { name: "选择平台 Hashtag" })).toContainText("#OpenAI");
 });
 
 test("Hashtag suggestions expose loading, error retry, and empty states", async ({ page }) => {
@@ -53,7 +55,8 @@ test("Hashtag suggestions expose loading, error retry, and empty states", async 
   await mockPlatformHashtagApis(page, { hashtagFailures: () => failuresRemaining-- > 0, hashtagDelayMs: 250 });
 
   await page.goto("/search");
-  await page.getByRole("combobox", { name: "选择平台 Hashtag" }).first().click();
+  await page.getByRole("button", { name: "筛选", exact: true }).click();
+  await page.getByRole("combobox", { name: "选择平台 Hashtag" }).click();
   const optionsList = page.locator("[cmdk-list]");
   await expect(optionsList.getByText("正在搜索平台 Hashtag…")).toBeVisible();
   await expect(optionsList.getByText("平台 Hashtag 加载失败")).toBeVisible();

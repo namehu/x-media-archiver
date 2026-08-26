@@ -3,19 +3,23 @@ import { useQuery } from "@tanstack/react-query";
 import { Search, SlidersHorizontal } from "lucide-react";
 import { useLocation, useNavigate, useSearchParams } from "react-router-dom";
 import { apiGet, type SourcePageResponse, type TweetSearchOptionsResponse, type TweetSearchPageResponse } from "@/lib/api";
+import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { EmptyState } from "@/components/ui/empty-state";
 import { ErrorState } from "@/components/ui/error-state";
+import { Field, FieldLabel } from "@/components/ui/field";
+import { Input } from "@/components/ui/input";
 import { Pagination } from "@/components/ui/pagination";
-import { Sheet, SheetContent, SheetDescription, SheetHeader, SheetTitle } from "@/components/ui/sheet";
+import { Sheet, SheetContent, SheetDescription, SheetHeader, SheetTitle, SheetTrigger } from "@/components/ui/sheet";
 import { Skeleton } from "@/components/ui/skeleton";
 import { createDialogHistoryEntry } from "@/lib/dialog-history";
+import { getDebugRedactProps, useDebugRedactionEnabled } from "@/lib/debug-redaction";
 import { PostPreviewDialog } from "@/pages/feed/components/post-preview-dialog";
 import type { FeedVideoPlaybackSnapshot, FeedVideoPlaybackState } from "@/pages/feed/video-playback-state";
 import { SearchFilterPanel } from "./components/search-filter-panel";
 import { SearchResultCard } from "./components/search-result-card";
 import {
-  countSearchFilters,
+  countSearchRefinements,
   DEFAULT_SEARCH_FILTERS,
   readSearchFilters,
   SEARCH_FILTER_KEYS,
@@ -30,7 +34,7 @@ export function SearchPage() {
   const [searchParams, setSearchParams] = useSearchParams();
   const appliedFilters = useMemo(() => readSearchFilters(searchParams), [searchParams]);
   const [filters, setFilters] = useState<SearchFilters>(appliedFilters);
-  const [mobileFiltersOpen, setMobileFiltersOpen] = useState(false);
+  const [filtersOpen, setFiltersOpen] = useState(false);
   const [activeVideoId, setActiveVideoId] = useState<string | null>(null);
   const [preview, setPreview] = useState<{
     post: TweetSearchPageResponse["rows"][number];
@@ -41,17 +45,20 @@ export function SearchPage() {
   const previewResumeFrameRef = useRef<number | null>(null);
   const offset = parseOffset(searchParams.get("offset"));
   const queryString = useMemo(() => buildApiQuery(appliedFilters, offset), [appliedFilters, offset]);
+  const debugRedactionEnabled = useDebugRedactionEnabled();
 
   useEffect(() => setFilters(appliedFilters), [appliedFilters]);
 
   const sourcesQuery = useQuery({
     queryKey: ["sources", "search-options"],
     queryFn: () => apiGet<SourcePageResponse>("/api/v1/sources?limit=200&offset=0"),
+    enabled: filtersOpen,
     staleTime: 60_000,
   });
   const optionsQuery = useQuery({
     queryKey: ["tweet-search-options"],
     queryFn: () => apiGet<TweetSearchOptionsResponse>("/api/v1/library/search/options"),
+    enabled: filtersOpen,
     staleTime: 60_000,
   });
   const resultsQuery = useQuery({
@@ -98,40 +105,107 @@ export function SearchPage() {
     [getVideoState],
   );
 
-  const applyFilters = (nextFilters = filters) => {
+  const applyFilters = (nextFilters: SearchFilters) => {
     setSearchParams((current) => writeSearchParams(current, nextFilters, 0));
   };
-  const resetFilters = () => {
+  const resetSearch = () => {
     const next = { ...DEFAULT_SEARCH_FILTERS };
     setFilters(next);
     applyFilters(next);
   };
-  const activeFilterCount = countSearchFilters(filters);
+  const resetFilterDraft = () => {
+    setFilters({ ...DEFAULT_SEARCH_FILTERS, q: filters.q });
+  };
+  const appliedFilterCount = countSearchRefinements(appliedFilters);
   const rows = resultsQuery.data?.rows ?? [];
 
   return (
-    <div className="mx-auto grid max-w-[1180px] items-start gap-5 lg:grid-cols-[minmax(0,1fr)_300px]">
-      <main className="min-w-0">
-        <header className="mb-4 flex items-start justify-between gap-4">
-          <div>
-            <h1 className="text-2xl font-bold tracking-tight text-fg-primary">全局搜索</h1>
-            <p className="mt-1 text-sm text-fg-secondary">
-              搜索 Tweet 正文、作者、平台 Hashtag、自定义标签、合集和私人备注，并用结构化条件继续收窄。
-            </p>
-          </div>
-          <Button
-            type="button"
-            variant={activeFilterCount ? "default" : "secondary"}
-            size="sm"
-            className="shrink-0 lg:hidden"
-            onClick={() => setMobileFiltersOpen(true)}
+    <div className="min-h-full">
+      <main className="mx-auto min-h-full max-w-[680px] border-x border-border-subtle bg-bg-base" aria-labelledby="search-page-title">
+        <h1 id="search-page-title" className="sr-only">全局搜索</h1>
+        <header className="sticky top-0 z-20 flex h-14 items-center gap-2 border-b border-border-subtle bg-bg-base/95 px-3 backdrop-blur sm:px-4">
+          <form
+            className="flex min-w-0 flex-1 gap-2"
+            role="search"
+            onSubmit={(event) => {
+              event.preventDefault();
+              applyFilters({ ...appliedFilters, q: filters.q });
+            }}
           >
-            <SlidersHorizontal data-icon="inline-start" />
-            筛选{activeFilterCount ? ` ${activeFilterCount}` : ""}
-          </Button>
+            <Field className="min-w-0 flex-1 gap-0" {...getDebugRedactProps(debugRedactionEnabled)}>
+              <FieldLabel className="sr-only" htmlFor="global-search-query">关键词</FieldLabel>
+              <Input
+                id="global-search-query"
+                value={filters.q}
+                placeholder="搜索正文、作者、Hashtag 或备注"
+                autoComplete="off"
+                enterKeyHint="search"
+                appearance="search"
+                onChange={(event) => setFilters({ ...filters, q: event.target.value })}
+              />
+            </Field>
+            <Button type="submit" size="icon" aria-label="搜索">
+              <Search aria-hidden="true" />
+            </Button>
+          </form>
+
+          <Sheet
+            open={filtersOpen}
+            onOpenChange={(open) => {
+              setFiltersOpen(open);
+              if (open) setFilters(appliedFilters);
+            }}
+          >
+            <SheetTrigger asChild>
+              <Button
+                type="button"
+                variant="secondary"
+                className="shrink-0"
+                aria-label={appliedFilterCount ? `筛选，已启用 ${appliedFilterCount} 项` : "筛选"}
+              >
+                <SlidersHorizontal data-icon="inline-start" aria-hidden="true" />
+                <span className="hidden sm:inline">筛选</span>
+                {appliedFilterCount ? <Badge tone="default">{appliedFilterCount}</Badge> : null}
+              </Button>
+            </SheetTrigger>
+            <SheetContent className="w-[min(94vw,440px)] p-0">
+              <SheetHeader className="px-5 pb-4 pt-5 sm:px-6">
+                <SheetTitle>筛选搜索结果</SheetTitle>
+                <SheetDescription>
+                  按来源、日期、媒体和整理信息继续收窄，应用后会写入当前 URL。
+                </SheetDescription>
+              </SheetHeader>
+              <div className="min-h-0 flex-1 overflow-y-auto">
+                {sourcesQuery.isError || optionsQuery.isError ? (
+                  <div className="px-5 pb-4 sm:px-6">
+                    <ErrorState
+                      title="部分筛选项加载失败"
+                      detail="基础条件仍可使用；重试后可恢复来源、自定义标签与合集候选项。"
+                      onRetry={() => void Promise.all([sourcesQuery.refetch(), optionsQuery.refetch()])}
+                    />
+                  </div>
+                ) : null}
+                <SearchFilterPanel
+                  filters={filters}
+                  sources={sourcesQuery.data?.rows ?? []}
+                  tags={optionsQuery.data?.tags ?? []}
+                  collections={optionsQuery.data?.collections ?? []}
+                  sourcesTruncated={Boolean(
+                    sourcesQuery.data && sourcesQuery.data.total_count > sourcesQuery.data.rows.length,
+                  )}
+                  onFiltersChange={setFilters}
+                  onApply={() => {
+                    applyFilters(filters);
+                    setFiltersOpen(false);
+                  }}
+                  onReset={resetFilterDraft}
+                />
+              </div>
+            </SheetContent>
+          </Sheet>
         </header>
 
-        <div className="mb-3 flex items-center justify-between gap-3 text-sm text-fg-secondary">
+        <div className="flex min-h-10 items-center justify-between gap-3 border-b border-border-subtle px-4 py-2 text-sm text-fg-secondary" aria-live="polite">
           <span className="tabular-nums">
             {resultsQuery.isError
               ? "搜索请求失败"
@@ -144,10 +218,12 @@ export function SearchPage() {
 
         {resultsQuery.isLoading ? <SearchSkeleton /> : null}
         {resultsQuery.isError ? (
-          <ErrorState title="搜索失败" detail={String(resultsQuery.error)} onRetry={() => void resultsQuery.refetch()} />
+          <div className="p-4">
+            <ErrorState title="搜索失败" detail={String(resultsQuery.error)} onRetry={() => void resultsQuery.refetch()} />
+          </div>
         ) : null}
         {!resultsQuery.isError && resultsQuery.data && rows.length ? (
-          <div className="overflow-hidden rounded-xl border border-border-subtle bg-bg-elevated">
+          <div>
             {rows.map((row) => (
               <SearchResultCard
                 key={row.tweet_id}
@@ -172,15 +248,17 @@ export function SearchPage() {
           </div>
         ) : null}
         {!resultsQuery.isError && resultsQuery.data && !rows.length ? (
-          <EmptyState
-            icon={<Search />}
-            title={appliedFilters.q || appliedFilters.hashtag ? "没有找到匹配的 Tweet" : "当前条件下没有 Tweet"}
-            description="可以减少筛选条件、检查关键词，或把归档状态切换为“全部状态”。"
-            action={<Button onClick={resetFilters}>重置搜索</Button>}
-          />
+          <div className="p-4">
+            <EmptyState
+              icon={<Search />}
+              title={appliedFilters.q || appliedFilters.hashtag ? "没有找到匹配的 Tweet" : "当前条件下没有 Tweet"}
+              description="试试更短的关键词，或清除部分筛选条件后重新搜索。"
+              action={<Button onClick={resetSearch}>清除搜索条件</Button>}
+            />
+          </div>
         ) : null}
         {!resultsQuery.isError && resultsQuery.data && resultsQuery.data.total_count > 0 ? (
-          <div className="mt-4 rounded-lg border border-border-subtle bg-bg-elevated p-3">
+          <div className="px-4 py-3">
             <Pagination
               offset={resultsQuery.data.offset}
               count={resultsQuery.data.count}
@@ -194,55 +272,6 @@ export function SearchPage() {
           </div>
         ) : null}
       </main>
-
-      <aside className="hidden min-w-0 self-start lg:sticky lg:top-4 lg:block">
-        {sourcesQuery.isError || optionsQuery.isError ? (
-          <ErrorState
-            title="筛选项加载失败"
-            detail="搜索仍可使用；重试后可恢复来源、自定义标签与合集候选项。"
-            onRetry={() => void Promise.all([sourcesQuery.refetch(), optionsQuery.refetch()])}
-          />
-        ) : (
-          <SearchFilterPanel
-            filters={filters}
-            sources={sourcesQuery.data?.rows ?? []}
-            tags={optionsQuery.data?.tags ?? []}
-            collections={optionsQuery.data?.collections ?? []}
-            activeCount={activeFilterCount}
-            sourcesTruncated={Boolean(
-              sourcesQuery.data && sourcesQuery.data.total_count > sourcesQuery.data.rows.length,
-            )}
-            onFiltersChange={setFilters}
-            onApply={() => applyFilters()}
-            onReset={resetFilters}
-          />
-        )}
-      </aside>
-
-      <Sheet open={mobileFiltersOpen} onOpenChange={setMobileFiltersOpen}>
-        <SheetContent className="w-[min(94vw,440px)] overflow-y-auto p-4">
-          <SheetHeader>
-            <SheetTitle>搜索条件</SheetTitle>
-            <SheetDescription>关键词与全部筛选会写入当前 URL，便于刷新和分享本地视图。</SheetDescription>
-          </SheetHeader>
-          <SearchFilterPanel
-            filters={filters}
-            sources={sourcesQuery.data?.rows ?? []}
-            tags={optionsQuery.data?.tags ?? []}
-            collections={optionsQuery.data?.collections ?? []}
-            activeCount={activeFilterCount}
-            sourcesTruncated={Boolean(
-              sourcesQuery.data && sourcesQuery.data.total_count > sourcesQuery.data.rows.length,
-            )}
-            onFiltersChange={setFilters}
-            onApply={() => {
-              applyFilters();
-              setMobileFiltersOpen(false);
-            }}
-            onReset={resetFilters}
-          />
-        </SheetContent>
-      </Sheet>
 
       <PostPreviewDialog
         post={preview?.post ?? null}
@@ -294,7 +323,7 @@ function parseOffset(value: string | null) {
 
 function SearchSkeleton() {
   return (
-    <div className="overflow-hidden rounded-xl border border-border-subtle bg-bg-elevated">
+    <div>
       {Array.from({ length: 3 }).map((_, index) => (
         <div key={index} className="flex gap-3 border-b border-border-subtle px-4 py-4 last:border-b-0">
           <Skeleton className="size-10 shrink-0 rounded-full" />

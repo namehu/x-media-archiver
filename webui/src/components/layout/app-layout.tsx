@@ -103,7 +103,8 @@ export function AppLayout() {
   const events = useServerEvents(["archive_runs", "sources", "source_scans", "worker", "logs", "library"]);
   const debuggerModeEnabled = resolveDebuggerMode(location.search).enabled;
   const currentPageLabel = resolveCurrentPageLabel(location.pathname);
-  const immersiveBrowsing = location.pathname === "/feed" || location.pathname === "/library";
+  const immersiveBrowsing =
+    location.pathname === "/feed" || location.pathname === "/library" || location.pathname === "/search";
   const desktopWorkspaceLabel = location.pathname === "/feed"
     ? currentPageLabel
     : isBrowsingRoute(location.pathname)
@@ -269,7 +270,7 @@ export function AppLayout() {
             <div
               className={cn(
                 "mx-auto w-full",
-                location.pathname === "/feed"
+                location.pathname === "/feed" || location.pathname === "/search"
                   ? "max-w-[1120px]"
                   : location.pathname === "/library"
                     ? "max-w-[1280px]"

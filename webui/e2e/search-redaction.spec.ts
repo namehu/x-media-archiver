@@ -28,6 +28,25 @@ test("search redacts the query and private organization context in debugger mode
   await expect(privateContext).not.toHaveCSS("filter", "none");
 });
 
+test("search keeps structured refinements in one sheet", async ({ page }) => {
+  await mockSearchApis(page);
+  await page.setViewportSize({ width: 390, height: 844 });
+  await page.addInitScript(() => localStorage.setItem("x-archiver-theme", "dark"));
+
+  await page.goto("/search?q=private");
+  await expect(page.locator("html")).toHaveClass(/dark/);
+  await expect(page.getByRole("search").getByLabel("关键词")).toHaveValue("private");
+  await expect(page.getByRole("combobox", { name: "选择平台 Hashtag" })).toHaveCount(0);
+  await expect.poll(() => page.evaluate(() => document.documentElement.scrollWidth <= window.innerWidth)).toBe(true);
+
+  await page.getByRole("button", { name: "筛选", exact: true }).click();
+  const filterSheet = page.getByRole("dialog", { name: "筛选搜索结果" });
+  await expect(filterSheet).toBeVisible();
+  await expect(filterSheet.getByRole("combobox", { name: "选择平台 Hashtag" })).toBeVisible();
+  await expect(filterSheet.getByLabel("关键词")).toHaveCount(0);
+  await expect.poll(() => page.evaluate(() => document.documentElement.scrollWidth <= window.innerWidth)).toBe(true);
+});
+
 test("search resumes list video after closing preview", async ({ page }) => {
   await installMediaElementMock(page);
   await mockSearchApis(page);

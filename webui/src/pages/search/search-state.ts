@@ -41,9 +41,8 @@ export function readSearchFilters(params: URLSearchParams): SearchFilters {
   };
 }
 
-export function countSearchFilters(filters: SearchFilters) {
+export function countSearchRefinements(filters: SearchFilters) {
   return [
-    filters.q,
     filters.source_id,
     filters.date_from || filters.date_to,
     filters.media_type,
