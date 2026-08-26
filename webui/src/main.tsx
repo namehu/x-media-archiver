@@ -1,7 +1,7 @@
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
 import React, { Suspense, lazy, useEffect } from "react";
 import ReactDOM from "react-dom/client";
-import { createBrowserRouter, RouterProvider, useLocation, useNavigate } from "react-router-dom";
+import { createBrowserRouter, Navigate, RouterProvider, useLocation, useNavigate } from "react-router-dom";
 import { AppLayout } from "./components/layout/app-layout";
 import { Skeleton } from "./components/ui/skeleton";
 import { Toaster } from "./components/ui/toaster";
@@ -68,7 +68,8 @@ const router = createBrowserRouter([
     path: "/",
     element: <AppShell />,
     children: [
-      { index: true, element: route(<DashboardPage />) },
+      { index: true, element: <Navigate to="/feed" replace /> },
+      { path: "dashboard", element: route(<DashboardPage />) },
       { path: "feed", element: route(<FeedPage />) },
       { path: "search", element: route(<SearchPage />) },
       { path: "insights", element: route(<InsightsPage />) },

@@ -1,4 +1,3 @@
-import { Wifi, WifiOff } from "lucide-react";
 import { cn } from "@/lib/utils";
 import { StatusDot } from "./status-dot";
 
@@ -19,14 +18,15 @@ export function LiveIndicator({
   return (
     <div
       className={cn(
-        "inline-flex items-center gap-2 rounded-md border px-2 py-1 text-xs font-medium",
-        online ? "border-brand/25 bg-brand-soft text-brand" : "border-border-subtle bg-bg-muted text-fg-secondary",
+        "inline-flex min-h-10 items-center gap-2 px-2 text-xs font-medium text-fg-tertiary",
+        !online && "text-fg-secondary",
         className,
       )}
       title={label}
       aria-label={label}
+      role="status"
+      aria-live="polite"
     >
-      {online ? <Wifi className="h-3.5 w-3.5" /> : <WifiOff className="h-3.5 w-3.5" />}
       <StatusDot status={online ? "running" : state === "connecting" ? "warning" : "idle"} />
       <span className={compactOnMobile ? "hidden sm:inline" : undefined}>{label}</span>
     </div>

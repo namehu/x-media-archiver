@@ -277,18 +277,16 @@ export function FeedPage() {
   );
 
   return (
-    <div className="-m-4 sm:-m-6 lg:m-0">
-      <div className="mx-auto grid max-w-[1020px] items-start lg:grid-cols-[minmax(0,680px)_280px] lg:gap-5">
-        <main className="min-w-0 border-x border-border-subtle bg-bg-elevated lg:overflow-hidden lg:rounded-xl lg:border">
-          <header className="sticky -top-4 z-40 border-b border-border-subtle bg-bg-elevated/95 shadow-sm backdrop-blur sm:-top-6 lg:top-0 lg:z-20 lg:shadow-none">
-            <div className="flex items-center justify-between gap-3 px-4 py-2 sm:px-5">
-              <div className="min-w-0">
-                <h1 className="text-lg font-bold tracking-tight text-fg-primary">帖子浏览</h1>
-                <p className="truncate text-xs text-fg-secondary">
-                  {postsQuery.data ? `共 ${totalCount.toLocaleString()} 条本地帖子` : "像刷 X 一样浏览本地归档"}
-                </p>
-              </div>
-              <div className="flex shrink-0 items-center gap-2 lg:hidden">
+    <div className="min-h-full">
+      <div className="mx-auto grid max-w-[1080px] items-start lg:grid-cols-[minmax(0,680px)_minmax(280px,340px)] lg:gap-6">
+        <main className="min-w-0 border-x border-border-subtle bg-bg-base">
+          <h1 className="sr-only">首页</h1>
+          <header className="sticky top-0 z-20 border-b border-border-subtle bg-bg-base/95 backdrop-blur">
+            <div className="flex items-center justify-between gap-3 border-b border-border-subtle px-4 py-2 sm:px-5 lg:hidden">
+              <p className="truncate text-xs text-fg-secondary">
+                {postsQuery.data ? `${totalCount.toLocaleString()} 条本地帖子` : "正在加载本地归档"}
+              </p>
+              <div className="flex shrink-0 items-center gap-2">
                 <Button
                   type="button"
                   variant={draftFilterCount ? "default" : "secondary"}
@@ -297,7 +295,7 @@ export function FeedPage() {
                   aria-label="打开筛选"
                   onClick={() => setMobileFiltersOpen(true)}
                 >
-                  <SlidersHorizontal className="mr-1.5 size-3.5" />
+                  <SlidersHorizontal data-icon="inline-start" />
                   筛选
                   {draftFilterCount > 0 && (
                     <span className="ml-1.5 flex h-4 min-w-[1rem] items-center justify-center rounded-full bg-bg-base/20 px-1 text-[10px] font-bold text-white">
@@ -329,7 +327,7 @@ export function FeedPage() {
                 className="group relative flex h-11 flex-1 items-center justify-center rounded-none bg-transparent text-sm font-medium text-fg-secondary transition-colors hover:bg-muted/50 hover:text-fg-primary data-[state=on]:bg-transparent data-[state=on]:text-fg-primary"
               >
                 <span className="relative flex h-full items-center justify-center gap-1.5 px-3 group-data-[state=on]:font-bold">
-                  <Heart className="size-4" />
+                  <Heart aria-hidden="true" />
                   我的喜欢
                   {submitted.source_type === "likes" && (
                     <div className="absolute bottom-0 left-0 right-0 h-1 animate-in fade-in zoom-in-90 duration-200 rounded-t-full bg-brand" />
@@ -395,7 +393,7 @@ export function FeedPage() {
           ) : null}
         </main>
 
-        <aside className="hidden min-w-0 self-start lg:sticky lg:top-4 lg:block">
+        <aside className="hidden min-w-0 self-start lg:sticky lg:top-4 lg:block lg:py-4 lg:pr-4">
           <FeedFilterPanel
             filters={filters}
             sources={sources}

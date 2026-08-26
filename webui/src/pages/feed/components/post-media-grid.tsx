@@ -28,7 +28,7 @@ export function PostMediaGrid({
     <div
       data-feed-media="true"
       className={cn(
-        "mt-3 grid overflow-hidden rounded-xl border border-border-subtle bg-black",
+        "mt-3 grid overflow-hidden rounded-2xl border border-border-subtle bg-black",
         count === 1 && "grid-cols-1",
         count === 2 && "grid-cols-2 gap-px",
         count >= 3 && "grid-cols-2 grid-rows-2 gap-px",
@@ -75,7 +75,7 @@ export function PostMediaGrid({
                 {item.media_url ? (
                   <img
                     src={item.media_url}
-                    alt=""
+                    alt={`归档帖子的第 ${index + 1} 张图片`}
                     loading="lazy"
                     className={cn("size-full", count === 1 ? "object-contain" : "object-cover")}
                   />

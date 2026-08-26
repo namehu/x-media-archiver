@@ -8,17 +8,23 @@ This document describes the current WebUI design system after the Phase 4 revamp
 
 ## Design Position
 
-The WebUI is a local media archive console. It should feel quiet, fast, and content-first, with the archived media and operational state as the visual focus.
+The WebUI is a local media archive browser with an integrated management workspace. It should feel quiet, fast, and content-first, with archived posts and media as the primary visual focus while operational pages remain efficient and consistent.
 
-The visual direction is a quiet blue-and-neutral operations workspace:
+The visual direction takes its browsing rhythm from X/Twitter without copying its product identity:
 
-- White or deep blue-black base surfaces, depending on theme.
+- Light mode is the default. Browsing surfaces are white; management surfaces use a very light neutral background.
 - Archive blue is the single primary brand color; semantic status colors are reserved for state.
-- Soft neutral page surfaces, light borders, modest corner radii, and restrained elevation.
+- Light dividers, near-black primary text, restrained corner radii, and almost no persistent elevation.
 - Media thumbnails, status, and data tables carry the page hierarchy.
-- Navigation uses Lucide icons and visible text labels; active state uses a blue soft surface.
+- Navigation uses Lucide icons and visible text labels; the active state uses weight and a neutral pill, with blue reserved for selection indicators and primary actions.
 - Authentication uses a solid navy context panel and the same tokens/components as the console.
 - No decorative gradients, color blobs, marketing hero sections, or oversized card layouts.
+
+The product has two workspace modes that share the same shell and component language:
+
+- Browsing workspace: X-like timeline or media-grid composition, white canvas, continuous content separated by rules, and a contextual filter column on wide screens.
+- Management workspace: responsive tables, cards, charts, forms, and task panels on the soft neutral canvas.
+- Different page structures are intentional; typography, colors, borders, control heights, focus states, and navigation remain identical across both modes.
 
 ## Color Tokens
 
@@ -57,10 +63,20 @@ Use `tabular-nums` for counters, queue counts, pool metrics, file sizes, and pro
 
 ## Layout
 
-The app uses a desktop sidebar that expands to 256px and collapses to a 72px icon rail, plus a 56px compact top bar. The sidebar brand header is also 56px so its bottom divider aligns exactly with the top-bar divider. The user's desktop sidebar preference is persisted locally. The sidebar footer is reserved exclusively for the expand/collapse control; do not place static descriptions or status copy there. Expanded and collapsed navigation share the same vertical grid: 40px item rows, 8px item gaps, 20px group-header rows, and 24px group breaks. In collapsed mode, group labels become centered separators without changing their row height, so item positions remain stable while toggling. Collapsed controls align to one horizontal center axis with the brand mark and footer toggle, and only the current page receives the brand-soft active surface. The navigation rail scrolls independently when viewport height is limited. Main content is centered at a maximum width of 1600px. On narrow screens, navigation moves into a left sheet. Main pages should use dense but readable layouts:
+The app uses a desktop sidebar that expands to 248px and collapses to a 76px icon rail, plus a 56px compact top bar. The sidebar brand header is also 56px so its bottom divider aligns exactly with the top-bar divider. The user's desktop sidebar preference is persisted locally. The sidebar footer is reserved exclusively for the expand/collapse control; do not place static descriptions or status copy there. Expanded and collapsed navigation share the same vertical grid: 48px item rows, 4px item gaps, 24px group-header rows, and 8px group breaks. In collapsed mode, group labels become centered separators without changing their row height, so item positions remain stable while toggling. Collapsed controls align to one horizontal center axis with the brand mark and footer toggle. The active destination uses a neutral rounded surface and stronger label weight. The navigation rail scrolls independently when viewport height is limited. On narrow screens, navigation moves into a left sheet.
+
+The route hierarchy is content-first:
+
+- `/` redirects to `/feed`.
+- Browsing destinations appear first: home feed, media, search, collections, and insights.
+- Management and maintenance destinations remain directly accessible in separate navigation groups.
+- The feed uses a maximum 1120px workspace with a 680px content stream and a contextual right column.
+- Management content remains centered at a maximum width of 1600px.
+
+Main pages should use dense but readable layouts:
 
 - Page header: title, one-line description, and compact right-side status/action; only one action should receive primary emphasis.
-- Primary metrics: responsive StatCard grid.
+- Primary metrics: responsive StatCard grid on management pages only.
 - Main work area: tables, media grids, detail panels, or tabs.
 - Avoid cards inside cards. Use cards for repeated items, data panels, modals, and tools only.
 - Keep fixed-format controls stable with explicit dimensions or responsive grid tracks.
@@ -87,6 +103,7 @@ New pages should import from `components/ui/...`. Do not create a parallel compo
 
 Dashboard:
 
+- Dashboard is a management destination, not the default product entry.
 - StatCards first.
 - Place status distribution and the current running summary in the main two-column work area.
 - Keep recent exports and the local archive path below the operational summary.
@@ -130,6 +147,14 @@ Tweet Detail:
 - Media grid on the left, metadata and attempts timeline on the right.
 - Dialog preview supports keyboard navigation when open.
 
+Feed:
+
+- Use a continuous white timeline with horizontal dividers; do not wrap the full feed in a floating card.
+- Post anatomy follows avatar rail, single-line author metadata, body text, organization context, then dominant media.
+- Media uses stable aspect ratios and X-like one/two/four-item compositions with large rounded media corners.
+- On wide screens, filters live in the right contextual column; on narrow screens, filters move into a Sheet.
+- Preserve scroll, video playback, and preview state when navigating back.
+
 ## Interaction
 
 All interactive elements must have visible focus state:
@@ -146,6 +171,8 @@ Expected global interactions:
 - `J/K`: media navigation inside Tweet detail preview.
 
 Hover should be subtle: border strengthening, `shadow-2`, or token-based background changes. Avoid motion that changes layout.
+
+Persistent cards should not use decorative shadows. Reserve elevation for menus, dialogs, sheets, and transient overlays.
 
 Buttons, inputs, and icon controls should provide at least a 40px default control box. Mobile text inputs use a 16px font size to prevent unintended browser zoom.
 

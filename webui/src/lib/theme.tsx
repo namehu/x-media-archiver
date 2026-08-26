@@ -4,7 +4,7 @@ export type Theme = "light" | "dark" | "auto";
 const THEME_KEY = "x-archiver-theme";
 
 const ThemeContext = createContext<{ theme: Theme; setTheme: (t: Theme) => void }>({
-  theme: "auto",
+  theme: "light",
   setTheme: () => {},
 });
 
@@ -41,7 +41,7 @@ export function useTheme() {
 
 export function getStoredTheme(): Theme {
   const value = localStorage.getItem(THEME_KEY) as Theme | null;
-  return value === "light" || value === "dark" || value === "auto" ? value : "auto";
+  return value === "light" || value === "dark" || value === "auto" ? value : "light";
 }
 
 export function applyTheme(theme: Theme) {

@@ -1,14 +1,13 @@
 import { useEffect, useMemo, useState } from "react";
 import { NavLink, Outlet, useLocation, useNavigate, useNavigationType } from "react-router-dom";
-import { useQuery } from "@tanstack/react-query";
 import {
   Archive,
   BarChart3,
   Bug,
-  ChevronRight,
   CircleAlert,
   Copy,
   FolderOpen,
+  Home,
   Images,
   LayoutDashboard,
   ListChecks,
@@ -18,14 +17,12 @@ import {
   PanelLeftClose,
   PanelLeftOpen,
   Radio,
-  Rows3,
   Search,
   Settings2,
   Sun,
   type LucideIcon,
 } from "lucide-react";
 import { useServerEvents } from "../../hooks/useServerEvents";
-import { apiGet, type HealthDetail } from "../../lib/api";
 import {
   buildDebuggerSearch,
   persistDebuggerMode,
@@ -33,16 +30,14 @@ import {
   syncDebuggerMode,
 } from "../../lib/debugger-mode";
 import { isAnyDialogHistoryEntry } from "../../lib/dialog-history";
-import { useRuntime } from "../../lib/runtime-provider";
 import { useTheme, type Theme } from "../../lib/theme";
 import { cn } from "../../lib/utils";
 import { AccountMenu } from "../auth/account-menu";
-import { Badge } from "../ui/badge";
 import { Button } from "../ui/button";
 import { CommandPalette, type CommandPaletteItem } from "../ui/command-palette";
 import { LiveIndicator } from "../ui/live-indicator";
 import { Separator } from "../ui/separator";
-import { Sheet, SheetContent, SheetHeader, SheetTitle } from "../ui/sheet";
+import { Sheet, SheetContent, SheetDescription, SheetHeader, SheetTitle } from "../ui/sheet";
 import { Tooltip, TooltipContent, TooltipTrigger } from "../ui/tooltip";
 import { AppScrollContainerProvider } from "./app-scroll-container";
 
@@ -52,28 +47,27 @@ type NavigationItem = {
   icon: LucideIcon;
 };
 
-const dashboardNavItem: NavigationItem = { to: "/", label: "仪表盘", icon: LayoutDashboard };
-
 const navGroups: Array<{ label: string; items: NavigationItem[] }> = [
   {
-    label: "运营",
+    label: "浏览",
     items: [
+      { to: "/feed", label: "首页", icon: Home },
+      { to: "/library", label: "媒体", icon: Images },
+      { to: "/search", label: "搜索", icon: Search },
+      { to: "/collections", label: "合集", icon: FolderOpen },
+      { to: "/insights", label: "洞察", icon: BarChart3 },
+    ],
+  },
+  {
+    label: "管理",
+    items: [
+      { to: "/dashboard", label: "系统概览", icon: LayoutDashboard },
       { to: "/sources", label: "来源管理", icon: Radio },
       { to: "/queue", label: "归档队列", icon: ListChecks },
     ],
   },
   {
-    label: "内容",
-    items: [
-      { to: "/search", label: "全局搜索", icon: Search },
-      { to: "/insights", label: "归档洞察", icon: BarChart3 },
-      { to: "/feed", label: "帖子浏览", icon: Rows3 },
-      { to: "/library", label: "媒体库", icon: Images },
-      { to: "/collections", label: "合集", icon: FolderOpen },
-    ],
-  },
-  {
-    label: "治理",
+    label: "维护",
     items: [
       { to: "/failures", label: "失败工作台", icon: CircleAlert },
       { to: "/duplicates", label: "重复媒体", icon: Copy },
@@ -82,7 +76,7 @@ const navGroups: Array<{ label: string; items: NavigationItem[] }> = [
   },
 ];
 
-const allNavItems = [dashboardNavItem, ...navGroups.flatMap((group) => group.items)];
+const allNavItems = navGroups.flatMap((group) => group.items);
 
 const themeIcons: Record<Theme, LucideIcon> = {
   light: Sun,
@@ -107,21 +101,14 @@ export function AppLayout() {
   const [sidebarCollapsed, setSidebarCollapsed] = useState(readSidebarCollapsed);
   const [scrollContainer, setScrollContainer] = useState<HTMLElement | null>(null);
   const events = useServerEvents(["archive_runs", "sources", "source_scans", "worker", "logs", "library"]);
-  const runtimeSpeedBps = useRuntime((state) => state.global.speed_bps);
-  const runtimeCurrentTweetId = useRuntime((state) => state.global.current_tweet_id);
-  const shouldFallbackPoll = shouldUseRuntimePollingFallback(events.status, events.transport);
-  const healthQuery = useQuery({
-    queryKey: ["health-detail"],
-    queryFn: () => apiGet<HealthDetail>("/api/v1/health/detail"),
-    refetchInterval: shouldFallbackPoll ? 15000 : false,
-  });
-  const health = healthQuery.data;
-  const writeLockHeld = Boolean(health?.worker.write_lock_held);
-  const queueWork = (health?.queue.pending_items ?? 0) + (health?.queue.processing_items ?? 0);
-  const activeScans = health?.sources.active_scan_runs ?? 0;
-  const recentErrors = health?.recent_errors.length ?? 0;
   const debuggerModeEnabled = resolveDebuggerMode(location.search).enabled;
   const currentPageLabel = resolveCurrentPageLabel(location.pathname);
+  const immersiveFeed = location.pathname === "/feed";
+  const desktopWorkspaceLabel = immersiveFeed
+    ? currentPageLabel
+    : isBrowsingRoute(location.pathname)
+      ? "内容浏览"
+      : "归档管理";
 
   useEffect(() => {
     if (!scrollContainer || navigationType === "POP" || isAnyDialogHistoryEntry(location.state)) return;
@@ -166,7 +153,7 @@ export function AppLayout() {
   const commands = useMemo<CommandPaletteItem[]>(
     () =>
       allNavItems.map((item) => ({
-        id: item.to === "/" ? "dashboard" : item.to.slice(1),
+        id: item.to.slice(1),
         label: item.label,
         description: item.to,
         onSelect: () => navigate(item.to),
@@ -181,7 +168,7 @@ export function AppLayout() {
         data-collapsed={sidebarCollapsed}
         className={cn(
           "hidden shrink-0 flex-col border-r border-border-subtle bg-bg-base lg:flex",
-          sidebarCollapsed ? "w-[72px]" : "w-64",
+          sidebarCollapsed ? "w-[76px]" : "w-[248px]",
         )}
       >
         <Navigation collapsed={sidebarCollapsed} onToggle={toggleSidebar} />
@@ -194,9 +181,10 @@ export function AppLayout() {
               <BrandMark />
               <span>
                 <span className="block text-sm font-semibold">x-media-archiver</span>
-                <span className="mt-0.5 block text-xs font-normal text-fg-tertiary">本地媒体归档工作台</span>
+                <span className="mt-0.5 block text-xs font-normal text-fg-tertiary">本地媒体归档</span>
               </span>
             </SheetTitle>
+            <SheetDescription className="sr-only">浏览内容、管理归档任务并进入系统维护页面。</SheetDescription>
           </SheetHeader>
           <Navigation
             onNavigate={() => setMobileNavigationOpen(false)}
@@ -206,17 +194,15 @@ export function AppLayout() {
       </Sheet>
 
       <div className="flex min-w-0 flex-1 flex-col overflow-hidden">
-        <header className="flex h-14 shrink-0 items-center justify-between gap-3 border-b border-border-subtle bg-bg-base px-3 sm:px-4 lg:px-6">
+        <header className="flex h-14 shrink-0 items-center justify-between gap-3 border-b border-border-subtle bg-bg-base/95 px-3 backdrop-blur sm:px-4 lg:px-5">
           <div className="flex min-w-0 items-center gap-2">
             <Button variant="ghost" size="icon" className="lg:hidden" aria-label="打开导航" onClick={() => setMobileNavigationOpen(true)}>
               <Menu aria-hidden="true" />
             </Button>
-            <div className="hidden min-w-0 items-center gap-2 text-sm lg:flex">
-              <span className="text-fg-tertiary">归档工作台</span>
-              <ChevronRight className="size-3.5 text-fg-tertiary" aria-hidden="true" />
-              <span className="truncate font-semibold text-fg-primary">{currentPageLabel}</span>
+            <div className="truncate text-lg font-bold tracking-tight text-fg-primary">
+              <span className="lg:hidden">{currentPageLabel}</span>
+              <span className="hidden lg:inline">{desktopWorkspaceLabel}</span>
             </div>
-            <span className="truncate text-sm font-semibold text-fg-primary sm:hidden">{currentPageLabel}</span>
           </div>
 
           <div className="flex min-w-0 items-center justify-end gap-1.5">
@@ -224,7 +210,7 @@ export function AppLayout() {
               variant="secondary"
               size="sm"
               onClick={() => setCommandOpen(true)}
-              className="hidden min-w-52 justify-between font-normal text-fg-secondary md:inline-flex xl:min-w-64"
+              className="hidden min-w-52 justify-between rounded-full border-transparent font-normal text-fg-secondary shadow-none md:inline-flex xl:min-w-64"
             >
               <span className="flex items-center gap-2">
                 <Search data-icon="inline-start" aria-hidden="true" />
@@ -239,12 +225,6 @@ export function AppLayout() {
             <Separator orientation="vertical" className="mx-1 hidden h-5 sm:block" />
 
             <LiveIndicator state={liveState} label={runtimeStatusLabel} compactOnMobile />
-            {writeLockHeld ? <Badge tone="warning" className="hidden xl:inline-flex">写操作中</Badge> : null}
-            {queueWork ? <Badge tone="warning" className="hidden xl:inline-flex">队列 {queueWork}</Badge> : null}
-            {activeScans ? <Badge tone="default" className="hidden 2xl:inline-flex">扫描 {activeScans}</Badge> : null}
-            {recentErrors ? <Badge tone="danger" className="hidden xl:inline-flex">错误 {recentErrors}</Badge> : null}
-            {runtimeSpeedBps ? <Badge tone="secondary" className="hidden 2xl:inline-flex">{formatBytes(runtimeSpeedBps)}/s</Badge> : null}
-            {runtimeCurrentTweetId ? <span className="sr-only">当前 Tweet {runtimeCurrentTweetId}</span> : null}
 
             <Tooltip>
               <TooltipTrigger asChild>
@@ -280,10 +260,13 @@ export function AppLayout() {
         <main
           ref={setScrollContainer}
           data-app-scroll-container
-          className="flex-1 overflow-auto bg-bg-surface px-4 py-5 sm:px-6 sm:py-6 xl:px-8 xl:py-8"
+          className={cn(
+            "flex-1 overflow-auto",
+            immersiveFeed ? "bg-bg-base" : "bg-bg-surface px-4 py-5 sm:px-6 sm:py-6 xl:px-8 xl:py-8",
+          )}
         >
           <AppScrollContainerProvider container={scrollContainer}>
-            <div className="mx-auto w-full max-w-[1600px]">
+            <div className={cn("mx-auto w-full", immersiveFeed ? "max-w-[1120px]" : "max-w-[1600px]")}>
               <Outlet />
             </div>
           </AppScrollContainerProvider>
@@ -314,48 +297,56 @@ function Navigation({
 }) {
   const linkClassName = ({ isActive }: { isActive: boolean }) =>
     cn(
-      "flex h-10 shrink-0 items-center rounded-lg text-sm font-medium text-fg-secondary transition duration-fast ease-out hover:bg-bg-muted hover:text-fg-primary focus:outline-none focus-visible:ring-2 focus-visible:ring-brand/50",
-      collapsed ? "w-10 justify-center p-0" : "gap-3 px-3",
-      isActive && "bg-brand-soft text-brand hover:bg-brand-soft hover:text-brand",
+      "flex h-12 shrink-0 items-center rounded-full text-base text-fg-secondary transition duration-fast ease-out hover:bg-bg-muted hover:text-fg-primary focus:outline-none focus-visible:ring-2 focus-visible:ring-brand/50",
+      collapsed ? "w-12 justify-center p-0" : "gap-4 px-3",
+      isActive && "bg-bg-muted font-semibold text-fg-primary",
     );
 
   return (
     <>
       {showBrand ? (
         <div className={cn("flex h-14 shrink-0 items-center border-b border-border-subtle", collapsed ? "justify-center px-2" : "gap-3 px-5")}>
-          <BrandMark />
-          {collapsed ? null : (
-            <div className="min-w-0">
-              <div className="truncate text-sm font-semibold tracking-tight text-fg-primary">x-media-archiver</div>
-              <div className="mt-0.5 text-xs text-fg-tertiary">本地媒体归档工作台</div>
-            </div>
-          )}
+          <NavLink
+            to="/feed"
+            className={cn(
+              "flex min-w-0 items-center rounded-full focus:outline-none focus-visible:ring-2 focus-visible:ring-brand/50",
+              collapsed ? "justify-center" : "gap-3",
+            )}
+            aria-label="返回首页"
+          >
+            <BrandMark />
+            {collapsed ? null : (
+              <div className="min-w-0">
+                <div className="truncate text-sm font-bold tracking-tight text-fg-primary">x-media-archiver</div>
+                <div className="mt-0.5 text-xs text-fg-tertiary">本地媒体归档</div>
+              </div>
+            )}
+          </NavLink>
         </div>
       ) : null}
 
       <nav
         className={cn(
-          "flex min-h-0 flex-1 flex-col gap-2 overflow-y-auto overscroll-contain py-4",
-          collapsed ? "items-center px-2" : "px-3",
+          "flex min-h-0 flex-1 flex-col gap-1 overflow-y-auto overscroll-contain py-3",
+          collapsed ? "items-center px-3" : "px-3",
         )}
         aria-label="主导航"
       >
-        <NavigationLink item={dashboardNavItem} className={linkClassName} onNavigate={onNavigate} collapsed={collapsed} />
         {navGroups.map((group) => (
           <div
             key={group.label}
             className={cn(
-              "mt-4 flex flex-col gap-2",
+              "mt-2 flex flex-col gap-1 first:mt-0",
               collapsed && "w-full items-center",
             )}
             role="group"
             aria-label={group.label}
           >
-            <div className={cn("flex h-5 shrink-0 items-center", collapsed ? "w-full justify-center" : "px-3")}>
+            <div className={cn("flex h-6 shrink-0 items-center", collapsed ? "w-full justify-center" : "px-3")}>
               {collapsed ? (
                 <Separator className="w-6" />
               ) : (
-                <p className="text-[10px] font-semibold uppercase tracking-[0.16em] text-fg-tertiary">{group.label}</p>
+                <p className="text-[11px] font-medium tracking-wide text-fg-tertiary">{group.label}</p>
               )}
             </div>
             {group.items.map((item) => (
@@ -381,6 +372,7 @@ function Navigation({
                   <Button
                     variant="ghost"
                     size="icon"
+                    className="size-12 rounded-full"
                     onClick={onToggle}
                     aria-label="展开侧边栏"
                     aria-expanded={false}
@@ -395,7 +387,7 @@ function Navigation({
               <Button
                 variant="ghost"
                 size="md"
-                className="w-full justify-start px-3"
+                className="h-12 w-full justify-start rounded-full px-3"
                 onClick={onToggle}
                 aria-label="收起侧边栏"
                 aria-expanded={true}
@@ -427,12 +419,12 @@ function NavigationLink({
   const link = (
     <NavLink
       to={item.to}
-      end={item.to === "/"}
+      end
       className={className}
       onClick={onNavigate}
       aria-label={collapsed ? item.label : undefined}
     >
-      <Icon className="size-4 shrink-0" aria-hidden="true" />
+      <Icon className="size-5 shrink-0" strokeWidth={1.9} aria-hidden="true" />
       <span className={collapsed ? "sr-only" : "truncate"}>{item.label}</span>
     </NavLink>
   );
@@ -449,8 +441,8 @@ function NavigationLink({
 
 function BrandMark() {
   return (
-    <div className="flex size-10 shrink-0 items-center justify-center rounded-xl bg-brand text-white shadow-2">
-      <Archive className="size-5" aria-hidden="true" />
+    <div className="flex size-10 shrink-0 items-center justify-center rounded-full text-fg-primary transition-colors hover:bg-bg-muted">
+      <Archive className="size-6" strokeWidth={2.1} aria-hidden="true" />
     </div>
   );
 }
@@ -458,6 +450,11 @@ function BrandMark() {
 function resolveCurrentPageLabel(pathname: string) {
   if (pathname.startsWith("/tweets/")) return "Tweet 详情";
   return allNavItems.find((item) => item.to === pathname)?.label ?? "归档工作台";
+}
+
+function isBrowsingRoute(pathname: string) {
+  if (pathname.startsWith("/tweets/")) return true;
+  return ["/feed", "/library", "/search", "/collections", "/insights"].includes(pathname);
 }
 
 function eventLabel(status: string, transport: string) {
@@ -471,22 +468,6 @@ function eventLabel(status: string, transport: string) {
     offline: "实时事件离线，使用轮询刷新",
   };
   return labels[status] ?? "实时事件离线";
-}
-
-function formatBytes(value?: number | null) {
-  if (!value || value <= 0) return "-";
-  const units = ["B", "KB", "MB", "GB"];
-  let size = value;
-  let index = 0;
-  while (size >= 1024 && index < units.length - 1) {
-    size /= 1024;
-    index += 1;
-  }
-  return `${size.toFixed(index === 0 ? 0 : 1)} ${units[index]}`;
-}
-
-function shouldUseRuntimePollingFallback(status: string, transport: string) {
-  return transport === "polling" || status === "offline" || status === "reconnecting" || status === "stale";
 }
 
 function readSidebarCollapsed() {
