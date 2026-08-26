@@ -67,19 +67,10 @@ test.describe("Library infinite loading", () => {
         },
       });
     });
-    await page.route("**/api/v1/library/tweets/**", async (route) => {
-      const row = createMediaRow(55);
-      await route.fulfill({ json: { tweet: row, media: [row], attempts: [] } });
-    });
-
     await page.goto("/library");
     await expect(page.getByText("已加载 60 项")).toBeVisible();
     await scrollUntilLoaded(page, 120);
-    await page.getByRole("button", { name: "媒体 55", exact: true }).click();
-    await page.getByRole("button", { name: "Tweet 详情" }).click();
-    await expect(page).toHaveURL(/\/tweets\/tweet-55$/);
-
-    await page.getByRole("link", { name: "媒体库" }).click();
+    await page.getByRole("link", { name: "媒体", exact: true }).click();
     await expect(page).toHaveURL(/\/library$/);
     await expect.poll(() => appScrollTop(page)).toBe(0);
     expect(await page.evaluate(() => window.scrollY)).toBe(0);
@@ -101,17 +92,48 @@ test.describe("Library infinite loading", () => {
     await page.goto("/library");
     await expect(page.getByText("已加载 2 项")).toBeVisible();
     await expect(page.getByRole("checkbox")).toHaveCount(0);
-    await expect(page.getByRole("radio", { name: "媒体墙" })).toBeChecked();
-    await page.getByRole("radio", { name: "紧凑" }).click();
-    await page.getByRole("radio", { name: "详情卡片" }).click();
-    await expect(page.getByRole("heading", { name: "筛选" })).toBeVisible();
+    await expect(page.getByRole("radio")).toHaveCount(0);
+    await page.getByRole("button", { name: "显示设置" }).click();
+    await expect(page.getByRole("menuitemradio", { name: "媒体墙" })).toHaveAttribute("aria-checked", "true");
+    await page.getByRole("menuitemradio", { name: "紧凑" }).click();
+    await page.getByRole("button", { name: "显示设置" }).click();
+    await page.getByRole("menuitemradio", { name: "详情" }).click();
+    await expect(page.getByRole("button", { name: "显示设置，当前为详情" })).toBeVisible();
+    await page.getByRole("button", { name: "筛选" }).click();
+    await expect(page.getByRole("heading", { name: "筛选媒体" })).toBeVisible();
+    await page.getByRole("button", { name: "关闭面板" }).click();
 
     await page.reload();
-    await expect(page.getByRole("radio", { name: "详情卡片" })).toBeChecked();
-    await expect(page.getByRole("heading", { name: "筛选" })).toBeVisible();
-    await page.getByRole("radio", { name: "媒体墙" }).click();
-    await expect(page.getByRole("radio", { name: "紧凑" })).toBeChecked();
-    await expect(page.getByRole("heading", { name: "筛选" })).toHaveCount(0);
+    await expect(page.getByRole("dialog", { name: "筛选媒体" })).toHaveCount(0);
+    await page.getByRole("button", { name: "显示设置" }).click();
+    await expect(page.getByRole("menuitemradio", { name: "详情" })).toHaveAttribute("aria-checked", "true");
+    await page.getByRole("menuitemradio", { name: "媒体墙" }).click();
+    await page.getByRole("button", { name: "显示设置" }).click();
+    await expect(page.getByRole("menuitemradio", { name: "紧凑" })).toHaveAttribute("aria-checked", "true");
+  });
+
+  test("keeps active filter details inside the filter sheet", async ({ page }) => {
+    await page.route("**/api/v1/library/media?**", (route) =>
+      route.fulfill({
+        json: {
+          rows: createMediaRows(0, 2),
+          count: 2,
+          total_count: 2,
+          limit: PAGE_SIZE,
+          offset: 0,
+        },
+      }),
+    );
+
+    await page.goto("/library");
+    await expect(page.getByText("状态：已校验")).toHaveCount(0);
+    await page.getByRole("button", { name: "筛选", exact: true }).click();
+    await page.getByLabel("Tweet 文本").fill("旅行");
+    await page.getByRole("button", { name: "查看结果" }).click();
+
+    await expect(page.getByRole("button", { name: "筛选，已启用 1 项" })).toBeVisible();
+    await expect(page.getByText("文本：旅行")).toHaveCount(0);
+    await expect(page.getByRole("dialog", { name: "筛选媒体" })).toHaveCount(0);
   });
 
   test("selects and permanently deletes a media item after confirmation", async ({ page }) => {
@@ -148,8 +170,17 @@ test.describe("Library infinite loading", () => {
     });
 
     await page.goto("/library");
+    await expect(page.getByRole("heading", { name: "媒体" })).toHaveCount(1);
+    await expect
+      .poll(() =>
+        page.locator("[data-app-scroll-container]").evaluate((element) => element.scrollWidth <= element.clientWidth),
+      )
+      .toBe(true);
+    await page.getByRole("button", { name: "筛选" }).click();
+    await expect(page.getByRole("dialog", { name: "筛选媒体" })).toBeVisible();
+    await page.getByRole("button", { name: "关闭面板" }).click();
     await expect(page.getByRole("checkbox")).toHaveCount(0);
-    await page.getByRole("button", { name: "批量操作" }).click();
+    await page.getByRole("button", { name: "批量操作和更多选项" }).click();
     await page.getByRole("menuitem", { name: "删除媒体" }).click();
     await page.getByRole("checkbox", { name: "选择媒体 1" }).click();
     await expect(page.getByText("已选 1 项媒体", { exact: true }).first()).toBeVisible();

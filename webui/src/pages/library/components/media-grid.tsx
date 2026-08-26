@@ -5,7 +5,6 @@ import {
   useRef,
   type CSSProperties,
   type HTMLAttributes,
-  type KeyboardEvent,
 } from "react";
 import { ExternalLink, Film, Maximize2 } from "lucide-react";
 import { useNavigate } from "react-router-dom";
@@ -13,7 +12,6 @@ import { VirtuosoGrid, type GridComponents, type GridStateSnapshot } from "react
 import { Badge } from "../../../components/ui/badge";
 import { Button } from "../../../components/ui/button";
 import { Checkbox } from "../../../components/ui/checkbox";
-import { Card, CardContent } from "../../../components/ui/card";
 import { MediaThumbnail } from "../../../components/ui/media-thumbnail";
 import { useAppScrollContainer } from "../../../components/layout/app-scroll-container";
 import type { MediaRow } from "../../../lib/api";
@@ -131,18 +129,17 @@ const GridList = forwardRef<HTMLDivElement, GridListComponentProps>(
       ref={ref}
       style={style}
       className={cn(
-        "grid items-start gap-3",
-        context.viewMode === "details" &&
-          "grid-cols-1 sm:grid-cols-[repeat(auto-fill,minmax(250px,1fr))]",
+        "grid items-start",
+        context.viewMode === "details" && "grid-cols-1 divide-y divide-border-subtle",
         context.viewMode === "media" &&
           context.density === "compact" &&
-          "grid-cols-2 sm:grid-cols-[repeat(auto-fill,minmax(132px,1fr))]",
+          "grid-cols-3 gap-1 sm:grid-cols-[repeat(auto-fill,minmax(112px,1fr))]",
         context.viewMode === "media" &&
           context.density === "standard" &&
-          "grid-cols-2 sm:grid-cols-[repeat(auto-fill,minmax(168px,1fr))]",
+          "grid-cols-3 gap-1 sm:grid-cols-[repeat(auto-fill,minmax(156px,1fr))]",
         context.viewMode === "media" &&
           context.density === "comfortable" &&
-          "grid-cols-2 sm:grid-cols-[repeat(auto-fill,minmax(220px,1fr))]",
+          "grid-cols-2 gap-1 sm:grid-cols-[repeat(auto-fill,minmax(220px,1fr))]",
         className,
       )}
       data-library-view={context.viewMode}
@@ -221,121 +218,16 @@ function MediaWallTile({ row, selected, selectionMode, onToggleSelected, onPrevi
   const debugRedactionEnabled = useDebugRedactionEnabled();
   const title = row.author_display_name || row.author_username || "未知作者";
   const isSelectable = selectionMode !== null;
-  const handleSelectionKeyDown = selectionKeyboardHandler(isSelectable, () => onToggleSelected(row));
 
   return (
-    <Card
+    <article
       className={cn(
-        "group relative overflow-hidden hover:border-border-strong hover:shadow-2",
-        isSelectable && "cursor-pointer",
-        selected && "border-brand ring-2 ring-brand/20",
+        "group relative min-w-0 overflow-hidden bg-bg-muted",
+        selected && "ring-2 ring-inset ring-brand",
       )}
-      role={isSelectable ? "button" : undefined}
-      tabIndex={isSelectable ? 0 : undefined}
-      aria-pressed={isSelectable ? selected : undefined}
-      aria-label={
-        isSelectable
-          ? getDebugSelectionLabel(
-              debugRedactionEnabled,
-              selectionMode === "organize" ? `切换选择 Tweet ${row.tweet_id}` : `切换选择媒体 ${row.id}`,
-            )
-          : undefined
-      }
-      onClick={isSelectable ? () => onToggleSelected(row) : undefined}
-      onKeyDown={handleSelectionKeyDown}
     >
       {isSelectable ? (
-        <div
-          className="absolute right-2 top-2 z-10 rounded-md bg-bg-elevated/90 p-1 shadow-1 backdrop-blur"
-          onClick={(event) => event.stopPropagation()}
-        >
-          <Checkbox
-            aria-label={getDebugSelectionLabel(
-              debugRedactionEnabled,
-              selectionMode === "organize" ? `选择 Tweet ${row.tweet_id}` : `选择媒体 ${row.id}`,
-            )}
-            checked={selected}
-            onCheckedChange={() => onToggleSelected(row)}
-          />
-        </div>
-      ) : null}
-      <div className="relative">
-        <MediaThumbnail
-          src={row.preview_url || row.media_url}
-          mediaType={row.media_type}
-          alt={getDebugMediaAlt(debugRedactionEnabled, row.tweet_text || title)}
-          ariaLabel={getDebugMediaAlt(debugRedactionEnabled, row.tweet_text || title)}
-          className="rounded-none"
-          fit="contain"
-          aspect="square"
-          showTypeBadge={false}
-          onClick={
-            isSelectable
-              ? (event) => {
-                  event.stopPropagation();
-                  onToggleSelected(row);
-                }
-              : () => onPreview(row)
-          }
-        />
-        {!isSelectable && isVideoMedia(row) && row.duration_ms ? (
-          <Badge className="absolute bottom-2 right-2 bg-bg-elevated/90 backdrop-blur" tone="secondary">
-            <Film className="mr-1 size-3" />
-            {formatMediaDuration(row.duration_ms)}
-          </Badge>
-        ) : null}
-      </div>
-      <div className="flex min-w-0 flex-col gap-1 border-t border-border-subtle px-2.5 py-2">
-        <div className="flex min-w-0 items-center justify-between gap-2" {...getDebugRedactProps(debugRedactionEnabled)}>
-          <span className="truncate text-xs font-semibold text-fg-primary">{title}</span>
-          <span className="shrink-0 text-[11px] text-fg-tertiary">{mediaTypeLabel(row.media_type)}</span>
-        </div>
-        <div className="flex min-w-0 items-center justify-between gap-2 text-[11px] text-fg-tertiary">
-          <span className="truncate">{formatDimensions(row)}</span>
-          <span className="shrink-0">{statusLabel(row.media_status)}</span>
-        </div>
-      </div>
-    </Card>
-  );
-}
-
-function MediaDetailCard({ row, selected, selectionMode, onToggleSelected, onPreview }: MediaItemProps) {
-  const navigate = useNavigate();
-  const debugRedactionEnabled = useDebugRedactionEnabled();
-  const title = row.author_display_name || row.author_username || "未知作者";
-  const tweetText = row.tweet_text || "暂无 Tweet 文本";
-  const tweetHref = getDebugExternalHref(debugRedactionEnabled, row.tweet_url);
-  const statusTone = row.media_status === "verified" || row.media_status === "downloaded" ? "success" : "warning";
-  const detailRoute = getDebugDetailRoute(debugRedactionEnabled, row.tweet_id);
-  const isSelectable = selectionMode !== null;
-  const handleSelectionKeyDown = selectionKeyboardHandler(isSelectable, () => onToggleSelected(row));
-
-  return (
-    <Card
-      className={cn(
-        "group relative overflow-hidden hover:border-border-strong hover:shadow-2",
-        isSelectable && "cursor-pointer",
-        selected && "border-brand ring-2 ring-brand/20",
-      )}
-      role={isSelectable ? "button" : undefined}
-      tabIndex={isSelectable ? 0 : undefined}
-      aria-pressed={isSelectable ? selected : undefined}
-      aria-label={
-        isSelectable
-          ? getDebugSelectionLabel(
-              debugRedactionEnabled,
-              selectionMode === "organize" ? `切换选择 Tweet ${row.tweet_id}` : `切换选择媒体 ${row.id}`,
-            )
-          : undefined
-      }
-      onClick={isSelectable ? () => onToggleSelected(row) : undefined}
-      onKeyDown={handleSelectionKeyDown}
-    >
-      {isSelectable ? (
-        <div
-          className="absolute right-2 top-2 z-10 rounded-md bg-bg-elevated/90 p-1 shadow-1 backdrop-blur"
-          onClick={(event) => event.stopPropagation()}
-        >
+        <div className="absolute right-1 top-1 z-10 flex size-10 items-center justify-center rounded-full bg-bg-elevated/90 shadow-1 backdrop-blur">
           <Checkbox
             aria-label={getDebugSelectionLabel(
               debugRedactionEnabled,
@@ -350,19 +242,92 @@ function MediaDetailCard({ row, selected, selectionMode, onToggleSelected, onPre
         src={row.preview_url || row.media_url}
         mediaType={row.media_type}
         alt={getDebugMediaAlt(debugRedactionEnabled, row.tweet_text || title)}
-        ariaLabel={getDebugMediaAlt(debugRedactionEnabled, row.tweet_text || title)}
-        className="rounded-none"
-        showTypeBadge={false}
-        onClick={
+        ariaLabel={
           isSelectable
-            ? (event) => {
-                event.stopPropagation();
-                onToggleSelected(row);
-              }
-            : () => onPreview(row)
+            ? getDebugSelectionLabel(
+                debugRedactionEnabled,
+                selectionMode === "organize" ? `切换选择 Tweet ${row.tweet_id}` : `切换选择媒体 ${row.id}`,
+              )
+            : getDebugMediaAlt(debugRedactionEnabled, row.tweet_text || title)
         }
+        className="rounded-none"
+        fit="cover"
+        aspect="square"
+        showTypeBadge={false}
+        onClick={isSelectable ? () => onToggleSelected(row) : () => onPreview(row)}
       />
-      <CardContent className="flex flex-col gap-2.5 p-3">
+      {!isSelectable && isVideoMedia(row) && row.duration_ms ? (
+        <Badge className="absolute right-2 top-2 shadow-1" tone="secondary">
+          <Film aria-hidden="true" />
+          {formatMediaDuration(row.duration_ms)}
+        </Badge>
+      ) : null}
+      <div className="pointer-events-none absolute inset-x-0 bottom-0 flex items-end justify-between gap-2 bg-gradient-to-t from-black/70 to-transparent px-2 pb-2 pt-8 text-white opacity-0 transition duration-fast group-hover:opacity-100 group-focus-within:opacity-100">
+        <span className="truncate text-xs font-semibold" {...getDebugRedactProps(debugRedactionEnabled)}>
+          {title}
+        </span>
+        <span className="shrink-0 text-[11px] text-white/80">{formatDimensions(row)}</span>
+      </div>
+    </article>
+  );
+}
+
+function MediaDetailCard({ row, selected, selectionMode, onToggleSelected, onPreview }: MediaItemProps) {
+  const navigate = useNavigate();
+  const debugRedactionEnabled = useDebugRedactionEnabled();
+  const title = row.author_display_name || row.author_username || "未知作者";
+  const tweetText = row.tweet_text || "暂无 Tweet 文本";
+  const tweetHref = getDebugExternalHref(debugRedactionEnabled, row.tweet_url);
+  const statusTone = row.media_status === "verified" || row.media_status === "downloaded" ? "success" : "warning";
+  const detailRoute = getDebugDetailRoute(debugRedactionEnabled, row.tweet_id);
+  const isSelectable = selectionMode !== null;
+  const selectionLabel = getDebugSelectionLabel(
+    debugRedactionEnabled,
+    selectionMode === "organize" ? `选择 Tweet ${row.tweet_id}` : `选择媒体 ${row.id}`,
+  );
+
+  return (
+    <article
+      className={cn(
+        "group relative flex min-w-0 flex-col gap-3 px-4 py-4 transition duration-fast hover:bg-bg-muted/50 sm:flex-row sm:gap-4 sm:px-5",
+        selected && "bg-brand-soft",
+      )}
+    >
+      {isSelectable ? (
+        <button
+          type="button"
+          className="absolute right-3 top-3 z-10 flex size-10 items-center justify-center rounded-full bg-bg-elevated/90 shadow-1 backdrop-blur transition hover:bg-bg-muted focus:outline-none focus-visible:ring-2 focus-visible:ring-brand/50"
+          aria-label={selectionLabel}
+          aria-pressed={selected}
+          onClick={() => onToggleSelected(row)}
+        >
+          <Checkbox
+            aria-hidden="true"
+            tabIndex={-1}
+            checked={selected}
+          />
+        </button>
+      ) : null}
+      <div className="w-full shrink-0 sm:w-52">
+        <MediaThumbnail
+          src={row.preview_url || row.media_url}
+          mediaType={row.media_type}
+          alt={getDebugMediaAlt(debugRedactionEnabled, row.tweet_text || title)}
+          ariaLabel={getDebugMediaAlt(debugRedactionEnabled, row.tweet_text || title)}
+          className="rounded-xl"
+          fit="cover"
+          showTypeBadge={false}
+          onClick={
+            isSelectable
+              ? (event) => {
+                  event.stopPropagation();
+                  onToggleSelected(row);
+                }
+              : () => onPreview(row)
+          }
+        />
+      </div>
+      <div className="flex min-w-0 flex-1 flex-col gap-2.5">
         <div className="flex items-start justify-between gap-3" {...getDebugRedactProps(debugRedactionEnabled)}>
           <div className="min-w-0">
             <div className="truncate text-sm font-semibold text-fg-primary">{title}</div>
@@ -378,13 +343,14 @@ function MediaDetailCard({ row, selected, selectionMode, onToggleSelected, onPre
           {tweetText}
         </p>
 
-        <div className="grid grid-cols-2 gap-x-2 gap-y-1 text-xs text-fg-tertiary">
+        <div className="flex flex-wrap items-center gap-x-4 gap-y-1 text-xs text-fg-tertiary">
           <MetaItem label="类型" value={mediaTypeLabel(row.media_type)} />
+          <MetaItem label="尺寸" value={formatDimensions(row)} />
           <MetaItem label="大小" value={formatBytes(row.file_size)} />
-          <MetaItem label="发布" value={formatDateTime(row.published_at)} className="col-span-2" />
+          <MetaItem label="发布" value={formatDateTime(row.published_at)} />
         </div>
 
-        <div className="flex flex-wrap items-center justify-end gap-2 border-t border-border-subtle pt-2.5">
+        {!isSelectable ? <div className="mt-auto flex flex-wrap items-center justify-end gap-1 pt-1">
           {detailRoute ? (
             <Button
               type="button"
@@ -401,31 +367,24 @@ function MediaDetailCard({ row, selected, selectionMode, onToggleSelected, onPre
             </Button>
           ) : null}
           {tweetHref ? (
-            <a
-              className="inline-flex h-8 items-center gap-1 rounded-md px-2 text-sm font-semibold text-brand hover:bg-bg-muted hover:text-brand-hover focus:outline-none focus-visible:ring-2 focus-visible:ring-brand/50"
-              href={tweetHref}
-              target="_blank"
-              rel="noreferrer"
+            <Button
+              type="button"
+              variant="ghost"
+              size="sm"
               title={getDebugLinkTitle(debugRedactionEnabled, "tweet", "在 X 中查看")}
-              onClick={(event) => event.stopPropagation()}
+              onClick={(event) => {
+                event.stopPropagation();
+                window.open(tweetHref, "_blank", "noopener,noreferrer");
+              }}
             >
+              <ExternalLink data-icon="inline-start" />
               在 X 中查看
-              <ExternalLink className="size-3.5" />
-            </a>
+            </Button>
           ) : null}
-        </div>
-      </CardContent>
-    </Card>
+        </div> : null}
+      </div>
+    </article>
   );
-}
-
-function selectionKeyboardHandler(selectable: boolean, onToggle: () => void) {
-  if (!selectable) return undefined;
-  return (event: KeyboardEvent<HTMLDivElement>) => {
-    if (event.key !== "Enter" && event.key !== " ") return;
-    event.preventDefault();
-    onToggle();
-  };
 }
 
 function MetaItem({ label, value, className }: { label: string; value: string; className?: string }) {

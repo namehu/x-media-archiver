@@ -103,8 +103,8 @@ export function AppLayout() {
   const events = useServerEvents(["archive_runs", "sources", "source_scans", "worker", "logs", "library"]);
   const debuggerModeEnabled = resolveDebuggerMode(location.search).enabled;
   const currentPageLabel = resolveCurrentPageLabel(location.pathname);
-  const immersiveFeed = location.pathname === "/feed";
-  const desktopWorkspaceLabel = immersiveFeed
+  const immersiveBrowsing = location.pathname === "/feed" || location.pathname === "/library";
+  const desktopWorkspaceLabel = location.pathname === "/feed"
     ? currentPageLabel
     : isBrowsingRoute(location.pathname)
       ? "内容浏览"
@@ -262,11 +262,20 @@ export function AppLayout() {
           data-app-scroll-container
           className={cn(
             "flex-1 overflow-auto",
-            immersiveFeed ? "bg-bg-base" : "bg-bg-surface px-4 py-5 sm:px-6 sm:py-6 xl:px-8 xl:py-8",
+            immersiveBrowsing ? "bg-bg-base" : "bg-bg-surface px-4 py-5 sm:px-6 sm:py-6 xl:px-8 xl:py-8",
           )}
         >
           <AppScrollContainerProvider container={scrollContainer}>
-            <div className={cn("mx-auto w-full", immersiveFeed ? "max-w-[1120px]" : "max-w-[1600px]")}>
+            <div
+              className={cn(
+                "mx-auto w-full",
+                location.pathname === "/feed"
+                  ? "max-w-[1120px]"
+                  : location.pathname === "/library"
+                    ? "max-w-[1280px]"
+                    : "max-w-[1600px]",
+              )}
+            >
               <Outlet />
             </div>
           </AppScrollContainerProvider>

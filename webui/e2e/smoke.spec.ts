@@ -4,7 +4,7 @@ const apiBaseUrl = process.env.XMA_API_BASE_URL ?? "http://127.0.0.1:18000";
 
 const routes = [
   { path: "/", label: "仪表盘", text: "媒体文件" },
-  { path: "/library", label: "媒体库", text: "webui-e2e fixture tweet" },
+  { path: "/library", label: "媒体", text: "webui-e2e fixture tweet" },
   { path: "/insights", label: "归档洞察", text: "归档洞察" },
   { path: "/collections", label: "合集", text: "还没有合集" },
   { path: "/failures", label: "失败项", text: "webui-e2e-failed" },
@@ -62,7 +62,7 @@ test.describe("WebUI smoke", () => {
 
     for (const route of routes) {
       await page.goto(route.path);
-      await expect(page.getByRole("link", { name: route.label })).toBeVisible();
+      await expect(page.getByRole("link", { name: route.label, exact: true })).toBeVisible();
       await expect(page.getByText(route.text).first()).toBeVisible();
     }
     await page.getByRole("tab", { name: "Cookies" }).click();

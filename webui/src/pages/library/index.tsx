@@ -1,5 +1,5 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
-import { Grid2X2, ListFilter } from "lucide-react";
+import { Images, ListFilter } from "lucide-react";
 import { toast } from "sonner";
 import { useInfiniteQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import { useLocation, useNavigate, useNavigationType } from "react-router-dom";
@@ -11,11 +11,10 @@ import {
   type MediaRow,
   type PageResponse,
 } from "../../lib/api";
-import { Card, CardDescription, CardHeader, CardTitle } from "../../components/ui/card";
 import { useAppScrollContainer } from "../../components/layout/app-scroll-container";
-import { Collapsible, CollapsibleContent } from "../../components/ui/collapsible";
 import { EmptyState } from "../../components/ui/empty-state";
 import { ErrorState } from "../../components/ui/error-state";
+import { Sheet, SheetContent, SheetDescription, SheetHeader, SheetTitle } from "../../components/ui/sheet";
 import { Skeleton } from "../../components/ui/skeleton";
 import {
   DEFAULT_LIBRARY_FILTERS,
@@ -70,14 +69,11 @@ export function LibraryPage() {
   );
   const [viewMode, setViewMode] = useState<LibraryViewMode>(initialViewMode);
   const [density, setDensity] = useState<LibraryDensity>(restoredState?.density ?? initialPreferences.density);
-  const [filtersOpenByView, setFiltersOpenByView] = useState<Record<LibraryViewMode, boolean>>(
-    () => restoredState?.filtersOpenByView ?? initialPreferences.filtersOpenByView,
-  );
   const [restoreGridState, setRestoreGridState] = useState<GridStateSnapshot | null>(
     restoredState?.gridStates[initialViewMode] ?? null,
   );
   const [gridVersion, setGridVersion] = useState(0);
-  const [mobileFiltersOpen, setMobileFiltersOpen] = useState(false);
+  const [filtersSheetOpen, setFiltersSheetOpen] = useState(false);
   const [selectedIds, setSelectedIds] = useState<Set<number>>(() => new Set());
   const [selectedTweetIds, setSelectedTweetIds] = useState<Set<string>>(() => new Set());
   const [selectionMode, setSelectionMode] = useState<LibrarySelectionMode | null>(null);
@@ -91,7 +87,6 @@ export function LibraryPage() {
   const submittedRef = useRef(submitted);
   const viewModeRef = useRef(viewMode);
   const densityRef = useRef(density);
-  const filtersOpenByViewRef = useRef(filtersOpenByView);
   const gridStatesRef = useRef<Partial<Record<LibraryViewMode, GridStateSnapshot>>>(
     restoredState?.gridStates ?? {},
   );
@@ -101,7 +96,6 @@ export function LibraryPage() {
   submittedRef.current = submitted;
   viewModeRef.current = viewMode;
   densityRef.current = density;
-  filtersOpenByViewRef.current = filtersOpenByView;
 
   const draftFilterCount = useMemo(() => countActiveFilters(filters), [filters]);
   const query = useMemo(() => libraryMediaQueryString(submitted), [submitted]);
@@ -140,7 +134,6 @@ export function LibraryPage() {
     () => deleteTarget?.rows.reduce((total, row) => total + (row.file_size ?? 0), 0) ?? 0,
     [deleteTarget],
   );
-  const desktopFiltersOpen = filtersOpenByView[viewMode];
 
   const exitSelectionMode = useCallback(() => {
     setSelectedIds(new Set());
@@ -204,8 +197,8 @@ export function LibraryPage() {
   });
 
   useEffect(() => {
-    saveLibraryViewPreferences({ viewMode, density, filtersOpenByView });
-  }, [density, filtersOpenByView, viewMode]);
+    saveLibraryViewPreferences({ viewMode, density });
+  }, [density, viewMode]);
 
   useEffect(
     () => () => {
@@ -217,7 +210,6 @@ export function LibraryPage() {
         scrollTops: scrollTopsRef.current,
         viewMode: viewModeRef.current,
         density: densityRef.current,
-        filtersOpenByView: filtersOpenByViewRef.current,
       });
     },
     [location.key, scrollParent],
@@ -313,7 +305,7 @@ export function LibraryPage() {
   );
 
   const startSelectionMode = (mode: LibrarySelectionMode) => {
-    setMobileFiltersOpen(false);
+    setFiltersSheetOpen(false);
     setSelectedIds(new Set());
     setSelectedTweetIds(new Set());
     setSelectionMode(mode);
@@ -357,7 +349,6 @@ export function LibraryPage() {
       scrollTops: scrollTopsRef.current,
       viewMode,
       density: densityRef.current,
-      filtersOpenByView: filtersOpenByViewRef.current,
     });
     const dialogEntry = createDialogHistoryEntry(location.state);
     void navigate(
@@ -374,7 +365,7 @@ export function LibraryPage() {
     setViewMode(nextViewMode);
     setRestoreGridState(gridStatesRef.current[nextViewMode] ?? null);
     setGridVersion((version) => version + 1);
-    setMobileFiltersOpen(false);
+    setFiltersSheetOpen(false);
   };
 
   const handleDensityChange = (nextDensity: LibraryDensity) => {
@@ -387,11 +378,7 @@ export function LibraryPage() {
   };
 
   const toggleFilters = () => {
-    if (window.matchMedia("(min-width: 1024px)").matches) {
-      setFiltersOpenByView((current) => ({ ...current, [viewMode]: !current[viewMode] }));
-      return;
-    }
-    setMobileFiltersOpen((current) => !current);
+    setFiltersSheetOpen((current) => !current);
   };
 
   const handleGridStateChanged = useCallback(
@@ -405,114 +392,101 @@ export function LibraryPage() {
         scrollTops: scrollTopsRef.current,
         viewMode,
         density: densityRef.current,
-        filtersOpenByView: filtersOpenByViewRef.current,
       });
     },
     [location.key, scrollParent, viewMode],
   );
 
   return (
-    <div className="flex flex-col gap-4 sm:gap-5">
-      <section>
-        <h1 className="text-2xl font-bold tracking-tight text-fg-primary">媒体库</h1>
-        <p className="mt-1 text-sm text-fg-secondary">像本地媒体库一样浏览、预览和整理已归档内容。</p>
-      </section>
+    <div className="min-h-full">
+      <section className="min-h-full border-x border-border-subtle bg-bg-base">
+        <LibraryResultsToolbar
+          activeFilterCount={countActiveFilters(submitted)}
+          loadedCount={rows.length}
+          totalCount={totalCount}
+          selectedCount={selectionMode === "organize" ? selectedTweetIds.size : selectedIds.size}
+          selectionMode={selectionMode}
+          viewMode={viewMode}
+          density={density}
+          filtersOpen={filtersSheetOpen}
+          onSelectLoaded={selectLoaded}
+          onClearSelection={() => {
+            if (selectionMode === "organize") setSelectedTweetIds(new Set());
+            else setSelectedIds(new Set());
+          }}
+          onExitSelection={exitSelectionMode}
+          onStartSelection={startSelectionMode}
+          onViewModeChange={handleViewModeChange}
+          onDensityChange={handleDensityChange}
+          onToggleFilters={toggleFilters}
+        />
 
-      <section
-        className={desktopFiltersOpen ? "grid gap-4 lg:grid-cols-[280px_minmax(0,1fr)]" : "grid gap-4"}
-      >
-        {desktopFiltersOpen ? (
-          <aside className="hidden min-w-0 lg:block">
-            <fieldset className="min-w-0 border-0 p-0" disabled={Boolean(selectionMode)}>
-              <legend className="sr-only">媒体筛选</legend>
-              <LibraryFilterPanel
-                filters={filters}
-                activeCount={draftFilterCount}
-                onFiltersChange={setFilters}
-                onApply={applyFilters}
-                onReset={resetFilters}
-              />
-            </fieldset>
-          </aside>
-        ) : null}
-
-        <main className="flex min-w-0 flex-col gap-4">
-          {mediaQuery.isLoading ? <LibrarySkeleton viewMode={viewMode} /> : null}
-          {mediaQuery.error && !mediaQuery.data ? (
+        {mediaQuery.isLoading ? <LibrarySkeleton viewMode={viewMode} /> : null}
+        {mediaQuery.error && !mediaQuery.data ? (
+          <div className="p-4 sm:p-5">
             <ErrorState
-              title="API 不可用"
+              title="媒体加载失败"
               detail={String(mediaQuery.error)}
               onRetry={() => void mediaQuery.refetch()}
             />
-          ) : null}
+          </div>
+        ) : null}
 
-          {mediaQuery.data ? (
-            <>
-              <LibraryResultsToolbar
-                filters={submitted}
-                activeFilterCount={countActiveFilters(submitted)}
-                loadedCount={rows.length}
-                totalCount={totalCount}
-                selectedCount={selectionMode === "organize" ? selectedTweetIds.size : selectedIds.size}
-                selectionMode={selectionMode}
-                viewMode={viewMode}
-                density={density}
-                filtersOpen={desktopFiltersOpen || mobileFiltersOpen}
-                onReset={resetFilters}
-                onSelectLoaded={selectLoaded}
-                onClearSelection={() => {
-                  if (selectionMode === "organize") setSelectedTweetIds(new Set());
-                  else setSelectedIds(new Set());
-                }}
-                onExitSelection={exitSelectionMode}
-                onStartSelection={startSelectionMode}
-                onViewModeChange={handleViewModeChange}
-                onDensityChange={handleDensityChange}
-                onToggleFilters={toggleFilters}
-              />
-              <Collapsible open={mobileFiltersOpen} className="lg:hidden">
-                <CollapsibleContent>
-                  <fieldset className="min-w-0 border-0 p-0" disabled={Boolean(selectionMode)}>
-                    <legend className="sr-only">媒体筛选</legend>
-                    <LibraryFilterPanel
-                      filters={filters}
-                      activeCount={draftFilterCount}
-                      onFiltersChange={setFilters}
-                      onApply={() => {
-                        applyFilters();
-                        setMobileFiltersOpen(false);
-                      }}
-                      onReset={resetFilters}
-                    />
-                  </fieldset>
-                </CollapsibleContent>
-              </Collapsible>
-              {rows.length ? (
-                <MediaGrid
-                  key={`${query}:${viewMode}:${density}:${gridVersion}`}
-                  rows={rows}
-                  hasNextPage={Boolean(mediaQuery.hasNextPage)}
-                  isFetchingNextPage={mediaQuery.isFetchingNextPage}
-                  nextPageError={mediaQuery.isFetchNextPageError ? mediaQuery.error : null}
-                  restoreStateFrom={restoreGridState}
-                  onLoadMore={() => void mediaQuery.fetchNextPage()}
-                  onRetryLoadMore={() => void mediaQuery.fetchNextPage()}
-                  onStateChanged={handleGridStateChanged}
-                  selectedIds={selectedIds}
-                  selectedTweetIds={selectedTweetIds}
-                  selectionMode={selectionMode}
-                  viewMode={viewMode}
-                  density={density}
-                  onToggleSelected={toggleSelected}
-                  onPreview={openPreview}
-                />
-              ) : (
-                <EmptyState icon={<ListFilter className="size-5" />} title="当前筛选条件下没有媒体。" />
-              )}
-            </>
-          ) : null}
-        </main>
+        {mediaQuery.data && rows.length ? (
+          <MediaGrid
+            key={`${query}:${viewMode}:${density}:${gridVersion}`}
+            rows={rows}
+            hasNextPage={Boolean(mediaQuery.hasNextPage)}
+            isFetchingNextPage={mediaQuery.isFetchingNextPage}
+            nextPageError={mediaQuery.isFetchNextPageError ? mediaQuery.error : null}
+            restoreStateFrom={restoreGridState}
+            onLoadMore={() => void mediaQuery.fetchNextPage()}
+            onRetryLoadMore={() => void mediaQuery.fetchNextPage()}
+            onStateChanged={handleGridStateChanged}
+            selectedIds={selectedIds}
+            selectedTweetIds={selectedTweetIds}
+            selectionMode={selectionMode}
+            viewMode={viewMode}
+            density={density}
+            onToggleSelected={toggleSelected}
+            onPreview={openPreview}
+          />
+        ) : null}
+        {mediaQuery.data && !rows.length ? (
+          <div className="p-4 sm:p-5">
+            <EmptyState
+              icon={<ListFilter />}
+              title="当前筛选条件下没有媒体"
+              description="调整作者、正文、文件状态或媒体类型后再试。"
+            />
+          </div>
+        ) : null}
       </section>
+
+      <Sheet open={filtersSheetOpen} onOpenChange={setFiltersSheetOpen}>
+        <SheetContent className="w-[min(92vw,420px)] overflow-y-auto p-5 sm:p-6">
+          <SheetHeader>
+            <SheetTitle className="flex items-center gap-2">
+              <Images className="size-5" aria-hidden="true" />
+              筛选媒体
+            </SheetTitle>
+            <SheetDescription>按作者、正文、文件状态或媒体类型收窄当前媒体墙。</SheetDescription>
+          </SheetHeader>
+          <fieldset className="flex min-h-0 flex-1 border-0 p-0" disabled={Boolean(selectionMode)}>
+            <legend className="sr-only">媒体筛选</legend>
+            <LibraryFilterPanel
+              filters={filters}
+              activeCount={draftFilterCount}
+              onFiltersChange={setFilters}
+              onApply={() => {
+                applyFilters();
+                setFiltersSheetOpen(false);
+              }}
+              onReset={resetFilters}
+            />
+          </fieldset>
+        </SheetContent>
+      </Sheet>
 
       {selectionMode ? (
         <LibraryBatchBar
@@ -592,19 +566,27 @@ function libraryMediaQueryString(filters: LibraryFilters, pagination: Record<str
 }
 
 function LibrarySkeleton({ viewMode }: { viewMode: LibraryViewMode }) {
-  return (
-    <div className={viewMode === "media" ? "grid grid-cols-2 gap-3 sm:grid-cols-4" : "grid grid-cols-1 gap-3 sm:grid-cols-3"}>
-      {Array.from({ length: 8 }).map((_, index) => (
-        <Card key={index} className="overflow-hidden">
-          <Skeleton className={viewMode === "media" ? "aspect-square rounded-none" : "aspect-video rounded-none"} />
-          <CardHeader>
-            <div className="flex items-center gap-2">
-              <Grid2X2 className="size-4 text-brand" />
-              <CardTitle className="text-base">正在加载</CardTitle>
+  if (viewMode === "details") {
+    return (
+      <div className="flex flex-col divide-y divide-border-subtle" aria-label="正在加载媒体详情">
+        {Array.from({ length: 5 }).map((_, index) => (
+          <div key={index} className="flex flex-col gap-3 px-4 py-4 sm:flex-row sm:gap-4 sm:px-5">
+            <Skeleton className="aspect-video w-full shrink-0 rounded-xl sm:w-52" />
+            <div className="flex min-w-0 flex-1 flex-col gap-3">
+              <Skeleton className="h-4 w-40 max-w-full" />
+              <Skeleton className="h-4 w-full" />
+              <Skeleton className="h-4 w-2/3" />
             </div>
-            <CardDescription>媒体预览</CardDescription>
-          </CardHeader>
-        </Card>
+          </div>
+        ))}
+      </div>
+    );
+  }
+
+  return (
+    <div className="grid grid-cols-3 gap-1 sm:grid-cols-[repeat(auto-fill,minmax(156px,1fr))]" aria-label="正在加载媒体">
+      {Array.from({ length: 18 }).map((_, index) => (
+        <Skeleton key={index} className="aspect-square rounded-none" />
       ))}
     </div>
   );

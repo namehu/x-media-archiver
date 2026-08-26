@@ -112,10 +112,12 @@ Dashboard:
 
 Library:
 
-- Sticky filters.
-- Virtualized media grid.
-- `MediaThumbnail` for all image/video previews.
-- Stable aspect ratios to avoid layout shift.
+- Use the same immersive white browsing canvas as the feed, with a maximum workspace width of 1280px and subtle side dividers.
+- Keep the title and result count in one compact sticky header. Media-wall/detail switching and density controls belong in the display-settings menu, not in a persistent tab row. Do not add a persistent active-filter row: show the active count inside the filter button and keep filter details and reset actions in the Sheet. Batch actions also belong in a secondary menu rather than a large persistent toolbar.
+- Filters open in a right `Sheet` on every viewport so changing filter visibility never squeezes or shifts the media grid.
+- The primary media view is a virtualized square grid with 4px gutters, cover-cropped thumbnails, and responsive density. Start with three columns on a standard phone; reveal author and dimension metadata on hover or keyboard focus without reserving a caption row for every item.
+- The detail view uses flat, continuous media rows rather than repeated floating cards.
+- Use `MediaThumbnail` for image/video previews and preserve stable aspect ratios, scroll position, grid state, selection state, and preview navigation.
 
 Queue:
 
