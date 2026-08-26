@@ -1,7 +1,9 @@
 import { useQuery, useQueryClient } from "@tanstack/react-query";
 import { createContext, useCallback, useContext, useEffect, useMemo, useState, type ReactNode } from "react";
 import { AlertCircle, RefreshCw } from "lucide-react";
+import { AuthShell } from "@/components/auth/auth-shell";
 import { Button } from "@/components/ui/button";
+import { Card, CardContent, CardDescription, CardFooter, CardHeader } from "@/components/ui/card";
 import { ApiError, apiGet, apiPost, apiRequest } from "@/lib/api";
 import type { AuthSession } from "@/lib/api";
 import { LoginPage } from "@/pages/login";
@@ -80,32 +82,26 @@ export function AuthGate({ children }: { children: ReactNode }) {
   }
   if (sessionQuery.isError || !sessionQuery.data) {
     return (
-      <main className="flex min-h-screen w-full flex-col items-center justify-center bg-bg-surface p-4">
-        <div className="flex max-w-md flex-col items-center space-y-6 text-center animate-in fade-in zoom-in-95 duration-500">
-          <div className="flex h-20 w-20 items-center justify-center rounded-full bg-destructive/10 shadow-sm">
-            <AlertCircle className="h-8 w-8 text-destructive" />
-          </div>
-
-          <div className="space-y-2">
-            <h1 className="text-2xl font-semibold tracking-tight text-fg-primary">无法连接到服务</h1>
-            <p className="text-sm leading-relaxed text-fg-tertiary">
-              认证 API 暂时不可用或网络异常。
-              <br />
-              请检查您的后端服务状态或网络连接后重试。
-            </p>
-          </div>
-
-          <Button
-            size="lg"
-            className="h-11 gap-2 rounded-full px-8 text-base shadow-sm transition-transform active:scale-95"
-            onClick={() => void sessionQuery.refetch()}
-            disabled={sessionQuery.isFetching}
-          >
-            <RefreshCw className={`h-[18px] w-[18px] ${sessionQuery.isFetching ? "animate-spin" : ""}`} />
-            {sessionQuery.isFetching ? "正在重试..." : "重新尝试"}
-          </Button>
-        </div>
-      </main>
+      <AuthShell>
+        <Card className="overflow-hidden shadow-3">
+          <CardHeader className="items-start p-6 pb-5 sm:p-8 sm:pb-6">
+            <div className="flex size-10 items-center justify-center rounded-xl bg-danger/10 text-danger">
+              <AlertCircle className="size-5" aria-hidden="true" />
+            </div>
+            <h1 className="pt-2 text-2xl font-semibold tracking-tight text-fg-primary">无法连接到服务</h1>
+            <CardDescription>认证 API 暂时不可用或网络异常。</CardDescription>
+          </CardHeader>
+          <CardContent className="px-6 pb-6 sm:px-8">
+            <p className="text-sm leading-6 text-fg-secondary">请检查后端服务状态或网络连接，然后重新尝试。</p>
+          </CardContent>
+          <CardFooter className="border-t border-border-subtle bg-bg-surface px-6 py-5 sm:px-8">
+            <Button className="w-full" onClick={() => void sessionQuery.refetch()} disabled={sessionQuery.isFetching}>
+              <RefreshCw className={sessionQuery.isFetching ? "animate-spin" : undefined} data-icon="inline-start" aria-hidden="true" />
+              {sessionQuery.isFetching ? "正在重试..." : "重新尝试"}
+            </Button>
+          </CardFooter>
+        </Card>
+      </AuthShell>
     );
   }
   if (sessionQuery.data.status === "uninitialized") {

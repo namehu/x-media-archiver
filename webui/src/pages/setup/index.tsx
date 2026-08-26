@@ -1,7 +1,8 @@
 import { useState, type FormEvent } from "react";
+import { AuthShell } from "@/components/auth/auth-shell";
 import { Alert, AlertDescription, AlertTitle } from "@/components/ui/alert";
 import { Button } from "@/components/ui/button";
-import { Card, CardContent, CardDescription, CardFooter, CardHeader, CardTitle } from "@/components/ui/card";
+import { Card, CardContent, CardDescription, CardFooter, CardHeader } from "@/components/ui/card";
 import { Field, FieldDescription, FieldError, FieldGroup, FieldLabel } from "@/components/ui/field";
 import { Input } from "@/components/ui/input";
 import { authErrorMessage } from "@/lib/auth-messages";
@@ -26,14 +27,15 @@ export function SetupPage({ error, pending, onSubmit }: SetupPageProps) {
   };
 
   return (
-    <main className="flex min-h-screen items-center justify-center bg-bg-surface p-4">
-      <Card className="w-full max-w-lg">
-        <CardHeader>
-          <CardTitle>初始化管理员</CardTitle>
+    <AuthShell>
+      <Card className="overflow-hidden shadow-3">
+        <CardHeader className="p-6 pb-5 sm:p-8 sm:pb-6">
+          <p className="text-xs font-semibold uppercase tracking-[0.16em] text-brand">First-time setup</p>
+          <h1 className="text-xl font-semibold tracking-tight text-fg-primary">初始化管理员</h1>
           <CardDescription>此实例尚未设置管理员，请完成一次性初始化。</CardDescription>
         </CardHeader>
         <form onSubmit={submit}>
-          <CardContent className="flex flex-col gap-4">
+          <CardContent className="flex flex-col gap-5 px-6 pb-6 sm:px-8">
             <Alert>
               <AlertTitle>从容器日志获取令牌</AlertTitle>
               <AlertDescription>
@@ -102,13 +104,13 @@ export function SetupPage({ error, pending, onSubmit }: SetupPageProps) {
               </Field>
             </FieldGroup>
           </CardContent>
-          <CardFooter>
+          <CardFooter className="border-t border-border-subtle bg-bg-surface px-6 py-5 sm:px-8">
             <Button className="w-full" type="submit" disabled={pending || mismatch}>
               {pending ? "正在初始化..." : "创建管理员"}
             </Button>
           </CardFooter>
         </form>
       </Card>
-    </main>
+    </AuthShell>
   );
 }

@@ -56,6 +56,8 @@ export default {
         "fg-primary": "hsl(var(--fg-primary))",
         "fg-secondary": "hsl(var(--fg-secondary))",
         "fg-tertiary": "hsl(var(--fg-tertiary))",
+        "auth-panel": "hsl(var(--auth-panel))",
+        "auth-panel-fg": "hsl(var(--auth-panel-fg))",
         brand: {
           DEFAULT: "hsl(var(--brand))",
           hover: "hsl(var(--brand-hover))",
@@ -68,9 +70,9 @@ export default {
       },
       borderRadius: {
         lg: "var(--radius)",
-        md: "calc(var(--radius) - 2px)",
-        sm: "calc(var(--radius) - 4px)",
-        xl: "calc(var(--radius) + 2px)",
+        md: "calc(var(--radius) - 3px)",
+        sm: "calc(var(--radius) - 5px)",
+        xl: "calc(var(--radius) + 4px)",
       },
       boxShadow: {
         1: "var(--shadow-1)",

@@ -26,27 +26,29 @@
   --chart-3: var(--warning);
   --chart-4: var(--accent);
   --chart-5: var(--danger);
-  --radius: 6px;
+  --radius: 10px;
   --bg-base: 0 0% 100%;
-  --bg-surface: 210 20% 98%;
+  --bg-surface: 216 33% 97%;
   --bg-elevated: 0 0% 100%;
-  --bg-muted: 214 32% 96%;
-  --border-subtle: 214 22% 92%;
-  --border-strong: 214 16% 84%;
-  --fg-primary: 215 28% 17%;
-  --fg-secondary: 215 16% 38%;
-  --fg-tertiary: 215 12% 56%;
-  --brand: 206 100% 49%;
-  --brand-hover: 206 100% 42%;
-  --brand-soft: 206 100% 49%;
+  --bg-muted: 216 28% 95%;
+  --border-subtle: 216 22% 90%;
+  --border-strong: 216 17% 80%;
+  --fg-primary: 222 36% 14%;
+  --fg-secondary: 218 18% 34%;
+  --fg-tertiary: 218 13% 44%;
+  --brand: 206 100% 47%;
+  --brand-hover: 206 100% 40%;
+  --brand-soft: 206 100% 47%;
   --accent: 196 88% 56%;
   --success: 152 60% 42%;
   --warning: 38 92% 50%;
   --danger: 354 76% 52%;
   --info: 206 100% 49%;
-  --shadow-1: 0 1px 2px rgba(15, 23, 42, 0.04);
-  --shadow-2: 0 4px 12px rgba(15, 23, 42, 0.06);
-  --shadow-3: 0 12px 32px rgba(15, 23, 42, 0.10);
+  --auth-panel: 222 38% 12%;
+  --auth-panel-fg: 210 24% 96%;
+  --shadow-1: 0 1px 2px rgba(15, 23, 42, 0.035), 0 0 0 1px rgba(15, 23, 42, 0.015);
+  --shadow-2: 0 6px 18px rgba(15, 23, 42, 0.065);
+  --shadow-3: 0 18px 48px rgba(15, 23, 42, 0.11);
   --ease-out: cubic-bezier(0.16, 1, 0.3, 1);
   --ease-spring: cubic-bezier(0.22, 1, 0.36, 1);
   --dur-fast: 120ms;
@@ -64,15 +66,15 @@
 }
 
 .dark {
-  --bg-base: 215 28% 9%;
-  --bg-surface: 215 24% 12%;
-  --bg-elevated: 215 22% 16%;
-  --bg-muted: 215 20% 18%;
-  --border-subtle: 215 18% 22%;
-  --border-strong: 215 16% 30%;
+  --bg-base: 222 32% 9%;
+  --bg-surface: 222 28% 11%;
+  --bg-elevated: 220 25% 14%;
+  --bg-muted: 220 22% 18%;
+  --border-subtle: 218 18% 23%;
+  --border-strong: 218 16% 32%;
   --fg-primary: 210 20% 96%;
-  --fg-secondary: 215 12% 70%;
-  --fg-tertiary: 215 10% 50%;
+  --fg-secondary: 215 14% 72%;
+  --fg-tertiary: 215 11% 60%;
   --brand: 206 92% 60%;
   --brand-hover: 206 92% 66%;
   --brand-soft: 206 92% 60%;
@@ -89,9 +91,18 @@
 body {
   margin: 0;
   min-width: 320px;
-  min-height: 100vh;
+  min-height: 100dvh;
   background: hsl(var(--bg-base));
   color: hsl(var(--fg-primary));
+}
+
+#root {
+  min-height: 100dvh;
+}
+
+::selection {
+  color: hsl(var(--fg-primary));
+  background: hsl(var(--brand) / 0.18);
 }
 
 a {
