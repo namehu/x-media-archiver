@@ -68,7 +68,7 @@ The app uses a desktop sidebar that expands to 248px and collapses to a 76px ico
 The route hierarchy is content-first:
 
 - `/` redirects to `/feed`.
-- Browsing destinations appear first: home feed, media, search, collections, and insights.
+- Browsing destinations appear first: home feed, media, search, collections, custom tags, and insights.
 - Management and maintenance destinations remain directly accessible in separate navigation groups.
 - The feed uses a maximum 1120px workspace with a 680px content stream and a contextual right column.
 - Management content remains centered at a maximum width of 1600px.
@@ -125,6 +125,27 @@ Search:
 - The sticky header contains the primary keyword input, search action, and one filter trigger. Do not add a separate page hero, description block, persistent filter column, or outer result card.
 - Put all structured refinements in a right `Sheet` at every viewport width. The primary keyword remains in the header and is not counted as an active refinement.
 - Keep search-specific context compact: highlight matched text and expose relevant tags, collections, notes, and exceptional archive status, but do not show implementation-facing relevance scores or repeat the default verified state.
+
+Collections:
+
+- Use a centered, narrow browsing stream with a compact sticky header. The default view is the collection catalog; do not keep collection details permanently beside it.
+- Open a collection as a URL-addressable detail state so refresh, back, and direct links remain predictable. Detail content uses flat Tweet rows separated by rules.
+- Keep collection settings in a right Sheet. Editing uses the shared dialog and destructive deletion retains explicit confirmation copy.
+- Collection covers may establish visual identity, but metadata and actions must remain readable when no cover exists.
+
+Custom Tags:
+
+- Custom tags are a top-level browsing and organization destination, separate from collections and platform Hashtags. Never hide the complete tag catalog inside a collection Sheet.
+- Use a centered, narrow directory with persistent search, URL-backed sort state, exact usage counts, and virtualized rows so large tag catalogs remain responsive.
+- Selecting a tag opens Search with its `tag_id` applied. Editing uses the shared dialog; deletion requires explicit confirmation and preserves Tweets, media, collections, tasks, and notes.
+- Search, empty, loading, error, light, dark, and narrow-screen states must remain usable without horizontal scrolling.
+
+Insights:
+
+- Use an immersive white data canvas with continuous sections and subtle rules, not a wall of independent statistic and chart cards.
+- Start with a compact factual overview, then show the two real time dimensions: content publication and local import. Do not infer trends that the API does not supply.
+- Reserve charts for temporal change. Show categorical distributions as directly labeled horizontal rows and keep exact values visible in text or tables.
+- Keep the page read-only. Loading, empty, and error states retain the same compact page header and canvas width.
 
 Queue:
 

@@ -46,6 +46,7 @@ const InsightsPage = lazy(() => import("./pages/insights").then((module) => ({ d
 const CollectionsPage = lazy(() =>
   import("./pages/collections").then((module) => ({ default: module.CollectionsPage })),
 );
+const TagsPage = lazy(() => import("./pages/tags").then((module) => ({ default: module.TagsPage })));
 const OperationsPage = lazy(() =>
   import("./pages/operations").then((module) => ({
     default: module.OperationsPage,
@@ -75,6 +76,7 @@ const router = createBrowserRouter([
       { path: "insights", element: route(<InsightsPage />) },
       { path: "library", element: route(<LibraryPage />) },
       { path: "collections", element: route(<CollectionsPage />) },
+      { path: "tags", element: route(<TagsPage />) },
       { path: "tweets/:tweetId", element: route(<TweetDetailPage />) },
       { path: "failures", element: route(<FailuresPage />) },
       { path: "duplicates", element: route(<DuplicatesPage />) },

@@ -20,6 +20,7 @@ import {
   Search,
   Settings2,
   Sun,
+  Tags,
   type LucideIcon,
 } from "lucide-react";
 import { useServerEvents } from "../../hooks/useServerEvents";
@@ -55,6 +56,7 @@ const navGroups: Array<{ label: string; items: NavigationItem[] }> = [
       { to: "/library", label: "媒体", icon: Images },
       { to: "/search", label: "搜索", icon: Search },
       { to: "/collections", label: "合集", icon: FolderOpen },
+      { to: "/tags", label: "自定义标签", icon: Tags },
       { to: "/insights", label: "洞察", icon: BarChart3 },
     ],
   },
@@ -104,7 +106,12 @@ export function AppLayout() {
   const debuggerModeEnabled = resolveDebuggerMode(location.search).enabled;
   const currentPageLabel = resolveCurrentPageLabel(location.pathname);
   const immersiveBrowsing =
-    location.pathname === "/feed" || location.pathname === "/library" || location.pathname === "/search";
+    location.pathname === "/feed" ||
+    location.pathname === "/library" ||
+    location.pathname === "/search" ||
+    location.pathname === "/collections" ||
+    location.pathname === "/tags" ||
+    location.pathname === "/insights";
   const desktopWorkspaceLabel = location.pathname === "/feed"
     ? currentPageLabel
     : isBrowsingRoute(location.pathname)
@@ -270,7 +277,7 @@ export function AppLayout() {
             <div
               className={cn(
                 "mx-auto w-full",
-                location.pathname === "/feed" || location.pathname === "/search"
+                ["/feed", "/search", "/collections", "/tags", "/insights"].includes(location.pathname)
                   ? "max-w-[1120px]"
                   : location.pathname === "/library"
                     ? "max-w-[1280px]"
@@ -464,7 +471,7 @@ function resolveCurrentPageLabel(pathname: string) {
 
 function isBrowsingRoute(pathname: string) {
   if (pathname.startsWith("/tweets/")) return true;
-  return ["/feed", "/library", "/search", "/collections", "/insights"].includes(pathname);
+  return ["/feed", "/library", "/search", "/collections", "/tags", "/insights"].includes(pathname);
 }
 
 function eventLabel(status: string, transport: string) {

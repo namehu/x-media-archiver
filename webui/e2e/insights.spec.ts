@@ -11,14 +11,20 @@ test("insights renders database facts, stays read-only, and redacts author ident
   await expect(page.getByText("归档入库趋势")).toBeVisible();
   await expect(page.getByText("来源发现状态")).toBeVisible();
   await expect(page.getByText("不是下载活动趋势")).toBeVisible();
-  await expect(page.locator(".recharts-responsive-container")).toHaveCount(3);
+  await expect(page.locator(".recharts-responsive-container")).toHaveCount(2);
+  await expect(page.locator(".recharts-pie")).toHaveCount(0);
+  await expect(page.getByText("图片", { exact: true })).toBeVisible();
 
   const authorBody = page.locator("tbody[data-debug-redact]").filter({ hasText: "private-author" });
   await expect(authorBody).toHaveCount(1);
   await expect(authorBody).not.toHaveCSS("filter", "none");
 
+  await page.evaluate(() => localStorage.setItem("x-archiver-theme", "dark"));
   await page.setViewportSize({ width: 390, height: 844 });
+  await page.reload();
+  await expect(page.locator("html")).toHaveClass(/dark/);
   await expect(page.getByText("元数据完整率")).toBeVisible();
+  await expect.poll(() => page.evaluate(() => document.documentElement.scrollWidth <= window.innerWidth)).toBe(true);
   expect(apiRequests.filter((request) => request.method !== "GET")).toEqual([]);
 });
 

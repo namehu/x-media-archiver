@@ -63,7 +63,12 @@ export function CatalogItemDialog({
       return item ? apiPut<WriteActionResponse>(path, body) : apiPost<WriteActionResponse>(path, body);
     },
     onSuccess: async () => {
-      await queryClient.invalidateQueries({ queryKey: ["organization-catalog"] });
+      await Promise.all([
+        queryClient.invalidateQueries({ queryKey: ["organization-catalog"] }),
+        queryClient.invalidateQueries({ queryKey: ["collection-tweets"] }),
+        queryClient.invalidateQueries({ queryKey: ["posts"] }),
+        queryClient.invalidateQueries({ queryKey: ["tweet-search"] }),
+      ]);
       toast.success(`${kind === "tag" ? "自定义标签" : "合集"}已${item ? "更新" : "创建"}`);
       onOpenChange(false);
     },
@@ -82,7 +87,9 @@ export function CatalogItemDialog({
           <DialogHeader>
             <DialogTitle>{item ? "编辑" : "新建"}{kind === "tag" ? "自定义标签" : "合集"}</DialogTitle>
             <DialogDescription>
-              {kind === "tag" ? "自定义标签名称不区分大小写，颜色仅用于快速识别。" : "合集可包含多条 Tweet，封面稍后从合集现有媒体中选择。"}
+              {kind === "tag"
+                ? "自定义标签名称不区分大小写，颜色仅用于快速识别。"
+                : "合集可包含多条 Tweet，封面稍后从合集现有媒体中选择。"}
             </DialogDescription>
           </DialogHeader>
           <FieldGroup className="gap-4" {...getDebugRedactProps(debugRedactionEnabled)}>

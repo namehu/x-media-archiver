@@ -185,7 +185,7 @@ export function OrganizationEditorDialog({
               <SelectionField
                 label="自定义标签"
                 icon={<Tag />}
-                empty="还没有自定义标签，请先到“合集 → 自定义标签管理”创建。"
+                empty="还没有自定义标签，请先到“自定义标签”页面创建。"
                 items={catalogQuery.data?.tags ?? []}
                 selected={tagIds}
                 disabled={busy}

@@ -20,7 +20,7 @@ export function MediaThumbnail({
   className?: string;
   onClick?: MouseEventHandler<HTMLButtonElement>;
   fit?: "cover" | "contain";
-  aspect?: "video" | "square";
+  aspect?: "video" | "square" | "wide";
   showTypeBadge?: boolean;
   ariaLabel?: string;
 }) {
@@ -41,7 +41,7 @@ export function MediaThumbnail({
       aria-label={ariaLabel || alt}
       className={cn(
         "group relative flex w-full overflow-hidden rounded-lg bg-bg-muted text-left focus:outline-none focus-visible:ring-2 focus-visible:ring-brand/50",
-        aspect === "square" ? "aspect-square" : "aspect-video",
+        aspect === "square" ? "aspect-square" : aspect === "wide" ? "aspect-[3/1]" : "aspect-video",
         className,
       )}
     >

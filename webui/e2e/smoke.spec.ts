@@ -7,6 +7,7 @@ const routes = [
   { path: "/library", label: "媒体", text: "webui-e2e fixture tweet" },
   { path: "/insights", label: "归档洞察", text: "归档洞察" },
   { path: "/collections", label: "合集", text: "还没有合集" },
+  { path: "/tags", label: "自定义标签", text: "自定义标签" },
   { path: "/failures", label: "失败项", text: "webui-e2e-failed" },
   { path: "/duplicates", label: "重复媒体", text: "重复媒体" },
   { path: "/queue", label: "归档队列", text: "Run #" },
