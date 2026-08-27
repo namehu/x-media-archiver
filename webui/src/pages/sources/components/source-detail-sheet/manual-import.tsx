@@ -1,6 +1,8 @@
 import * as React from "react";
 import type { ArchiveSourceDetail, ArchiveSubmission } from "@/lib/api";
 import { Button } from "@/components/ui/button";
+import { Field, FieldDescription, FieldLabel } from "@/components/ui/field";
+import { Textarea } from "@/components/ui/textarea";
 import { parseRecordUrls } from "../../utils";
 import { useTextInput } from "./use-number-input";
 import { ActionBlock } from "./action-block";
@@ -50,15 +52,21 @@ export function ManualImport({
   }, [feedback?.run_id]);
 
   return (
-    <ActionBlock title="手动粘贴 Tweet URL">
-      <textarea
-        className="min-h-24 w-full resize-y rounded-md border border-border-strong bg-bg-elevated px-3 py-2 text-sm text-fg-primary outline-none transition duration-fast placeholder:text-fg-tertiary focus-visible:ring-2 focus-visible:ring-brand/50"
-        placeholder="https://x.com/user/status/123"
-        value={recordUrls.value}
-        onChange={recordUrls.onChange}
-      />
+    <ActionBlock title="手动粘贴 Tweet URL" contentClassName="flex flex-col gap-3">
+      <Field>
+        <FieldLabel htmlFor="source-record-urls">Tweet URL</FieldLabel>
+        <Textarea
+          id="source-record-urls"
+          className="min-h-28 resize-y"
+          placeholder="https://x.com/user/status/123"
+          value={recordUrls.value}
+          onChange={recordUrls.onChange}
+        />
+        <FieldDescription>每行一个 URL；重复项会在提交时自动去重。</FieldDescription>
+      </Field>
       <Button
         type="button"
+        className="self-start"
         disabled={!canSubmit}
         onClick={() => {
           actions.submitRecords({ sourceId: source.id, records });

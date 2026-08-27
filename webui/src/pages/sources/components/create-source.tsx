@@ -81,14 +81,8 @@ export function CreateSource({
               />
             </Field>
 
-            <div
-              aria-hidden={!hasSourceUrl}
-              className={[
-                "grid overflow-hidden transition-all duration-300 ease-out",
-                hasSourceUrl ? "max-h-72 translate-y-0 opacity-100" : "max-h-0 -translate-y-2 opacity-0",
-              ].join(" ")}
-            >
-              <div className="space-y-4 pt-1">
+            {hasSourceUrl ? (
+              <div className="flex flex-col gap-4 pt-1">
                 <Field>
                   <FieldLabel htmlFor="source-type">来源类型</FieldLabel>
                   <Select value={sourceType} onValueChange={setSourceType} disabled={!hasSourceUrl}>
@@ -118,7 +112,7 @@ export function CreateSource({
                   />
                 </Field>
               </div>
-            </div>
+            ) : null}
           </FieldGroup>
           {errorMessage ? <FieldError errors={[{ message: errorMessage }]} /> : null}
           <DialogFooter>

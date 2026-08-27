@@ -157,9 +157,11 @@ Queue:
 
 Sources:
 
-- List/detail composition.
-- Source details use tabs for overview, discovered tweets, scan history, and advanced actions.
-- Source page container should remain small; hooks and panels own the workflow detail.
+- Use a directory-to-workspace composition. The directory is one continuous, virtualized list with persistent search; type, runtime state, lifecycle, and sorting live in one right Sheet instead of a row of permanent selects.
+- Bulk controls appear only after the user enters selection mode. Keep the default directory quiet, preserve the 200-source filtered-selection limit, and move schedules and task history into the compact page-level tools menu.
+- Opening a source writes `sourceId` to the URL and replaces the directory with a full-width detail workspace. Do not put the complete source workflow in a narrow detail Sheet; back, refresh, and direct links must remain predictable.
+- Source details use four tabs in this order: overview, discovered Tweets, scan history, and advanced settings. Overview owns scan and active-download control; discovered Tweets is a flat continuous record stream; submission, manual import, cursor metadata, and deletion live in advanced settings.
+- Source page container should remain small; hooks and panels own the workflow detail. Keep scan/download explanations concise at rest and expose implementation detail progressively.
 
 Operations:
 

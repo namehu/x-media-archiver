@@ -17,13 +17,97 @@ import type { DownloadSubmitInput, TweetFilters } from "../source-tweet-filters"
 
 type DownloadFollowMode = "following" | "paused";
 
-export function SourceTweetsContent({
+export function SourceOverviewContent({
   source,
   actions,
   scanFeedback,
   scanLimit,
   hasDownloadQueueWork,
   onOpenLog,
+  downloads,
+  statusLabel,
+  now,
+  readonly = false,
+}: {
+  source: ArchiveSourceDetail;
+  actions: DetailActions;
+  scanFeedback: Record<string, unknown> | null;
+  scanLimit: number;
+  hasDownloadQueueWork: boolean;
+  onOpenLog: (run: SourceScanRun) => void;
+  downloads?: SourceDownloadSummary;
+  statusLabel: (status?: string | null) => string;
+  now: number;
+  readonly?: boolean;
+}) {
+  return (
+    <div className="flex flex-col gap-6">
+      <div className="grid overflow-hidden rounded-xl border border-border-subtle bg-bg-surface sm:grid-cols-2 xl:grid-cols-4">
+        <OverviewMetric label="已发现 Tweet" value={source.discovered_tweet_count ?? source.discovered_count ?? 0} />
+        <OverviewMetric label="媒体预估" value={source.discovered_media_count ?? 0} />
+        <OverviewMetric label="待提交下载" value={source.unsubmitted_tweet_count ?? 0} tone={(source.unsubmitted_tweet_count ?? 0) > 0 ? "warning" : undefined} />
+        <OverviewMetric label="扫描批次" value={source.scan_summary?.batch_count ?? source.scan_batch_count ?? 0} />
+      </div>
+
+      {readonly ? (
+        <Alert>
+          <AlertTitle>此来源处于只读状态</AlertTitle>
+          <AlertDescription>发现记录、下载状态和扫描历史仍然保留；重新新增相同 URL 可以恢复来源。</AlertDescription>
+        </Alert>
+      ) : (
+        <div className="grid gap-4 xl:grid-cols-2">
+          <ScanActions
+            source={source}
+            actions={actions}
+            scanFeedback={scanFeedback}
+            scanLimit={scanLimit}
+            hasDownloadQueueWork={hasDownloadQueueWork}
+            onOpenLog={onOpenLog}
+          />
+          <SourceDownloadPanel
+            sourceId={source.id}
+            downloads={downloads}
+            actions={actions}
+            statusLabel={statusLabel}
+            onResumeDownload={(runId) => void actions.resumeDownload(runId).catch(() => undefined)}
+          />
+        </div>
+      )}
+
+      {source.active_scan_run ? <ActiveScan run={source.active_scan_run} source={source} now={now} /> : null}
+
+      {source.error_message ? (
+        <Alert variant="destructive">
+          <AlertTitle>最近一次来源操作失败</AlertTitle>
+          <AlertDescription>{source.error_message}</AlertDescription>
+        </Alert>
+      ) : null}
+    </div>
+  );
+}
+
+function OverviewMetric({
+  label,
+  value,
+  tone,
+}: {
+  label: string;
+  value: number;
+  tone?: "warning";
+}) {
+  return (
+    <div className="border-b border-border-subtle px-4 py-4 last:border-b-0 sm:border-b-0 sm:border-r sm:[&:nth-child(2)]:border-r-0 xl:[&:nth-child(2)]:border-r xl:last:border-r-0">
+      <p className="text-xs font-medium text-fg-secondary">{label}</p>
+      <p className={cn("mt-1 text-2xl font-semibold tabular-nums text-fg-primary", tone === "warning" && "text-warning")}>
+        {value}
+      </p>
+    </div>
+  );
+}
+
+export function SourceTweetsContent({
+  source,
+  actions,
   pages,
   downloads,
   isLoading,
@@ -34,15 +118,10 @@ export function SourceTweetsContent({
   statusLabel,
   filters,
   onFiltersChange,
-  now,
   readonly = false,
 }: {
   source: ArchiveSourceDetail;
   actions: DetailActions;
-  scanFeedback: Record<string, unknown> | null;
-  scanLimit: number;
-  hasDownloadQueueWork: boolean;
-  onOpenLog: (run: SourceScanRun) => void;
   pages: SourceDiscoveryPageResponse[];
   downloads?: SourceDownloadSummary;
   isLoading: boolean;
@@ -53,7 +132,6 @@ export function SourceTweetsContent({
   statusLabel: (status?: string | null) => string;
   filters: TweetFilters;
   onFiltersChange: (filters: TweetFilters) => void;
-  now: number;
   readonly?: boolean;
 }) {
   const [followRunId, setFollowRunId] = React.useState<number | null>(null);
@@ -92,53 +170,14 @@ export function SourceTweetsContent({
     [actions],
   );
 
-  const resumeDownloadAndFollow = React.useCallback(
-    (runId: number) => {
-      void actions
-        .resumeDownload(runId)
-        .then(() => {
-          setFollowRunId(runId);
-          setFollowMode("following");
-          setFrontierTweetId(null);
-        })
-        .catch(() => undefined);
-    },
-    [actions],
-  );
-
   return (
-    <div className="flex min-h-0 flex-1 flex-col gap-4">
-      <div className="shrink-0">
-        {readonly ? (
-          <Alert>
-            <AlertTitle>已删除来源只读查看</AlertTitle>
-            <AlertDescription>可以查看发现记录、下载状态和扫描历史，不能继续扫描或提交下载。</AlertDescription>
-          </Alert>
-        ) : (
-          <div className="grid gap-4 lg:grid-cols-2">
-            <ScanActions
-              source={source}
-              actions={actions}
-              scanFeedback={scanFeedback}
-              scanLimit={scanLimit}
-              hasDownloadQueueWork={hasDownloadQueueWork}
-              onOpenLog={onOpenLog}
-            />
-            <SourceDownloadPanel
-              sourceId={source.id}
-              downloads={downloads}
-              actions={actions}
-              statusLabel={statusLabel}
-              onResumeDownload={resumeDownloadAndFollow}
-            />
-          </div>
-        )}
-        {source.active_scan_run ? (
-          <div className="mt-4">
-            <ActiveScan run={source.active_scan_run} source={source} now={now} />
-          </div>
-        ) : null}
-      </div>
+    <div className="flex min-h-0 flex-1 flex-col overflow-hidden rounded-xl border border-border-subtle bg-bg-surface">
+      {readonly ? (
+        <Alert className="mb-4 shrink-0">
+          <AlertTitle>已删除来源只读查看</AlertTitle>
+          <AlertDescription>可以查看发现记录和下载状态，不能继续提交下载。</AlertDescription>
+        </Alert>
+      ) : null}
       <div className="min-h-0 flex-1">
         <SourceTweetsTab
           pages={pages}

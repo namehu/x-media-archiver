@@ -13,6 +13,7 @@ import {
 } from "@/components/ui/alert-dialog";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
+import { EmptyState } from "@/components/ui/empty-state";
 import { ScrollArea } from "@/components/ui/scroll-area";
 import { Sheet, SheetContent, SheetDescription, SheetHeader, SheetTitle } from "@/components/ui/sheet";
 import { Switch } from "@/components/ui/switch";
@@ -48,14 +49,16 @@ export function SourceScheduleManager({
           <div className="flex flex-col gap-3 p-6">
             {loading ? <p className="py-8 text-center text-sm text-fg-secondary">正在加载策略…</p> : null}
             {!loading && policies.length === 0 ? (
-              <div className="flex flex-col items-center gap-2 py-12 text-center">
-                <CalendarClock className="h-6 w-6 text-fg-tertiary" />
-                <p className="text-sm font-medium text-fg-primary">还没有定时策略</p>
-                <p className="text-xs text-fg-secondary">在来源列表中选择来源后创建策略。</p>
-              </div>
+              <EmptyState
+                icon={<CalendarClock aria-hidden="true" />}
+                title="还没有定时策略"
+                description="返回来源目录，进入批量选择后即可为一组来源创建策略。"
+              />
             ) : null}
-            {policies.map((policy) => (
-              <div key={policy.id} className="rounded-lg border border-border-subtle bg-bg-surface p-4">
+            {policies.length ? (
+              <div className="overflow-hidden rounded-xl border border-border-subtle bg-bg-surface">
+              {policies.map((policy) => (
+              <div key={policy.id} className="border-b border-border-subtle p-4 last:border-b-0">
                 <div className="flex items-start justify-between gap-3">
                   <div className="min-w-0">
                     <div className="flex flex-wrap items-center gap-2">
@@ -87,7 +90,9 @@ export function SourceScheduleManager({
                   </Button>
                 </div>
               </div>
-            ))}
+              ))}
+              </div>
+            ) : null}
           </div>
         </ScrollArea>
         </SheetContent>

@@ -12,6 +12,7 @@ import {
   AlertDialogTitle,
 } from "@/components/ui/alert-dialog";
 import { Button } from "@/components/ui/button";
+import { Field, FieldDescription, FieldLabel } from "@/components/ui/field";
 import { Input } from "@/components/ui/input";
 import { getActiveScanMode, scanModeLabel, sourceScanStatus } from "../../utils";
 import { ActionBlock } from "./action-block";
@@ -94,7 +95,7 @@ export function ScanActions({
   return (
     <ActionBlock
       title="扫描来源"
-      hint="扫描只发现并记录 Tweet 与媒体预估，不会自动提交下载；同一来源同一时间只运行一个扫描会话。每批先读取来源 cursor 与下一批范围；下载队列忙时只记录等待，空闲时才调用 gallery-dl 枚举。子进程完整返回后才会解析、去重并落库，再按延迟时间调度下一批。暂停只阻止后续调度，不会终止已启动的 gallery-dl 子进程；该批结束后会保留 cursor 与发现记录。"
+      hint="扫描只负责发现并记录 Tweet，不会自动提交下载；暂停会在当前批次完成后生效。"
       contentClassName="flex flex-1 flex-col justify-between gap-3 text-sm"
     >
       <div className="min-w-0">
@@ -235,9 +236,10 @@ function ScanConfirmationDialog({
           <AlertDialogDescription>{description}</AlertDialogDescription>
         </AlertDialogHeader>
         {!isStop ? (
-          <label className="grid gap-2 text-sm font-medium text-fg-primary">
-            本次每批扫描数量
+          <Field>
+            <FieldLabel htmlFor="source-scan-limit">本次每批扫描数量</FieldLabel>
             <Input
+              id="source-scan-limit"
               className="w-28"
               type="number"
               min={5}
@@ -248,8 +250,8 @@ function ScanConfirmationDialog({
                 if (Number.isFinite(value)) onLimitChange(Math.max(5, Math.min(200, Math.floor(value))));
               }}
             />
-            <span className="text-xs font-normal text-fg-secondary">范围 5–200 条；确认后会作为该扫描会话的批次大小。</span>
-          </label>
+            <FieldDescription>范围 5–200 条；确认后会作为该扫描会话的批次大小。</FieldDescription>
+          </Field>
         ) : null}
         <AlertDialogFooter>
           <AlertDialogCancel disabled={pending}>取消</AlertDialogCancel>

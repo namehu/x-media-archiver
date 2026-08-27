@@ -1,6 +1,7 @@
 import { useEffect, useMemo, useState } from "react";
 import { useQueryClient } from "@tanstack/react-query";
 import { useSearchParams } from "react-router-dom";
+import { CalendarClock, ListChecks, MoreHorizontal, Plus } from "lucide-react";
 import { toast } from "sonner";
 import type { ArchiveSubmission } from "@/lib/api";
 import { Alert, AlertDescription, AlertTitle } from "@/components/ui/alert";
@@ -15,6 +16,14 @@ import {
   AlertDialogTitle,
 } from "@/components/ui/alert-dialog";
 import { Button } from "@/components/ui/button";
+import {
+  DropdownMenu,
+  DropdownMenuContent,
+  DropdownMenuGroup,
+  DropdownMenuItem,
+  DropdownMenuTrigger,
+} from "@/components/ui/dropdown-menu";
+import { ManagementPageHeader } from "@/components/ui/management-page-header";
 import { Progress } from "@/components/ui/progress";
 import { statusLabel } from "@/lib/formatters";
 import { useRuntime } from "@/lib/runtime-provider";
@@ -33,7 +42,7 @@ import type { SourceDeletedFilter, SourceOperationalFilter, SourceSortBy } from 
 export function SourcesPage() {
   const queryClient = useQueryClient();
   const [searchParams, setSearchParams] = useSearchParams();
-  const [selectedSourceId, setSelectedSourceId] = useState<number | null>(null);
+  const [selectedSourceId, setSelectedSourceId] = useState<number | null>(() => parseSourceId(searchParams.get("sourceId")));
   const [sourceTypeFilter, setSourceTypeFilter] = useState("");
   const [sourceDeletedFilter, setSourceDeletedFilter] = useState<SourceDeletedFilter>("active");
   const [sortBy, setSortBy] = useState<SourceSortBy>("manual_order");
@@ -45,10 +54,9 @@ export function SourcesPage() {
   const [now, setNow] = useState(() => Date.now());
   const [createResetKey, setCreateResetKey] = useState(0);
   const [createDialogOpen, setCreateDialogOpen] = useState(false);
-  const [detailSheetOpen, setDetailSheetOpen] = useState(false);
   const downloadQueue = useRuntime((state) => state.queue);
 
-  const includeDeletedDetail = sourceDeletedFilter !== "active";
+  const includeDeletedDetail = selectedSourceId !== null || sourceDeletedFilter !== "active";
   const sourcesQuery = useSourcesQuery(
     sourceTypeFilter,
     sourceDeletedFilter,
@@ -88,14 +96,14 @@ export function SourcesPage() {
     setCreateResetKey((key) => key + 1);
     setCreateDialogOpen(false);
     await refresh(source.id);
+    updateSelectedSourceParam(source.id);
   });
 
   const deleteMutation = useDeleteSource(async () => {
-    setDetailSheetOpen(false);
     setSelectedSourceId(null);
     setFeedback(null);
     setScanFeedback(null);
-    setSearchParams({});
+    updateSelectedSourceParam(null);
     await Promise.all([
       refresh(),
       queryClient.invalidateQueries({ queryKey: ["health-detail"] }),
@@ -139,11 +147,7 @@ export function SourcesPage() {
   });
 
   useEffect(() => {
-    const sourceId = Number(searchParams.get("sourceId"));
-    if (Number.isFinite(sourceId) && sourceId > 0) {
-      setSelectedSourceId(sourceId);
-      setDetailSheetOpen(true);
-    }
+    setSelectedSourceId(parseSourceId(searchParams.get("sourceId")));
   }, [searchParams]);
 
   useEffect(() => {
@@ -157,89 +161,195 @@ export function SourcesPage() {
     setScanFeedback(null);
     deleteMutation.reset();
     setSelectedSourceId(sourceId);
-    setDetailSheetOpen(true);
-    setSearchParams({ sourceId: String(sourceId) });
+    updateSelectedSourceParam(sourceId);
   };
 
   const closeDetail = () => {
     deleteMutation.reset();
-    setDetailSheetOpen(false);
     setSelectedSourceId(null);
-    setSearchParams({});
+    updateSelectedSourceParam(null);
   };
 
+  function updateSelectedSourceParam(sourceId: number | null) {
+    const next = new URLSearchParams(searchParams);
+    if (sourceId) next.set("sourceId", String(sourceId));
+    else next.delete("sourceId");
+    setSearchParams(next);
+  }
+
   return (
-    <div className="space-y-5">
-      {latestTask ? (
-        <Alert>
-          <AlertTitle className="flex flex-wrap items-center justify-between gap-2">
-            <span>{taskTypeLabel(latestTask.task_type)} · {taskStatusLabel(latestTask.status)}</span>
-            <Button
-              type="button"
-              size="sm"
-              variant="ghost"
-              onClick={() => {
-                bulk.tasks.setSelectedTaskId(latestTask.id);
-                bulk.tasks.setCenterOpen(true);
-              }}
-            >
-              查看任务
-            </Button>
-          </AlertTitle>
-          <AlertDescription>
-            <div className="flex flex-col gap-2">
-              <div className="flex justify-between gap-3 text-xs text-fg-secondary">
-                <span>已完成 {latestTask.settled_count} / {latestTask.total_count}</span>
-                <span className="tabular-nums">{Math.round(latestTask.progress * 100)}%</span>
-              </div>
-              <Progress value={Math.round(latestTask.progress * 100)} />
-            </div>
-          </AlertDescription>
-        </Alert>
-      ) : null}
-      <SourcesList
-        data={sourcesData}
-        selectedSourceId={selectedSourceId}
-        typeFilter={sourceTypeFilter}
-        deletedFilter={sourceDeletedFilter}
-        sortBy={sortBy}
-        sortDirection={sortDirection}
-        searchText={searchText}
-        operationalFilter={operationalFilter}
-        selectedSourceIds={bulk.selection.selectedSourceIds}
-        selectAllFiltered={bulk.selection.selectAllFiltered}
-        excludedSourceIds={bulk.selection.excludedSourceIds}
-        selectionCount={bulk.selection.count}
-        onTypeFilterChange={setSourceTypeFilter}
-        onDeletedFilterChange={setSourceDeletedFilter}
-        onSearchTextChange={setSearchText}
-        onOperationalFilterChange={setOperationalFilter}
-        onSortChange={(nextSortBy, nextSortDirection) => {
-          setSortBy(nextSortBy);
-          setSortDirection(nextSortDirection);
-        }}
-        onSelectSource={selectSource}
-        onToggleSource={bulk.selection.toggleSource}
-        onToggleAllFiltered={bulk.selection.toggleAllFiltered}
-        onClearSelection={bulk.selection.clear}
-        onBulkAction={(action) => void bulk.tasks.submit(action)}
-        onSchedule={bulk.schedules.openCreate}
-        onManageSchedules={() => bulk.schedules.setManagerOpen(true)}
-        onOpenTasks={bulk.tasks.open}
-        onAddClick={() => setCreateDialogOpen(true)}
-        onPin={(sourceId, isPinned) => actions.pinMutation.mutate({ sourceId, isPinned })}
-        pinPendingSourceId={actions.pinMutation.isPending ? actions.pinMutation.variables?.sourceId : undefined}
-        canReorder={sourceDeletedFilter === "active" && sortBy === "manual_order"}
-        isLoading={sourcesQuery.isLoading}
-        isFetchingNextPage={sourcesQuery.isFetchingNextPage}
-        hasNextPage={Boolean(sourcesQuery.hasNextPage)}
-        error={sourcesQuery.error}
-        reorderPending={reorderMutation.isPending}
-        bulkPending={bulk.tasks.createPending}
-        onLoadMore={() => sourcesQuery.fetchNextPage()}
-        onRetryLoadMore={() => sourcesQuery.fetchNextPage()}
-        onReorder={(sourceIds) => reorderMutation.mutateAsync(sourceIds)}
-      />
+    <div className="flex flex-col gap-5">
+      {selectedSourceId ? (
+        <SourceDetailPanel
+          source={selected}
+          loading={detailQuery.isLoading}
+          error={detailQuery.error}
+          onBack={closeDetail}
+          onRetry={() => void detailQuery.refetch()}
+          policy={policyQuery.data}
+          hasDownloadQueueWork={hasDownloadQueueWork}
+          now={now}
+          detailUpdatedAt={detailQuery.dataUpdatedAt}
+          feedback={feedback}
+          scanFeedback={scanFeedback}
+          statusLabel={statusLabel}
+          actions={{
+            submitRecords: actions.submitMutation.mutate,
+            setStatus: actions.statusMutation.mutate,
+            startSession: actions.scanSessionMutation.mutate,
+            pauseSession: actions.pauseScanSessionMutation.mutate,
+            resumeSession: actions.resumeScanSessionMutation.mutate,
+            submitDiscovered: actions.submitDiscoveredMutation.mutate,
+            submitDownload: actions.sourceDownloadMutation.mutateAsync,
+            pauseDownload: actions.pauseDownloadMutation.mutate,
+            resumeDownload: actions.resumeDownloadMutation.mutateAsync,
+            stopDownload: actions.stopDownloadMutation.mutate,
+            cancelDownloadItems: actions.cancelDownloadItemsMutation.mutate,
+            stopHistory: actions.stopHistoryScanMutation.mutate,
+            deleteSource: deleteMutation.mutate,
+            pending: {
+              submit: actions.submitMutation.isPending,
+              status: actions.statusMutation.isPending,
+              submitDiscovered: actions.submitDiscoveredMutation.isPending,
+              download:
+                actions.sourceDownloadMutation.isPending ||
+                actions.pauseDownloadMutation.isPending ||
+                actions.resumeDownloadMutation.isPending ||
+                actions.stopDownloadMutation.isPending ||
+                actions.cancelDownloadItemsMutation.isPending,
+              history:
+                actions.scanSessionMutation.isPending ||
+                actions.pauseScanSessionMutation.isPending ||
+                actions.resumeScanSessionMutation.isPending ||
+                actions.stopHistoryScanMutation.isPending,
+              deleteSource: deleteMutation.isPending,
+            },
+            errors: {
+              submit: actions.submitMutation.error,
+              status: actions.statusMutation.error,
+              submitDiscovered: actions.submitDiscoveredMutation.error,
+              download:
+                actions.sourceDownloadMutation.error ||
+                actions.pauseDownloadMutation.error ||
+                actions.resumeDownloadMutation.error ||
+                actions.stopDownloadMutation.error ||
+                actions.cancelDownloadItemsMutation.error,
+              history:
+                actions.scanSessionMutation.error ||
+                actions.pauseScanSessionMutation.error ||
+                actions.resumeScanSessionMutation.error ||
+                actions.stopHistoryScanMutation.error,
+              deleteSource: deleteMutation.error,
+            },
+          }}
+          onManualSubmitted={() => setFeedback(null)}
+        />
+      ) : (
+        <>
+          <ManagementPageHeader
+            eyebrow="归档输入"
+            title="来源管理"
+            description="登记和维护 X 页面来源，按来源观察发现进度、下载积压与自动任务。"
+            meta={<span className="text-xs text-fg-secondary tabular-nums">共 {sourcesData.total_count} 个来源</span>}
+            actions={(
+              <>
+                <DropdownMenu>
+                  <DropdownMenuTrigger asChild>
+                    <Button type="button" variant="outline">
+                      <MoreHorizontal data-icon="inline-start" aria-hidden="true" />
+                      来源工具
+                    </Button>
+                  </DropdownMenuTrigger>
+                  <DropdownMenuContent align="end">
+                    <DropdownMenuGroup>
+                      <DropdownMenuItem onSelect={() => bulk.schedules.setManagerOpen(true)}>
+                        <CalendarClock aria-hidden="true" />
+                        定时策略
+                      </DropdownMenuItem>
+                      <DropdownMenuItem onSelect={bulk.tasks.open}>
+                        <ListChecks aria-hidden="true" />
+                        批量任务记录
+                      </DropdownMenuItem>
+                    </DropdownMenuGroup>
+                  </DropdownMenuContent>
+                </DropdownMenu>
+                <Button type="button" onClick={() => setCreateDialogOpen(true)}>
+                  <Plus data-icon="inline-start" aria-hidden="true" />
+                  新增来源
+                </Button>
+              </>
+            )}
+          />
+          {latestTask ? (
+            <Alert>
+              <AlertTitle className="flex flex-wrap items-center justify-between gap-2">
+                <span>{taskTypeLabel(latestTask.task_type)} · {taskStatusLabel(latestTask.status)}</span>
+                <Button
+                  type="button"
+                  size="sm"
+                  variant="ghost"
+                  onClick={() => {
+                    bulk.tasks.setSelectedTaskId(latestTask.id);
+                    bulk.tasks.setCenterOpen(true);
+                  }}
+                >
+                  查看任务
+                </Button>
+              </AlertTitle>
+              <AlertDescription>
+                <div className="flex flex-col gap-2">
+                  <div className="flex justify-between gap-3 text-xs text-fg-secondary">
+                    <span>已完成 {latestTask.settled_count} / {latestTask.total_count}</span>
+                    <span className="tabular-nums">{Math.round(latestTask.progress * 100)}%</span>
+                  </div>
+                  <Progress value={Math.round(latestTask.progress * 100)} />
+                </div>
+              </AlertDescription>
+            </Alert>
+          ) : null}
+          <SourcesList
+            data={sourcesData}
+            selectedSourceId={selectedSourceId}
+            typeFilter={sourceTypeFilter}
+            deletedFilter={sourceDeletedFilter}
+            sortBy={sortBy}
+            sortDirection={sortDirection}
+            searchText={searchText}
+            operationalFilter={operationalFilter}
+            selectedSourceIds={bulk.selection.selectedSourceIds}
+            selectAllFiltered={bulk.selection.selectAllFiltered}
+            excludedSourceIds={bulk.selection.excludedSourceIds}
+            selectionCount={bulk.selection.count}
+            onTypeFilterChange={setSourceTypeFilter}
+            onDeletedFilterChange={setSourceDeletedFilter}
+            onSearchTextChange={setSearchText}
+            onOperationalFilterChange={setOperationalFilter}
+            onSortChange={(nextSortBy, nextSortDirection) => {
+              setSortBy(nextSortBy);
+              setSortDirection(nextSortDirection);
+            }}
+            onSelectSource={selectSource}
+            onToggleSource={bulk.selection.toggleSource}
+            onToggleAllFiltered={bulk.selection.toggleAllFiltered}
+            onClearSelection={bulk.selection.clear}
+            onBulkAction={(action) => void bulk.tasks.submit(action)}
+            onSchedule={bulk.schedules.openCreate}
+            onAddClick={() => setCreateDialogOpen(true)}
+            onPin={(sourceId, isPinned) => actions.pinMutation.mutate({ sourceId, isPinned })}
+            pinPendingSourceId={actions.pinMutation.isPending ? actions.pinMutation.variables?.sourceId : undefined}
+            canReorder={sourceDeletedFilter === "active" && sortBy === "manual_order"}
+            isLoading={sourcesQuery.isLoading}
+            isFetchingNextPage={sourcesQuery.isFetchingNextPage}
+            hasNextPage={Boolean(sourcesQuery.hasNextPage)}
+            error={sourcesQuery.error}
+            reorderPending={reorderMutation.isPending}
+            bulkPending={bulk.tasks.createPending}
+            onLoadMore={() => sourcesQuery.fetchNextPage()}
+            onRetryLoadMore={() => sourcesQuery.refetch()}
+            onReorder={(sourceIds) => reorderMutation.mutateAsync(sourceIds)}
+          />
+        </>
+      )}
 
       <SourceTaskCenter
         open={bulk.tasks.centerOpen}
@@ -313,70 +423,11 @@ export function SourcesPage() {
         onOpenChange={setCreateDialogOpen}
       />
 
-      <SourceDetailPanel
-        open={detailSheetOpen}
-        onOpenChange={(open) => {
-          if (!open) closeDetail();
-        }}
-        source={selected}
-        policy={policyQuery.data}
-        hasDownloadQueueWork={hasDownloadQueueWork}
-        now={now}
-        detailUpdatedAt={detailQuery.dataUpdatedAt}
-        feedback={feedback}
-        scanFeedback={scanFeedback}
-        statusLabel={statusLabel}
-        actions={{
-          submitRecords: actions.submitMutation.mutate,
-          setStatus: actions.statusMutation.mutate,
-          startSession: actions.scanSessionMutation.mutate,
-          pauseSession: actions.pauseScanSessionMutation.mutate,
-          resumeSession: actions.resumeScanSessionMutation.mutate,
-          submitDiscovered: actions.submitDiscoveredMutation.mutate,
-          submitDownload: actions.sourceDownloadMutation.mutateAsync,
-          pauseDownload: actions.pauseDownloadMutation.mutate,
-          resumeDownload: actions.resumeDownloadMutation.mutateAsync,
-          stopDownload: actions.stopDownloadMutation.mutate,
-          cancelDownloadItems: actions.cancelDownloadItemsMutation.mutate,
-          stopHistory: actions.stopHistoryScanMutation.mutate,
-          deleteSource: deleteMutation.mutate,
-          pending: {
-            submit: actions.submitMutation.isPending,
-            status: actions.statusMutation.isPending,
-            submitDiscovered: actions.submitDiscoveredMutation.isPending,
-            download:
-              actions.sourceDownloadMutation.isPending ||
-              actions.pauseDownloadMutation.isPending ||
-              actions.resumeDownloadMutation.isPending ||
-              actions.stopDownloadMutation.isPending ||
-              actions.cancelDownloadItemsMutation.isPending,
-            history:
-              actions.scanSessionMutation.isPending ||
-              actions.pauseScanSessionMutation.isPending ||
-              actions.resumeScanSessionMutation.isPending ||
-              actions.stopHistoryScanMutation.isPending,
-            deleteSource: deleteMutation.isPending,
-          },
-          errors: {
-            submit: actions.submitMutation.error,
-            status: actions.statusMutation.error,
-            submitDiscovered: actions.submitDiscoveredMutation.error,
-            download:
-              actions.sourceDownloadMutation.error ||
-              actions.pauseDownloadMutation.error ||
-              actions.resumeDownloadMutation.error ||
-              actions.stopDownloadMutation.error ||
-              actions.cancelDownloadItemsMutation.error,
-            history:
-              actions.scanSessionMutation.error ||
-              actions.pauseScanSessionMutation.error ||
-              actions.resumeScanSessionMutation.error ||
-              actions.stopHistoryScanMutation.error,
-            deleteSource: deleteMutation.error,
-          },
-        }}
-        onManualSubmitted={() => setFeedback(null)}
-      />
     </div>
   );
+}
+
+function parseSourceId(value: string | null) {
+  const sourceId = Number(value);
+  return Number.isFinite(sourceId) && sourceId > 0 ? sourceId : null;
 }

@@ -1,11 +1,12 @@
 import { AlertCircle, CheckCircle2, Clock3, Pause, Play, RotateCcw, Square, XCircle, type LucideIcon } from "lucide-react";
 import type { SourceBulkTask, SourceBulkTaskItem } from "@/lib/api";
+import { Alert, AlertDescription, AlertTitle } from "@/components/ui/alert";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Progress } from "@/components/ui/progress";
 import { ScrollArea } from "@/components/ui/scroll-area";
 import { Sheet, SheetContent, SheetDescription, SheetHeader, SheetTitle } from "@/components/ui/sheet";
-import { formatDateTime } from "@/lib/utils";
+import { cn, formatDateTime } from "@/lib/utils";
 
 type StatusTone = "default" | "secondary" | "success" | "warning" | "danger";
 type TaskStatusPresentation = {
@@ -72,21 +73,24 @@ export function SourceTaskCenter({
   const detail = selectedTask ?? tasks.find((task) => task.id === selectedTaskId);
   return (
     <Sheet open={open} onOpenChange={onOpenChange}>
-      <SheetContent className="w-[min(100vw,760px)] p-0">
+      <SheetContent className="w-[min(100vw,840px)] p-0">
         <SheetHeader className="border-b border-border-subtle px-6 py-4">
           <SheetTitle>来源批量任务</SheetTitle>
           <SheetDescription>任务关闭页面后仍会继续执行，可在这里查看逐来源结果和控制状态。</SheetDescription>
         </SheetHeader>
         <div className="grid min-h-0 flex-1 md:grid-cols-[260px_minmax(0,1fr)]">
           <ScrollArea className="border-b border-border-subtle md:border-b-0 md:border-r">
-            <div className="flex flex-col gap-2 p-3">
+            <div className="flex flex-col p-3">
               {tasks.length ? (
                 tasks.map((task) => (
                   <Button
                     key={task.id}
                     type="button"
-                    variant={selectedTaskId === task.id ? "secondary" : "outline"}
-                    className="h-auto w-full flex-col items-stretch p-3 text-left"
+                    variant="ghost"
+                    className={cn(
+                      "h-auto w-full flex-col items-stretch rounded-none border-b border-border-subtle p-3 text-left last:border-b-0",
+                      selectedTaskId === task.id && "bg-brand-soft",
+                    )}
                     onClick={() => onSelectTask(task.id)}
                   >
                     <div className="flex items-center justify-between gap-2">
@@ -177,21 +181,26 @@ function TaskDetail({
         </div>
         <Progress value={Math.round(task.progress * 100)} />
       </div>
-      <div className="grid grid-cols-2 gap-2 sm:grid-cols-4">
+      <div className="grid grid-cols-2 overflow-hidden rounded-xl border border-border-subtle sm:grid-cols-4">
         <TaskMetric label="成功" value={task.counts.succeeded ?? 0} />
         <TaskMetric label="跳过" value={task.counts.skipped ?? 0} />
         <TaskMetric label="失败" value={failedCount} />
         <TaskMetric label="已取消" value={task.counts.cancelled ?? 0} />
       </div>
       {task.error_message ? (
-        <div className="flex items-start gap-2 rounded-lg border border-danger/30 bg-bg-surface p-3 text-sm text-danger">
-          <AlertCircle className="mt-0.5 h-4 w-4 shrink-0" />
-          <span>{task.error_message}</span>
-        </div>
+        <Alert variant="destructive">
+          <AlertCircle aria-hidden="true" />
+          <AlertTitle>批量任务执行异常</AlertTitle>
+          <AlertDescription>{task.error_message}</AlertDescription>
+        </Alert>
       ) : null}
       <div className="flex flex-col gap-2">
         <h4 className="text-sm font-semibold text-fg-primary">逐来源结果</h4>
-        {(task.items ?? []).map((item) => <TaskItemRow key={item.id} item={item} />)}
+        {task.items?.length ? (
+          <div className="overflow-hidden rounded-xl border border-border-subtle">
+            {task.items.map((item) => <TaskItemRow key={item.id} item={item} />)}
+          </div>
+        ) : null}
         {!task.items?.length ? <p className="py-6 text-center text-sm text-fg-secondary">正在读取来源任务项…</p> : null}
       </div>
     </div>
@@ -200,7 +209,7 @@ function TaskDetail({
 
 function TaskMetric({ label, value }: { label: string; value: number }) {
   return (
-    <div className="rounded-lg border border-border-subtle bg-bg-surface p-3">
+    <div className="border-b border-r border-border-subtle bg-bg-surface p-3 last:border-r-0 sm:border-b-0">
       <p className="text-xs text-fg-secondary">{label}</p>
       <p className="mt-1 text-lg font-semibold tabular-nums text-fg-primary">{value}</p>
     </div>
@@ -211,7 +220,7 @@ function TaskItemRow({ item }: { item: SourceBulkTaskItem }) {
   const presentation = ITEM_STATUS_PRESENTATION[item.status];
   const Icon = presentation.icon;
   return (
-    <div className="flex items-start justify-between gap-3 rounded-lg border border-border-subtle bg-bg-surface p-3">
+    <div className="flex items-start justify-between gap-3 border-b border-border-subtle bg-bg-surface p-3 last:border-b-0">
       <div className="flex min-w-0 items-start gap-2">
         <Icon className="mt-0.5 h-4 w-4 shrink-0 text-fg-tertiary" />
         <div className="min-w-0">

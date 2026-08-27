@@ -540,7 +540,7 @@ function TweetMediaInfo({ payload }: { payload: any }) {
 
   if (types.has("photo") && types.has("video")) {
     return (
-      <span className="flex items-center gap-1 text-blue-500">
+      <span className="flex items-center gap-1">
         <Images className="h-3.5 w-3.5" />
         图片/视频 {count}
       </span>
@@ -548,7 +548,7 @@ function TweetMediaInfo({ payload }: { payload: any }) {
   }
   if (types.has("video")) {
     return (
-      <span className="flex items-center gap-1 text-purple-500">
+      <span className="flex items-center gap-1">
         <Film className="h-3.5 w-3.5" />
         视频 {count}
       </span>
@@ -556,7 +556,7 @@ function TweetMediaInfo({ payload }: { payload: any }) {
   }
   if (types.has("photo")) {
     return (
-      <span className="flex items-center gap-1 text-emerald-500">
+      <span className="flex items-center gap-1">
         <Image className="h-3.5 w-3.5" />
         图片 {count}
       </span>
@@ -641,15 +641,14 @@ function TweetListItem({
 }) {
   const debugRedactionEnabled = useDebugRedactionEnabled();
   return (
-    <div className="pb-2">
-      <div
+    <article
         aria-current={isCurrentDownload ? "true" : undefined}
         data-tweet-id={getDebugDataValue(debugRedactionEnabled, tweet.tweet_id)}
         className={cn(
-          "rounded-lg border bg-bg-surface p-3 transition-colors",
+          "border-b border-border-subtle bg-bg-surface px-3 py-4 transition-colors",
           isCurrentDownload
-            ? "border-brand ring-1 ring-brand/20"
-            : "border-border-subtle hover:border-border-strong",
+            ? "bg-brand-soft"
+            : "hover:bg-bg-muted",
         )}
       >
         <div className="flex items-start justify-between gap-3">
@@ -670,9 +669,9 @@ function TweetListItem({
                 {...getDebugRedactProps(debugRedactionEnabled)}
               >
                 <TweetMediaInfo payload={tweet.raw_payload} />
-                <span className="h-3 w-px bg-border-strong" />
+                <span aria-hidden="true">·</span>
                 <span className="font-mono">{tweet.tweet_id}</span>
-                <span className="h-3 w-px bg-border-strong" />
+                <span aria-hidden="true">·</span>
                 <span>{formatDateTime(tweet.discovered_at)}</span>
               </div>
               <TweetDownloadProgress tweet={tweet} />
@@ -710,8 +709,7 @@ function TweetListItem({
             ) : null}
           </div>
         </div>
-      </div>
-    </div>
+    </article>
   );
 }
 

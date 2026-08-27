@@ -1,12 +1,14 @@
 import * as React from "react";
-import { Check, Film, Image, LocateFixed, Pause, Play, X } from "lucide-react";
+import { Check, LocateFixed, Pause, Play, SlidersHorizontal } from "lucide-react";
 import type { SourceDiscoveryFacets } from "@/lib/api";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Checkbox } from "@/components/ui/checkbox";
+import { Field, FieldGroup, FieldLabel } from "@/components/ui/field";
 import {
   DropdownMenu,
   DropdownMenuContent,
+  DropdownMenuGroup,
   DropdownMenuItem,
   DropdownMenuSeparator,
   DropdownMenuTrigger,
@@ -14,12 +16,14 @@ import {
 import {
   Select,
   SelectContent,
+  SelectGroup,
   SelectItem,
   SelectTrigger,
   SelectValue,
 } from "@/components/ui/select";
-import { ToggleGroup, ToggleGroupItem } from "@/components/ui/toggle-group";
+import { Sheet, SheetContent, SheetDescription, SheetHeader, SheetTitle, SheetTrigger } from "@/components/ui/sheet";
 import { Tooltip, TooltipContent, TooltipTrigger } from "@/components/ui/tooltip";
+import { getDebugRedactProps, useDebugRedactionEnabled } from "@/lib/debug-redaction";
 import {
   AlertDialog,
   AlertDialogAction,
@@ -99,9 +103,9 @@ export function SourceTweetsToolbar({
   onResumeFollow: () => void;
   onLocateCurrent: () => void;
 }) {
+  const debugRedactionEnabled = useDebugRedactionEnabled();
   const [confirm, setConfirm] = React.useState<PendingConfirm | null>(null);
   const mediaType = filters.media === "all" ? undefined : filters.media;
-  const hasFilters = filters.media !== "all" || filters.download !== "all";
   const missingCount = actionCounts?.missing ?? 0;
   const failedCount = actionCounts?.failed ?? 0;
   const redownloadCount = filteredTotalCount;
@@ -144,9 +148,17 @@ export function SourceTweetsToolbar({
   return (
     <div
       data-testid="download-follow-controls"
-      className="sticky top-0 z-10 flex min-h-11 shrink-0 items-center justify-between gap-3 border-b border-border-subtle bg-bg-base/95 px-3 py-2 text-sm backdrop-blur"
+      className="sticky top-0 z-10 flex min-h-11 shrink-0 flex-wrap items-center justify-between gap-2 border-b border-border-subtle bg-bg-base/95 px-3 py-2 text-sm backdrop-blur"
     >
-      <div className="flex min-w-0 flex-1 items-center gap-2 overflow-x-auto whitespace-nowrap">
+      <span
+        className="sr-only"
+        data-testid="download-current-item"
+        aria-live="polite"
+        {...getDebugRedactProps(debugRedactionEnabled)}
+      >
+        {currentTweetId ? `当前下载 ${currentTweetId}` : "当前没有下载项"}
+      </span>
+      <div className="flex min-w-0 flex-1 items-center gap-2 whitespace-nowrap">
         {!readonly ? (
           <Checkbox
             className="mr-1"
@@ -156,50 +168,15 @@ export function SourceTweetsToolbar({
             onCheckedChange={(checked) => onSelectAll(Boolean(checked))}
           />
         ) : null}
-        <ToggleGroup
-          type="single"
-          value={filters.media}
-          onValueChange={(value) => value && onFiltersChange({ ...filters, media: value as TweetFilters["media"] })}
-          size="sm"
-          className="rounded-md border border-border-subtle bg-bg-muted p-0.5"
-        >
-          <ToggleGroupItem value="all" className={mediaToggleClassName}>
-            全部 <FilterCount>{facets?.media.all ?? unfilteredTotalCount}</FilterCount>
-          </ToggleGroupItem>
-          <ToggleGroupItem value="video" className={mediaToggleClassName}>
-            <Film className="h-3.5 w-3.5" />
-            视频 <FilterCount>{facets?.media.video ?? 0}</FilterCount>
-          </ToggleGroupItem>
-          <ToggleGroupItem value="photo" className={mediaToggleClassName}>
-            <Image className="h-3.5 w-3.5" />
-            图片 <FilterCount>{facets?.media.photo ?? 0}</FilterCount>
-          </ToggleGroupItem>
-        </ToggleGroup>
-        <SourceSelect
-          value={filters.download}
-          onValueChange={(download) => onFiltersChange({ ...filters, download })}
-          options={[
-            ["all", "全部状态", unfilteredTotalCount],
-            ["pending", "待下载", facets?.download.pending ?? 0],
-            ["active", "下载中", facets?.download.active ?? 0],
-            ["completed", "已完成", facets?.download.completed ?? 0],
-            ["failed", "失败", facets?.download.failed ?? 0],
-          ]}
+        <TweetFilterSheet
+          filters={filters}
+          facets={facets}
+          totalCount={unfilteredTotalCount}
+          onFiltersChange={onFiltersChange}
         />
-        {hasFilters ? (
-          <button
-            type="button"
-            className="inline-flex h-8 items-center gap-1 rounded-md px-2 text-xs text-fg-secondary transition-colors hover:bg-bg-muted hover:text-fg-primary focus:outline-none focus-visible:ring-2 focus-visible:ring-brand/50"
-            onClick={() => onFiltersChange({ media: "all", download: "all" })}
-          >
-            清除 <X className="h-3 w-3" />
-          </button>
-        ) : null}
+        <span className="text-xs text-fg-secondary tabular-nums">{filteredTotalCount} / {unfilteredTotalCount}</span>
       </div>
       <div className="flex shrink-0 items-center justify-end gap-2">
-        <span className="text-xs text-fg-secondary tabular-nums">
-          {filteredTotalCount} / {unfilteredTotalCount}
-        </span>
         {!readonly ? (
           <>
             <Button
@@ -224,38 +201,42 @@ export function SourceTweetsToolbar({
                 </Button>
               </DropdownMenuTrigger>
               <DropdownMenuContent align="end" className="min-w-52">
-                {missingCount === 0 ? <DropdownMenuItem disabled>当前筛选已下载完成</DropdownMenuItem> : null}
-                {loadedQueueIds.length > 0 ? (
-                  <DropdownMenuItem
-                    disabled={actions.pending.download}
-                    onSelect={() => onSubmitDownload({ sourceId, scope: "selected", tweetIds: loadedQueueIds })}
-                    className="justify-between gap-3"
-                  >
-                    <span>下载已加载缺失项</span>
-                    <span className="text-xs text-fg-secondary tabular-nums">{loadedQueueIds.length}</span>
-                  </DropdownMenuItem>
-                ) : null}
-                {failedCount > 0 ? (
-                  <DropdownMenuItem
-                    disabled={actions.pending.download}
-                    onSelect={() => onSubmitDownload({ sourceId, scope: "retry_failed", mediaType })}
-                    className="justify-between gap-3"
-                  >
-                    <span>重试失败{mediaSuffix(mediaType)}</span>
-                    <span className="text-xs text-fg-secondary tabular-nums">{failedCount}</span>
-                  </DropdownMenuItem>
-                ) : null}
+                <DropdownMenuGroup>
+                  {missingCount === 0 ? <DropdownMenuItem disabled>当前筛选已下载完成</DropdownMenuItem> : null}
+                  {loadedQueueIds.length > 0 ? (
+                    <DropdownMenuItem
+                      disabled={actions.pending.download}
+                      onSelect={() => onSubmitDownload({ sourceId, scope: "selected", tweetIds: loadedQueueIds })}
+                      className="justify-between gap-3"
+                    >
+                      <span>下载已加载缺失项</span>
+                      <span className="text-xs text-fg-secondary tabular-nums">{loadedQueueIds.length}</span>
+                    </DropdownMenuItem>
+                  ) : null}
+                  {failedCount > 0 ? (
+                    <DropdownMenuItem
+                      disabled={actions.pending.download}
+                      onSelect={() => onSubmitDownload({ sourceId, scope: "retry_failed", mediaType })}
+                      className="justify-between gap-3"
+                    >
+                      <span>重试失败{mediaSuffix(mediaType)}</span>
+                      <span className="text-xs text-fg-secondary tabular-nums">{failedCount}</span>
+                    </DropdownMenuItem>
+                  ) : null}
+                </DropdownMenuGroup>
                 {redownloadCount > 0 ? (
                   <>
                     <DropdownMenuSeparator className="my-1 h-px bg-border-subtle" />
-                    <DropdownMenuItem
-                      disabled={actions.pending.download}
-                      onSelect={() => setConfirm({ scope: "redownload_filter", mediaType, count: redownloadCount })}
-                      className="justify-between gap-3 text-danger focus:text-danger"
-                    >
-                      <span>重新下载当前筛选{mediaSuffix(mediaType)}</span>
-                      <span className="text-xs text-fg-secondary tabular-nums">{redownloadCount}</span>
-                    </DropdownMenuItem>
+                    <DropdownMenuGroup>
+                      <DropdownMenuItem
+                        disabled={actions.pending.download}
+                        onSelect={() => setConfirm({ scope: "redownload_filter", mediaType, count: redownloadCount })}
+                        className="justify-between gap-3 text-danger focus:text-danger"
+                      >
+                        <span>重新下载当前筛选{mediaSuffix(mediaType)}</span>
+                        <span className="text-xs text-fg-secondary tabular-nums">{redownloadCount}</span>
+                      </DropdownMenuItem>
+                    </DropdownMenuGroup>
                   </>
                 ) : null}
               </DropdownMenuContent>
@@ -305,35 +286,81 @@ export function SourceTweetsToolbar({
   );
 }
 
-const mediaToggleClassName =
-  "group h-7 gap-1 rounded px-2 text-xs text-fg-secondary hover:bg-bg-surface hover:text-fg-primary data-[state=on]:bg-bg-surface data-[state=on]:text-brand data-[state=on]:shadow-sm";
-
-function FilterCount({ children }: { children: React.ReactNode }) {
-  return <span className="text-fg-tertiary tabular-nums group-data-[state=on]:text-brand">{children}</span>;
-}
-
-function SourceSelect<T extends string>({
-  value,
-  onValueChange,
-  options,
+function TweetFilterSheet({
+  filters,
+  facets,
+  totalCount,
+  onFiltersChange,
 }: {
-  value: T;
-  onValueChange: (value: T) => void;
-  options: Array<[T, string, number]>;
+  filters: TweetFilters;
+  facets?: SourceDiscoveryFacets | null;
+  totalCount: number;
+  onFiltersChange: (filters: TweetFilters) => void;
 }) {
+  const activeCount = Number(filters.media !== "all") + Number(filters.download !== "all");
+
   return (
-    <Select value={value} onValueChange={(next) => onValueChange(next as T)}>
-      <SelectTrigger className="h-8 w-[8.25rem] border-border-subtle bg-bg-surface px-2 text-xs shadow-none">
-        <SelectValue />
-      </SelectTrigger>
-      <SelectContent>
-        {options.map(([optionValue, label, count]) => (
-          <SelectItem key={optionValue} value={optionValue}>
-            {label} {count}
-          </SelectItem>
-        ))}
-      </SelectContent>
-    </Select>
+    <Sheet>
+      <SheetTrigger asChild>
+        <Button type="button" size="sm" variant="outline" aria-label={`筛选发现的 Tweet${activeCount ? `，已启用 ${activeCount} 项` : ""}`}>
+          <SlidersHorizontal data-icon="inline-start" aria-hidden="true" />
+          筛选
+          {activeCount ? <Badge tone="default">{activeCount}</Badge> : null}
+        </Button>
+      </SheetTrigger>
+      <SheetContent className="overflow-y-auto">
+        <SheetHeader>
+          <SheetTitle>筛选发现的 Tweet</SheetTitle>
+          <SheetDescription>按媒体类型和下载状态缩小当前来源中的发现记录。</SheetDescription>
+        </SheetHeader>
+        <FieldGroup className="gap-5">
+          <Field>
+            <FieldLabel htmlFor="source-tweet-media-filter">媒体类型</FieldLabel>
+            <Select
+              value={filters.media}
+              onValueChange={(media) => onFiltersChange({ ...filters, media: media as TweetFilters["media"] })}
+            >
+              <SelectTrigger id="source-tweet-media-filter"><SelectValue /></SelectTrigger>
+              <SelectContent>
+                <SelectGroup>
+                  <SelectItem value="all">全部媒体 {facets?.media.all ?? totalCount}</SelectItem>
+                  <SelectItem value="video">视频 {facets?.media.video ?? 0}</SelectItem>
+                  <SelectItem value="photo">图片 {facets?.media.photo ?? 0}</SelectItem>
+                </SelectGroup>
+              </SelectContent>
+            </Select>
+          </Field>
+          <Field>
+            <FieldLabel htmlFor="source-tweet-download-filter">下载状态</FieldLabel>
+            <Select
+              value={filters.download}
+              onValueChange={(download) => onFiltersChange({ ...filters, download: download as TweetFilters["download"] })}
+            >
+              <SelectTrigger id="source-tweet-download-filter"><SelectValue /></SelectTrigger>
+              <SelectContent>
+                <SelectGroup>
+                  <SelectItem value="all">全部状态 {totalCount}</SelectItem>
+                  <SelectItem value="pending">待下载 {facets?.download.pending ?? 0}</SelectItem>
+                  <SelectItem value="active">下载中 {facets?.download.active ?? 0}</SelectItem>
+                  <SelectItem value="completed">已完成 {facets?.download.completed ?? 0}</SelectItem>
+                  <SelectItem value="failed">失败 {facets?.download.failed ?? 0}</SelectItem>
+                </SelectGroup>
+              </SelectContent>
+            </Select>
+          </Field>
+        </FieldGroup>
+        <div className="mt-8 border-t border-border-subtle pt-4">
+          <Button
+            type="button"
+            variant="ghost"
+            disabled={!activeCount}
+            onClick={() => onFiltersChange({ media: "all", download: "all" })}
+          >
+            清除筛选
+          </Button>
+        </div>
+      </SheetContent>
+    </Sheet>
   );
 }
 
@@ -361,18 +388,18 @@ function DownloadFollowControls({
     return (
       <div className="flex items-center gap-1">
         <Badge tone={followMode === "following" ? "default" : "warning"} className="gap-1">
-          <Check className={cn("h-3 w-3", followMode !== "following" && "hidden")} />
+          <Check className={cn(followMode !== "following" && "hidden")} />
           {followMode === "following" ? "跟随" : "已暂停"}
         </Badge>
         <TooltipButton
           label={followMode === "following" ? "暂停跟随" : "继续跟随"}
           onClick={followMode === "following" ? onPause : onResume}
         >
-          {followMode === "following" ? <Pause className="h-4 w-4" /> : <Play className="h-4 w-4" />}
+          {followMode === "following" ? <Pause /> : <Play />}
         </TooltipButton>
         {currentTweetId ? (
           <TooltipButton label="定位当前项" onClick={onLocateCurrent}>
-            <LocateFixed className="h-4 w-4" />
+            <LocateFixed />
           </TooltipButton>
         ) : null}
       </div>
@@ -381,7 +408,7 @@ function DownloadFollowControls({
   if (activeRunId && currentTweetId) {
     return (
       <TooltipButton label="定位当前项" onClick={onLocateCurrent}>
-        <LocateFixed className="h-4 w-4" />
+        <LocateFixed />
       </TooltipButton>
     );
   }
@@ -400,7 +427,7 @@ function TooltipButton({
   return (
     <Tooltip>
       <TooltipTrigger asChild>
-        <Button type="button" size="icon" variant="ghost" className="h-8 w-8" onClick={onClick} aria-label={label}>
+        <Button type="button" size="icon" variant="ghost" className="size-8" onClick={onClick} aria-label={label}>
           {children}
         </Button>
       </TooltipTrigger>
@@ -414,4 +441,3 @@ function mediaSuffix(mediaType?: DownloadMediaType) {
   if (mediaType === "photo") return " · 仅图片";
   return "";
 }
-

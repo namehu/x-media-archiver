@@ -1,5 +1,6 @@
 import type { ArchiveSourceDetail, ArchiveSubmission } from "@/lib/api";
 import { Button } from "@/components/ui/button";
+import { Field, FieldDescription, FieldLabel } from "@/components/ui/field";
 import { Input } from "@/components/ui/input";
 import { ActionBlock } from "./action-block";
 import { ErrorLine } from "./error-line";
@@ -42,18 +43,27 @@ export function DownloadActions({
   const canSubmit = (source.unsubmitted_tweet_count || 0) > 0 && !actions.pending.submitDiscovered;
 
   return (
-    <ActionBlock title="提交下载" hint="仅将已经发现但尚未下载的 Tweet 提交处理，不会继续扫描来源。">
-      <Input
-        className="w-28"
-        type="number"
-        min={1}
-        max={500}
-        value={submitLimit.value}
-        onChange={submitLimit.onChange}
-      />
+    <ActionBlock
+      title="提交下载"
+      hint="仅将已经发现但尚未下载的 Tweet 提交处理，不会继续扫描来源。"
+      contentClassName="flex flex-col gap-3"
+    >
+      <Field>
+        <FieldLabel htmlFor="source-submit-limit">本次提交数量</FieldLabel>
+        <Input
+          id="source-submit-limit"
+          className="w-32"
+          type="number"
+          min={1}
+          max={500}
+          value={submitLimit.value}
+          onChange={submitLimit.onChange}
+        />
+        <FieldDescription>最多提交 500 条已发现记录。</FieldDescription>
+      </Field>
       <Button
         type="button"
-        variant="secondary"
+        className="self-start"
         disabled={!canSubmit}
         onClick={() => actions.submitDiscovered({ sourceId: source.id, limit: submitLimit.clamped(500) })}
       >

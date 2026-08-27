@@ -5,6 +5,30 @@ const runId = 7701;
 const tweetIds = Array.from({ length: 10 }, (_, index) => `follow-tweet-${index}`);
 
 test.describe("Source download following", () => {
+  test("keeps the source directory compact and opens filters in a sheet", async ({ page }) => {
+    await page.setViewportSize({ width: 390, height: 844 });
+    await mockSourceApis(page);
+    await page.goto("/sources");
+
+    await expect(page.getByRole("heading", { name: "来源管理", exact: true })).toBeVisible();
+    await expect(page.getByLabel("搜索来源")).toBeVisible();
+    await page.getByRole("button", { name: "筛选与排序", exact: true }).click();
+    await expect(page.getByRole("heading", { name: "筛选与排序", exact: true })).toBeVisible();
+    await expect(page.getByText("来源类型", { exact: true })).toBeVisible();
+    await expect(page.getByText("运行状态", { exact: true })).toBeVisible();
+    await expect.poll(() => page.evaluate(() => document.documentElement.scrollWidth <= window.innerWidth)).toBe(true);
+  });
+
+  test("opens a URL-addressable source workspace and returns to the directory", async ({ page }) => {
+    await mockSourceApis(page);
+    await openSource(page);
+
+    await page.getByRole("button", { name: "来源目录", exact: true }).click();
+    await expect(page).toHaveURL(/\/sources$/);
+    await expect(page.getByRole("heading", { name: "来源管理", exact: true })).toBeVisible();
+    await expect(page.getByText("稳定跟随测试来源", { exact: true })).toBeVisible();
+  });
+
   test("shows masked upstream API failures as failed scans instead of empty completion", async ({ page }) => {
     await mockSourceApis(page);
     await openSource(page);
@@ -85,7 +109,9 @@ test.describe("Source download following", () => {
 async function openSource(page: Page) {
   await page.goto("/sources");
   await page.getByText("稳定跟随测试来源", { exact: true }).click();
+  await expect(page).toHaveURL(new RegExp(`sourceId=${sourceId}`));
   await expect(page.getByText("下载工作台", { exact: true })).toBeVisible();
+  await page.getByRole("tab", { name: "发现的 Tweet", exact: true }).click();
   await expect(tweetCard(page, 0)).toBeVisible();
 }
 

@@ -1,5 +1,6 @@
 import * as React from "react";
 import { HelpCircle } from "lucide-react";
+import { Button } from "@/components/ui/button";
 import { Tooltip, TooltipContent, TooltipTrigger } from "@/components/ui/tooltip";
 
 export function ActionBlock({
@@ -14,15 +15,15 @@ export function ActionBlock({
   contentClassName?: string;
 }) {
   return (
-    <div className="flex h-full flex-col space-y-3 rounded-xl bg-bg-muted/40 p-4">
+    <div className="flex h-full flex-col gap-3 rounded-xl border border-border-subtle bg-bg-base p-4">
       <div className="flex items-center gap-1.5">
         <span className="font-semibold text-fg-primary">{title}</span>
         {hint ? (
           <Tooltip>
             <TooltipTrigger asChild>
-              <button type="button" className="text-fg-tertiary hover:text-fg-secondary focus:outline-none">
-                <HelpCircle className="h-3.5 w-3.5" />
-              </button>
+              <Button type="button" size="icon" variant="ghost" className="size-8" aria-label={`查看“${title}”说明`}>
+                <HelpCircle aria-hidden="true" />
+              </Button>
             </TooltipTrigger>
             <TooltipContent className="max-w-xs">{hint}</TooltipContent>
           </Tooltip>

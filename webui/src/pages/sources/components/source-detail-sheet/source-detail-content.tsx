@@ -42,7 +42,7 @@ export function SourceDetailContent({
   const [confirmDeleteOpen, setConfirmDeleteOpen] = React.useState(false);
 
   return (
-    <div className="space-y-3">
+    <div className="flex flex-col gap-3">
       {isDeleted ? (
         <Alert>
           <AlertTitle>此来源已软删除</AlertTitle>
@@ -51,7 +51,7 @@ export function SourceDetailContent({
           </AlertDescription>
         </Alert>
       ) : null}
-      <div className="grid gap-2 rounded-lg bg-bg-muted p-3 text-sm">
+      <div className="overflow-hidden rounded-xl border border-border-subtle bg-bg-surface text-sm">
         <DetailRow label="更新时间" value={formatDateTime(source.updated_at)} />
         {source.deleted_at ? <DetailRow label="删除时间" value={formatDateTime(source.deleted_at)} /> : null}
         <DetailRow label="下一批范围" value={formatNextRange(source.cursor_state, scanLimit)} />
@@ -60,16 +60,19 @@ export function SourceDetailContent({
         {historyEnabled && source.next_scan_at ? (
           <DetailRow label="下次自动扫描" value={formatDateTime(source.next_scan_at)} />
         ) : null}
-        <div {...getDebugRedactProps(debugRedactionEnabled)}>
-          <DetailRow label="最近发现" value={source.last_seen_tweet_id || "-"} />
-        </div>
+        <DetailRow
+          label="最近发现"
+          value={<span {...getDebugRedactProps(debugRedactionEnabled)}>{source.last_seen_tweet_id || "-"}</span>}
+        />
         {source.cursor_state?.last_range_start ? (
-          <div {...getDebugRedactProps(debugRedactionEnabled)}>
-            <DetailRow
-              label="上次扫描范围"
-              value={`${source.cursor_state.last_range_start}-${source.cursor_state.last_range_end}`}
-            />
-          </div>
+          <DetailRow
+            label="上次扫描范围"
+            value={(
+              <span {...getDebugRedactProps(debugRedactionEnabled)}>
+                {source.cursor_state.last_range_start}-{source.cursor_state.last_range_end}
+              </span>
+            )}
+          />
         ) : null}
         <DetailRow label="详情刷新" value={formatDateTime(new Date(detailUpdatedAt || now).toISOString())} />
         <DetailRow label="累计新增 Tweet" value={source.scan_summary?.added_tweet_count ?? 0} />
@@ -92,7 +95,7 @@ export function SourceDetailContent({
             disabled={deletePending}
             onClick={() => setConfirmDeleteOpen(true)}
           >
-            <Trash2 className="h-4 w-4" />
+            <Trash2 data-icon="inline-start" aria-hidden="true" />
             删除来源
           </Button>
         </div>
