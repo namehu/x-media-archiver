@@ -1,7 +1,7 @@
 import { Hash } from "lucide-react";
 import { Link } from "react-router-dom";
 import { Badge } from "@/components/ui/badge";
-import { getDebugRedactProps, useDebugRedactionEnabled } from "@/lib/debug-redaction";
+import { getPrivacyRedactProps, usePrivacyRedactionEnabled } from "@/lib/privacy-redaction";
 import { cn } from "@/lib/utils";
 
 type PlatformHashtagsProps = {
@@ -15,7 +15,7 @@ export function PlatformHashtags({
   appearance = "default",
   className,
 }: PlatformHashtagsProps) {
-  const debugRedactionEnabled = useDebugRedactionEnabled();
+  const privacyRedactionEnabled = usePrivacyRedactionEnabled();
   if (!hashtags.length) return null;
 
   const inverse = appearance === "inverse";
@@ -25,7 +25,7 @@ export function PlatformHashtags({
       role="group"
       className={cn("flex flex-wrap items-center gap-1.5", className)}
       aria-label="平台 Hashtag"
-      {...getDebugRedactProps(debugRedactionEnabled)}
+      {...getPrivacyRedactProps(privacyRedactionEnabled)}
     >
       <span
         className={cn(
@@ -49,8 +49,6 @@ export function PlatformHashtags({
             #{hashtag}
           </Badge>
         );
-
-        if (debugRedactionEnabled) return <span key={`${hashtag}:${index}`}>{badge}</span>;
 
         return (
           <Link

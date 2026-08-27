@@ -30,11 +30,11 @@ import { MediaThumbnail } from "../../components/ui/media-thumbnail";
 import { Pagination } from "../../components/ui/pagination";
 import { Skeleton } from "../../components/ui/skeleton";
 import {
-  getDebugDetailLinkLabel,
-  getDebugDetailRoute,
-  getDebugMediaAlt,
-  useDebugRedactionEnabled,
-} from "../../lib/debug-redaction";
+  getPrivacyDetailLinkLabel,
+  getPrivacyDetailRoute,
+  getPrivacyMediaAlt,
+  usePrivacyRedactionEnabled,
+} from "../../lib/privacy-redaction";
 import { StatCard } from "../../components/ui/stat-card";
 
 const PAGE_SIZE = 20;
@@ -349,8 +349,8 @@ function DuplicateMediaCard({
   selected: boolean;
   onToggleSelected: () => void;
 }) {
-  const debugRedactionEnabled = useDebugRedactionEnabled();
-  const detailRoute = getDebugDetailRoute(debugRedactionEnabled, row.tweet_id);
+  const privacyRedactionEnabled = usePrivacyRedactionEnabled();
+  const detailRoute = getPrivacyDetailRoute(privacyRedactionEnabled, row.tweet_id);
   return (
     <div className="relative min-w-0 overflow-hidden rounded-lg border border-border-subtle bg-bg-surface transition duration-fast hover:border-border-strong">
       <div className="absolute left-2 top-2 z-10 flex items-center gap-2 rounded-md bg-bg-elevated/95 p-2 shadow-2 backdrop-blur">
@@ -358,14 +358,14 @@ function DuplicateMediaCard({
           checked={selected}
           onCheckedChange={onToggleSelected}
           onClick={(event) => event.stopPropagation()}
-          aria-label={debugRedactionEnabled ? "选择媒体" : `选择媒体 ${row.id}`}
+          aria-label={privacyRedactionEnabled ? "选择媒体" : `选择媒体 ${row.id}`}
         />
         {keeper ? <Badge tone="default">建议保留</Badge> : null}
       </div>
       <MediaThumbnail
         src={row.media_url}
         mediaType={row.media_type}
-        alt={getDebugMediaAlt(debugRedactionEnabled, row.tweet_text || row.tweet_id)}
+        alt={getPrivacyMediaAlt(privacyRedactionEnabled, row.tweet_text || row.tweet_id)}
         className="rounded-b-none"
       />
       <div className="flex flex-col gap-3 p-3">
@@ -378,7 +378,7 @@ function DuplicateMediaCard({
               </Link>
             ) : (
               <span className="mt-1 block truncate text-sm font-semibold text-fg-tertiary">
-                {getDebugDetailLinkLabel(debugRedactionEnabled)}
+                {getPrivacyDetailLinkLabel(privacyRedactionEnabled)}
               </span>
             )}
           </div>

@@ -16,14 +16,14 @@ import { MediaThumbnail } from "../../../components/ui/media-thumbnail";
 import { useAppScrollContainer } from "../../../components/layout/app-scroll-container";
 import type { MediaRow } from "../../../lib/api";
 import {
-  getDebugDetailRoute,
-  getDebugExternalHref,
-  getDebugLinkTitle,
-  getDebugMediaAlt,
-  getDebugRedactProps,
-  getDebugSelectionLabel,
-  useDebugRedactionEnabled,
-} from "../../../lib/debug-redaction";
+  getPrivacyDetailRoute,
+  getPrivacyExternalHref,
+  getPrivacyLinkTitle,
+  getPrivacyMediaAlt,
+  getPrivacyRedactProps,
+  getPrivacySelectionLabel,
+  usePrivacyRedactionEnabled,
+} from "../../../lib/privacy-redaction";
 import { mediaTypeLabel, statusLabel } from "../../../lib/formatters";
 import { cn, formatBytes, formatDateTime } from "../../../lib/utils";
 import type { LibraryDensity, LibrarySelectionMode, LibraryViewMode } from "../library-view-state";
@@ -215,7 +215,7 @@ type MediaItemProps = {
 };
 
 function MediaWallTile({ row, selected, selectionMode, onToggleSelected, onPreview }: MediaItemProps) {
-  const debugRedactionEnabled = useDebugRedactionEnabled();
+  const privacyRedactionEnabled = usePrivacyRedactionEnabled();
   const title = row.author_display_name || row.author_username || "未知作者";
   const isSelectable = selectionMode !== null;
 
@@ -229,8 +229,8 @@ function MediaWallTile({ row, selected, selectionMode, onToggleSelected, onPrevi
       {isSelectable ? (
         <div className="absolute right-1 top-1 z-10 flex size-10 items-center justify-center rounded-full bg-bg-elevated/90 shadow-1 backdrop-blur">
           <Checkbox
-            aria-label={getDebugSelectionLabel(
-              debugRedactionEnabled,
+            aria-label={getPrivacySelectionLabel(
+              privacyRedactionEnabled,
               selectionMode === "organize" ? `选择 Tweet ${row.tweet_id}` : `选择媒体 ${row.id}`,
             )}
             checked={selected}
@@ -241,14 +241,14 @@ function MediaWallTile({ row, selected, selectionMode, onToggleSelected, onPrevi
       <MediaThumbnail
         src={row.preview_url || row.media_url}
         mediaType={row.media_type}
-        alt={getDebugMediaAlt(debugRedactionEnabled, row.tweet_text || title)}
+        alt={getPrivacyMediaAlt(privacyRedactionEnabled, row.tweet_text || title)}
         ariaLabel={
           isSelectable
-            ? getDebugSelectionLabel(
-                debugRedactionEnabled,
+            ? getPrivacySelectionLabel(
+                privacyRedactionEnabled,
                 selectionMode === "organize" ? `切换选择 Tweet ${row.tweet_id}` : `切换选择媒体 ${row.id}`,
               )
-            : getDebugMediaAlt(debugRedactionEnabled, row.tweet_text || title)
+            : getPrivacyMediaAlt(privacyRedactionEnabled, row.tweet_text || title)
         }
         className="rounded-none"
         fit="cover"
@@ -263,7 +263,7 @@ function MediaWallTile({ row, selected, selectionMode, onToggleSelected, onPrevi
         </Badge>
       ) : null}
       <div className="pointer-events-none absolute inset-x-0 bottom-0 flex items-end justify-between gap-2 bg-gradient-to-t from-black/70 to-transparent px-2 pb-2 pt-8 text-white opacity-0 transition duration-fast group-hover:opacity-100 group-focus-within:opacity-100">
-        <span className="truncate text-xs font-semibold" {...getDebugRedactProps(debugRedactionEnabled)}>
+        <span className="truncate text-xs font-semibold" {...getPrivacyRedactProps(privacyRedactionEnabled)}>
           {title}
         </span>
         <span className="shrink-0 text-[11px] text-white/80">{formatDimensions(row)}</span>
@@ -274,15 +274,15 @@ function MediaWallTile({ row, selected, selectionMode, onToggleSelected, onPrevi
 
 function MediaDetailCard({ row, selected, selectionMode, onToggleSelected, onPreview }: MediaItemProps) {
   const navigate = useNavigate();
-  const debugRedactionEnabled = useDebugRedactionEnabled();
+  const privacyRedactionEnabled = usePrivacyRedactionEnabled();
   const title = row.author_display_name || row.author_username || "未知作者";
   const tweetText = row.tweet_text || "暂无 Tweet 文本";
-  const tweetHref = getDebugExternalHref(debugRedactionEnabled, row.tweet_url);
+  const tweetHref = getPrivacyExternalHref(privacyRedactionEnabled, row.tweet_url);
   const statusTone = row.media_status === "verified" || row.media_status === "downloaded" ? "success" : "warning";
-  const detailRoute = getDebugDetailRoute(debugRedactionEnabled, row.tweet_id);
+  const detailRoute = getPrivacyDetailRoute(privacyRedactionEnabled, row.tweet_id);
   const isSelectable = selectionMode !== null;
-  const selectionLabel = getDebugSelectionLabel(
-    debugRedactionEnabled,
+  const selectionLabel = getPrivacySelectionLabel(
+    privacyRedactionEnabled,
     selectionMode === "organize" ? `选择 Tweet ${row.tweet_id}` : `选择媒体 ${row.id}`,
   );
 
@@ -312,8 +312,8 @@ function MediaDetailCard({ row, selected, selectionMode, onToggleSelected, onPre
         <MediaThumbnail
           src={row.preview_url || row.media_url}
           mediaType={row.media_type}
-          alt={getDebugMediaAlt(debugRedactionEnabled, row.tweet_text || title)}
-          ariaLabel={getDebugMediaAlt(debugRedactionEnabled, row.tweet_text || title)}
+          alt={getPrivacyMediaAlt(privacyRedactionEnabled, row.tweet_text || title)}
+          ariaLabel={getPrivacyMediaAlt(privacyRedactionEnabled, row.tweet_text || title)}
           className="rounded-xl"
           fit="cover"
           showTypeBadge={false}
@@ -328,7 +328,7 @@ function MediaDetailCard({ row, selected, selectionMode, onToggleSelected, onPre
         />
       </div>
       <div className="flex min-w-0 flex-1 flex-col gap-2.5">
-        <div className="flex items-start justify-between gap-3" {...getDebugRedactProps(debugRedactionEnabled)}>
+        <div className="flex items-start justify-between gap-3" {...getPrivacyRedactProps(privacyRedactionEnabled)}>
           <div className="min-w-0">
             <div className="truncate text-sm font-semibold text-fg-primary">{title}</div>
             <div className="mt-0.5 truncate text-xs text-fg-tertiary">@{row.author_username || "-"}</div>
@@ -338,7 +338,7 @@ function MediaDetailCard({ row, selected, selectionMode, onToggleSelected, onPre
 
         <p
           className="line-clamp-2 min-h-9 text-xs leading-relaxed text-fg-secondary"
-          {...getDebugRedactProps(debugRedactionEnabled)}
+          {...getPrivacyRedactProps(privacyRedactionEnabled)}
         >
           {tweetText}
         </p>
@@ -371,7 +371,7 @@ function MediaDetailCard({ row, selected, selectionMode, onToggleSelected, onPre
               type="button"
               variant="ghost"
               size="sm"
-              title={getDebugLinkTitle(debugRedactionEnabled, "tweet", "在 X 中查看")}
+              title={getPrivacyLinkTitle(privacyRedactionEnabled, "tweet", "在 X 中查看")}
               onClick={(event) => {
                 event.stopPropagation();
                 window.open(tweetHref, "_blank", "noopener,noreferrer");

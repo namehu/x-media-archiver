@@ -121,6 +121,26 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/api/v1/auth/preferences": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        /**
+         * Update Preferences
+         * @description 更新当前管理员的媒体隐私偏好。
+         */
+        patch: operations["update_preferences_api_v1_auth_preferences_patch"];
+        trace?: never;
+    };
     "/api/v1/library/summary": {
         parameters: {
             query?: never;
@@ -2231,6 +2251,11 @@ export interface components {
             /** New Password */
             new_password: string;
         };
+        /** AuthPreferencesRequest */
+        AuthPreferencesRequest: {
+            /** Media Privacy Mode */
+            media_privacy_mode: boolean;
+        };
         /** AuthSessionResponse */
         AuthSessionResponse: {
             /** Status */
@@ -2254,6 +2279,8 @@ export interface components {
         AuthUserResponse: {
             /** Username */
             username: string;
+            /** Media Privacy Mode */
+            media_privacy_mode: boolean;
         } & {
             [key: string]: unknown;
         };
@@ -4787,6 +4814,39 @@ export interface operations {
         requestBody: {
             content: {
                 "application/json": components["schemas"]["AuthPasswordRequest"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["AuthSessionResponse"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    update_preferences_api_v1_auth_preferences_patch: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["AuthPreferencesRequest"];
             };
         };
         responses: {

@@ -177,6 +177,8 @@ docker-compose logs xarchiver
 
 打开 WebUI 后填写令牌、管理员用户名与不少于 12 个字符的密码。令牌仅保存在当前进程内，重启后会重新生成，初始化成功后立即失效。忘记密码时可在可信终端运行 `docker-compose run --rm xarchiver auth reset-password`；该命令会撤销全部浏览器会话。CLI 仍是拥有数据库权限的本地运维入口，不经过 Web 登录。
 
+归档可能包含成人内容。账号可在顶栏或窄屏账户菜单开启“媒体隐私模式”，该偏好保存在管理员账号中；开启后敏感字段会遮挡，图片、视频与播放器不会挂载或请求。隐私模式关闭时，每个标签页首次进入 WebUI 都需要完成一次 18+ 用户确认；确认只写入当前标签页的 `sessionStorage`，刷新和站内跳转不会重复提示，新标签页仍需确认。退出、认证失效或重新登录后会清除当前标签页的确认。`AUTH_MODE=disabled` 不写入账号表，使用 `localStorage` 保存隐私偏好并使用 `sessionStorage` 保存标签页确认。
+
 VS Code 可通过一个调试入口构建 API 镜像、启动 API 容器、附加 Python 调试器并启动 WebUI 开发服务器。打开"运行和调试"，选择 `Dev: API + WebUI`，按 F5 启动。API 通过 `debugpy` 在 `127.0.0.1:5678` 上启动并立即响应请求；VS Code 附加后即可命中断点。该调试入口有意不启用 uvicorn reload，因此在 Python 代码变更后需重启调试会话。WebUI 仍通过 Vite 在本地运行，将 API 请求代理到 `http://127.0.0.1:18000`，可手动在 `http://127.0.0.1:5173` 打开。
 
 主要读取 API endpoints（完整契约以 `/openapi.json` 为准）：

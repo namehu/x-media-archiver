@@ -45,6 +45,7 @@ class MigrationTests(unittest.TestCase):
                 "021_add_tweet_search.py",
                 "022_add_organization_audit.py",
                 "023_add_platform_hashtags.py",
+                "024_add_media_privacy_mode.py",
             ],
         )
         upgrade.assert_called_once()
@@ -56,7 +57,10 @@ class MigrationTests(unittest.TestCase):
 
         with (
             patch("xarchiver.migrations.get_settings", return_value=settings),
-            patch("xarchiver.migrations.current_alembic_revision", return_value="023_add_platform_hashtags"),
+            patch(
+                "xarchiver.migrations.current_alembic_revision",
+                return_value="024_add_media_privacy_mode",
+            ),
             patch("xarchiver.migrations.command.upgrade") as upgrade,
         ):
             self.assertEqual(migrate(), [])
@@ -103,6 +107,7 @@ class MigrationTests(unittest.TestCase):
                 "021_add_tweet_search.py",
                 "022_add_organization_audit.py",
                 "023_add_platform_hashtags.py",
+                "024_add_media_privacy_mode.py",
             ],
         )
 
@@ -430,6 +435,36 @@ class MigrationTests(unittest.TestCase):
         self.assertIn("drop table hashtags", downgrade_sql)
         self.assertIn("where scope_type = 'hashtag_backfill'", downgrade_sql)
         self.assertIn("source_scan', 'download_job'", downgrade_sql)
+
+    def test_media_privacy_revision_adds_account_preference(self) -> None:
+        module = importlib.import_module("xarchiver.alembic.versions.024_add_media_privacy_mode")
+        added_columns: list[tuple[str, object]] = []
+        dropped_columns: list[tuple[str, str]] = []
+
+        with patch.object(
+            module.op,
+            "add_column",
+            side_effect=lambda table, column: added_columns.append((table, column)),
+        ):
+            module.upgrade()
+        with patch.object(
+            module.op,
+            "drop_column",
+            side_effect=lambda table, column: dropped_columns.append((table, column)),
+        ):
+            module.downgrade()
+
+        self.assertEqual(
+            [(table, column.name) for table, column in added_columns],
+            [("auth_admin", "media_privacy_mode")],
+        )
+        privacy_column = added_columns[0][1]
+        self.assertFalse(privacy_column.nullable)
+        self.assertIsNotNone(privacy_column.server_default)
+        self.assertEqual(
+            dropped_columns,
+            [("auth_admin", "media_privacy_mode")],
+        )
 
 
 if __name__ == "__main__":

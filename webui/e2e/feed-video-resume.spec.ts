@@ -1,5 +1,9 @@
 import { expect, test, type Page, type Route } from "@playwright/test";
 
+test.beforeEach(async ({ context }) => {
+  await context.addInitScript(() => sessionStorage.setItem("xma:webui:adult-content-acknowledged", "1"));
+});
+
 declare global {
   interface Window {
     __feedVideoTest: {
@@ -242,7 +246,7 @@ async function mockFeedApis(page: Page) {
       return json(route, {
         status: "authenticated",
         auth_mode: "password",
-        user: { username: "feed-video-test" },
+        user: { username: "feed-video-test", media_privacy_mode: false },
       });
     }
     if (path === "/api/v1/health/detail") return json(route, healthDetail());

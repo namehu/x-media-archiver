@@ -1,5 +1,9 @@
 import { expect, test, type Page, type Route } from "@playwright/test";
 
+test.beforeEach(async ({ context }) => {
+  await context.addInitScript(() => sessionStorage.setItem("xma:webui:adult-content-acknowledged", "1"));
+});
+
 const sourceId = 91;
 const runId = 7701;
 const tweetIds = Array.from({ length: 10 }, (_, index) => `follow-tweet-${index}`);
@@ -128,7 +132,7 @@ async function mockSourceApis(page: Page) {
       return json(route, {
         status: "authenticated",
         auth_mode: "password",
-        user: { username: "source-follow-test" },
+        user: { username: "source-follow-test", media_privacy_mode: false },
       });
     }
     if (path === "/api/v1/health/detail") return json(route, healthDetail());

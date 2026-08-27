@@ -24,6 +24,11 @@ import { ManualImport } from "./manual-import";
 import { ScanLogDialog } from "./scan-log-dialog";
 import { SourceDetailContent } from "./source-detail-content";
 import { SourceOverviewContent, SourceTweetsContent } from "./source-tweets-content";
+import {
+  getPrivacyExternalHref,
+  getPrivacyRedactProps,
+  usePrivacyRedactionEnabled,
+} from "@/lib/privacy-redaction";
 
 type ScanMode = "history" | "latest_refresh" | "from_start";
 
@@ -90,6 +95,7 @@ export function SourceDetailPanel({
   actions: DetailActions;
   onManualSubmitted: () => void;
 }) {
+  const privacyRedactionEnabled = usePrivacyRedactionEnabled();
   const [activeTab, setActiveTab] = React.useState("overview");
   const [logRun, setLogRun] = React.useState<SourceScanRun | null>(null);
   const [tweetFilters, setTweetFilters] = React.useState(DEFAULT_TWEET_FILTERS);
@@ -109,6 +115,7 @@ export function SourceDetailPanel({
   );
   const scanRuns = scanRunsQuery.data?.pages.flatMap((page) => page.rows) ?? [];
   const scanStatus = source ? sourceScanStatus(source) : null;
+  const sourceHref = getPrivacyExternalHref(privacyRedactionEnabled, source?.source_url);
 
   React.useEffect(() => {
     setActiveTab("overview");
@@ -143,7 +150,7 @@ export function SourceDetailPanel({
           来源目录
         </Button>
         <div className="flex flex-col gap-3 sm:flex-row sm:items-start sm:justify-between">
-          <div className="min-w-0">
+          <div className="min-w-0" {...getPrivacyRedactProps(privacyRedactionEnabled)}>
             <div className="flex min-w-0 flex-wrap items-center gap-2">
               <h1 className="truncate text-xl font-bold text-fg-primary sm:text-2xl">
                 {source.label || source.author_username || "未知来源"}
@@ -158,13 +165,13 @@ export function SourceDetailPanel({
               <span className="tabular-nums">{source.unsubmitted_tweet_count ?? 0} 条待下载</span>
             </div>
           </div>
-          {source.source_url ? (
+          {sourceHref ? (
             <a
               className="inline-flex h-10 shrink-0 items-center justify-center gap-2 rounded-lg border border-border-strong px-3 text-sm font-medium text-fg-primary transition hover:bg-bg-muted focus:outline-none focus-visible:ring-2 focus-visible:ring-brand/50"
-              href={source.source_url}
+              href={sourceHref}
               target="_blank"
               rel="noreferrer"
-              title={source.source_url}
+              title={sourceHref}
             >
               在 X 中打开
               <ExternalLink aria-hidden="true" className="size-4" />

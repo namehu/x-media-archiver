@@ -2,8 +2,10 @@ import type { MediaRow } from "@/lib/api";
 import { mediaTypeLabel, statusLabel } from "@/lib/formatters";
 import { formatBytes } from "@/lib/utils";
 import { Badge } from "@/components/ui/badge";
+import { getPrivacyRedactProps, usePrivacyRedactionEnabled } from "@/lib/privacy-redaction";
 
 export function MediaDetails({ media }: { media: MediaRow }) {
+  const privacyRedactionEnabled = usePrivacyRedactionEnabled();
   return (
     <div className="flex flex-col gap-2 px-3 py-2.5 text-sm">
       <div className="flex flex-wrap items-center gap-x-2 gap-y-1">
@@ -16,7 +18,14 @@ export function MediaDetails({ media }: { media: MediaRow }) {
           {statusLabel(media.media_status)}
         </Badge>
       </div>
-      {media.local_path ? <div className="min-w-0 break-all text-xs text-fg-tertiary">{media.local_path}</div> : null}
+      {media.local_path ? (
+        <div
+          className="min-w-0 break-all text-xs text-fg-tertiary"
+          {...getPrivacyRedactProps(privacyRedactionEnabled)}
+        >
+          {media.local_path}
+        </div>
+      ) : null}
     </div>
   );
 }

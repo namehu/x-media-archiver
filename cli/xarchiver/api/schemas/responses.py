@@ -148,6 +148,7 @@ class CookieConfigResponse(FlexibleResponse):
 
 class AuthUserResponse(FlexibleResponse):
     username: str
+    media_privacy_mode: bool
 
 
 class AuthSessionResponse(FlexibleResponse):

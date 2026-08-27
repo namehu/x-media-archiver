@@ -12,7 +12,7 @@ import {
   CommandList,
 } from "@/components/ui/command";
 import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover";
-import { getDebugRedactProps, useDebugRedactionEnabled } from "@/lib/debug-redaction";
+import { getPrivacyRedactProps, usePrivacyRedactionEnabled } from "@/lib/privacy-redaction";
 import { cn } from "@/lib/utils";
 
 type AuthorComboboxProps = {
@@ -22,7 +22,7 @@ type AuthorComboboxProps = {
 };
 
 export function AuthorCombobox({ id, value, onChange }: AuthorComboboxProps) {
-  const debugRedactionEnabled = useDebugRedactionEnabled();
+  const privacyRedactionEnabled = usePrivacyRedactionEnabled();
   const [open, setOpen] = useState(false);
   const [search, setSearch] = useState("");
   const [debouncedSearch, setDebouncedSearch] = useState("");
@@ -79,7 +79,7 @@ export function AuthorCombobox({ id, value, onChange }: AuthorComboboxProps) {
           >
             <span
               className={cn("truncate", !value && "text-fg-tertiary")}
-              {...getDebugRedactProps(debugRedactionEnabled && Boolean(value))}
+              {...getPrivacyRedactProps(privacyRedactionEnabled && Boolean(value))}
             >
               {triggerLabel}
             </span>
@@ -123,10 +123,10 @@ export function AuthorCombobox({ id, value, onChange }: AuthorComboboxProps) {
                       )}
                     />
                     <span className="min-w-0 flex-1">
-                      <span className="block truncate font-medium" {...getDebugRedactProps(debugRedactionEnabled)}>
+                      <span className="block truncate font-medium" {...getPrivacyRedactProps(privacyRedactionEnabled)}>
                         {option.author_display_name || `@${option.author_username}`}
                       </span>
-                      <span className="block truncate text-xs text-fg-secondary" {...getDebugRedactProps(debugRedactionEnabled)}>
+                      <span className="block truncate text-xs text-fg-secondary" {...getPrivacyRedactProps(privacyRedactionEnabled)}>
                         @{option.author_username} · {option.media_count.toLocaleString()} 项媒体
                       </span>
                     </span>

@@ -1,22 +1,15 @@
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
-import React, { Suspense, lazy, useEffect } from "react";
+import React, { Suspense, lazy } from "react";
 import ReactDOM from "react-dom/client";
-import { createBrowserRouter, Navigate, RouterProvider, useLocation, useNavigate } from "react-router-dom";
+import { createBrowserRouter, Navigate, RouterProvider } from "react-router-dom";
 import { AppLayout } from "./components/layout/app-layout";
 import { Skeleton } from "./components/ui/skeleton";
 import { Toaster } from "./components/ui/toaster";
 import { TooltipProvider } from "./components/ui/tooltip";
 import { applyTheme, getStoredTheme, ThemeProvider } from "./lib/theme";
 import { AuthGate } from "./lib/auth";
+import { initializeMediaPrivacyMode } from "./lib/media-privacy";
 import { RuntimeProvider } from "./lib/runtime-provider";
-import { isTweetDetailPath } from "./lib/debug-redaction";
-import {
-  buildDebuggerSearch,
-  initializeDebuggerMode,
-  persistDebuggerMode,
-  resolveDebuggerMode,
-  syncDebuggerMode,
-} from "./lib/debugger-mode";
 import "./styles.css";
 
 const DashboardPage = lazy(() =>
@@ -60,7 +53,7 @@ const TweetDetailPage = lazy(() =>
 );
 
 applyTheme(getStoredTheme());
-initializeDebuggerMode();
+initializeMediaPrivacyMode();
 
 const queryClient = new QueryClient();
 
@@ -88,41 +81,6 @@ const router = createBrowserRouter([
 ]);
 
 function AppShell() {
-  const location = useLocation();
-  const navigate = useNavigate();
-
-  useEffect(() => {
-    const state = resolveDebuggerMode(location.search);
-
-    syncDebuggerMode(state.enabled);
-
-    if (state.persist) {
-      persistDebuggerMode(state.enabled);
-    }
-
-    if (state.enabled && isTweetDetailPath(location.pathname)) {
-      navigate(
-        {
-          pathname: "/library",
-          search: buildDebuggerSearch(location.search, true),
-        },
-        { replace: true },
-      );
-      return;
-    }
-
-    if (state.enabled && !state.hasUrlFlag) {
-      navigate(
-        {
-          pathname: location.pathname,
-          search: buildDebuggerSearch(location.search, true),
-          hash: location.hash,
-        },
-        { replace: true },
-      );
-    }
-  }, [location.hash, location.pathname, location.search, navigate]);
-
   return <AppLayout />;
 }
 

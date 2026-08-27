@@ -7,6 +7,8 @@ import { mediaTypeLabel } from "@/lib/formatters";
 import "swiper/css";
 import "swiper/css/navigation";
 import "swiper/css/pagination";
+import { PrivacyMediaPlaceholder } from "@/components/ui/privacy-media-placeholder";
+import { usePrivacyRedactionEnabled } from "@/lib/privacy-redaction";
 
 export function ImagePreviewCarousel({
   media,
@@ -19,6 +21,7 @@ export function ImagePreviewCarousel({
   onActiveIndexChange: (index: number) => void;
   onBackdropClick: () => void;
 }) {
+  const privacyRedactionEnabled = usePrivacyRedactionEnabled();
   const swiperRef = useRef<SwiperInstance | null>(null);
 
   useEffect(() => {
@@ -46,7 +49,9 @@ export function ImagePreviewCarousel({
               if (event.target === event.currentTarget) onBackdropClick();
             }}
           >
-            {item.media_url ? (
+            {privacyRedactionEnabled ? (
+              <PrivacyMediaPlaceholder appearance="inverse" />
+            ) : item.media_url ? (
               <img
                 className="max-h-full max-w-full select-none object-contain"
                 src={item.media_url}

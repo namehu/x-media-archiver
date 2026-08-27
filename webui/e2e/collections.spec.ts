@@ -1,5 +1,9 @@
 import { expect, test, type Page, type Route } from "@playwright/test";
 
+test.beforeEach(async ({ context }) => {
+  await context.addInitScript(() => sessionStorage.setItem("xma:webui:adult-content-acknowledged", "1"));
+});
+
 test("collections uses a catalog-to-detail flow and keeps collection settings in a sheet", async ({ page }) => {
   await mockCollectionsApis(page);
 
@@ -43,7 +47,7 @@ async function mockCollectionsApis(page: Page) {
       return json(route, {
         status: "authenticated",
         auth_mode: "password",
-        user: { username: "collections-test" },
+        user: { username: "collections-test", media_privacy_mode: false },
       });
     }
     if (url.pathname === "/api/v1/health/detail") {

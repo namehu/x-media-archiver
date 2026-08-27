@@ -21,7 +21,7 @@ import {
   type OrganizationCatalog,
   type WriteActionResponse,
 } from "@/lib/api";
-import { getDebugRedactProps, useDebugRedactionEnabled } from "@/lib/debug-redaction";
+import { getPrivacyRedactProps, usePrivacyRedactionEnabled } from "@/lib/privacy-redaction";
 
 export function BulkOrganizationDialog({
   tweetIds,
@@ -35,7 +35,7 @@ export function BulkOrganizationDialog({
   onCompleted: () => void;
 }) {
   const queryClient = useQueryClient();
-  const debugRedactionEnabled = useDebugRedactionEnabled();
+  const privacyRedactionEnabled = usePrivacyRedactionEnabled();
   const catalogQuery = useQuery({
     queryKey: ["organization-catalog"],
     queryFn: () => apiGet<OrganizationCatalog>("/api/v1/library/organization"),
@@ -96,7 +96,7 @@ export function BulkOrganizationDialog({
         ) : catalogQuery.isLoading ? (
           <p className="py-8 text-center text-sm text-fg-secondary">正在读取自定义标签与合集…</p>
         ) : (
-          <Tabs defaultValue="add" {...getDebugRedactProps(debugRedactionEnabled)}>
+          <Tabs defaultValue="add" {...getPrivacyRedactProps(privacyRedactionEnabled)}>
             <TabsList className="w-full">
               <TabsTrigger value="add" className="flex-1">添加关系</TabsTrigger>
               <TabsTrigger value="remove" className="flex-1">移除关系</TabsTrigger>

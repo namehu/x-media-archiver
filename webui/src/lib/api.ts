@@ -865,7 +865,7 @@ export type CookieConfig = {
 export type AuthSession = {
   status: "uninitialized" | "anonymous" | "authenticated";
   auth_mode: "password" | "disabled";
-  user?: { username: string } | null;
+  user?: { username: string; media_privacy_mode: boolean } | null;
 };
 
 export type HealthDetail = {

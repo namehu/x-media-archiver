@@ -38,11 +38,11 @@ import {
   type WriteActionResponse,
 } from "@/lib/api";
 import {
-  getDebugDetailRoute,
-  getDebugMediaAlt,
-  getDebugRedactProps,
-  useDebugRedactionEnabled,
-} from "@/lib/debug-redaction";
+  getPrivacyDetailRoute,
+  getPrivacyMediaAlt,
+  getPrivacyRedactProps,
+  usePrivacyRedactionEnabled,
+} from "@/lib/privacy-redaction";
 
 const PAGE_SIZE = 20;
 
@@ -59,7 +59,7 @@ export function CollectionCatalog({
   onEdit: (item: OrganizationCollection) => void;
   onDelete: (item: OrganizationCollection) => void;
 }) {
-  const debugRedactionEnabled = useDebugRedactionEnabled();
+  const privacyRedactionEnabled = usePrivacyRedactionEnabled();
 
   if (!items.length) {
     return (
@@ -86,12 +86,12 @@ export function CollectionCatalog({
           key={item.id}
           role="listitem"
           className="flex items-center gap-4 border-b border-border-subtle px-4 py-4 transition-colors hover:bg-bg-surface sm:px-5"
-          {...getDebugRedactProps(debugRedactionEnabled)}
+          {...getPrivacyRedactProps(privacyRedactionEnabled)}
         >
           <MediaThumbnail
             src={item.cover?.media_url}
             mediaType={item.cover?.media_type}
-            alt={getDebugMediaAlt(debugRedactionEnabled, `${item.name}合集封面`)}
+            alt={getPrivacyMediaAlt(privacyRedactionEnabled, `${item.name}合集封面`)}
             ariaLabel={`打开合集 ${item.name}`}
             aspect="square"
             showTypeBadge={false}
@@ -126,7 +126,7 @@ export function CollectionDetail({
   onDelete: (item: OrganizationCollection) => void;
 }) {
   const queryClient = useQueryClient();
-  const debugRedactionEnabled = useDebugRedactionEnabled();
+  const privacyRedactionEnabled = usePrivacyRedactionEnabled();
   const [offset, setOffset] = useState(0);
   const [settingsOpen, setSettingsOpen] = useState(false);
 
@@ -178,18 +178,18 @@ export function CollectionDetail({
   return (
     <div>
       {cover?.media_url ? (
-        <div {...getDebugRedactProps(debugRedactionEnabled)}>
+        <div {...getPrivacyRedactProps(privacyRedactionEnabled)}>
           <MediaThumbnail
             src={cover.media_url}
             mediaType={cover.media_type}
-            alt={getDebugMediaAlt(debugRedactionEnabled, `${collection.name}合集封面`)}
+            alt={getPrivacyMediaAlt(privacyRedactionEnabled, `${collection.name}合集封面`)}
             aspect="wide"
             showTypeBadge={false}
             className="rounded-none"
           />
         </div>
       ) : null}
-      <section className="border-b border-border-subtle px-4 py-4 sm:px-5" {...getDebugRedactProps(debugRedactionEnabled)}>
+      <section className="border-b border-border-subtle px-4 py-4 sm:px-5" {...getPrivacyRedactProps(privacyRedactionEnabled)}>
         <div className="flex items-start justify-between gap-3">
           <div className="min-w-0">
             <h2 className="text-2xl font-bold tracking-tight text-fg-primary">{collection.name}</h2>
@@ -207,21 +207,21 @@ export function CollectionDetail({
       {rows.length ? (
         <div>
           {rows.map((row) => {
-            const detailRoute = getDebugDetailRoute(debugRedactionEnabled, row.tweet_id);
+            const detailRoute = getPrivacyDetailRoute(privacyRedactionEnabled, row.tweet_id);
             return (
               <article
                 key={row.tweet_id}
                 className="grid gap-3 border-b border-border-subtle px-4 py-4 sm:grid-cols-[128px_minmax(0,1fr)] sm:px-5"
               >
-                <div {...getDebugRedactProps(debugRedactionEnabled)}>
+                <div {...getPrivacyRedactProps(privacyRedactionEnabled)}>
                   <MediaThumbnail
                     src={row.media[0]?.preview_url || row.media[0]?.media_url}
                     mediaType={row.media[0]?.media_type}
-                    alt={getDebugMediaAlt(debugRedactionEnabled, row.tweet_text)}
+                    alt={getPrivacyMediaAlt(privacyRedactionEnabled, row.tweet_text)}
                     showTypeBadge={false}
                   />
                 </div>
-                <div className="flex min-w-0 flex-col gap-2" {...getDebugRedactProps(debugRedactionEnabled)}>
+                <div className="flex min-w-0 flex-col gap-2" {...getPrivacyRedactProps(privacyRedactionEnabled)}>
                   <div className="flex items-start justify-between gap-3">
                     <div className="min-w-0">
                       <p className="truncate text-sm font-bold text-fg-primary">
@@ -281,7 +281,7 @@ export function CollectionDetail({
             <SheetTitle>合集设置</SheetTitle>
             <SheetDescription>编辑合集信息、调整封面或删除合集关系。</SheetDescription>
           </SheetHeader>
-          <FieldGroup className="gap-6" {...getDebugRedactProps(debugRedactionEnabled)}>
+          <FieldGroup className="gap-6" {...getPrivacyRedactProps(privacyRedactionEnabled)}>
             <Field data-disabled={coverMutation.isPending || !mediaOptions.length}>
               <FieldLabel htmlFor="collection-cover">合集封面</FieldLabel>
               <Select

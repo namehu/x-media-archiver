@@ -1,5 +1,9 @@
 import { expect, test, type Page } from "@playwright/test";
 
+test.beforeEach(async ({ context }) => {
+  await context.addInitScript(() => sessionStorage.setItem("xma:webui:adult-content-acknowledged", "1"));
+});
+
 test.describe("Duplicates media deletion", () => {
   test.beforeEach(async ({ page }) => {
     await mockShellApis(page);
@@ -217,7 +221,11 @@ function createGroup(groupNumber: number, firstMediaId: number) {
 async function mockShellApis(page: Page) {
   await page.route("**/api/v1/auth/session", (route) =>
     route.fulfill({
-      json: { status: "authenticated", auth_mode: "password", user: { username: "duplicates-test" } },
+      json: {
+        status: "authenticated",
+        auth_mode: "password",
+        user: { username: "duplicates-test", media_privacy_mode: false },
+      },
     }),
   );
   await page.route("**/api/v1/health/detail", (route) =>

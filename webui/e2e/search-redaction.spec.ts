@@ -1,5 +1,9 @@
 import { expect, test, type Page, type Route } from "@playwright/test";
 
+test.beforeEach(async ({ context }) => {
+  await context.addInitScript(() => sessionStorage.setItem("xma:webui:adult-content-acknowledged", "1"));
+});
+
 declare global {
   interface Window {
     __searchVideoTest: {
@@ -10,16 +14,32 @@ declare global {
   }
 }
 
-test("search redacts the query and private organization context in debugger mode", async ({ page }) => {
-  await mockSearchApis(page);
+test("search redacts the query and private organization context in privacy mode", async ({ page }) => {
+  await mockSearchApis(page, true);
 
-  await page.goto("/search?debugger=1&q=private");
+  await page.goto("/search?q=private");
   await expect(page.getByRole("heading", { name: "全局搜索" })).toBeVisible();
+  await expect(page.getByRole("heading", { name: "搜索结果" })).toBeVisible();
+  await expect(page.getByRole("button", { name: "打开命令面板" })).toBeVisible();
+  await expect(page.getByText("搜索或跳转", { exact: true })).toHaveCount(0);
   await expect(page.getByText("私人备注内容")).toBeVisible();
+  await expect(page.getByRole("link", { name: "查看归档详情" })).toBeVisible();
 
-  const queryField = page.getByLabel("关键词").locator("xpath=ancestor::*[@data-debug-redact][1]");
+  const resultCard = page.locator("article").first();
+  await expect
+    .poll(() =>
+      resultCard.evaluate((article) => {
+        const media = article.querySelector('[data-feed-media="true"]');
+        const organization = article.querySelector('[aria-label="自定义整理信息"]');
+        if (!media || !organization) return false;
+        return Boolean(media.compareDocumentPosition(organization) & Node.DOCUMENT_POSITION_FOLLOWING);
+      }),
+    )
+    .toBe(true);
+
+  const queryField = page.getByLabel("关键词").locator("xpath=ancestor::*[@data-privacy-redact][1]");
   const privateContext = page
-    .locator("[data-debug-redact]")
+    .locator("[data-privacy-redact]")
     .filter({ hasText: "私人备注内容" });
 
   await expect(queryField).toHaveCount(1);
@@ -42,8 +62,24 @@ test("search keeps structured refinements in one sheet", async ({ page }) => {
   await page.getByRole("button", { name: "筛选", exact: true }).click();
   const filterSheet = page.getByRole("dialog", { name: "筛选搜索结果" });
   await expect(filterSheet).toBeVisible();
+  await expect(filterSheet.getByText("内容范围", { exact: true })).toBeVisible();
+  await expect(filterSheet.getByText("整理信息", { exact: true })).toBeVisible();
+  await expect(filterSheet.getByText("结果顺序", { exact: true })).toBeVisible();
   await expect(filterSheet.getByRole("combobox", { name: "选择平台 Hashtag" })).toBeVisible();
+  await expect(filterSheet.getByRole("button", { name: "应用筛选", exact: true })).toBeVisible();
+  await expect(filterSheet.getByRole("button", { name: "恢复默认", exact: true })).toBeVisible();
   await expect(filterSheet.getByLabel("关键词")).toHaveCount(0);
+  await expect
+    .poll(() =>
+      filterSheet.evaluate((sheet) => {
+        const resetButton = Array.from(sheet.querySelectorAll("button")).find(
+          (button) => button.textContent?.trim() === "恢复默认",
+        );
+        if (!resetButton) return false;
+        return resetButton.getBoundingClientRect().right <= window.innerWidth;
+      }),
+    )
+    .toBe(true);
   await expect.poll(() => page.evaluate(() => document.documentElement.scrollWidth <= window.innerWidth)).toBe(true);
 });
 
@@ -64,14 +100,14 @@ test("search resumes list video after closing preview", async ({ page }) => {
   await expect.poll(() => page.evaluate(() => window.__searchVideoTest.listVideoCurrentTime())).toBeGreaterThan(6.5);
 });
 
-async function mockSearchApis(page: Page) {
+async function mockSearchApis(page: Page, privacyMode = false) {
   await page.route("**/api/v1/**", async (route) => {
     const url = new URL(route.request().url());
     if (url.pathname === "/api/v1/auth/session") {
       return json(route, {
         status: "authenticated",
         auth_mode: "password",
-        user: { username: "search-redaction-test" },
+        user: { username: "search-redaction-test", media_privacy_mode: privacyMode },
       });
     }
     if (url.pathname === "/api/v1/health/detail") {

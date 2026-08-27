@@ -1,8 +1,9 @@
-import { FileText, FolderClosed, Tag } from "lucide-react";
+import { ArrowRight, FileText, FolderClosed, Tag } from "lucide-react";
 import { Link } from "react-router-dom";
 import type { TweetSearchRow } from "@/lib/api";
 import { PlatformHashtags } from "@/components/platform-hashtags";
 import { Badge } from "@/components/ui/badge";
+import { getPrivacyRedactProps, usePrivacyRedactionEnabled } from "@/lib/privacy-redaction";
 import { PostCard } from "@/pages/feed/components/post-card";
 import type { FeedVideoPlaybackStateApi } from "@/pages/feed/video-playback-state";
 
@@ -23,6 +24,9 @@ export function SearchResultCard({
   onActivateVideo: (videoId: string | null) => void;
   onPreview: (index: number) => void;
 } & FeedVideoPlaybackStateApi) {
+  const privacyRedactionEnabled = usePrivacyRedactionEnabled();
+  const hasInlineContext = Boolean((row.hashtags ?? []).length || row.tweet_status !== "verified");
+
   return (
     <PostCard
       post={row}
@@ -43,10 +47,26 @@ export function SearchResultCard({
       }
       tweetTextContent={<HighlightedText text={row.tweet_text || "暂无帖子正文"} query={query} />}
       contextContent={
+        hasInlineContext ? (
+          <div className="flex flex-col gap-2">
+            <PlatformHashtags hashtags={row.hashtags ?? []} />
+            {row.tweet_status !== "verified" ? (
+              <div className="flex flex-wrap items-center gap-2">
+                <Badge tone={statusTone(row.tweet_status)}>{statusLabel(row.tweet_status)}</Badge>
+              </div>
+            ) : null}
+          </div>
+        ) : null
+      }
+      footerContent={
         <div className="flex flex-col gap-2">
-          <PlatformHashtags hashtags={row.hashtags ?? []} />
           {row.tags.length || row.collections.length ? (
-            <div role="group" className="flex flex-wrap items-center gap-1.5" aria-label="自定义整理信息">
+            <div
+              role="group"
+              className="flex flex-wrap items-center gap-1.5"
+              aria-label="自定义整理信息"
+              {...getPrivacyRedactProps(privacyRedactionEnabled)}
+            >
               {row.tags.length ? <span className="text-xs font-semibold text-fg-secondary">自定义标签</span> : null}
               {row.tags.map((tag) => (
                 <Badge key={`tag:${tag}`} tone="secondary" className="gap-1">
@@ -62,27 +82,24 @@ export function SearchResultCard({
               ))}
             </div>
           ) : null}
-          {row.tweet_status !== "verified" ? (
-            <div className="flex flex-wrap items-center gap-2">
-              <Badge tone={statusTone(row.tweet_status)}>{statusLabel(row.tweet_status)}</Badge>
-            </div>
-          ) : null}
           {row.note_excerpt ? (
-            <p className="flex items-start gap-1.5 text-sm text-fg-secondary">
+            <p
+              className="flex items-start gap-1.5 text-sm text-fg-secondary"
+              {...getPrivacyRedactProps(privacyRedactionEnabled)}
+            >
               <FileText data-icon="inline-start" className="mt-0.5 shrink-0" />
-              <span className="min-w-0 break-words">
+              <span className="min-w-0 break-words line-clamp-2">
                 <HighlightedText text={row.note_excerpt} query={query} />
               </span>
             </p>
           ) : null}
-          <div>
-            <Link
-              className="text-sm font-medium text-brand hover:text-brand-hover hover:underline focus:outline-none focus-visible:ring-2 focus-visible:ring-brand/50"
-              to={`/tweets/${encodeURIComponent(row.tweet_id)}`}
-            >
-              打开详情
-            </Link>
-          </div>
+          <Link
+            className="inline-flex min-h-10 w-fit items-center gap-1 rounded-full px-2 text-sm font-medium text-brand hover:bg-brand-soft hover:text-brand-hover focus:outline-none focus-visible:ring-2 focus-visible:ring-brand/50"
+            to={`/tweets/${encodeURIComponent(row.tweet_id)}`}
+          >
+            查看归档详情
+            <ArrowRight className="size-4" aria-hidden="true" />
+          </Link>
         </div>
       }
     />

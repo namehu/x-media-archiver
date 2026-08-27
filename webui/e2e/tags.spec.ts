@@ -1,5 +1,9 @@
 import { expect, test, type Page, type Route } from "@playwright/test";
 
+test.beforeEach(async ({ context }) => {
+  await context.addInitScript(() => sessionStorage.setItem("xma:webui:adult-content-acknowledged", "1"));
+});
+
 test("custom tags scale as a searchable virtualized directory with independent management", async ({ page }) => {
   const writes: Array<{ method: string; path: string; body: unknown }> = [];
   await mockTagsApis(page, writes);
@@ -18,6 +22,7 @@ test("custom tags scale as a searchable virtualized directory with independent m
   await editor.getByLabel("名称").fill("重点研究更新");
   await editor.getByRole("button", { name: "保存" }).click();
   await expect.poll(() => writes.some((request) => request.method === "PUT" && request.path.endsWith("/tags/999"))).toBe(true);
+  await expect(editor).toHaveCount(0);
 
   const search = page.getByLabel("搜索自定义标签");
   await search.fill("重点");
@@ -55,7 +60,7 @@ async function mockTagsApis(page: Page, writes: Array<{ method: string; path: st
       return json(route, {
         status: "authenticated",
         auth_mode: "password",
-        user: { username: "tags-test" },
+        user: { username: "tags-test", media_privacy_mode: false },
       });
     }
     if (url.pathname === "/api/v1/health/detail") return json(route, healthFixture());

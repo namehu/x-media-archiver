@@ -6,19 +6,20 @@ import type { Swiper as SwiperInstance } from "swiper/types";
 import { useLocation } from "react-router-dom";
 import type { MediaRow } from "../../../lib/api";
 import {
-  getDebugDetailRoute,
-  getDebugExternalHref,
-  getDebugLinkTitle,
-  getDebugMediaAlt,
-  getDebugRedactProps,
-  useDebugRedactionEnabled,
-} from "../../../lib/debug-redaction";
+  getPrivacyDetailRoute,
+  getPrivacyExternalHref,
+  getPrivacyLinkTitle,
+  getPrivacyMediaAlt,
+  getPrivacyRedactProps,
+  usePrivacyRedactionEnabled,
+} from "../../../lib/privacy-redaction";
 import { closeDialogHistoryEntry, isDialogHistoryEntry } from "../../../lib/dialog-history";
 import { mediaTypeLabel, statusLabel } from "../../../lib/formatters";
 import { formatBytes, formatDateTime } from "../../../lib/utils";
 import { Badge } from "../../../components/ui/badge";
 import { Button } from "../../../components/ui/button";
 import { Dialog, DialogContent, DialogDescription, DialogHeader, DialogTitle } from "../../../components/ui/dialog";
+import { PrivacyMediaPlaceholder } from "../../../components/ui/privacy-media-placeholder";
 import "swiper/css";
 
 type LibraryMediaPreviewDialogProps = {
@@ -252,16 +253,16 @@ function PreviewHeader({
   onDelete: () => void;
   onViewTweet: (route: string) => void;
 }) {
-  const debugRedactionEnabled = useDebugRedactionEnabled();
+  const privacyRedactionEnabled = usePrivacyRedactionEnabled();
   const title = media.author_display_name || media.author_username || "未知作者";
-  const tweetHref = getDebugExternalHref(debugRedactionEnabled, media.tweet_url);
-  const detailRoute = getDebugDetailRoute(debugRedactionEnabled, media.tweet_id);
+  const tweetHref = getPrivacyExternalHref(privacyRedactionEnabled, media.tweet_url);
+  const detailRoute = getPrivacyDetailRoute(privacyRedactionEnabled, media.tweet_id);
 
   return (
     <header className="pointer-events-none absolute inset-x-0 top-0 z-20 bg-gradient-to-b from-black/90 via-black/60 to-transparent px-4 pb-20 pt-[max(1rem,env(safe-area-inset-top))] text-white sm:px-6">
       <div className="pointer-events-auto mx-auto flex max-w-4xl flex-col gap-3">
         <div className="flex items-start justify-between gap-3">
-          <div className="min-w-0" {...getDebugRedactProps(debugRedactionEnabled)}>
+          <div className="min-w-0" {...getPrivacyRedactProps(privacyRedactionEnabled)}>
             <p className="truncate text-sm font-semibold text-white">{title}</p>
             <p className="mt-0.5 truncate text-xs text-white/65">
               {media.author_username ? `@${media.author_username} · ` : ""}{formatDateTime(media.published_at)}
@@ -286,7 +287,7 @@ function PreviewHeader({
                 variant="ghost"
                 size="icon"
                 className="rounded-full bg-black/35 text-white backdrop-blur hover:bg-black/60 hover:text-white"
-                title={getDebugLinkTitle(debugRedactionEnabled, "tweet", "在 X 中查看")}
+                title={getPrivacyLinkTitle(privacyRedactionEnabled, "tweet", "在 X 中查看")}
                 aria-label="在 X 中查看"
                 onClick={() => window.open(tweetHref, "_blank", "noopener,noreferrer")}
               >
@@ -321,7 +322,7 @@ function PreviewHeader({
           className="max-w-3xl text-left focus:outline-none focus-visible:ring-2 focus-visible:ring-white/60"
           aria-expanded={expanded}
           onClick={onToggleExpanded}
-          {...getDebugRedactProps(debugRedactionEnabled)}
+          {...getPrivacyRedactProps(privacyRedactionEnabled)}
         >
           <p className={expanded ? "whitespace-pre-wrap text-sm leading-relaxed text-white" : "line-clamp-2 whitespace-pre-wrap text-sm leading-relaxed text-white"}>
             {media.tweet_text || "暂无 Tweet 文本"}
@@ -333,15 +334,17 @@ function PreviewHeader({
 }
 
 function PreviewMedia({ media, active }: { media: MediaRow; active: boolean }) {
-  const debugRedactionEnabled = useDebugRedactionEnabled();
-  const alt = getDebugMediaAlt(
-    debugRedactionEnabled,
+  const privacyRedactionEnabled = usePrivacyRedactionEnabled();
+  const alt = getPrivacyMediaAlt(
+    privacyRedactionEnabled,
     media.tweet_text || media.author_display_name || mediaTypeLabel(media.media_type),
   );
 
   return (
     <div className="flex size-full items-center justify-center bg-black px-3 pb-20 pt-24 sm:px-16 sm:pb-24 sm:pt-28">
-      {media.media_url ? (
+      {privacyRedactionEnabled ? (
+        <PrivacyMediaPlaceholder appearance="inverse" className="max-h-[70vh] max-w-4xl rounded-xl" />
+      ) : media.media_url ? (
         isVideoMedia(media) ? (
           active ? (
             <video

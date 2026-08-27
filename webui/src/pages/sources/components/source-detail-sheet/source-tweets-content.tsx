@@ -5,7 +5,7 @@ import { Alert, AlertDescription, AlertTitle } from "@/components/ui/alert";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Collapsible, CollapsibleContent, CollapsibleTrigger } from "@/components/ui/collapsible";
-import { getDebugRedactProps, useDebugRedactionEnabled } from "@/lib/debug-redaction";
+import { getPrivacyRedactProps, usePrivacyRedactionEnabled } from "@/lib/privacy-redaction";
 import { scanStatusLabel, scanTriggerLabel } from "@/lib/formatters";
 import { useRuntimeSource } from "@/lib/runtime-provider";
 import { cn, formatDateTime } from "@/lib/utils";
@@ -222,7 +222,7 @@ function SourceDownloadPanel({
   statusLabel: (status?: string | null) => string;
   onResumeDownload: (runId: number) => void;
 }) {
-  const debugRedactionEnabled = useDebugRedactionEnabled();
+  const privacyRedactionEnabled = usePrivacyRedactionEnabled();
   const runtimeSource = useRuntimeSource(sourceId);
   const active =
     downloads?.active_run ??
@@ -276,7 +276,7 @@ function SourceDownloadPanel({
           <p
             data-testid="download-current-item"
             className="mt-2 truncate text-xs text-fg-secondary"
-            {...getDebugRedactProps(debugRedactionEnabled)}
+            {...getPrivacyRedactProps(privacyRedactionEnabled)}
           >
             <span className="font-mono">{runningItem.tweet_id}</span>:{" "}
             {runningItem.progress_message || "下载器处理中"}

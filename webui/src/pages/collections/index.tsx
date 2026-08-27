@@ -24,12 +24,12 @@ import {
   type OrganizationCollection,
   type WriteActionResponse,
 } from "@/lib/api";
-import { getDebugRedactProps, useDebugRedactionEnabled } from "@/lib/debug-redaction";
+import { getPrivacyRedactProps, usePrivacyRedactionEnabled } from "@/lib/privacy-redaction";
 import { CollectionCatalog, CollectionDetail } from "./components/collection-browser";
 
 export function CollectionsPage() {
   const queryClient = useQueryClient();
-  const debugRedactionEnabled = useDebugRedactionEnabled();
+  const privacyRedactionEnabled = usePrivacyRedactionEnabled();
   const [searchParams, setSearchParams] = useSearchParams();
   const [editor, setEditor] = useState<{ item: OrganizationCollection | null } | null>(null);
   const [deleteTarget, setDeleteTarget] = useState<OrganizationCollection | null>(null);
@@ -83,7 +83,7 @@ export function CollectionsPage() {
               <Button type="button" variant="ghost" size="icon" className="-ml-2" aria-label="返回全部合集" onClick={closeCollection}>
                 <ArrowLeft aria-hidden="true" />
               </Button>
-              <div className="min-w-0" {...getDebugRedactProps(debugRedactionEnabled)}>
+              <div className="min-w-0" {...getPrivacyRedactProps(privacyRedactionEnabled)}>
                 <h1 className="truncate text-base font-bold text-fg-primary">{selectedCollection.name}</h1>
                 <p className="text-xs tabular-nums text-fg-tertiary">{selectedCollection.tweet_count ?? 0} 条 Tweet</p>
               </div>
@@ -150,7 +150,7 @@ export function CollectionsPage() {
       />
       <AlertDialog open={Boolean(deleteTarget)} onOpenChange={(open) => !open && setDeleteTarget(null)}>
         <AlertDialogContent>
-          <AlertDialogHeader {...getDebugRedactProps(debugRedactionEnabled)}>
+          <AlertDialogHeader {...getPrivacyRedactProps(privacyRedactionEnabled)}>
             <AlertDialogTitle>删除“{deleteTarget?.name}”？</AlertDialogTitle>
             <AlertDialogDescription>
               将解除 {deleteTarget?.tweet_count ?? 0} 条 Tweet 的合集关系。Tweet、媒体文件、下载任务与私人备注都不会被删除。

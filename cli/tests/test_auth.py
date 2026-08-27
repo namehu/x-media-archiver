@@ -12,6 +12,7 @@ from fastapi.responses import JSONResponse
 from uvicorn.middleware.proxy_headers import ProxyHeadersMiddleware
 
 from xarchiver.api.middleware import AuthMiddleware, valid_origin
+from xarchiver.api.schemas.requests import AuthPreferencesRequest
 from xarchiver.api.v1 import auth as auth_routes
 from xarchiver.services import auth
 
@@ -95,6 +96,87 @@ class AuthServiceTests(unittest.TestCase):
         all_values = [value for _, params in connection.cursor_value.executions for value in params.values()]
         self.assertNotIn(token, all_values)
         self.assertIn(auth.hash_token(token), all_values)
+        session_sql, _session_params = connection.cursor_value.executions[-1]
+        self.assertNotIn("adult_content_acknowledged_at", session_sql)
+
+    def test_authenticated_session_includes_account_privacy_state(self):
+        now = datetime.now(UTC)
+        connection = FakeConnection(
+            {
+                "id": 1,
+                "username": "admin",
+                "media_privacy_mode": True,
+                "last_seen_at": now,
+                "expires_at": now + timedelta(hours=1),
+            }
+        )
+
+        with patch("xarchiver.services.auth.connect", side_effect=lambda: fake_connect(connection)):
+            current = auth.authenticate_session("active-session-token")
+
+        self.assertEqual(
+            current,
+            {
+                "id": 1,
+                "username": "admin",
+                "media_privacy_mode": True,
+            },
+        )
+
+    def test_new_login_keeps_account_privacy(self):
+        password = "long-enough-password"
+        connection = FakeConnection(
+            {
+                "id": 1,
+                "username": "admin",
+                "password_hash": auth._password_hash.hash(password),
+                "media_privacy_mode": True,
+            }
+        )
+        settings = SimpleNamespace(auth_session_ttl_hours=168)
+
+        with patch("xarchiver.services.auth.connect", side_effect=lambda: fake_connect(connection)):
+            authenticated = auth.create_login_session("admin", password, settings)
+
+        self.assertIsNotNone(authenticated)
+        admin, _token = authenticated
+        self.assertTrue(admin["media_privacy_mode"])
+        session_sql, _session_params = connection.cursor_value.executions[-1]
+        self.assertNotIn("adult_content_acknowledged_at", session_sql)
+
+    def test_logout_revokes_only_the_current_session(self):
+        connection = FakeConnection()
+
+        auth.revoke_session("active-session-token", conn=connection)
+
+        statement = connection.cursor_value.executions[0][0]
+        self.assertIn("auth_sessions", statement)
+        self.assertNotIn("auth_admin", statement)
+        self.assertEqual(connection.commits, 1)
+
+    def test_privacy_preference_updates_account_after_validating_session(self):
+        now = datetime.now(UTC)
+        connection = FakeConnection(
+            {
+                "id": 1,
+                "username": "admin",
+                "media_privacy_mode": True,
+                "last_seen_at": now,
+                "expires_at": now + timedelta(hours=1),
+            }
+        )
+
+        with patch(
+            "xarchiver.services.auth.connect",
+            side_effect=lambda: fake_connect(connection),
+        ):
+            current = auth.update_media_privacy_mode("active-session-token", False)
+
+        self.assertFalse(current["media_privacy_mode"])
+        self.assertEqual(connection.commits, 1)
+        self.assertEqual(len(connection.cursor_value.executions), 2)
+        self.assertIn("auth_sessions", connection.cursor_value.executions[0][0])
+        self.assertIn("media_privacy_mode", connection.cursor_value.executions[1][0])
 
     def test_expired_session_is_rejected_and_deleted(self):
         token = "expired-session-token"
@@ -102,6 +184,7 @@ class AuthServiceTests(unittest.TestCase):
             {
                 "id": 1,
                 "username": "admin",
+                "media_privacy_mode": False,
                 "last_seen_at": datetime.now(UTC) - timedelta(days=2),
                 "expires_at": datetime.now(UTC) - timedelta(seconds=1),
             }
@@ -265,7 +348,11 @@ class AuthRouteTests(unittest.TestCase):
                 "headers": [],
             }
         )
-        request.state.auth_admin = {"id": 1, "username": "admin"}
+        request.state.auth_admin = {
+            "id": 1,
+            "username": "admin",
+            "media_privacy_mode": True,
+        }
         settings = SimpleNamespace(auth_mode="password")
         with (
             patch("xarchiver.api.v1.auth.get_settings", return_value=settings),
@@ -274,6 +361,8 @@ class AuthRouteTests(unittest.TestCase):
             result = auth_routes.session(request)
 
         self.assertEqual(result["status"], "authenticated")
+        self.assertTrue(result["user"]["media_privacy_mode"])
+        self.assertNotIn("adult_content_acknowledged", result)
         get_admin.assert_not_called()
 
     def test_auth_database_errors_map_to_service_unavailable(self):
@@ -284,6 +373,39 @@ class AuthRouteTests(unittest.TestCase):
 
         self.assertEqual(error.exception.status_code, 503)
         self.assertEqual(error.exception.detail, "authentication_unavailable")
+
+    def test_preferences_route_updates_account_privacy(self):
+        request = Request(
+            {
+                "type": "http",
+                "method": "PATCH",
+                "scheme": "https",
+                "path": "/api/v1/auth/preferences",
+                "query_string": b"",
+                "headers": [(b"cookie", b"xma_session=session-token")],
+            }
+        )
+        settings = SimpleNamespace(auth_mode="password")
+        current = {
+            "id": 1,
+            "username": "admin",
+            "media_privacy_mode": False,
+        }
+        with (
+            patch("xarchiver.api.v1.auth.get_settings", return_value=settings),
+            patch(
+                "xarchiver.api.v1.auth.update_media_privacy_mode",
+                return_value=current,
+            ) as update_preference,
+        ):
+            result = auth_routes.update_preferences(
+                request,
+                AuthPreferencesRequest(media_privacy_mode=False),
+            )
+
+        update_preference.assert_called_once_with("session-token", False)
+        self.assertFalse(result["user"]["media_privacy_mode"])
+        self.assertNotIn("adult_content_acknowledged", result)
 
 
 class LoginRateLimitTests(unittest.TestCase):

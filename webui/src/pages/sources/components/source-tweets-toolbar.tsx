@@ -23,7 +23,7 @@ import {
 } from "@/components/ui/select";
 import { Sheet, SheetContent, SheetDescription, SheetHeader, SheetTitle, SheetTrigger } from "@/components/ui/sheet";
 import { Tooltip, TooltipContent, TooltipTrigger } from "@/components/ui/tooltip";
-import { getDebugRedactProps, useDebugRedactionEnabled } from "@/lib/debug-redaction";
+import { getPrivacyRedactProps, usePrivacyRedactionEnabled } from "@/lib/privacy-redaction";
 import {
   AlertDialog,
   AlertDialogAction,
@@ -103,7 +103,7 @@ export function SourceTweetsToolbar({
   onResumeFollow: () => void;
   onLocateCurrent: () => void;
 }) {
-  const debugRedactionEnabled = useDebugRedactionEnabled();
+  const privacyRedactionEnabled = usePrivacyRedactionEnabled();
   const [confirm, setConfirm] = React.useState<PendingConfirm | null>(null);
   const mediaType = filters.media === "all" ? undefined : filters.media;
   const missingCount = actionCounts?.missing ?? 0;
@@ -154,7 +154,7 @@ export function SourceTweetsToolbar({
         className="sr-only"
         data-testid="download-current-item"
         aria-live="polite"
-        {...getDebugRedactProps(debugRedactionEnabled)}
+        {...getPrivacyRedactProps(privacyRedactionEnabled)}
       >
         {currentTweetId ? `当前下载 ${currentTweetId}` : "当前没有下载项"}
       </span>

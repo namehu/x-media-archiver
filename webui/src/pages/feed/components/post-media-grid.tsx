@@ -2,6 +2,8 @@ import type { PostFeedMedia } from "@/lib/api";
 import { cn } from "@/lib/utils";
 import type { FeedVideoPlaybackStateApi } from "../video-playback-state";
 import { FeedVideo } from "./feed-video";
+import { PrivacyMediaPlaceholder } from "@/components/ui/privacy-media-placeholder";
+import { usePrivacyRedactionEnabled } from "@/lib/privacy-redaction";
 
 export function PostMediaGrid({
   media,
@@ -20,6 +22,7 @@ export function PostMediaGrid({
   onActivateVideo: (videoId: string | null) => void;
   onPreview: (index: number) => void;
 } & FeedVideoPlaybackStateApi) {
+  const privacyRedactionEnabled = usePrivacyRedactionEnabled();
   const visible = media.slice(0, 4);
   const count = visible.length;
   if (!count) return null;
@@ -54,7 +57,9 @@ export function PostMediaGrid({
                 : undefined
             }
           >
-            {isVideo ? (
+            {privacyRedactionEnabled ? (
+              <PrivacyMediaPlaceholder appearance="inverse" />
+            ) : isVideo ? (
               <FeedVideo
                 media={item}
                 videoId={videoId}

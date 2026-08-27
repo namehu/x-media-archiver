@@ -12,7 +12,7 @@ import {
   AlertDialogTitle,
 } from "@/components/ui/alert-dialog";
 import { Button } from "@/components/ui/button";
-import { getDebugRedactProps, useDebugRedactionEnabled } from "@/lib/debug-redaction";
+import { getPrivacyRedactProps, usePrivacyRedactionEnabled } from "@/lib/privacy-redaction";
 import { formatDateTime } from "@/lib/utils";
 import { Trash2 } from "lucide-react";
 import * as React from "react";
@@ -36,7 +36,7 @@ export function SourceDetailContent({
   deleteError: unknown;
   onDelete: (sourceId: number) => void;
 }) {
-  const debugRedactionEnabled = useDebugRedactionEnabled();
+  const privacyRedactionEnabled = usePrivacyRedactionEnabled();
   const isDeleted = Boolean(source.deleted_at);
   const historyEnabled = Boolean(source.cursor_state?.automation_enabled);
   const [confirmDeleteOpen, setConfirmDeleteOpen] = React.useState(false);
@@ -62,13 +62,13 @@ export function SourceDetailContent({
         ) : null}
         <DetailRow
           label="最近发现"
-          value={<span {...getDebugRedactProps(debugRedactionEnabled)}>{source.last_seen_tweet_id || "-"}</span>}
+          value={<span {...getPrivacyRedactProps(privacyRedactionEnabled)}>{source.last_seen_tweet_id || "-"}</span>}
         />
         {source.cursor_state?.last_range_start ? (
           <DetailRow
             label="上次扫描范围"
             value={(
-              <span {...getDebugRedactProps(debugRedactionEnabled)}>
+              <span {...getPrivacyRedactProps(privacyRedactionEnabled)}>
                 {source.cursor_state.last_range_start}-{source.cursor_state.last_range_end}
               </span>
             )}

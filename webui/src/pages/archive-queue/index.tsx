@@ -19,7 +19,7 @@ import { StatCard } from "../../components/ui/stat-card";
 import { StatusDot } from "../../components/ui/status-dot";
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "../../components/ui/table";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "../../components/ui/tabs";
-import { getDebugRedactProps, useDebugRedactionEnabled } from "../../lib/debug-redaction";
+import { getPrivacyRedactProps, usePrivacyRedactionEnabled } from "../../lib/privacy-redaction";
 
 type ParsedLine = {
   line: number;
@@ -499,7 +499,7 @@ function RunDetailPanel({
   onRetry: (runId: number) => void;
   onControl: (runId: number, action: "pause" | "resume" | "stop") => void;
 }) {
-  const debugRedactionEnabled = useDebugRedactionEnabled();
+  const privacyRedactionEnabled = usePrivacyRedactionEnabled();
   return (
     <Card className="min-h-[520px]">
       <CardHeader>
@@ -547,7 +547,7 @@ function RunDetailPanel({
                     <div className="min-w-0">
                       <div
                         className="break-all text-sm font-semibold text-fg-primary"
-                        {...getDebugRedactProps(debugRedactionEnabled)}
+                        {...getPrivacyRedactProps(privacyRedactionEnabled)}
                       >
                         {item.tweet_id}
                       </div>

@@ -1,5 +1,9 @@
 import { expect, test, type Page, type Route, type WebSocketRoute } from "@playwright/test";
 
+test.beforeEach(async ({ context }) => {
+  await context.addInitScript(() => sessionStorage.setItem("xma:webui:adult-content-acknowledged", "1"));
+});
+
 test("applies WebSocket snapshot and patch, then falls back to REST snapshots", async ({ page }) => {
   let runtimeSocket: WebSocketRoute | null = null;
   let snapshotRequests = 0;
@@ -388,7 +392,7 @@ async function mockApis(
       return json(route, {
         status: "authenticated",
         auth_mode: "password",
-        user: { username: "runtime-test" },
+        user: { username: "runtime-test", media_privacy_mode: false },
       });
     }
     if (path === "/api/v1/runtime/snapshot") {

@@ -24,12 +24,12 @@ import { Pagination } from "@/components/ui/pagination";
 import { Skeleton } from "@/components/ui/skeleton";
 import { StatCard } from "@/components/ui/stat-card";
 import {
-  getDebugDetailLinkLabel,
-  getDebugDetailRoute,
-  getDebugRedactProps,
-  getDebugSelectionLabel,
-  useDebugRedactionEnabled,
-} from "@/lib/debug-redaction";
+  getPrivacyDetailLinkLabel,
+  getPrivacyDetailRoute,
+  getPrivacyRedactProps,
+  getPrivacySelectionLabel,
+  usePrivacyRedactionEnabled,
+} from "@/lib/privacy-redaction";
 import { errorLabel, statusLabel } from "@/lib/formatters";
 import { formatDateTime } from "@/lib/utils";
 import {
@@ -49,7 +49,7 @@ import { FAILURE_REASON_LABELS, FAILURE_SKIP_REASON_LABELS } from "./failure-lab
 const PAGE_SIZE = 100;
 
 export function FailuresPage() {
-  const debugRedactionEnabled = useDebugRedactionEnabled();
+  const privacyRedactionEnabled = usePrivacyRedactionEnabled();
   const queryClient = useQueryClient();
   const [searchParams, setSearchParams] = useSearchParams();
   const [selectedIds, setSelectedIds] = useState<Set<string>>(() => new Set());
@@ -210,7 +210,7 @@ export function FailuresPage() {
         cell: ({ row }) => (
           <Checkbox
             checked={selectedIds.has(row.original.tweet_id)}
-            aria-label={getDebugSelectionLabel(debugRedactionEnabled, row.original.tweet_id)}
+            aria-label={getPrivacySelectionLabel(privacyRedactionEnabled, row.original.tweet_id)}
             onClick={(event) => event.stopPropagation()}
             onCheckedChange={(checked) => {
               setSelectedIds((current) => {
@@ -227,20 +227,20 @@ export function FailuresPage() {
         header: "Tweet",
         cell: ({ row }) => {
           const item = row.original;
-          const detailRoute = getDebugDetailRoute(debugRedactionEnabled, item.tweet_id);
+          const detailRoute = getPrivacyDetailRoute(privacyRedactionEnabled, item.tweet_id);
           return (
             <div className="min-w-[280px] max-w-xl">
               <div className="flex flex-wrap items-center gap-2">
                 {detailRoute ? (
-                  <Link className="font-semibold text-brand hover:text-brand-hover" to={detailRoute} {...getDebugRedactProps(debugRedactionEnabled)}>
+                  <Link className="font-semibold text-brand hover:text-brand-hover" to={detailRoute} {...getPrivacyRedactProps(privacyRedactionEnabled)}>
                     {item.tweet_id}
                   </Link>
                 ) : (
-                  <span className="font-semibold text-fg-tertiary">{getDebugDetailLinkLabel(debugRedactionEnabled)}</span>
+                  <span className="font-semibold text-fg-tertiary">{getPrivacyDetailLinkLabel(privacyRedactionEnabled)}</span>
                 )}
                 {item.disposition === "ignored" ? <Badge tone="secondary">已忽略</Badge> : null}
               </div>
-              <div className="mt-1 truncate text-xs text-fg-secondary" {...getDebugRedactProps(debugRedactionEnabled)}>
+              <div className="mt-1 truncate text-xs text-fg-secondary" {...getPrivacyRedactProps(privacyRedactionEnabled)}>
                 @{item.author_username || "-"}
               </div>
               {item.latest_error_message || item.last_error ? (
@@ -300,7 +300,7 @@ export function FailuresPage() {
     [
       actionPending,
       allPageSelected,
-      debugRedactionEnabled,
+      privacyRedactionEnabled,
       pageIds,
       retryMutation,
       restoreMutation,

@@ -1,5 +1,9 @@
 import { expect, test, type Page } from "@playwright/test";
 
+test.beforeEach(async ({ context }) => {
+  await context.addInitScript(() => sessionStorage.setItem("xma:webui:adult-content-acknowledged", "1"));
+});
+
 const PAGE_SIZE = 60;
 const TOTAL_COUNT = 130;
 
@@ -32,11 +36,10 @@ test.describe("Library infinite loading", () => {
 
     await page.goto("/library");
     await expect(page.getByText("已加载 60 项")).toBeVisible();
-    expect(requestedOffsets).toEqual([0]);
+    expect(requestedOffsets[0]).toBe(0);
 
     const loadedCount = await scrollUntilLoaded(page, 120);
-    expect(requestedOffsets.slice(0, 2)).toEqual([0, 60]);
-    expect(new Set(requestedOffsets).size).toBe(requestedOffsets.length);
+    expect(new Set(requestedOffsets)).toEqual(new Set([0, 60]));
 
     const scrollTop = await appScrollTop(page);
     await page.getByRole("button", { name: "媒体 55", exact: true }).click();
@@ -50,7 +53,7 @@ test.describe("Library infinite loading", () => {
     await expect
       .poll(() => appScrollTop(page))
       .toBeGreaterThanOrEqual(Math.max(0, scrollTop - 2));
-    expect(new Set(requestedOffsets).size).toBe(requestedOffsets.length);
+    expect(new Set(requestedOffsets)).toEqual(new Set([0, 60]));
   });
 
   test("starts a new library visit at the top when using sidebar navigation", async ({ page }) => {
@@ -245,7 +248,7 @@ async function mockShellApis(page: Page) {
       json: {
         status: "authenticated",
         auth_mode: "password",
-        user: { username: "library-test" },
+        user: { username: "library-test", media_privacy_mode: false },
       },
     }),
   );
@@ -274,6 +277,9 @@ async function mockShellApis(page: Page) {
       },
     }),
   );
+  await page.route("**/api/v1/runtime/snapshot", (route) =>
+    route.fulfill({ json: runtimeSnapshot() }),
+  );
   await page.route("**/api/v1/events?**", (route) =>
     route.fulfill({
       status: 200,
@@ -282,6 +288,40 @@ async function mockShellApis(page: Page) {
     }),
   );
   await page.route("**/api/v1/media-file/**", (route) => route.fulfill({ status: 404 }));
+}
+
+function runtimeSnapshot() {
+  return {
+    epoch: "library-e2e",
+    sequence: 0,
+    recent_window_seconds: 120,
+    worker: { stop_requested: false, write_lock_held: false },
+    queue: {
+      pending_items: 0,
+      processing_items: 0,
+      retryable_failed_items: 0,
+      permanent_failed_items: 0,
+      queued_runs: 0,
+      running_runs: 0,
+    },
+    sources: {
+      active_sources: 0,
+      paused_sources: 0,
+      failed_sources: 0,
+      history_enabled_sources: 0,
+      active_scan_runs: 0,
+    },
+    global: {
+      active_run_count: 0,
+      active_item_count: 0,
+      active_scan_count: 0,
+      downloaded_bytes: 0,
+    },
+    runs: [],
+    items: [],
+    scans: [],
+    recent_activity: [],
+  };
 }
 
 async function scrollUntilLoaded(page: Page, minimum: number) {

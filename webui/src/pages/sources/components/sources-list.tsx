@@ -38,7 +38,7 @@ import { Input } from "@/components/ui/input";
 import { Skeleton } from "@/components/ui/skeleton";
 import { Tooltip, TooltipContent, TooltipTrigger } from "@/components/ui/tooltip";
 import { useAppScrollContainer } from "@/components/layout/app-scroll-container";
-import { getDebugRedactProps, useDebugRedactionEnabled } from "@/lib/debug-redaction";
+import { getPrivacyRedactProps, usePrivacyRedactionEnabled } from "@/lib/privacy-redaction";
 import { sourceTypeLabel } from "@/lib/formatters";
 import { cn, formatDateTime } from "@/lib/utils";
 import {
@@ -511,7 +511,7 @@ function SourceListItem({
   onPin: (sourceId: number, isPinned: boolean) => void;
   pinPending: boolean;
 }) {
-  const debugRedactionEnabled = useDebugRedactionEnabled();
+  const privacyRedactionEnabled = usePrivacyRedactionEnabled();
   const isDeleted = Boolean(source.deleted_at);
   const scanStatus = sourceScanStatus(source);
   const hasDownloadBacklog =
@@ -572,7 +572,7 @@ function SourceListItem({
             {isDeleted ? <Badge tone="danger">已删除</Badge> : null}
             <div className="truncate text-sm font-semibold text-fg-primary">{source.label || source.source_url}</div>
           </div>
-          <div className="mt-0.5 text-xs text-fg-secondary" {...getDebugRedactProps(debugRedactionEnabled)}>
+          <div className="mt-0.5 text-xs text-fg-secondary" {...getPrivacyRedactProps(privacyRedactionEnabled)}>
             {sourceTypeLabel(source.source_type)} · @{source.author_username || "-"}
           </div>
           <div className="mt-2 flex flex-wrap items-center gap-x-3 gap-y-1 text-xs text-fg-secondary xl:hidden">

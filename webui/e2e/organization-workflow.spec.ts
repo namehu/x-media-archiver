@@ -1,5 +1,9 @@
 import { expect, test, type Page, type Route } from "@playwright/test";
 
+test.beforeEach(async ({ context }) => {
+  await context.addInitScript(() => sessionStorage.setItem("xma:webui:adult-content-acknowledged", "1"));
+});
+
 test("feed saves tags, collections, and a private note with one request", async ({ page }) => {
   const requests: Array<{ path: string; body: Record<string, unknown> }> = [];
   await mockOrganizationApis(page, requests);
@@ -149,7 +153,7 @@ async function mockOrganizationApis(
       return json(route, {
         status: "authenticated",
         auth_mode: "password",
-        user: { username: "organization-test" },
+        user: { username: "organization-test", media_privacy_mode: false },
       });
     }
     if (url.pathname === "/api/v1/health/detail") {

@@ -3,7 +3,6 @@ import { NavLink, Outlet, useLocation, useNavigate, useNavigationType } from "re
 import {
   Archive,
   BarChart3,
-  Bug,
   CircleAlert,
   Copy,
   FolderOpen,
@@ -24,16 +23,11 @@ import {
   type LucideIcon,
 } from "lucide-react";
 import { useServerEvents } from "../../hooks/useServerEvents";
-import {
-  buildDebuggerSearch,
-  persistDebuggerMode,
-  resolveDebuggerMode,
-  syncDebuggerMode,
-} from "../../lib/debugger-mode";
 import { isAnyDialogHistoryEntry } from "../../lib/dialog-history";
 import { useTheme, type Theme } from "../../lib/theme";
 import { cn } from "../../lib/utils";
 import { AccountMenu } from "../auth/account-menu";
+import { MediaPrivacyButton } from "../auth/media-privacy-control";
 import { Button } from "../ui/button";
 import { CommandPalette, type CommandPaletteItem } from "../ui/command-palette";
 import { LiveIndicator } from "../ui/live-indicator";
@@ -103,8 +97,8 @@ export function AppLayout() {
   const [sidebarCollapsed, setSidebarCollapsed] = useState(readSidebarCollapsed);
   const [scrollContainer, setScrollContainer] = useState<HTMLElement | null>(null);
   const events = useServerEvents(["archive_runs", "sources", "source_scans", "worker", "logs", "library"]);
-  const debuggerModeEnabled = resolveDebuggerMode(location.search).enabled;
   const currentPageLabel = resolveCurrentPageLabel(location.pathname);
+  const searchRoute = location.pathname === "/search";
   const immersiveBrowsing =
     location.pathname === "/feed" ||
     location.pathname === "/library" ||
@@ -135,20 +129,6 @@ export function AppLayout() {
       persistSidebarCollapsed(next);
       return next;
     });
-  };
-  const toggleDebuggerMode = () => {
-    const nextEnabled = !debuggerModeEnabled;
-
-    persistDebuggerMode(nextEnabled);
-    syncDebuggerMode(nextEnabled);
-    navigate(
-      {
-        pathname: location.pathname,
-        search: buildDebuggerSearch(location.search, nextEnabled),
-        hash: location.hash,
-      },
-      { replace: true },
-    );
   };
 
   const runtimeStatusLabel = eventLabel(events.status, events.transport);
@@ -215,45 +195,40 @@ export function AppLayout() {
           </div>
 
           <div className="flex min-w-0 items-center justify-end gap-1.5">
-            <Button
-              variant="secondary"
-              size="sm"
-              onClick={() => setCommandOpen(true)}
-              className="hidden min-w-52 justify-between rounded-full border-transparent font-normal text-fg-secondary shadow-none md:inline-flex xl:min-w-64"
-            >
-              <span className="flex items-center gap-2">
-                <Search data-icon="inline-start" aria-hidden="true" />
-                搜索或跳转
-              </span>
-              <kbd className="rounded border border-border-subtle bg-bg-base px-1.5 py-0.5 text-[10px] text-fg-tertiary">⌘K</kbd>
-            </Button>
-            <Button variant="ghost" size="icon" onClick={() => setCommandOpen(true)} className="md:hidden" aria-label="搜索或跳转">
-              <Search aria-hidden="true" />
-            </Button>
+            {searchRoute ? (
+              <Tooltip>
+                <TooltipTrigger asChild>
+                  <Button variant="ghost" size="icon" onClick={() => setCommandOpen(true)} aria-label="打开命令面板">
+                    <Search aria-hidden="true" />
+                  </Button>
+                </TooltipTrigger>
+                <TooltipContent>打开命令面板（⌘K）</TooltipContent>
+              </Tooltip>
+            ) : (
+              <>
+                <Button
+                  variant="secondary"
+                  size="sm"
+                  onClick={() => setCommandOpen(true)}
+                  className="hidden min-w-52 justify-between rounded-full border-transparent font-normal text-fg-secondary shadow-none md:inline-flex xl:min-w-64"
+                >
+                  <span className="flex items-center gap-2">
+                    <Search data-icon="inline-start" aria-hidden="true" />
+                    搜索或跳转
+                  </span>
+                  <kbd className="rounded border border-border-subtle bg-bg-base px-1.5 py-0.5 text-[10px] text-fg-tertiary">⌘K</kbd>
+                </Button>
+                <Button variant="ghost" size="icon" onClick={() => setCommandOpen(true)} className="md:hidden" aria-label="搜索或跳转">
+                  <Search aria-hidden="true" />
+                </Button>
+              </>
+            )}
 
             <Separator orientation="vertical" className="mx-1 hidden h-5 sm:block" />
 
             <LiveIndicator state={liveState} label={runtimeStatusLabel} compactOnMobile />
 
-            <Tooltip>
-              <TooltipTrigger asChild>
-                <Button
-                  variant="ghost"
-                  size="icon"
-                  onClick={toggleDebuggerMode}
-                  className={cn(
-                    "hidden text-fg-tertiary hover:text-fg-primary sm:inline-flex",
-                    debuggerModeEnabled && "bg-brand-soft text-brand hover:bg-brand-soft hover:text-brand",
-                  )}
-                  aria-label={debuggerModeEnabled ? "关闭媒体调试模式" : "开启媒体调试模式"}
-                >
-                  <Bug aria-hidden="true" />
-                </Button>
-              </TooltipTrigger>
-              <TooltipContent>
-                {debuggerModeEnabled ? "媒体调试已开启：隐藏图片和视频" : "媒体调试：隐藏图片和视频"}
-              </TooltipContent>
-            </Tooltip>
+            <MediaPrivacyButton />
             <Tooltip>
               <TooltipTrigger asChild>
                 <Button variant="ghost" size="icon" onClick={cycleTheme} aria-label={`主题：${themeLabels[theme]}`}>

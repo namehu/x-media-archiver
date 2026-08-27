@@ -297,6 +297,7 @@ erDiagram
         smallint id PK
         text username
         text password_hash
+        boolean media_privacy_mode
         datetime updated_at
     }
     AUTH_SESSIONS {
@@ -345,7 +346,7 @@ erDiagram
     }
 ```
 
-- `auth_admin` 是 singleton 管理员；会话只存 token 哈希，修改密码会撤销全部会话。
+- `auth_admin` 是 singleton 管理员；`media_privacy_mode` 保存账号级媒体隐藏偏好。认证会话只保存 token 哈希与有效期；成人内容确认由 WebUI 写入当前标签页的 `sessionStorage`，不进入数据库。修改密码会撤销全部认证会话，但不会清除账号隐私偏好。
 - `cookie_config` 是 singleton 配置。其 `content` 是敏感凭据，只能由 Cookie service 使用，不能进入普通查询、日志或导出。
 - `hashtag_backfill_runs` 记录显式历史维护的 dry-run/apply 模式、批次 checkpoint 和摘要；正文日志通过可空 `log_stream_id` 指向 `operation_log_streams`。它不代表 migration 或应用启动会自动扫描历史文件。
 - `media_delete_operations.operation_id` 是客户端提供的幂等键，允许安全重放而不重复删除。

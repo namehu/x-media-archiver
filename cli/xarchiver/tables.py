@@ -29,6 +29,7 @@ auth_admin = Table(
     Column("id", SmallInteger, primary_key=True),
     Column("username", Text, nullable=False),
     Column("password_hash", Text, nullable=False),
+    Column("media_privacy_mode", Boolean, nullable=False),
     Column("created_at", DateTime(timezone=True), nullable=False),
     Column("updated_at", DateTime(timezone=True), nullable=False),
 )

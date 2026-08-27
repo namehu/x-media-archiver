@@ -17,7 +17,7 @@ import {
   CommandList,
 } from "@/components/ui/command";
 import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover";
-import { getDebugRedactProps, useDebugRedactionEnabled } from "@/lib/debug-redaction";
+import { getPrivacyRedactProps, usePrivacyRedactionEnabled } from "@/lib/privacy-redaction";
 import { cn } from "@/lib/utils";
 
 const HASHTAG_OPTION_LIMIT = 20;
@@ -31,7 +31,7 @@ export function HashtagCombobox({
   value: string;
   onChange: (value: string) => void;
 }) {
-  const debugRedactionEnabled = useDebugRedactionEnabled();
+  const privacyRedactionEnabled = usePrivacyRedactionEnabled();
   const [open, setOpen] = useState(false);
   const [search, setSearch] = useState("");
   const [debouncedSearch, setDebouncedSearch] = useState("");
@@ -85,7 +85,7 @@ export function HashtagCombobox({
           >
             <span
               className={cn("truncate", !value && "text-fg-tertiary")}
-              {...getDebugRedactProps(debugRedactionEnabled && Boolean(value))}
+              {...getPrivacyRedactProps(privacyRedactionEnabled && Boolean(value))}
             >
               {triggerLabel}
             </span>
@@ -134,7 +134,7 @@ export function HashtagCombobox({
                           : "opacity-0",
                       )}
                     />
-                    <span className="min-w-0 flex-1" {...getDebugRedactProps(debugRedactionEnabled)}>
+                    <span className="min-w-0 flex-1" {...getPrivacyRedactProps(privacyRedactionEnabled)}>
                       <span className="block truncate font-medium">#{option.name}</span>
                       <span className="block truncate text-xs text-fg-secondary">
                         {option.tweet_count.toLocaleString()} 条 Tweet

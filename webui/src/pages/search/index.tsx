@@ -1,6 +1,6 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { useQuery } from "@tanstack/react-query";
-import { Search, SlidersHorizontal } from "lucide-react";
+import { ArrowRight, Search, SlidersHorizontal } from "lucide-react";
 import { useLocation, useNavigate, useSearchParams } from "react-router-dom";
 import { apiGet, type SourcePageResponse, type TweetSearchOptionsResponse, type TweetSearchPageResponse } from "@/lib/api";
 import { Badge } from "@/components/ui/badge";
@@ -13,7 +13,7 @@ import { Pagination } from "@/components/ui/pagination";
 import { Sheet, SheetContent, SheetDescription, SheetHeader, SheetTitle, SheetTrigger } from "@/components/ui/sheet";
 import { Skeleton } from "@/components/ui/skeleton";
 import { createDialogHistoryEntry } from "@/lib/dialog-history";
-import { getDebugRedactProps, useDebugRedactionEnabled } from "@/lib/debug-redaction";
+import { getPrivacyRedactProps, usePrivacyRedactionEnabled } from "@/lib/privacy-redaction";
 import { PostPreviewDialog } from "@/pages/feed/components/post-preview-dialog";
 import type { FeedVideoPlaybackSnapshot, FeedVideoPlaybackState } from "@/pages/feed/video-playback-state";
 import { SearchFilterPanel } from "./components/search-filter-panel";
@@ -45,7 +45,7 @@ export function SearchPage() {
   const previewResumeFrameRef = useRef<number | null>(null);
   const offset = parseOffset(searchParams.get("offset"));
   const queryString = useMemo(() => buildApiQuery(appliedFilters, offset), [appliedFilters, offset]);
-  const debugRedactionEnabled = useDebugRedactionEnabled();
+  const privacyRedactionEnabled = usePrivacyRedactionEnabled();
 
   useEffect(() => setFilters(appliedFilters), [appliedFilters]);
 
@@ -117,6 +117,8 @@ export function SearchPage() {
     setFilters({ ...DEFAULT_SEARCH_FILTERS, q: filters.q });
   };
   const appliedFilterCount = countSearchRefinements(appliedFilters);
+  const draftFilterCount = countSearchRefinements(filters);
+  const hasSearchIntent = Boolean(appliedFilters.q.trim() || appliedFilterCount);
   const rows = resultsQuery.data?.rows ?? [];
 
   return (
@@ -132,21 +134,35 @@ export function SearchPage() {
               applyFilters({ ...appliedFilters, q: filters.q });
             }}
           >
-            <Field className="min-w-0 flex-1 gap-0" {...getDebugRedactProps(debugRedactionEnabled)}>
+            <Field className="min-w-0 flex-1 gap-0" {...getPrivacyRedactProps(privacyRedactionEnabled)}>
               <FieldLabel className="sr-only" htmlFor="global-search-query">关键词</FieldLabel>
-              <Input
-                id="global-search-query"
-                value={filters.q}
-                placeholder="搜索正文、作者、Hashtag 或备注"
-                autoComplete="off"
-                enterKeyHint="search"
-                appearance="search"
-                onChange={(event) => setFilters({ ...filters, q: event.target.value })}
-              />
+              <div className="relative">
+                <Search
+                  className="pointer-events-none absolute left-3.5 top-1/2 size-4 -translate-y-1/2 text-fg-tertiary"
+                  aria-hidden="true"
+                />
+                <Input
+                  id="global-search-query"
+                  type="search"
+                  value={filters.q}
+                  placeholder="搜索正文、作者、Hashtag 或备注"
+                  autoComplete="off"
+                  enterKeyHint="search"
+                  appearance="search"
+                  className="h-11 pl-10 pr-12"
+                  onChange={(event) => setFilters({ ...filters, q: event.target.value })}
+                />
+                <Button
+                  type="submit"
+                  variant="ghost"
+                  size="icon"
+                  className="absolute right-0.5 top-0.5 rounded-full"
+                  aria-label="搜索"
+                >
+                  <ArrowRight aria-hidden="true" />
+                </Button>
+              </div>
             </Field>
-            <Button type="submit" size="icon" aria-label="搜索">
-              <Search aria-hidden="true" />
-            </Button>
           </form>
 
           <Sheet
@@ -160,19 +176,31 @@ export function SearchPage() {
               <Button
                 type="button"
                 variant="secondary"
-                className="shrink-0"
+                size="icon"
+                className="relative shrink-0 rounded-full"
                 aria-label={appliedFilterCount ? `筛选，已启用 ${appliedFilterCount} 项` : "筛选"}
               >
-                <SlidersHorizontal data-icon="inline-start" aria-hidden="true" />
-                <span className="hidden sm:inline">筛选</span>
-                {appliedFilterCount ? <Badge tone="default">{appliedFilterCount}</Badge> : null}
+                <SlidersHorizontal aria-hidden="true" />
+                {appliedFilterCount ? (
+                  <Badge
+                    tone="default"
+                    className="pointer-events-none absolute -right-1 -top-1 min-w-5 justify-center rounded-full px-1 py-0 text-[10px] leading-4"
+                  >
+                    {appliedFilterCount}
+                  </Badge>
+                ) : null}
               </Button>
             </SheetTrigger>
             <SheetContent className="w-[min(94vw,440px)] p-0">
               <SheetHeader className="px-5 pb-4 pt-5 sm:px-6">
-                <SheetTitle>筛选搜索结果</SheetTitle>
+                <div className="flex items-center justify-between gap-3 pr-8">
+                  <SheetTitle>筛选搜索结果</SheetTitle>
+                  <Badge tone={draftFilterCount ? "default" : "secondary"}>
+                    {draftFilterCount ? `${draftFilterCount} 项` : "默认"}
+                  </Badge>
+                </div>
                 <SheetDescription>
-                  按来源、日期、媒体和整理信息继续收窄，应用后会写入当前 URL。
+                  按内容范围和整理信息继续收窄，应用后会保留在当前 URL。
                 </SheetDescription>
               </SheetHeader>
               <div className="min-h-0 flex-1 overflow-y-auto">
@@ -205,16 +233,25 @@ export function SearchPage() {
           </Sheet>
         </header>
 
-        <div className="flex min-h-10 items-center justify-between gap-3 border-b border-border-subtle px-4 py-2 text-sm text-fg-secondary" aria-live="polite">
-          <span className="tabular-nums">
-            {resultsQuery.isError
-              ? "搜索请求失败"
-              : resultsQuery.data
+        <p className="sr-only" aria-live="polite">
+          {resultsQuery.isError
+            ? "搜索请求失败"
+            : resultsQuery.data
               ? `找到 ${resultsQuery.data.total_count.toLocaleString()} 条 Tweet`
               : "正在读取本地搜索索引"}
-          </span>
-          {resultsQuery.isFetching && resultsQuery.data ? <span>正在刷新结果…</span> : null}
-        </div>
+        </p>
+
+        {resultsQuery.data && rows.length ? (
+          <div className="flex h-9 items-center gap-1.5 border-b border-border-subtle px-4">
+            <h2 className="text-sm font-semibold text-fg-primary">
+              {hasSearchIntent ? "搜索结果" : "最近归档"}
+            </h2>
+            <span className="text-xs tabular-nums text-fg-tertiary">
+              {resultsQuery.data.total_count.toLocaleString()} 条
+            </span>
+            {resultsQuery.isFetching ? <span className="ml-auto text-xs text-fg-tertiary">更新中…</span> : null}
+          </div>
+        ) : null}
 
         {resultsQuery.isLoading ? <SearchSkeleton /> : null}
         {resultsQuery.isError ? (
@@ -251,9 +288,13 @@ export function SearchPage() {
           <div className="p-4">
             <EmptyState
               icon={<Search />}
-              title={appliedFilters.q || appliedFilters.hashtag ? "没有找到匹配的 Tweet" : "当前条件下没有 Tweet"}
-              description="试试更短的关键词，或清除部分筛选条件后重新搜索。"
-              action={<Button onClick={resetSearch}>清除搜索条件</Button>}
+              title={hasSearchIntent ? "没有找到匹配的 Tweet" : "还没有可搜索的 Tweet"}
+              description={
+                hasSearchIntent
+                  ? "试试更短的关键词，或清除部分筛选条件后重新搜索。"
+                  : "完成归档后，Tweet 会出现在这里并可按正文、作者和整理信息检索。"
+              }
+              action={hasSearchIntent ? <Button onClick={resetSearch}>清除搜索条件</Button> : undefined}
             />
           </div>
         ) : null}

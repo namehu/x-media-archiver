@@ -1,5 +1,9 @@
 import { expect, test, type Page, type Route } from "@playwright/test";
 
+test.beforeEach(async ({ context }) => {
+  await context.addInitScript(() => sessionStorage.setItem("xma:webui:adult-content-acknowledged", "1"));
+});
+
 test("feed and preview distinguish platform Hashtags from custom tags", async ({ page }) => {
   await mockPlatformHashtagApis(page);
   await page.setViewportSize({ width: 390, height: 844 });
@@ -68,17 +72,17 @@ test("Hashtag suggestions expose loading, error retry, and empty states", async 
   await expect(optionsList.getByText("没有匹配的平台 Hashtag")).toBeVisible();
 });
 
-test("detail shows read-only Hashtags and debugger mode removes search-result links", async ({ page }) => {
-  await mockPlatformHashtagApis(page);
+test("detail shows read-only Hashtags and privacy mode keeps internal search-result links", async ({ page }) => {
+  await mockPlatformHashtagApis(page, { privacyMode: true });
 
   await page.goto("/tweets/platform-hashtag-fixture");
   await expect(page.getByLabel("平台 Hashtag", { exact: true })).toContainText("#AI");
   await expect(page.getByLabel("Tweet 整理与元数据").getByText("自定义标签", { exact: true })).toBeVisible();
 
-  await page.goto("/search?debugger=1&hashtag=AI&tweet_status=all");
+  await page.goto("/search?hashtag=AI&tweet_status=all");
   const redactedHashtags = page.locator('article [aria-label="平台 Hashtag"]');
   await expect(redactedHashtags).toContainText("#AI");
-  await expect(page.getByRole("link", { name: "搜索平台 Hashtag #AI" })).toHaveCount(0);
+  await expect(page.getByRole("link", { name: "搜索平台 Hashtag #AI" })).toHaveCount(1);
   await expect(redactedHashtags).not.toHaveCSS("filter", "none");
 });
 
@@ -88,6 +92,7 @@ async function mockPlatformHashtagApis(
     hashtagRequests?: URL[];
     hashtagFailures?: () => boolean;
     hashtagDelayMs?: number;
+    privacyMode?: boolean;
   } = {},
 ) {
   await page.route("**/api/v1/**", async (route) => {
@@ -96,7 +101,7 @@ async function mockPlatformHashtagApis(
       return json(route, {
         status: "authenticated",
         auth_mode: "password",
-        user: { username: "platform-hashtag-test" },
+        user: { username: "platform-hashtag-test", media_privacy_mode: options.privacyMode ?? false },
       });
     }
     if (url.pathname === "/api/v1/health/detail") {

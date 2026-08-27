@@ -163,21 +163,13 @@ body > .art-video-player.art-fullscreen-web.art-destroy {
   pointer-events: none !important;
 }
 
-:root[data-debugger-mode="on"] img,
-:root[data-debugger-mode="on"] video,
-:root[data-debugger-mode="on"] picture,
-:root[data-debugger-mode="on"] .tweet-video-player,
-:root[data-debugger-mode="on"] .art-video-player {
-  display: none !important;
-}
-
-:root[data-debugger-mode="on"] [data-debug-redact] {
+:root[data-media-privacy-mode="on"] [data-privacy-redact] {
   filter: blur(8px);
   transition: filter var(--dur-fast) var(--ease-out);
   user-select: none;
 }
 
-:root[data-debugger-mode="on"] [data-debug-redact]::selection {
+:root[data-media-privacy-mode="on"] [data-privacy-redact]::selection {
   background: transparent;
 }
 

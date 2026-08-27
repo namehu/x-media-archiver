@@ -12,7 +12,12 @@ from threading import Lock
 import psycopg
 from fastapi import APIRouter, HTTPException, Request, Response, status
 
-from xarchiver.api.schemas.requests import AuthLoginRequest, AuthPasswordRequest, AuthSetupRequest
+from xarchiver.api.schemas.requests import (
+    AuthLoginRequest,
+    AuthPasswordRequest,
+    AuthPreferencesRequest,
+    AuthSetupRequest,
+)
 from xarchiver.api.schemas.responses import AuthSessionResponse
 from xarchiver.config import get_settings
 from xarchiver.services.auth import (
@@ -24,6 +29,7 @@ from xarchiver.services.auth import (
     create_session,
     get_admin,
     revoke_session,
+    update_media_privacy_mode,
 )
 
 router = APIRouter(prefix="/auth", tags=["auth"])
@@ -40,13 +46,27 @@ def session(request: Request) -> dict[str, object]:
 
     settings = get_settings()
     if settings.auth_mode == "disabled":
-        return {"status": "authenticated", "auth_mode": "disabled", "user": {"username": "local"}}
+        return _authenticated_response(
+            {
+                "username": "local",
+                "media_privacy_mode": False,
+            },
+            auth_mode="disabled",
+        )
     current = getattr(request.state, "auth_admin", None)
     if current is not None:
-        return {"status": "authenticated", "auth_mode": "password", "user": current}
+        return _authenticated_response(current)
     if _db_call(get_admin) is None:
-        return {"status": "uninitialized", "auth_mode": "password", "user": None}
-    return {"status": "anonymous", "auth_mode": "password", "user": None}
+        return {
+            "status": "uninitialized",
+            "auth_mode": "password",
+            "user": None,
+        }
+    return {
+        "status": "anonymous",
+        "auth_mode": "password",
+        "user": None,
+    }
 
 
 @router.post("/setup", response_model=AuthSessionResponse)
@@ -64,7 +84,7 @@ def setup(request: Request, response: Response, payload: AuthSetupRequest) -> di
             status_code = status.HTTP_409_CONFLICT
         raise HTTPException(status_code=status_code, detail=code) from exc
     _set_session_cookie(request, response, _db_call(create_session))
-    return {"status": "authenticated", "auth_mode": "password", "user": admin}
+    return _authenticated_response(admin)
 
 
 @router.post("/login", response_model=AuthSessionResponse)
@@ -81,7 +101,7 @@ def login(request: Request, response: Response, payload: AuthLoginRequest) -> di
     admin, token = authenticated
     _clear_failures(key)
     _set_session_cookie(request, response, token)
-    return {"status": "authenticated", "auth_mode": "password", "user": admin}
+    return _authenticated_response(admin)
 
 
 @router.post("/logout", status_code=status.HTTP_204_NO_CONTENT)
@@ -113,7 +133,53 @@ def update_password(
         raise HTTPException(status_code=status.HTTP_401_UNAUTHORIZED, detail="invalid_credentials") from exc
     _set_session_cookie(request, response, _db_call(create_session))
     admin = _db_call(get_admin)
-    return {"status": "authenticated", "auth_mode": "password", "user": {"username": admin.username}}
+    return _authenticated_response(
+        {
+            "username": admin.username,
+            "media_privacy_mode": admin.media_privacy_mode,
+        }
+    )
+
+
+@router.patch("/preferences", response_model=AuthSessionResponse)
+def update_preferences(
+    request: Request,
+    payload: AuthPreferencesRequest,
+) -> dict[str, object]:
+    """更新当前管理员的媒体隐私偏好。"""
+
+    if get_settings().auth_mode == "disabled":
+        return _authenticated_response(
+            {
+                "username": "local",
+                "media_privacy_mode": payload.media_privacy_mode,
+            },
+            auth_mode="disabled",
+        )
+    token = request.cookies.get(SESSION_COOKIE)
+    try:
+        current = _db_call(update_media_privacy_mode, token, payload.media_privacy_mode)
+    except AuthError as exc:
+        code = str(exc)
+        raise HTTPException(status_code=status.HTTP_401_UNAUTHORIZED, detail=code) from exc
+    return _authenticated_response(current)
+
+
+def _authenticated_response(
+    current: dict[str, object],
+    *,
+    auth_mode: str = "password",
+) -> dict[str, object]:
+    """统一构造不暴露内部账号 ID 的认证响应。"""
+
+    return {
+        "status": "authenticated",
+        "auth_mode": auth_mode,
+        "user": {
+            "username": str(current["username"]),
+            "media_privacy_mode": bool(current.get("media_privacy_mode", False)),
+        },
+    }
 
 
 def _set_session_cookie(request: Request, response: Response, token: str) -> None:
@@ -142,11 +208,11 @@ def _session_cookie_secure(request: Request) -> bool:
     return request.url.scheme == "https"
 
 
-def _db_call(function, *args):
+def _db_call(function, *args, **kwargs):
     """包装数据库调用，把数据库不可用转换成统一 HTTP 错误。"""
 
     try:
-        return function(*args)
+        return function(*args, **kwargs)
     except psycopg.Error as exc:
         raise HTTPException(
             status_code=status.HTTP_503_SERVICE_UNAVAILABLE,

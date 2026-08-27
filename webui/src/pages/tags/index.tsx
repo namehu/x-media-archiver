@@ -37,14 +37,14 @@ import {
   type OrganizationTag,
   type WriteActionResponse,
 } from "@/lib/api";
-import { getDebugRedactProps, useDebugRedactionEnabled } from "@/lib/debug-redaction";
+import { getPrivacyRedactProps, usePrivacyRedactionEnabled } from "@/lib/privacy-redaction";
 
 type SortMode = "usage" | "name";
 
 export function TagsPage() {
   const queryClient = useQueryClient();
   const scrollParent = useAppScrollContainer();
-  const debugRedactionEnabled = useDebugRedactionEnabled();
+  const privacyRedactionEnabled = usePrivacyRedactionEnabled();
   const [searchParams, setSearchParams] = useSearchParams();
   const [editor, setEditor] = useState<{ item: OrganizationTag | null } | null>(null);
   const [deleteTarget, setDeleteTarget] = useState<OrganizationTag | null>(null);
@@ -198,7 +198,7 @@ export function TagsPage() {
             itemContent={(_, item) => (
               <TagRow
                 item={item}
-                debugRedactionEnabled={debugRedactionEnabled}
+                privacyRedactionEnabled={privacyRedactionEnabled}
                 onEdit={() => setEditor({ item })}
                 onDelete={() => setDeleteTarget(item)}
               />
@@ -217,7 +217,7 @@ export function TagsPage() {
       />
       <AlertDialog open={Boolean(deleteTarget)} onOpenChange={(open) => !open && setDeleteTarget(null)}>
         <AlertDialogContent>
-          <AlertDialogHeader {...getDebugRedactProps(debugRedactionEnabled)}>
+          <AlertDialogHeader {...getPrivacyRedactProps(privacyRedactionEnabled)}>
             <AlertDialogTitle>删除“{deleteTarget?.name}”？</AlertDialogTitle>
             <AlertDialogDescription>
               将解除 {deleteTarget?.tweet_count ?? 0} 条 Tweet 的自定义标签关系。Tweet、媒体文件、下载任务、合集与私人备注都不会被删除。
@@ -246,12 +246,12 @@ export function TagsPage() {
 
 function TagRow({
   item,
-  debugRedactionEnabled,
+  privacyRedactionEnabled,
   onEdit,
   onDelete,
 }: {
   item: OrganizationTag;
-  debugRedactionEnabled: boolean;
+  privacyRedactionEnabled: boolean;
   onEdit: () => void;
   onDelete: () => void;
 }) {
@@ -259,7 +259,7 @@ function TagRow({
     <article
       role="listitem"
       className="flex min-h-20 items-center gap-3 border-b border-border-subtle px-4 py-3 transition-colors hover:bg-bg-surface sm:px-5"
-      {...getDebugRedactProps(debugRedactionEnabled)}
+      {...getPrivacyRedactProps(privacyRedactionEnabled)}
     >
       <span
         className="size-3 shrink-0 rounded-full border border-border-subtle"

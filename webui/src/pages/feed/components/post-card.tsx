@@ -24,11 +24,11 @@ import {
   DropdownMenuTrigger,
 } from "@/components/ui/dropdown-menu";
 import {
-  getDebugExternalHref,
-  getDebugLinkTitle,
-  getDebugRedactProps,
-  useDebugRedactionEnabled,
-} from "@/lib/debug-redaction";
+  getPrivacyExternalHref,
+  getPrivacyLinkTitle,
+  getPrivacyRedactProps,
+  usePrivacyRedactionEnabled,
+} from "@/lib/privacy-redaction";
 import { formatDateTime, cn } from "@/lib/utils";
 import type { FeedVideoPlaybackStateApi } from "../video-playback-state";
 import { PostMediaGrid } from "./post-media-grid";
@@ -50,6 +50,7 @@ export function PostCard({
   allowDelete = true,
   tweetTextContent,
   contextContent,
+  footerContent,
   authorNameContent,
   authorUsernameContent,
 }: {
@@ -64,24 +65,25 @@ export function PostCard({
   allowDelete?: boolean;
   tweetTextContent?: ReactNode;
   contextContent?: ReactNode;
+  footerContent?: ReactNode;
   authorNameContent?: ReactNode;
   authorUsernameContent?: ReactNode;
 } & FeedVideoPlaybackStateApi) {
-  const debugRedactionEnabled = useDebugRedactionEnabled();
+  const privacyRedactionEnabled = usePrivacyRedactionEnabled();
   const [expanded, setExpanded] = useState(false);
   const [mobileActionsOpen, setMobileActionsOpen] = useState(false);
   const longPressTimerRef = useRef<number | null>(null);
   const longPressGestureRef = useRef<{ pointerId: number; startX: number; startY: number } | null>(null);
   const authorName = post.author_display_name || post.author_username || "未知作者";
   const tweetText = post.tweet_text || "暂无帖子正文";
-  const tweetUrl = getDebugExternalHref(debugRedactionEnabled, post.tweet_url);
+  const tweetUrl = getPrivacyExternalHref(privacyRedactionEnabled, post.tweet_url);
   const isLong = tweetText.length > 280 || (tweetText.match(/\n/g)?.length ?? 0) > 5;
   const relativeTime = useMemo(() => formatRelativeTime(post.published_at), [post.published_at]);
-  const organizationSummary = contextContent ?? <OrganizationSummary post={post} />;
+  const organizationSummary = contextContent === undefined ? <OrganizationSummary post={post} /> : contextContent;
 
   const copyLink = async () => {
     if (!tweetUrl) {
-      toast.error("调试模式下已禁用外链");
+      toast.error("隐私模式下已禁用外链");
       return;
     }
 
@@ -153,7 +155,7 @@ export function PostCard({
       onLostPointerCapture={() => resetLongPress()}
     >
       <div className="flex gap-3">
-        <Avatar className="size-10 shrink-0" {...getDebugRedactProps(debugRedactionEnabled)}>
+        <Avatar className="size-10 shrink-0" {...getPrivacyRedactProps(privacyRedactionEnabled)}>
           <AvatarFallback>{avatarInitials(authorName)}</AvatarFallback>
         </Avatar>
 
@@ -161,7 +163,7 @@ export function PostCard({
           <header className="flex items-start justify-between gap-2">
             <div
               className="flex min-w-0 flex-wrap items-baseline gap-x-1.5 gap-y-0 text-[14px]"
-              {...getDebugRedactProps(debugRedactionEnabled)}
+              {...getPrivacyRedactProps(privacyRedactionEnabled)}
             >
               <span className="max-w-full truncate text-[15px] font-bold text-fg-primary">
                 {authorNameContent ?? authorName}
@@ -197,7 +199,7 @@ export function PostCard({
                     onSelect={() => {
                       if (tweetUrl) window.open(tweetUrl, "_blank", "noopener,noreferrer");
                     }}
-                    title={getDebugLinkTitle(debugRedactionEnabled, "tweet", "在 X 中查看")}
+                    title={getPrivacyLinkTitle(privacyRedactionEnabled, "tweet", "在 X 中查看")}
                   >
                     <ExternalLink data-icon="inline-start" />在 X 中查看
                   </DropdownMenuItem>
@@ -226,7 +228,7 @@ export function PostCard({
           </header>
 
           {!deleted ? (
-            <div {...getDebugRedactProps(debugRedactionEnabled)}>
+            <div {...getPrivacyRedactProps(privacyRedactionEnabled)}>
               <p
                 className={cn(
                   "break-words text-[15px] leading-relaxed text-fg-primary",
@@ -248,7 +250,7 @@ export function PostCard({
           ) : null}
 
           {!deleted && organizationSummary ? (
-            <div className="mt-2" {...getDebugRedactProps(debugRedactionEnabled)}>
+            <div className="mt-2" {...getPrivacyRedactProps(privacyRedactionEnabled)}>
               {organizationSummary}
             </div>
           ) : null}
@@ -267,6 +269,8 @@ export function PostCard({
               updateVideoState={updateVideoState}
             />
           )}
+
+          {!deleted && footerContent ? <div className="mt-3">{footerContent}</div> : null}
         </div>
       </div>
       {allowDelete || onRequestOrganize ? (

@@ -38,6 +38,10 @@ test.describe("WebUI smoke", () => {
     let password = initialPassword;
     await page.goto("/");
     let authScreen = await waitForAuthScreen(page);
+    if (authScreen === "safety") {
+      await acknowledgeAdultContent(page);
+      authScreen = "authenticated";
+    }
     if (authScreen === "setup") {
       expect(setupToken, "XMA_SETUP_TOKEN is required for a fresh auth database").toBeTruthy();
       await page.getByLabel("一次性设置令牌").fill(setupToken!);
@@ -45,6 +49,7 @@ test.describe("WebUI smoke", () => {
       await page.getByLabel("密码", { exact: true }).fill(password);
       await page.getByLabel("确认密码").fill(password);
       await page.getByRole("button", { name: "创建管理员" }).click();
+      await acknowledgeAdultContent(page);
       await expect(page.getByRole("link", { name: "系统概览" })).toBeVisible();
       await page.reload();
       authScreen = await waitForAuthScreen(page);
@@ -95,10 +100,7 @@ test.describe("WebUI smoke", () => {
     authSessionTransition = true;
     await page.getByRole("menuitem", { name: "退出登录" }).click();
     await expect(page.getByRole("heading", { name: "欢迎回来" })).toBeVisible();
-    await page.getByLabel("用户名").fill("e2e-admin");
-    await page.getByLabel("密码").fill(password);
-    await page.getByRole("button", { name: "登 录" }).click();
-    await expect(page.getByRole("link", { name: "系统概览" })).toBeVisible();
+    expect(await signIn(page, password)).toBeTruthy();
 
     const oldSessionCookies = await page.context().cookies();
     await page.getByRole("button", { name: "账户菜单" }).click();
@@ -120,12 +122,13 @@ test.describe("WebUI smoke", () => {
   });
 });
 
-async function waitForAuthScreen(page: Page): Promise<"authenticated" | "login" | "setup"> {
-  let authScreen: "authenticated" | "login" | "setup" | null = null;
+async function waitForAuthScreen(page: Page): Promise<"authenticated" | "login" | "setup" | "safety"> {
+  let authScreen: "authenticated" | "login" | "setup" | "safety" | null = null;
   await expect
     .poll(
       async () => {
         if (await page.getByRole("link", { name: "系统概览" }).isVisible()) authScreen = "authenticated";
+        else if (await page.getByRole("heading", { name: "成人内容提示" }).isVisible()) authScreen = "safety";
         else if (await page.getByRole("heading", { name: "初始化管理员" }).isVisible()) authScreen = "setup";
         else if (await page.getByRole("heading", { name: "欢迎回来" }).isVisible()) authScreen = "login";
         return authScreen !== null;
@@ -139,11 +142,27 @@ async function waitForAuthScreen(page: Page): Promise<"authenticated" | "login" 
 async function signIn(page: Page, password: string) {
   await page.getByLabel("用户名").fill("e2e-admin");
   await page.getByLabel("密码").fill(password);
-  await page.getByRole("button", { name: "登 录" }).click();
+  await page.getByRole("button", { name: "登录", exact: true }).click();
   try {
+    await expect
+      .poll(
+        async () =>
+          (await page.getByRole("link", { name: "系统概览" }).isVisible()) ||
+          (await page.getByRole("heading", { name: "成人内容提示" }).isVisible()),
+        { timeout: 3_000 },
+      )
+      .toBe(true);
+    if (await page.getByRole("heading", { name: "成人内容提示" }).isVisible()) {
+      await acknowledgeAdultContent(page);
+    }
     await page.getByRole("link", { name: "系统概览" }).waitFor({ state: "visible", timeout: 3_000 });
     return true;
   } catch {
     return false;
   }
+}
+
+async function acknowledgeAdultContent(page: Page) {
+  await page.getByRole("button", { name: "我已年满 18 岁，查看原始内容" }).click();
+  await page.getByRole("link", { name: "系统概览" }).waitFor({ state: "visible" });
 }

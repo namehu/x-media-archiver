@@ -124,6 +124,7 @@ Search:
 
 - Use a centered 680px continuous browsing stream with the same white canvas, side dividers, post anatomy, and media behavior as the feed.
 - The sticky header contains the primary keyword input, search action, and one filter trigger. Do not add a separate page hero, description block, persistent filter column, or outer result card.
+- Collapse the global command-palette search control to its icon on this route so the page never presents two competing search fields.
 - Put all structured refinements in a right `Sheet` at every viewport width. The primary keyword remains in the header and is not counted as an active refinement.
 - Keep search-specific context compact: highlight matched text and expose relevant tags, collections, notes, and exceptional archive status, but do not show implementation-facing relevance scores or repeat the default verified state.
 

@@ -26,12 +26,12 @@ import { MediaThumbnail } from "../../components/ui/media-thumbnail";
 import { Skeleton } from "../../components/ui/skeleton";
 import { StatusDot } from "../../components/ui/status-dot";
 import {
-  getDebugExternalHref,
-  getDebugLinkTitle,
-  getDebugMediaAlt,
-  getDebugRedactProps,
-  useDebugRedactionEnabled,
-} from "../../lib/debug-redaction";
+  getPrivacyExternalHref,
+  getPrivacyLinkTitle,
+  getPrivacyMediaAlt,
+  getPrivacyRedactProps,
+  usePrivacyRedactionEnabled,
+} from "../../lib/privacy-redaction";
 import { ImagePreviewDialog } from "./components/image-preview-dialog";
 import { MediaDetails } from "./components/media-details";
 import { VideoMediaPlayer } from "./components/video-media-player";
@@ -42,7 +42,7 @@ type Tone = "default" | "secondary" | "success" | "warning" | "danger";
 type DotStatus = "running" | "success" | "warning" | "danger" | "idle";
 
 export function TweetDetailPage() {
-  const debugRedactionEnabled = useDebugRedactionEnabled();
+  const privacyRedactionEnabled = usePrivacyRedactionEnabled();
   const { tweetId } = useParams();
   const location = useLocation();
   const navigate = useNavigate();
@@ -73,7 +73,7 @@ export function TweetDetailPage() {
 
   const authorName = data.tweet.author_display_name || data.tweet.author_username || data.tweet.tweet_id;
   const tweetText = data.tweet.tweet_text || "暂无 Tweet 文本";
-  const tweetHref = getDebugExternalHref(debugRedactionEnabled, data.tweet.tweet_url);
+  const tweetHref = getPrivacyExternalHref(privacyRedactionEnabled, data.tweet.tweet_url);
   const statusTone = toneForStatus(data.tweet.tweet_status);
   const authorInitial = authorName.trim().slice(0, 1).toUpperCase() || "X";
 
@@ -105,12 +105,12 @@ export function TweetDetailPage() {
         <article>
           <div className="p-4 sm:p-5">
             <div className="flex items-start gap-3">
-              <Avatar className="size-10 shrink-0">
+              <Avatar className="size-10 shrink-0" {...getPrivacyRedactProps(privacyRedactionEnabled)}>
                 <AvatarFallback>{authorInitial}</AvatarFallback>
               </Avatar>
               <div className="min-w-0 flex-1">
                 <div className="flex items-start justify-between gap-3">
-                  <div className="min-w-0" {...getDebugRedactProps(debugRedactionEnabled)}>
+                  <div className="min-w-0" {...getPrivacyRedactProps(privacyRedactionEnabled)}>
                     <h2 className="truncate text-sm font-bold text-fg-primary">{authorName}</h2>
                     <p className="truncate text-sm text-fg-secondary">
                       {data.tweet.author_username ? `@${data.tweet.author_username}` : "已归档作者"}
@@ -121,7 +121,7 @@ export function TweetDetailPage() {
                       className="shrink-0"
                       variant="ghost"
                       size="sm"
-                      title={getDebugLinkTitle(debugRedactionEnabled, "tweet", "在 X 中查看")}
+                      title={getPrivacyLinkTitle(privacyRedactionEnabled, "tweet", "在 X 中查看")}
                       onClick={() => window.open(tweetHref, "_blank", "noopener,noreferrer")}
                     >
                       <ExternalLink data-icon="inline-start" aria-hidden="true" />
@@ -131,7 +131,7 @@ export function TweetDetailPage() {
                 </div>
                 <p
                   className="mt-3 whitespace-pre-wrap text-[15px] leading-6 text-fg-primary sm:text-base sm:leading-7"
-                  {...getDebugRedactProps(debugRedactionEnabled)}
+                  {...getPrivacyRedactProps(privacyRedactionEnabled)}
                 >
                   {tweetText}
                 </p>
@@ -155,7 +155,7 @@ export function TweetDetailPage() {
             </span>
             <span
               className="[overflow-wrap:anywhere] font-mono text-xs text-fg-tertiary"
-              {...getDebugRedactProps(debugRedactionEnabled)}
+              {...getPrivacyRedactProps(privacyRedactionEnabled)}
             >
               {data.tweet.tweet_id}
             </span>
@@ -195,7 +195,7 @@ function OrganizationCard({
   organization: TweetDetail["organization"];
   onEdit: () => void;
 }) {
-  const debugRedactionEnabled = useDebugRedactionEnabled();
+  const privacyRedactionEnabled = usePrivacyRedactionEnabled();
   return (
     <Card>
       <CardHeader>
@@ -216,7 +216,7 @@ function OrganizationCard({
             <Tags />自定义标签
           </p>
           {organization.tags.length ? (
-            <div className="flex flex-wrap gap-1.5">
+            <div className="flex flex-wrap gap-1.5" {...getPrivacyRedactProps(privacyRedactionEnabled)}>
               {organization.tags.map((tag) => (
                 <Badge key={tag.id} tone="secondary">
                   {tag.name}
@@ -232,7 +232,7 @@ function OrganizationCard({
             <FolderClosed />合集
           </p>
           {organization.collections.length ? (
-            <div className="flex flex-wrap gap-1.5">
+            <div className="flex flex-wrap gap-1.5" {...getPrivacyRedactProps(privacyRedactionEnabled)}>
               {organization.collections.map((collection) => (
                 <Badge key={collection.id} tone="secondary">
                   {collection.name}
@@ -243,7 +243,7 @@ function OrganizationCard({
             <p className="text-sm text-fg-tertiary">尚未加入合集</p>
           )}
         </section>
-        <section className="flex flex-col gap-2" {...getDebugRedactProps(debugRedactionEnabled)}>
+        <section className="flex flex-col gap-2" {...getPrivacyRedactProps(privacyRedactionEnabled)}>
           <p className="flex items-center gap-2 text-xs font-semibold text-fg-secondary">
             <FileText />私人备注
           </p>
@@ -262,7 +262,7 @@ function OrganizationCard({
 }
 
 function MediaGrid({ media, title, emptyText }: { media: MediaRow[]; title: string; emptyText: string }) {
-  const debugRedactionEnabled = useDebugRedactionEnabled();
+  const privacyRedactionEnabled = usePrivacyRedactionEnabled();
   const images = media.filter((item) => !isVideoMedia(item));
   const videos = media.filter(isVideoMedia);
   const [imagePreviewIndex, setImagePreviewIndex] = useState<number | null>(null);
@@ -287,7 +287,7 @@ function MediaGrid({ media, title, emptyText }: { media: MediaRow[]; title: stri
               >
                 <MediaThumbnail
                   src={item.media_url}
-                  alt={getDebugMediaAlt(debugRedactionEnabled, item.local_path || mediaTypeLabel(item.media_type))}
+                  alt={getPrivacyMediaAlt(privacyRedactionEnabled, item.local_path || mediaTypeLabel(item.media_type))}
                   mediaType={item.media_type}
                   className="rounded-none"
                   onClick={item.media_url ? () => setImagePreviewIndex(index) : undefined}

@@ -24,6 +24,7 @@ import { Input } from "@/components/ui/input";
 import { ApiError } from "@/lib/api";
 import { useAuth } from "@/lib/auth";
 import { authErrorMessage } from "@/lib/auth-messages";
+import { MediaPrivacyMenuItem } from "@/components/auth/media-privacy-control";
 
 export function AccountMenu() {
   const { session, logout, changePassword } = useAuth();
@@ -77,6 +78,7 @@ export function AccountMenu() {
           </DropdownMenuLabel>
           <DropdownMenuSeparator className="my-1 h-px bg-border-subtle" />
           <DropdownMenuGroup>
+            <MediaPrivacyMenuItem />
             {session.auth_mode === "password" ? (
               <DropdownMenuItem onSelect={() => setDialogOpen(true)}>修改密码</DropdownMenuItem>
             ) : null}

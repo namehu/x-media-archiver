@@ -8,7 +8,7 @@ import { Progress } from "@/components/ui/progress";
 import { Skeleton } from "@/components/ui/skeleton";
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
 import { apiGet, type InsightDistribution, type LibraryInsights } from "@/lib/api";
-import { getDebugRedactProps, useDebugRedactionEnabled } from "@/lib/debug-redaction";
+import { getPrivacyRedactProps, usePrivacyRedactionEnabled } from "@/lib/privacy-redaction";
 import { statusLabel } from "@/lib/formatters";
 import { formatBytes } from "@/lib/utils";
 
@@ -20,7 +20,7 @@ const ImportedTimelineChart = lazy(() =>
 );
 
 export function InsightsPage() {
-  const debugRedactionEnabled = useDebugRedactionEnabled();
+  const privacyRedactionEnabled = usePrivacyRedactionEnabled();
   const query = useQuery({
     queryKey: ["library-insights"],
     queryFn: () => apiGet<LibraryInsights>("/api/v1/library/insights"),
@@ -47,14 +47,14 @@ export function InsightsPage() {
           </div>
         ) : null}
         {query.data && (query.data.overview.tweet_count > 0 || query.data.overview.media_count > 0) ? (
-          <InsightsContent data={query.data} debugRedactionEnabled={debugRedactionEnabled} />
+          <InsightsContent data={query.data} privacyRedactionEnabled={privacyRedactionEnabled} />
         ) : null}
       </main>
     </div>
   );
 }
 
-function InsightsContent({ data, debugRedactionEnabled }: { data: LibraryInsights; debugRedactionEnabled: boolean }) {
+function InsightsContent({ data, privacyRedactionEnabled }: { data: LibraryInsights; privacyRedactionEnabled: boolean }) {
   const fileSizeRate = percent(data.completeness.media_file_size_count, data.completeness.media_count);
   const organizationRate = percent(data.organization.organized_count, data.organization.total_count);
 
@@ -158,7 +158,7 @@ function InsightsContent({ data, debugRedactionEnabled }: { data: LibraryInsight
                     <TableHead className="text-right">已知体积</TableHead>
                   </TableRow>
                 </TableHeader>
-                <TableBody {...getDebugRedactProps(debugRedactionEnabled)}>
+                <TableBody {...getPrivacyRedactProps(privacyRedactionEnabled)}>
                   {data.top_authors.map((row) => (
                     <TableRow key={row.author_username}>
                       <TableCell className="font-medium">@{row.author_username}</TableCell>

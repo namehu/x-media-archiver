@@ -33,7 +33,7 @@ import {
   type TweetOrganization,
   type WriteActionResponse,
 } from "@/lib/api";
-import { getDebugRedactProps, useDebugRedactionEnabled } from "@/lib/debug-redaction";
+import { getPrivacyRedactProps, usePrivacyRedactionEnabled } from "@/lib/privacy-redaction";
 
 export function OrganizationEditorDialog({
   tweetId,
@@ -45,7 +45,7 @@ export function OrganizationEditorDialog({
   onOpenChange: (open: boolean) => void;
 }) {
   const queryClient = useQueryClient();
-  const debugRedactionEnabled = useDebugRedactionEnabled();
+  const privacyRedactionEnabled = usePrivacyRedactionEnabled();
   const catalogQuery = useQuery({
     queryKey: ["organization-catalog"],
     queryFn: () => apiGet<OrganizationCatalog>("/api/v1/library/organization"),
@@ -175,7 +175,7 @@ export function OrganizationEditorDialog({
           ) : catalogQuery.isLoading || organizationQuery.isLoading ? (
             <p className="py-8 text-center text-sm text-fg-secondary">正在读取整理信息…</p>
           ) : (
-            <FieldGroup className="gap-5" {...getDebugRedactProps(debugRedactionEnabled)}>
+            <FieldGroup className="gap-5" {...getPrivacyRedactProps(privacyRedactionEnabled)}>
               {saveMutation.error ? (
                 <Alert variant="destructive">
                   <AlertTitle>保存整理失败</AlertTitle>

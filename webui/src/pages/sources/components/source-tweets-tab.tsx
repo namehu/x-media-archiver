@@ -8,11 +8,11 @@ import { Checkbox } from "@/components/ui/checkbox";
 import { Progress } from "@/components/ui/progress";
 import { Tooltip, TooltipContent, TooltipTrigger } from "@/components/ui/tooltip";
 import {
-  getDebugDataValue,
-  getDebugRedactProps,
-  getDebugSelectionLabel,
-  useDebugRedactionEnabled,
-} from "@/lib/debug-redaction";
+  getPrivacyDataValue,
+  getPrivacyRedactProps,
+  getPrivacySelectionLabel,
+  usePrivacyRedactionEnabled,
+} from "@/lib/privacy-redaction";
 import { cn, formatDateTime } from "@/lib/utils";
 import type { DetailActions } from "./source-detail-sheet/scan-actions";
 import { ChevronDown, ChevronUp, FileQuestion, Film, Image, Images } from "lucide-react";
@@ -571,11 +571,11 @@ function TweetMediaInfo({ payload }: { payload: any }) {
 }
 
 function TweetText({ text, onUserInspect }: { text?: string | null; onUserInspect: () => void }) {
-  const debugRedactionEnabled = useDebugRedactionEnabled();
+  const privacyRedactionEnabled = usePrivacyRedactionEnabled();
   const [expanded, setExpanded] = React.useState(false);
   const displayText = text || "暂无 Tweet 文本";
 
-  if (!text && !debugRedactionEnabled) {
+  if (!text && !privacyRedactionEnabled) {
     return <div className="text-sm leading-6 text-fg-secondary italic">暂无 Tweet 文本</div>;
   }
 
@@ -588,7 +588,7 @@ function TweetText({ text, onUserInspect }: { text?: string | null; onUserInspec
           "break-words text-sm leading-6 text-fg-primary",
           expanded ? "whitespace-pre-wrap" : "line-clamp-2",
         )}
-        {...getDebugRedactProps(debugRedactionEnabled)}
+        {...getPrivacyRedactProps(privacyRedactionEnabled)}
       >
         {displayText}
       </div>
@@ -639,11 +639,11 @@ function TweetListItem({
   onSubmitDownload: (input: DownloadSubmitInput) => void;
   readonly?: boolean;
 }) {
-  const debugRedactionEnabled = useDebugRedactionEnabled();
+  const privacyRedactionEnabled = usePrivacyRedactionEnabled();
   return (
     <article
         aria-current={isCurrentDownload ? "true" : undefined}
-        data-tweet-id={getDebugDataValue(debugRedactionEnabled, tweet.tweet_id)}
+        data-tweet-id={getPrivacyDataValue(privacyRedactionEnabled, tweet.tweet_id)}
         className={cn(
           "border-b border-border-subtle bg-bg-surface px-3 py-4 transition-colors",
           isCurrentDownload
@@ -657,7 +657,7 @@ function TweetListItem({
               <Checkbox
                 className="mt-1"
                 checked={selected}
-                aria-label={getDebugSelectionLabel(debugRedactionEnabled, tweet.tweet_id)}
+                aria-label={getPrivacySelectionLabel(privacyRedactionEnabled, tweet.tweet_id)}
                 disabled={!canQueue(tweet) && !canCancel(tweet.active_item_status)}
                 onCheckedChange={onSelectionChange}
               />
@@ -666,7 +666,7 @@ function TweetListItem({
               <TweetText text={tweet.text} onUserInspect={onUserInspect} />
               <div
                 className="flex flex-wrap items-center gap-x-3 gap-y-2 text-xs text-fg-secondary"
-                {...getDebugRedactProps(debugRedactionEnabled)}
+                {...getPrivacyRedactProps(privacyRedactionEnabled)}
               >
                 <TweetMediaInfo payload={tweet.raw_payload} />
                 <span aria-hidden="true">·</span>

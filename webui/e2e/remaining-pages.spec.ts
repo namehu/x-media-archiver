@@ -1,5 +1,9 @@
 import { expect, test, type Page, type Route } from "@playwright/test";
 
+test.beforeEach(async ({ context }) => {
+  await context.addInitScript(() => sessionStorage.setItem("xma:webui:adult-content-acknowledged", "1"));
+});
+
 test("remaining management pages share the compact workspace language", async ({ page }) => {
   await mockRemainingPageApis(page);
 
@@ -75,7 +79,7 @@ async function mockRemainingPageApis(page: Page) {
       return json(route, {
         status: "authenticated",
         auth_mode: "password",
-        user: { username: "remaining-pages-test" },
+        user: { username: "remaining-pages-test", media_privacy_mode: false },
       });
     }
     if (url.pathname === "/api/v1/health/detail") return json(route, healthFixture());

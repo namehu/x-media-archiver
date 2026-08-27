@@ -10,10 +10,10 @@ import {
   DropdownMenuTrigger,
 } from "@/components/ui/dropdown-menu";
 import {
-  getDebugDetailLinkLabel,
-  getDebugDetailRoute,
-  useDebugRedactionEnabled,
-} from "@/lib/debug-redaction";
+  getPrivacyDetailLinkLabel,
+  getPrivacyDetailRoute,
+  usePrivacyRedactionEnabled,
+} from "@/lib/privacy-redaction";
 
 type FailureRowActionsProps = {
   row: FailureRow;
@@ -25,8 +25,8 @@ type FailureRowActionsProps = {
 };
 
 export function FailureRowActions({ row, pending, onRetry, onIgnore, onRestore, onHistory }: FailureRowActionsProps) {
-  const debugRedactionEnabled = useDebugRedactionEnabled();
-  const detailRoute = getDebugDetailRoute(debugRedactionEnabled, row.tweet_id);
+  const privacyRedactionEnabled = usePrivacyRedactionEnabled();
+  const detailRoute = getPrivacyDetailRoute(privacyRedactionEnabled, row.tweet_id);
   const ignored = row.disposition === "ignored";
 
   return (
@@ -75,7 +75,7 @@ export function FailureRowActions({ row, pending, onRetry, onIgnore, onRestore, 
             ) : (
               <DropdownMenuItem disabled>
                 <ExternalLink className="mr-2 size-4" />
-                {getDebugDetailLinkLabel(debugRedactionEnabled)}
+                {getPrivacyDetailLinkLabel(privacyRedactionEnabled)}
               </DropdownMenuItem>
             )}
           </DropdownMenuGroup>

@@ -64,8 +64,13 @@ def validate_password(password: str) -> str:
 def get_admin() -> AuthAdminRow | None:
     """读取唯一的管理员账号；若尚未初始化则返回空。"""
 
-    statement = select(auth_admin.c.id, auth_admin.c.username, auth_admin.c.password_hash).where(
-        auth_admin.c.id == bindparam("admin_id", ADMIN_ID)
+    statement = select(
+        auth_admin.c.id,
+        auth_admin.c.username,
+        auth_admin.c.password_hash,
+        auth_admin.c.media_privacy_mode,
+    ).where(
+        auth_admin.c.id == bindparam("admin_id", ADMIN_ID),
     )
     sql, params = compile_query(statement)
     with connect() as conn, conn.cursor() as cur:
@@ -105,6 +110,7 @@ def create_admin(setup_token: str, username: str, password: str) -> dict[str, ob
             id=ADMIN_ID,
             username=normalized_username,
             password_hash=_password_hash.hash(password),
+            media_privacy_mode=False,
             created_at=func.now(),
             updated_at=func.now(),
         )
@@ -116,7 +122,11 @@ def create_admin(setup_token: str, username: str, password: str) -> dict[str, ob
         except psycopg.IntegrityError as exc:
             raise AuthError("admin_already_initialized") from exc
         _setup_token_hash = None
-    return {"id": ADMIN_ID, "username": normalized_username}
+    return {
+        "id": ADMIN_ID,
+        "username": normalized_username,
+        "media_privacy_mode": False,
+    }
 
 
 def create_login_session(
@@ -126,7 +136,12 @@ def create_login_session(
 
     settings = settings or get_settings()
     statement = (
-        select(auth_admin.c.id, auth_admin.c.username, auth_admin.c.password_hash)
+        select(
+            auth_admin.c.id,
+            auth_admin.c.username,
+            auth_admin.c.password_hash,
+            auth_admin.c.media_privacy_mode,
+        )
         .where(auth_admin.c.id == bindparam("admin_id", ADMIN_ID))
         .with_for_update()
     )
@@ -165,7 +180,11 @@ def create_login_session(
         session_sql, session_params = compile_query(_session_insert(token, now, settings))
         cur.execute(session_sql, session_params)
         conn.commit()
-    return {"id": admin.id, "username": admin.username}, token
+    return {
+        "id": admin.id,
+        "username": admin.username,
+        "media_privacy_mode": admin.media_privacy_mode,
+    }, token
 
 
 def create_session(settings: Settings | None = None) -> str:
@@ -195,6 +214,7 @@ def authenticate_session(token: str | None) -> dict[str, object] | None:
         select(
             auth_admin.c.id,
             auth_admin.c.username,
+            auth_admin.c.media_privacy_mode,
             auth_sessions.c.last_seen_at,
             auth_sessions.c.expires_at,
         )
@@ -221,7 +241,52 @@ def authenticate_session(token: str | None) -> dict[str, object] | None:
             touch_sql, touch_params = compile_query(touch)
             cur.execute(touch_sql, touch_params)
             conn.commit()
-    return {"id": session.id, "username": session.username}
+    return _session_payload(session)
+
+
+def update_media_privacy_mode(
+    token: str | None,
+    enabled: bool,
+) -> dict[str, object]:
+    """验证当前会话并更新账号级媒体隐私偏好。"""
+
+    if not token:
+        raise AuthError("invalid_session")
+    now = datetime.now(UTC)
+    token_hash = hash_token(token)
+    statement = (
+        select(
+            auth_admin.c.id,
+            auth_admin.c.username,
+            auth_admin.c.media_privacy_mode,
+            auth_sessions.c.last_seen_at,
+            auth_sessions.c.expires_at,
+        )
+        .select_from(auth_sessions.join(auth_admin, auth_sessions.c.admin_id == auth_admin.c.id))
+        .where(auth_sessions.c.token_hash == bindparam("token_hash", token_hash))
+        .where(auth_sessions.c.expires_at > bindparam("now", now))
+        .with_for_update()
+    )
+    sql, params = compile_query(statement)
+    with connect() as conn, conn.cursor() as cur:
+        cur.execute(sql, params)
+        row = cur.fetchone()
+        if not row:
+            raise AuthError("invalid_session")
+        session = AuthSessionRow.model_validate(row)
+        preference = (
+            update(auth_admin)
+            .where(auth_admin.c.id == bindparam("admin_id", session.id))
+            .values(media_privacy_mode=enabled, updated_at=func.now())
+        )
+        preference_sql, preference_params = compile_query(preference)
+        cur.execute(preference_sql, preference_params)
+        conn.commit()
+    return {
+        "id": session.id,
+        "username": session.username,
+        "media_privacy_mode": enabled,
+    }
 
 
 def revoke_session(token: str, *, conn=None) -> None:
@@ -292,6 +357,16 @@ def _session_insert(token: str, now: datetime, settings: Settings):
         last_seen_at=now,
         expires_at=now + timedelta(hours=settings.auth_session_ttl_hours),
     )
+
+
+def _session_payload(session: AuthSessionRow) -> dict[str, object]:
+    """把内部会话行转换为认证 API 可安全返回的状态。"""
+
+    return {
+        "id": session.id,
+        "username": session.username,
+        "media_privacy_mode": session.media_privacy_mode,
+    }
 
 
 def _write_password_and_clear_sessions(cur, password: str) -> None:

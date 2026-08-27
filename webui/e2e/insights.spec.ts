@@ -1,10 +1,14 @@
 import { expect, test, type Page, type Route } from "@playwright/test";
 
+test.beforeEach(async ({ context }) => {
+  await context.addInitScript(() => sessionStorage.setItem("xma:webui:adult-content-acknowledged", "1"));
+});
+
 test("insights renders database facts, stays read-only, and redacts author identity", async ({ page }) => {
   const apiRequests: Array<{ method: string; path: string }> = [];
   await mockInsightsApis(page, apiRequests);
 
-  await page.goto("/insights?debugger=1");
+  await page.goto("/insights");
 
   await expect(page.getByRole("heading", { name: "归档洞察" })).toBeVisible();
   await expect(page.getByText("内容发布时间趋势")).toBeVisible();
@@ -15,7 +19,7 @@ test("insights renders database facts, stays read-only, and redacts author ident
   await expect(page.locator(".recharts-pie")).toHaveCount(0);
   await expect(page.getByText("图片", { exact: true })).toBeVisible();
 
-  const authorBody = page.locator("tbody[data-debug-redact]").filter({ hasText: "private-author" });
+  const authorBody = page.locator("tbody[data-privacy-redact]").filter({ hasText: "private-author" });
   await expect(authorBody).toHaveCount(1);
   await expect(authorBody).not.toHaveCSS("filter", "none");
 
@@ -65,7 +69,7 @@ async function mockInsightsApis(
       return json(route, {
         status: "authenticated",
         auth_mode: "password",
-        user: { username: "insights-test" },
+        user: { username: "insights-test", media_privacy_mode: true },
       });
     }
     if (url.pathname === "/api/v1/health/detail") {

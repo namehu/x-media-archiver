@@ -11,15 +11,16 @@ import { Dialog, DialogContent, DialogDescription, DialogHeader, DialogTitle } f
 import { closeDialogHistoryEntry, isDialogHistoryEntry } from "@/lib/dialog-history";
 import type { FeedVideoPlaybackStateApi } from "../../video-playback-state";
 import {
-  getDebugAuthorProfileHref,
-  getDebugExternalHref,
-  getDebugLinkTitle,
-  getDebugRedactProps,
-  useDebugRedactionEnabled,
-} from "@/lib/debug-redaction";
+  getPrivacyAuthorProfileHref,
+  getPrivacyExternalHref,
+  getPrivacyLinkTitle,
+  getPrivacyRedactProps,
+  usePrivacyRedactionEnabled,
+} from "@/lib/privacy-redaction";
 import { formatDateTime } from "@/lib/utils";
 import { PreviewImage } from "./preview-image";
 import { PreviewVideo } from "./preview-video";
+import { PrivacyMediaPlaceholder } from "@/components/ui/privacy-media-placeholder";
 import "swiper/css";
 import "swiper/css/navigation";
 import "swiper/css/pagination";
@@ -39,7 +40,7 @@ export function PostPreviewDialog({
   onActiveIndexChange: (index: number) => void;
   onOpenChange: (open: boolean) => void;
 } & FeedVideoPlaybackStateApi) {
-  const debugRedactionEnabled = useDebugRedactionEnabled();
+  const privacyRedactionEnabled = usePrivacyRedactionEnabled();
   const location = useLocation();
   const swiperRef = useRef<SwiperInstance | null>(null);
   const activeHistoryTokenRef = useRef<string | null>(null);
@@ -97,7 +98,7 @@ export function PostPreviewDialog({
   const previewChrome = (
     <PreviewChrome
       post={post}
-      debugRedactionEnabled={debugRedactionEnabled}
+      privacyRedactionEnabled={privacyRedactionEnabled}
       uiVisible={uiVisible}
       contextExpanded={contextExpanded}
       onContextToggle={() => setContextExpanded((current) => !current)}
@@ -143,7 +144,9 @@ export function PostPreviewDialog({
             {post.media.map((item, index) => (
               <SwiperSlide key={item.id}>
                 <div className="flex size-full items-center justify-center">
-                  {item.media_url ? (
+                  {privacyRedactionEnabled ? (
+                    <PrivacyMediaPlaceholder appearance="inverse" />
+                  ) : item.media_url ? (
                     item.media_type === "video" ? (
                       <PreviewVideo
                         src={item.media_url}
@@ -175,22 +178,22 @@ export function PostPreviewDialog({
 
 function PreviewChrome({
   post,
-  debugRedactionEnabled,
+  privacyRedactionEnabled,
   uiVisible,
   contextExpanded,
   onContextToggle,
   onClose,
 }: {
   post: PostFeedRow;
-  debugRedactionEnabled: boolean;
+  privacyRedactionEnabled: boolean;
   uiVisible: boolean;
   contextExpanded: boolean;
   onContextToggle: () => void;
   onClose: () => void;
 }) {
   const authorName = post.author_display_name || post.author_username || "未知作者";
-  const authorProfileHref = getDebugAuthorProfileHref(debugRedactionEnabled, post.author_username);
-  const tweetHref = getDebugExternalHref(debugRedactionEnabled, post.tweet_url);
+  const authorProfileHref = getPrivacyAuthorProfileHref(privacyRedactionEnabled, post.author_username);
+  const tweetHref = getPrivacyExternalHref(privacyRedactionEnabled, post.tweet_url);
   const tweetText = post.tweet_text || "暂无帖子正文";
 
   return (
@@ -220,7 +223,7 @@ function PreviewChrome({
               target={authorProfileHref ? "_blank" : undefined}
               rel={authorProfileHref ? "noopener noreferrer" : undefined}
               className="flex min-w-0 flex-1 items-center gap-3 transition-opacity hover:opacity-80"
-              title={getDebugLinkTitle(debugRedactionEnabled, "author", "在 X 中查看主页")}
+              title={getPrivacyLinkTitle(privacyRedactionEnabled, "author", "在 X 中查看主页")}
               aria-disabled={!authorProfileHref}
               onClick={(event) => {
                 if (!authorProfileHref) event.preventDefault();
@@ -229,11 +232,11 @@ function PreviewChrome({
             >
               <Avatar
                 className="size-10 shrink-0 border border-white/10"
-                {...getDebugRedactProps(debugRedactionEnabled)}
+                {...getPrivacyRedactProps(privacyRedactionEnabled)}
               >
                 <AvatarFallback className="bg-white/20 text-white">{avatarInitials(authorName)}</AvatarFallback>
               </Avatar>
-              <div className="min-w-0 flex-1" {...getDebugRedactProps(debugRedactionEnabled)}>
+              <div className="min-w-0 flex-1" {...getPrivacyRedactProps(privacyRedactionEnabled)}>
                 <p className="truncate font-semibold leading-tight text-white">{authorName}</p>
                 <div className="flex items-center gap-2 text-sm text-white/70">
                   <p className="truncate">{post.author_username ? `@${post.author_username}` : "用户名未知"}</p>
@@ -247,7 +250,7 @@ function PreviewChrome({
               target={tweetHref ? "_blank" : undefined}
               rel={tweetHref ? "noopener noreferrer" : undefined}
               className="shrink-0 rounded-full p-2 text-white/70 transition-colors hover:bg-white/10 hover:text-white"
-              title={getDebugLinkTitle(debugRedactionEnabled, "tweet", "在 X 中查看此贴")}
+              title={getPrivacyLinkTitle(privacyRedactionEnabled, "tweet", "在 X 中查看此贴")}
               aria-disabled={!tweetHref}
               onClick={(event) => {
                 if (!tweetHref) event.preventDefault();
@@ -264,7 +267,7 @@ function PreviewChrome({
               event.stopPropagation();
               onContextToggle();
             }}
-            {...getDebugRedactProps(debugRedactionEnabled)}
+            {...getPrivacyRedactProps(privacyRedactionEnabled)}
           >
             <p
               className={

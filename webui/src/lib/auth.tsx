@@ -1,18 +1,31 @@
 import { useQuery, useQueryClient } from "@tanstack/react-query";
 import { createContext, useCallback, useContext, useEffect, useMemo, useState, type ReactNode } from "react";
 import { AlertCircle, RefreshCw } from "lucide-react";
+import { AdultContentGate } from "@/components/auth/adult-content-gate";
 import { AuthShell } from "@/components/auth/auth-shell";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardDescription, CardFooter, CardHeader } from "@/components/ui/card";
-import { ApiError, apiGet, apiPost, apiRequest } from "@/lib/api";
+import { ApiError, apiGet, apiPatch, apiPost, apiRequest } from "@/lib/api";
 import type { AuthSession } from "@/lib/api";
+import {
+  acknowledgeAdultContentForTab,
+  applyDisabledModeFallback,
+  clearAdultContentAcknowledgementForTab,
+  persistDisabledPrivacyMode,
+  readAdultContentAcknowledgementForTab,
+  syncMediaPrivacyMode,
+} from "@/lib/media-privacy";
 import { LoginPage } from "@/pages/login";
 import { SetupPage } from "@/pages/setup";
 
 type AuthContextValue = {
   session: AuthSession;
+  mediaPrivacyMode: boolean;
+  adultContentAcknowledged: boolean;
   logout: () => Promise<void>;
   changePassword: (currentPassword: string, newPassword: string) => Promise<void>;
+  acknowledgeAdultContent: () => Promise<void>;
+  updateMediaPrivacyMode: (enabled: boolean, acknowledgeForTab?: boolean) => Promise<void>;
 };
 
 const AuthContext = createContext<AuthContextValue | null>(null);
@@ -21,15 +34,23 @@ export function AuthGate({ children }: { children: ReactNode }) {
   const queryClient = useQueryClient();
   const [actionError, setActionError] = useState<string | null>(null);
   const [pending, setPending] = useState(false);
+  const [safetyError, setSafetyError] = useState<string | null>(null);
+  const [pendingSafetyAction, setPendingSafetyAction] = useState<"acknowledge" | "privacy" | null>(null);
+  const [forceSafetyGate, setForceSafetyGate] = useState(false);
+  const [privacyOverride, setPrivacyOverride] = useState<boolean | null>(null);
+  const [adultContentAcknowledged, setAdultContentAcknowledged] = useState(
+    readAdultContentAcknowledgementForTab,
+  );
   const sessionQuery = useQuery({
     queryKey: ["auth-session"],
-    queryFn: () => apiGet<AuthSession>("/api/v1/auth/session"),
+    queryFn: async () => applyDisabledModeFallback(await apiGet<AuthSession>("/api/v1/auth/session")),
     retry: false,
     staleTime: 60_000,
   });
 
   const replaceSession = useCallback(
-    (session: AuthSession) => {
+    (nextSession: AuthSession) => {
+      const session = applyDisabledModeFallback(nextSession);
       queryClient.removeQueries({
         predicate: (query) => query.queryKey[0] !== "auth-session",
       });
@@ -40,7 +61,15 @@ export function AuthGate({ children }: { children: ReactNode }) {
 
   useEffect(() => {
     const unauthorized = () => {
-      replaceSession({ status: "anonymous", auth_mode: "password", user: null });
+      setPrivacyOverride(null);
+      clearAdultContentAcknowledgementForTab();
+      setAdultContentAcknowledged(false);
+      syncMediaPrivacyMode(true);
+      replaceSession({
+        status: "anonymous",
+        auth_mode: "password",
+        user: null,
+      });
     };
     window.addEventListener("xma:unauthorized", unauthorized);
     return () => window.removeEventListener("xma:unauthorized", unauthorized);
@@ -58,14 +87,40 @@ export function AuthGate({ children }: { children: ReactNode }) {
     }
   };
 
+  useEffect(() => {
+    const session = sessionQuery.data;
+    const enabled =
+      privacyOverride ??
+      (session?.status === "authenticated" ? Boolean(session.user?.media_privacy_mode) : true);
+    syncMediaPrivacyMode(enabled);
+  }, [privacyOverride, sessionQuery.data]);
+
+  useEffect(() => {
+    const session = sessionQuery.data;
+    if (!session || session.status === "authenticated") return;
+    clearAdultContentAcknowledgementForTab();
+    setAdultContentAcknowledged(false);
+  }, [sessionQuery.data]);
+
   const value = useMemo<AuthContextValue | null>(() => {
     const session = sessionQuery.data;
     if (!session || session.status !== "authenticated") return null;
+    const mediaPrivacyMode = privacyOverride ?? Boolean(session.user?.media_privacy_mode);
     return {
       session,
+      mediaPrivacyMode,
+      adultContentAcknowledged,
       logout: async () => {
         await apiRequest<void>("/api/v1/auth/logout", { method: "POST" });
-        replaceSession({ status: "anonymous", auth_mode: "password", user: null });
+        setPrivacyOverride(null);
+        clearAdultContentAcknowledgementForTab();
+        setAdultContentAcknowledged(false);
+        syncMediaPrivacyMode(true);
+        replaceSession({
+          status: "anonymous",
+          auth_mode: "password",
+          user: null,
+        });
       },
       changePassword: async (currentPassword: string, newPassword: string) => {
         const updated = await apiPost<AuthSession>("/api/v1/auth/password", {
@@ -74,8 +129,41 @@ export function AuthGate({ children }: { children: ReactNode }) {
         });
         replaceSession(updated);
       },
+      acknowledgeAdultContent: async () => {
+        acknowledgeAdultContentForTab();
+        setAdultContentAcknowledged(true);
+        setPrivacyOverride(null);
+        syncMediaPrivacyMode(Boolean(session.user?.media_privacy_mode));
+      },
+      updateMediaPrivacyMode: async (enabled: boolean, acknowledgeForTab = false) => {
+        if (enabled) {
+          setPrivacyOverride(true);
+          syncMediaPrivacyMode(true);
+        }
+        try {
+          const updated = await apiPatch<AuthSession>("/api/v1/auth/preferences", {
+            media_privacy_mode: enabled,
+          });
+          if (session.auth_mode === "disabled") {
+            persistDisabledPrivacyMode(enabled);
+          }
+          if (acknowledgeForTab) {
+            acknowledgeAdultContentForTab();
+            setAdultContentAcknowledged(true);
+          }
+          replaceSession(updated);
+          setPrivacyOverride(null);
+          syncMediaPrivacyMode(enabled);
+        } catch (error) {
+          if (!enabled) {
+            setPrivacyOverride(true);
+            syncMediaPrivacyMode(true);
+          }
+          throw error;
+        }
+      },
     };
-  }, [replaceSession, sessionQuery.data]);
+  }, [adultContentAcknowledged, privacyOverride, replaceSession, sessionQuery.data]);
 
   if (sessionQuery.isPending) {
     return <div className="min-h-screen bg-bg-surface" aria-label="加载中" />;
@@ -126,6 +214,42 @@ export function AuthGate({ children }: { children: ReactNode }) {
       />
     );
   }
+  if (
+    value &&
+    (forceSafetyGate || (!value.mediaPrivacyMode && !value.adultContentAcknowledged))
+  ) {
+    const runSafetyAction = async (
+      action: "acknowledge" | "privacy",
+      operation: () => Promise<void>,
+    ) => {
+      setPendingSafetyAction(action);
+      setSafetyError(null);
+      try {
+        await operation();
+        setForceSafetyGate(false);
+      } catch (error) {
+        setForceSafetyGate(true);
+        setSafetyError(safetyErrorMessage(error));
+      } finally {
+        setPendingSafetyAction(null);
+      }
+    };
+
+    return (
+      <AuthContext.Provider value={value}>
+        <AdultContentGate
+          authMode={value.session.auth_mode}
+          error={safetyError}
+          pendingAction={pendingSafetyAction}
+          onAcknowledge={() => runSafetyAction("acknowledge", value.acknowledgeAdultContent)}
+          onEnablePrivacy={() =>
+            runSafetyAction("privacy", () => value.updateMediaPrivacyMode(true))
+          }
+          onLogout={value.logout}
+        />
+      </AuthContext.Provider>
+    );
+  }
   return <AuthContext.Provider value={value}>{children}</AuthContext.Provider>;
 }
 
@@ -138,4 +262,18 @@ export function useAuth() {
 function authErrorCode(error: unknown) {
   if (error instanceof ApiError) return error.code || String(error.detail || "unknown");
   return "unknown";
+}
+
+function safetyErrorMessage(error: unknown) {
+  const code =
+    error instanceof ApiError
+      ? error.code || (typeof error.detail === "string" ? error.detail : undefined)
+      : undefined;
+  if (code === "authentication_unavailable") {
+    return "认证服务暂时不可用。内容仍保持隐藏，请稍后重试。";
+  }
+  if (error instanceof ApiError && (error.status === 401 || code === "invalid_session")) {
+    return "当前登录会话已失效。请重新登录后再确认。";
+  }
+  return "操作未完成，内容仍保持隐藏。请检查网络后重试。";
 }

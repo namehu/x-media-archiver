@@ -29,11 +29,13 @@ class AuthAdminRow(RowModel):
     id: int
     username: str
     password_hash: str
+    media_privacy_mode: bool
 
 
 class AuthSessionRow(RowModel):
     id: int
     username: str
+    media_privacy_mode: bool
     last_seen_at: datetime
     expires_at: datetime
 

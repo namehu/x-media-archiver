@@ -1,6 +1,6 @@
 import { AlertTriangle, ImageOff, Loader2 } from "lucide-react";
 import type { MediaRow } from "../lib/api";
-import { getDebugMediaAlt, getDebugRedactProps, useDebugRedactionEnabled } from "../lib/debug-redaction";
+import { getPrivacyMediaAlt, getPrivacyRedactProps, usePrivacyRedactionEnabled } from "../lib/privacy-redaction";
 import { mediaTypeLabel } from "../lib/formatters";
 import { Alert, AlertDescription, AlertTitle } from "./ui/alert";
 import {
@@ -14,6 +14,7 @@ import {
 } from "./ui/alert-dialog";
 import { Button } from "./ui/button";
 import { formatBytes } from "../lib/utils";
+import { PrivacyMediaPlaceholder } from "./ui/privacy-media-placeholder";
 
 type MediaDeleteDialogProps = {
   open: boolean;
@@ -38,7 +39,7 @@ export function MediaDeleteDialog({
   onOpenChange,
   onConfirm,
 }: MediaDeleteDialogProps) {
-  const debugRedactionEnabled = useDebugRedactionEnabled();
+  const privacyRedactionEnabled = usePrivacyRedactionEnabled();
   const title = targetMedia ? "永久删除此媒体？" : "永久删除所选媒体？";
 
   return (
@@ -57,12 +58,14 @@ export function MediaDeleteDialog({
         {targetMedia ? (
           <div className="grid grid-cols-[88px_minmax(0,1fr)] items-center gap-3 rounded-lg border border-border-subtle bg-bg-muted p-3">
             <div className="flex aspect-square items-center justify-center overflow-hidden rounded-md bg-bg-surface">
-              {targetMedia.preview_url || targetMedia.media_url ? (
+              {privacyRedactionEnabled ? (
+                <PrivacyMediaPlaceholder compact />
+              ) : targetMedia.preview_url || targetMedia.media_url ? (
                 <img
                   className="size-full object-contain"
                   src={targetMedia.preview_url || targetMedia.media_url || undefined}
-                  alt={getDebugMediaAlt(
-                    debugRedactionEnabled,
+                  alt={getPrivacyMediaAlt(
+                    privacyRedactionEnabled,
                     targetMedia.tweet_text || targetMedia.author_display_name || "待删除媒体",
                   )}
                 />
@@ -70,7 +73,7 @@ export function MediaDeleteDialog({
                 <ImageOff className="size-6 text-fg-tertiary" />
               )}
             </div>
-            <div className="min-w-0" {...getDebugRedactProps(debugRedactionEnabled)}>
+            <div className="min-w-0" {...getPrivacyRedactProps(privacyRedactionEnabled)}>
               <p className="truncate text-sm font-semibold text-fg-primary">
                 {targetMedia.author_display_name || targetMedia.author_username || "未知作者"}
               </p>

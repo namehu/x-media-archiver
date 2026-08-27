@@ -31,7 +31,7 @@ WebUI 定向验收应覆盖：
 1. Feed、Search、媒体预览和 Tweet Detail 都显示只读平台 Hashtag；自定义标签使用独立文字标签，不能只靠颜色区分。
 2. 点击平台 Hashtag 后进入包含单个 `hashtag` 和显式 `tweet_status=all` 的搜索 URL；复制、刷新或直接打开 URL 后筛选保持。
 3. 搜索筛选只在打开联想框后请求 `/api/v1/library/search/hashtags`，固定 `limit=20`，并覆盖加载、无结果、失败与显式重试。
-4. 平台 Hashtag 在窄屏卡片和媒体预览中不溢出；调试模式遮罩平台内容且不生成包含真实 Hashtag 的搜索链接。
+4. 平台 Hashtag 在窄屏卡片和媒体预览中不溢出；媒体隐私模式遮罩平台内容，但保留站内 Hashtag 搜索导航。
 
 ## 生产升级验收
 
@@ -62,5 +62,5 @@ docker compose --env-file .env.production -f docker-compose.prod.yml run --rm ap
 
 - WebUI 使用独立的平台 Hashtag 展示组件；Feed、Search、媒体预览和 Tweet Detail 共享同一搜索 URL 语义。
 - 搜索使用单值精确筛选和按需联想；联想请求固定 `limit=20`，不加载完整目录。
-- Playwright 定向用例覆盖窄屏展示、预览、精确 URL 与刷新、加载/空/失败重试，以及调试模式下的遮罩和链接禁用。
+- Playwright 定向用例覆盖窄屏展示、预览、精确 URL 与刷新、加载/空/失败重试，以及媒体隐私模式下的遮罩和站内导航。
 - WebUI 生产构建通过；平台 Hashtag、整理工作流、搜索脱敏和洞察共 14 项 Playwright 定向回归通过。

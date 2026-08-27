@@ -20,7 +20,7 @@ import {
   type OrganizationTag,
   type WriteActionResponse,
 } from "@/lib/api";
-import { getDebugRedactProps, useDebugRedactionEnabled } from "@/lib/debug-redaction";
+import { getPrivacyRedactProps, usePrivacyRedactionEnabled } from "@/lib/privacy-redaction";
 
 type CatalogItem = OrganizationTag | OrganizationCollection;
 
@@ -36,7 +36,7 @@ export function CatalogItemDialog({
   onOpenChange: (open: boolean) => void;
 }) {
   const queryClient = useQueryClient();
-  const debugRedactionEnabled = useDebugRedactionEnabled();
+  const privacyRedactionEnabled = usePrivacyRedactionEnabled();
   const [name, setName] = useState("");
   const [description, setDescription] = useState("");
   const [color, setColor] = useState("#0096fa");
@@ -92,7 +92,7 @@ export function CatalogItemDialog({
                 : "合集可包含多条 Tweet，封面稍后从合集现有媒体中选择。"}
             </DialogDescription>
           </DialogHeader>
-          <FieldGroup className="gap-4" {...getDebugRedactProps(debugRedactionEnabled)}>
+          <FieldGroup className="gap-4" {...getPrivacyRedactProps(privacyRedactionEnabled)}>
             <Field>
               <FieldLabel htmlFor="catalog-name">名称</FieldLabel>
               <Input
