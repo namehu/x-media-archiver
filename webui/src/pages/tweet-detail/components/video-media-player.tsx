@@ -9,6 +9,7 @@ export function VideoMediaPlayer({ media }: { media: MediaRow }) {
   const privacyRedactionEnabled = usePrivacyRedactionEnabled();
   const containerRef = useRef<HTMLDivElement | null>(null);
   const src = media.media_url;
+  const previewUrl = media.preview_url;
 
   useEffect(() => {
     const container = containerRef.current;
@@ -23,12 +24,12 @@ export function VideoMediaPlayer({ media }: { media: MediaRow }) {
       setting: true,
       playbackRate: true,
       aspectRatio: true,
-      poster: media.preview_url || undefined,
+      ...(previewUrl ? { poster: previewUrl } : {}),
       theme: brandColor(),
     });
 
     return createArtplayerCleanup(player, container);
-  }, [privacyRedactionEnabled, src]);
+  }, [previewUrl, privacyRedactionEnabled, src]);
 
   if (privacyRedactionEnabled) {
     return (

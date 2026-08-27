@@ -5,7 +5,11 @@ const apiBaseUrl = process.env.XMA_API_BASE_URL ?? "http://127.0.0.1:18000";
 const routes = [
   { path: "/", label: "首页", text: "webui-e2e fixture tweet" },
   { path: "/dashboard", label: "系统概览", text: "媒体资产" },
-  { path: "/library", label: "媒体", text: "webui-e2e fixture tweet" },
+  {
+    path: "/library",
+    label: "媒体",
+    imageName: "webui-e2e fixture tweet with a verified media row",
+  },
   { path: "/insights", label: "洞察", text: "归档洞察" },
   { path: "/collections", label: "合集", text: "还没有合集" },
   { path: "/tags", label: "自定义标签", text: "自定义标签" },
@@ -70,7 +74,11 @@ test.describe("WebUI smoke", () => {
     for (const route of routes) {
       await page.goto(route.path);
       await expect(page.getByRole("link", { name: route.label, exact: true })).toBeVisible();
-      await expect(page.getByText(route.text).first()).toBeVisible();
+      if ("imageName" in route) {
+        await expect(page.getByRole("img", { name: route.imageName })).toBeVisible();
+      } else {
+        await expect(page.getByText(route.text).first()).toBeVisible();
+      }
     }
     await page.getByRole("tab", { name: "Cookies" }).click();
     await expect(page.getByRole("button", { name: "检测 Cookies" })).toBeVisible();

@@ -1460,6 +1460,79 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/api/v1/maintenance/preview-jobs": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** List Preview Jobs */
+        get: operations["list_preview_jobs_api_v1_maintenance_preview_jobs_get"];
+        put?: never;
+        /**
+         * Create Preview Job
+         * @description 创建与下载解耦的全库索引预览任务。
+         */
+        post: operations["create_preview_job_api_v1_maintenance_preview_jobs_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/maintenance/preview-jobs/{job_id}": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** Get Preview Job */
+        get: operations["get_preview_job_api_v1_maintenance_preview_jobs__job_id__get"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/maintenance/preview-jobs/{job_id}/cancel": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /** Cancel Preview Job */
+        post: operations["cancel_preview_job_api_v1_maintenance_preview_jobs__job_id__cancel_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/maintenance/preview-schedule": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** Get Preview Schedule */
+        get: operations["get_preview_schedule_api_v1_maintenance_preview_schedule_get"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        /** Patch Preview Schedule */
+        patch: operations["patch_preview_schedule_api_v1_maintenance_preview_schedule_patch"];
+        trace?: never;
+    };
     "/api/v1/events": {
         parameters: {
             query?: never;
@@ -2996,6 +3069,179 @@ export interface components {
         } & {
             [key: string]: unknown;
         };
+        /** MediaPreviewJobCreateRequest */
+        MediaPreviewJobCreateRequest: {
+            /**
+             * Mode
+             * @default reconcile
+             */
+            mode: string;
+            /**
+             * Confirm Full Scan
+             * @default false
+             */
+            confirm_full_scan: boolean;
+            /**
+             * Confirm Force
+             * @default false
+             */
+            confirm_force: boolean;
+        };
+        /** MediaPreviewJobResponse */
+        MediaPreviewJobResponse: {
+            /** Id */
+            id: number;
+            /** Trigger Type */
+            trigger_type: string;
+            /** Mode */
+            mode: string;
+            /** Status */
+            status: string;
+            /** Schedule Id */
+            schedule_id?: number | null;
+            /** Snapshot Max Media Id */
+            snapshot_max_media_id?: number | null;
+            /**
+             * Cursor After Media Id
+             * @default 0
+             */
+            cursor_after_media_id: number;
+            /**
+             * Total Count
+             * @default 0
+             */
+            total_count: number;
+            /**
+             * Scanned Count
+             * @default 0
+             */
+            scanned_count: number;
+            /**
+             * Generated Count
+             * @default 0
+             */
+            generated_count: number;
+            /**
+             * Existing Count
+             * @default 0
+             */
+            existing_count: number;
+            /**
+             * Failed Count
+             * @default 0
+             */
+            failed_count: number;
+            /** Worker Id */
+            worker_id?: string | null;
+            /** Lease Expires At */
+            lease_expires_at?: string | null;
+            /**
+             * Retry Count
+             * @default 0
+             */
+            retry_count: number;
+            /** Next Attempt At */
+            next_attempt_at?: string | null;
+            /**
+             * Cancel Requested
+             * @default false
+             */
+            cancel_requested: boolean;
+            /** Options */
+            options?: {
+                [key: string]: unknown;
+            };
+            /** Result */
+            result?: {
+                [key: string]: unknown;
+            } | null;
+            /** Error Message */
+            error_message?: string | null;
+            /** Started At */
+            started_at?: string | null;
+            /** Finished At */
+            finished_at?: string | null;
+            /**
+             * Created At
+             * Format: date-time
+             */
+            created_at: string;
+            /**
+             * Updated At
+             * Format: date-time
+             */
+            updated_at: string;
+        } & {
+            [key: string]: unknown;
+        };
+        /** MediaPreviewJobsPageResponse */
+        MediaPreviewJobsPageResponse: {
+            /** Items */
+            items: components["schemas"]["MediaPreviewJobResponse"][];
+            /** Total */
+            total: number;
+            /** Limit */
+            limit: number;
+            /** Offset */
+            offset: number;
+        } & {
+            [key: string]: unknown;
+        };
+        /** MediaPreviewScheduleResponse */
+        MediaPreviewScheduleResponse: {
+            /** Id */
+            id: number;
+            /** Enabled */
+            enabled: boolean;
+            /** Frequency Kind */
+            frequency_kind: string;
+            /** Interval Minutes */
+            interval_minutes: number;
+            /**
+             * Local Time
+             * Format: time
+             */
+            local_time: string;
+            /** Weekday */
+            weekday: number;
+            /** Timezone */
+            timezone: string;
+            /** Jitter Seconds */
+            jitter_seconds: number;
+            /** Next Run At */
+            next_run_at?: string | null;
+            /** Last Run At */
+            last_run_at?: string | null;
+            /**
+             * Created At
+             * Format: date-time
+             */
+            created_at: string;
+            /**
+             * Updated At
+             * Format: date-time
+             */
+            updated_at: string;
+        } & {
+            [key: string]: unknown;
+        };
+        /** MediaPreviewScheduleUpdateRequest */
+        MediaPreviewScheduleUpdateRequest: {
+            /** Enabled */
+            enabled?: boolean | null;
+            /** Frequency Kind */
+            frequency_kind?: string | null;
+            /** Interval Minutes */
+            interval_minutes?: number | null;
+            /** Local Time */
+            local_time?: string | null;
+            /** Weekday */
+            weekday?: number | null;
+            /** Timezone */
+            timezone?: string | null;
+            /** Jitter Seconds */
+            jitter_seconds?: number | null;
+        };
         /** MediaRowResponse */
         MediaRowResponse: {
             /** Id */
@@ -3528,6 +3774,8 @@ export interface components {
             items?: components["schemas"]["RuntimeItemResponse"][];
             /** Scans */
             scans?: components["schemas"]["SourceScanRunResponse"][];
+            /** Preview Jobs */
+            preview_jobs?: components["schemas"]["MediaPreviewJobResponse"][];
             /** Recent Activity */
             recent_activity?: {
                 [key: string]: unknown;
@@ -7355,6 +7603,186 @@ export interface operations {
                 };
                 content: {
                     "application/json": components["schemas"]["WriteActionResponse"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    list_preview_jobs_api_v1_maintenance_preview_jobs_get: {
+        parameters: {
+            query?: {
+                limit?: number;
+                offset?: number;
+            };
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["MediaPreviewJobsPageResponse"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    create_preview_job_api_v1_maintenance_preview_jobs_post: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["MediaPreviewJobCreateRequest"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            202: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["MediaPreviewJobResponse"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    get_preview_job_api_v1_maintenance_preview_jobs__job_id__get: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                job_id: number;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["MediaPreviewJobResponse"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    cancel_preview_job_api_v1_maintenance_preview_jobs__job_id__cancel_post: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                job_id: number;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["MediaPreviewJobResponse"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    get_preview_schedule_api_v1_maintenance_preview_schedule_get: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["MediaPreviewScheduleResponse"];
+                };
+            };
+        };
+    };
+    patch_preview_schedule_api_v1_maintenance_preview_schedule_patch: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["MediaPreviewScheduleUpdateRequest"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["MediaPreviewScheduleResponse"];
                 };
             };
             /** @description Validation Error */
