@@ -21,10 +21,11 @@ import { MediaDeleteDialog } from "../../components/media-delete-dialog";
 import { MediaSelectionBar } from "../../components/media-selection-bar";
 import { Badge } from "../../components/ui/badge";
 import { Button } from "../../components/ui/button";
-import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "../../components/ui/card";
+import { Card, CardContent } from "../../components/ui/card";
 import { Checkbox } from "../../components/ui/checkbox";
 import { EmptyState } from "../../components/ui/empty-state";
 import { ErrorState } from "../../components/ui/error-state";
+import { ManagementPageHeader } from "../../components/ui/management-page-header";
 import { MediaThumbnail } from "../../components/ui/media-thumbnail";
 import { Pagination } from "../../components/ui/pagination";
 import { Skeleton } from "../../components/ui/skeleton";
@@ -108,7 +109,16 @@ export function DuplicatesPage() {
 
   if (duplicatesQuery.isLoading) return <DuplicatesSkeleton />;
   if (duplicatesQuery.error) {
-    return <ErrorState title="API 不可用" detail={String(duplicatesQuery.error)} onRetry={() => void duplicatesQuery.refetch()} />;
+    return (
+      <div className="flex flex-col gap-5">
+        <ManagementPageHeader
+          eyebrow="存储维护"
+          title="重复媒体"
+          description="重复媒体索引暂时无法读取。"
+        />
+        <ErrorState title="重复媒体不可用" detail={String(duplicatesQuery.error)} onRetry={() => void duplicatesQuery.refetch()} />
+      </div>
+    );
   }
 
   const changePage = (nextOffset: number) => {
@@ -154,14 +164,17 @@ export function DuplicatesPage() {
 
   return (
     <div className="flex flex-col gap-5">
-      <section className="flex flex-col justify-between gap-4 md:flex-row md:items-end">
-        <div>
-          <h1 className="text-2xl font-bold tracking-tight text-fg-primary">重复媒体</h1>
-          <p className="mt-1 text-sm text-fg-secondary">
-            {model.groupCount.toLocaleString()} 组 · {model.fileCount.toLocaleString()} 个文件
-          </p>
-        </div>
-        <div className="flex flex-wrap items-center gap-2">
+      <ManagementPageHeader
+        eyebrow="存储维护"
+        title="重复媒体"
+        description="按 SHA-256 聚合相同文件，先确认保留项，再精确删除冗余媒体。"
+        meta={
+          <Badge tone={model.groupCount ? "warning" : "success"}>
+            {model.groupCount.toLocaleString()} 组重复 · {model.fileCount.toLocaleString()} 个媒体
+          </Badge>
+        }
+        actions={
+          <>
           {groups.length ? (
             <Button type="button" variant="outline" size="sm" onClick={() => selectRedundantRows(groups, false)}>
               <CheckCheck data-icon="inline-start" />
@@ -183,8 +196,9 @@ export function DuplicatesPage() {
               label="第 {start}-{end} 组，共 {total} 组"
             />
           ) : null}
-        </div>
-      </section>
+          </>
+        }
+      />
 
       <section className="grid gap-4 md:grid-cols-2 xl:grid-cols-4">
         <StatCard
@@ -196,7 +210,7 @@ export function DuplicatesPage() {
           sparklineData={model.groupSizes}
         />
         <StatCard
-          label="文件"
+          label="全库媒体"
           value={model.fileCount.toLocaleString()}
           detail={`本页 ${model.loadedFileCount} 个文件`}
           icon={<Files className="h-4 w-4" />}
@@ -241,7 +255,7 @@ export function DuplicatesPage() {
           ) : null}
         </section>
       ) : (
-        <EmptyState icon={<GitCompare className="h-5 w-5" />} title="没有重复媒体。" description="清洁" />
+        <EmptyState icon={<GitCompare className="h-5 w-5" />} title="没有重复媒体" description="当前没有检测到 SHA-256 完全一致的媒体文件。" />
       )}
 
       <MediaSelectionBar
@@ -282,15 +296,15 @@ function DuplicateGroupCard({
 }) {
   const primary = group.rows[0];
   return (
-    <Card className="overflow-hidden hover:border-border-strong hover:shadow-2">
-      <CardHeader className="gap-3">
+    <section className="overflow-hidden rounded-xl border border-border-subtle bg-bg-elevated">
+      <header className="flex flex-col gap-3 border-b border-border-subtle p-4">
         <div className="flex flex-col justify-between gap-3 lg:flex-row lg:items-start">
           <div className="min-w-0">
-            <CardTitle className="flex flex-wrap items-center gap-2">
+            <h2 className="flex flex-wrap items-center gap-2">
               <Badge tone="warning">{group.duplicate_count} 个文件</Badge>
               <span className="break-all font-mono text-sm font-semibold text-fg-primary">{shortHash(group.sha256)}</span>
-            </CardTitle>
-            <CardDescription className="mt-1 break-all">{group.sha256}</CardDescription>
+            </h2>
+            <p className="mt-1 break-all text-xs text-fg-tertiary">{group.sha256}</p>
           </div>
           <div className="flex flex-wrap items-center gap-2">
             <Badge tone="secondary">{formatBytes(group.total_size)}</Badge>
@@ -302,9 +316,9 @@ function DuplicateGroupCard({
           </div>
         </div>
         <HashMatchBar count={group.duplicate_count} />
-      </CardHeader>
+      </header>
 
-      <CardContent>
+      <div className="p-4">
         <div className="grid gap-3 lg:grid-cols-2 2xl:grid-cols-4">
           {group.rows.map((row, index) => (
             <DuplicateMediaCard
@@ -317,8 +331,8 @@ function DuplicateGroupCard({
             />
           ))}
         </div>
-      </CardContent>
-    </Card>
+      </div>
+    </section>
   );
 }
 
@@ -386,14 +400,12 @@ function DuplicateMediaCard({
 
 function HashMatchBar({ count }: { count: number }) {
   return (
-    <div className="rounded-lg border border-border-subtle bg-bg-surface p-3">
-      <div className="flex items-center justify-between gap-3 text-xs font-medium text-fg-secondary">
-        <span className="inline-flex items-center gap-1">
-          <Gauge className="h-3.5 w-3.5 text-brand" />
-          SHA-256 完全一致
-        </span>
-        <span>{count} 个文件</span>
-      </div>
+    <div className="flex items-center justify-between gap-3 text-xs font-medium text-fg-secondary">
+      <span className="inline-flex items-center gap-1">
+        <Gauge className="h-3.5 w-3.5 text-brand" />
+        SHA-256 完全一致
+      </span>
+      <span>{count} 个文件</span>
     </div>
   );
 }
@@ -401,10 +413,11 @@ function HashMatchBar({ count }: { count: number }) {
 function DuplicatesSkeleton() {
   return (
     <div className="flex flex-col gap-5">
-      <section>
-        <h1 className="text-2xl font-bold tracking-tight text-fg-primary">重复媒体</h1>
-        <p className="mt-1 text-sm text-fg-secondary">正在加载重复媒体</p>
-      </section>
+      <ManagementPageHeader
+        eyebrow="存储维护"
+        title="重复媒体"
+        description="正在分析重复组与媒体占用。"
+      />
       <div className="grid gap-4 md:grid-cols-2 xl:grid-cols-4">
         {Array.from({ length: 4 }).map((_, index) => (
           <Skeleton key={index} className="h-32 rounded-lg" />

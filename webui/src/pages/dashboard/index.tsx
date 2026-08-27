@@ -18,6 +18,7 @@ import { Badge } from "../../components/ui/badge";
 import { buttonVariants } from "../../components/ui/button";
 import { Card, CardContent, CardDescription, CardFooter, CardHeader, CardTitle } from "../../components/ui/card";
 import { ErrorState } from "../../components/ui/error-state";
+import { ManagementPageHeader } from "../../components/ui/management-page-header";
 import { Separator } from "../../components/ui/separator";
 import { Skeleton } from "../../components/ui/skeleton";
 import { StatCard } from "../../components/ui/stat-card";
@@ -37,17 +38,26 @@ export function DashboardPage() {
 
   if (isLoading) return <DashboardSkeleton />;
   if (error || !data || !model) {
-    return <ErrorState title="仪表盘数据暂不可用" detail="请确认 API 服务可用后重试。" onRetry={() => void refetch()} />;
+    return (
+      <div className="flex flex-col gap-6">
+        <ManagementPageHeader
+          eyebrow="归档管理"
+          title="系统概览"
+          description="归档摘要暂时无法读取。"
+        />
+        <ErrorState title="系统概览暂不可用" detail="请确认 API 服务可用后重试。" onRetry={() => void refetch()} />
+      </div>
+    );
   }
 
   return (
     <div className="flex flex-col gap-6">
-      <section className="flex flex-col justify-between gap-4 md:flex-row md:items-end">
-        <div className="max-w-2xl">
-          <h1 className="text-2xl font-bold tracking-tight text-fg-primary">仪表盘</h1>
-          <p className="mt-1.5 text-sm leading-6 text-fg-secondary">集中查看媒体资产、归档状态与需要处理的异常。</p>
-        </div>
-        <div className="flex flex-wrap items-center gap-2">
+      <ManagementPageHeader
+        eyebrow="归档管理"
+        title="系统概览"
+        description="先看需要关注的状态，再进入队列、失败项或媒体内容。"
+        actions={
+          <>
           <Link to="/queue" className={buttonVariants({ variant: "secondary", size: "sm" })}>
             查看队列
           </Link>
@@ -55,8 +65,9 @@ export function DashboardPage() {
             浏览媒体库
             <ArrowRight data-icon="inline-end" aria-hidden="true" />
           </Link>
-        </div>
-      </section>
+          </>
+        }
+      />
 
       <section className="grid gap-4 sm:grid-cols-2 xl:grid-cols-4" aria-label="归档关键指标">
         <StatCard
@@ -222,10 +233,12 @@ function buildDashboardModel(data: Summary) {
 function DashboardSkeleton() {
   return (
     <div className="flex flex-col gap-6">
-      <div className="flex items-end justify-between gap-4">
-        <Skeleton className="h-14 w-72" />
-        <Skeleton className="h-9 w-44" />
-      </div>
+      <ManagementPageHeader
+        eyebrow="归档管理"
+        title="系统概览"
+        description="正在读取归档摘要与需要关注的状态。"
+        actions={<Skeleton className="h-9 w-44" />}
+      />
       <section className="grid gap-4 sm:grid-cols-2 xl:grid-cols-4">
         {Array.from({ length: 4 }).map((_, index) => (
           <Skeleton key={index} className="h-32" />

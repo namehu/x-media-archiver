@@ -108,7 +108,7 @@ export function CookiesTab() {
           <CardTitle>Cookies 状态</CardTitle>
           <CardDescription>下载和来源扫描优先使用数据库中的 cookies，未配置时回退到 COOKIE_FILE。</CardDescription>
         </CardHeader>
-        <CardContent className="space-y-3">
+        <CardContent className="flex flex-col gap-3">
           <div className="flex items-center justify-between gap-3 rounded-md border border-border-subtle bg-bg-surface px-3 py-2 text-sm">
             <span className="text-fg-secondary">配置状态</span>
             <Badge tone={status?.configured ? "success" : "warning"}>
@@ -165,7 +165,7 @@ export function CookiesTab() {
           <CardTitle>更新 Cookies</CardTitle>
           <CardDescription>粘贴或上传 Netscape cookies.txt 内容；保存后会自动访问 X Bookmarks 验证登录状态，返回内容不会被保存。</CardDescription>
         </CardHeader>
-        <CardContent className="space-y-4">
+        <CardContent className="flex flex-col gap-4">
           <div className="grid gap-3 md:grid-cols-[1fr_auto]">
             <Input value={label} placeholder="备注，例如导出日期或账号说明" onChange={(event) => setLabel(event.target.value)} />
             <label className="inline-flex h-9 cursor-pointer items-center justify-center gap-2 rounded-md border border-border-subtle bg-bg-muted px-4 text-sm font-medium text-fg-primary hover:border-border-strong hover:bg-bg-surface">

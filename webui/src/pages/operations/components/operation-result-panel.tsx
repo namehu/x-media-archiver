@@ -11,7 +11,7 @@ export function OperationResultPanel({ result, error, isPending }: { result: Act
       <CardHeader>
         <CardTitle>结果</CardTitle>
       </CardHeader>
-      <CardContent className="space-y-3">
+      <CardContent className="flex flex-col gap-3">
         {error ? <ErrorState title="最近一次操作失败" detail={errorMessage(error)} /> : null}
         {isPending ? <p className="text-sm text-fg-secondary">运行中...</p> : null}
         {result ? <OperationResultSummary result={result} /> : null}
@@ -25,7 +25,7 @@ function OperationResultSummary({ result }: { result: ActionResponse }) {
   const items = resultSummaryItems(result);
 
   return (
-    <div className="space-y-3">
+    <div className="flex flex-col gap-3">
       <div className="rounded-lg border border-border-subtle bg-bg-surface p-3">
         <div className="mb-2 flex flex-wrap items-center gap-2">
           <Badge tone="default">{textValue(result.status)}</Badge>

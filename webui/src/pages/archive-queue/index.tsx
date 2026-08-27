@@ -11,7 +11,7 @@ import { Button } from "../../components/ui/button";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "../../components/ui/card";
 import { ErrorState } from "../../components/ui/error-state";
 import { Input } from "../../components/ui/input";
-import { LiveIndicator } from "../../components/ui/live-indicator";
+import { ManagementPageHeader } from "../../components/ui/management-page-header";
 import { Pagination } from "../../components/ui/pagination";
 import { ProgressRing } from "../../components/ui/progress-ring";
 import { Skeleton } from "../../components/ui/skeleton";
@@ -38,15 +38,6 @@ const TAB_TO_QUERY: Record<QueueTab, { status: string; failedOnly: boolean }> = 
   running: { status: "running", failedOnly: false },
   completed: { status: "completed", failedOnly: false },
   failed: { status: "", failedOnly: true },
-};
-
-const eventLabels: Record<string, string> = {
-  connected: "实时事件已连接",
-  connecting: "正在连接实时事件",
-  reconnecting: "实时事件正在重连",
-  resyncing: "正在同步运行态快照",
-  stale: "实时事件无新消息，使用降级刷新",
-  offline: "实时事件离线，使用轮询刷新",
 };
 
 export function ArchiveQueuePage() {
@@ -135,29 +126,15 @@ export function ArchiveQueuePage() {
   const submitUrls = () => {
     if (canSubmit) submitMutation.mutate(validRecords);
   };
-  const liveState =
-    events.status === "connected"
-      ? "open"
-      : events.status === "connecting" || events.status === "reconnecting" || events.status === "resyncing"
-        ? "connecting"
-        : "closed";
-  const runtimeStatusLabel =
-    events.transport === "polling"
-      ? events.status === "connected"
-        ? "REST 快照轮询中"
-        : "REST 快照暂不可用"
-      : eventLabels[events.status] ?? "离线";
   const hasActiveFilters = activeTab !== "all" || tweetFilter.trim();
 
   return (
-    <div className="space-y-6">
-      <section className="flex flex-col justify-between gap-4 md:flex-row md:items-end">
-        <div>
-          <h1 className="text-2xl font-bold tracking-tight text-fg-primary">归档队列</h1>
-          <p className="mt-1 text-sm text-fg-secondary">提交归档批次 · 批次 · 批次详情</p>
-        </div>
-        <LiveIndicator state={liveState} label={runtimeStatusLabel} />
-      </section>
+    <div className="flex flex-col gap-6">
+      <ManagementPageHeader
+        eyebrow="归档管理"
+        title="归档队列"
+        description="提交 Tweet URL，跟踪运行批次，并在同一处查看失败尝试。"
+      />
 
       <section className="grid gap-4 xl:grid-cols-[1.25fr_0.75fr]">
         <QueueHero
@@ -192,7 +169,7 @@ export function ArchiveQueuePage() {
         <StatCard
           label="运行中"
           value={queueModel.runningCount.toLocaleString()}
-          detail={queueModel.runningCount ? "实时事件已连接" : "空闲"}
+          detail={queueModel.runningCount ? "批次正在处理" : "当前空闲"}
           icon={<RefreshCw className="h-4 w-4" />}
           trend={{ value: queueModel.runningCount ? "运行中" : "空闲", direction: queueModel.runningCount ? "up" : "flat" }}
         />
@@ -281,7 +258,7 @@ export function ArchiveQueuePage() {
           <Tabs value={activeTab} onValueChange={(value) => setActiveTab(value as QueueTab)}>
             {(["all", "running", "completed", "failed"] as QueueTab[]).map((tab) => (
               <TabsContent key={tab} value={tab} className="pt-0">
-                <CardContent className="space-y-4">
+                <CardContent className="flex flex-col gap-4">
                   {runsQuery.isLoading ? (
                     <QueueTableSkeleton />
                   ) : runsQuery.error ? (
@@ -337,14 +314,14 @@ function QueueHero({
   totalCount: number;
 }) {
   return (
-    <Card className="overflow-hidden border-brand/20 bg-gradient-to-br from-brand-soft via-bg-elevated to-bg-surface">
+    <Card className="overflow-hidden border-border-strong">
       <CardContent className="grid gap-6 p-6 md:grid-cols-[auto_1fr] md:items-center">
         <div className="flex justify-center md:block">
           <ProgressRing value={progress} size={112} strokeWidth={9} />
         </div>
         <div className="min-w-0">
           <div className="flex flex-wrap items-center gap-2">
-            <Badge tone={activeRun ? statusTone(activeRun.status) : "secondary"}>{activeRun ? statusLabel(activeRun.status) : "空闲"}</Badge>
+            <Badge tone={activeRun ? statusTone(activeRun.status) : "secondary"}>{activeRun ? statusLabel(activeRun.status) : "队列空闲"}</Badge>
             <span className="text-xs font-medium text-fg-tertiary">
               {totalCount.toLocaleString()} 批次
             </span>
@@ -394,7 +371,7 @@ function SubmitPanel({
         <CardTitle>提交归档批次</CardTitle>
         <CardDescription>输入预览</CardDescription>
       </CardHeader>
-      <CardContent className="space-y-4">
+      <CardContent className="flex flex-col gap-4">
         <textarea
           className="min-h-28 w-full resize-y rounded-lg border border-border-strong bg-bg-elevated px-3 py-2 text-sm text-fg-primary outline-none transition duration-fast placeholder:text-fg-tertiary focus-visible:ring-2 focus-visible:ring-brand/50"
           placeholder="https://x.com/user/status/123"
@@ -534,9 +511,9 @@ function RunDetailPanel({
           {run ? <Badge tone={statusTone(run.status)}>{statusLabel(run.status)}</Badge> : null}
         </div>
       </CardHeader>
-      <CardContent className="space-y-4">
+      <CardContent className="flex flex-col gap-4">
         {isLoading ? (
-          <div className="space-y-3">
+          <div className="flex flex-col gap-3">
             <Skeleton className="h-24" />
             <Skeleton className="h-16" />
             <Skeleton className="h-16" />
@@ -563,7 +540,7 @@ function RunDetailPanel({
                 </Button>
               ) : null}
             </div>
-            <div className="max-h-[560px] space-y-2 overflow-auto pr-1">
+            <div className="flex max-h-[560px] flex-col gap-2 overflow-auto pr-1">
               {run.items.map((item) => (
                 <div key={item.id} className="rounded-lg border border-border-subtle bg-bg-surface p-3 transition duration-fast hover:border-border-strong">
                   <div className="flex items-start justify-between gap-3">
@@ -591,7 +568,7 @@ function RunDetailPanel({
                     </div>
                   ) : null}
                   {item.attempts?.length ? (
-                    <div className="mt-3 space-y-1 text-xs text-fg-secondary">
+                    <div className="mt-3 flex flex-col gap-1 text-xs text-fg-secondary">
                       <div className="font-semibold text-fg-primary">下载尝试</div>
                       {item.attempts.map((attempt) => (
                         <div key={attempt.id} className="rounded-md bg-bg-elevated px-2 py-1">
@@ -647,7 +624,7 @@ function Metric({ label, value }: { label: string; value: number }) {
 
 function LineList({ title, rows }: { title: string; rows: ParsedLine[] }) {
   return (
-    <div className="mt-3 space-y-1">
+    <div className="mt-3 flex flex-col gap-1">
       <div className="text-xs font-semibold text-danger">{title}</div>
       {rows.slice(0, 5).map((row) => (
         <div key={`${row.line}-${row.value}`} className="break-all text-xs text-fg-secondary">
@@ -660,7 +637,7 @@ function LineList({ title, rows }: { title: string; rows: ParsedLine[] }) {
 
 function QueueTableSkeleton() {
   return (
-    <div className="space-y-2">
+    <div className="flex flex-col gap-2">
       {Array.from({ length: 6 }).map((_, index) => (
         <Skeleton key={index} className="h-12" />
       ))}

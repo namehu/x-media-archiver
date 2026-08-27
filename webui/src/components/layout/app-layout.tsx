@@ -111,7 +111,8 @@ export function AppLayout() {
     location.pathname === "/search" ||
     location.pathname === "/collections" ||
     location.pathname === "/tags" ||
-    location.pathname === "/insights";
+    location.pathname === "/insights" ||
+    location.pathname.startsWith("/tweets/");
   const desktopWorkspaceLabel = location.pathname === "/feed"
     ? currentPageLabel
     : isBrowsingRoute(location.pathname)
@@ -277,7 +278,8 @@ export function AppLayout() {
             <div
               className={cn(
                 "mx-auto w-full",
-                ["/feed", "/search", "/collections", "/tags", "/insights"].includes(location.pathname)
+                ["/feed", "/search", "/collections", "/tags", "/insights"].includes(location.pathname) ||
+                  location.pathname.startsWith("/tweets/")
                   ? "max-w-[1120px]"
                   : location.pathname === "/library"
                     ? "max-w-[1280px]"

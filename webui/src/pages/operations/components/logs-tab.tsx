@@ -43,7 +43,7 @@ export function LogsTab({ initialStreamId }: LogsTabProps) {
             <Badge tone="secondary">{streamsQuery.data?.total_count ?? 0}</Badge>
           </div>
         </CardHeader>
-        <CardContent className="space-y-4">
+        <CardContent className="flex flex-col gap-4">
           <div className="grid gap-2 md:grid-cols-3 xl:grid-cols-6">
             <Select value={scopeType} onChange={(event) => setScopeType(event.target.value)}>
               <option value="">全部类型</option>
@@ -134,7 +134,7 @@ function LogStreamDetail({ streamId, stream }: { streamId: number | null; stream
           </Select>
         </div>
       </CardHeader>
-      <CardContent className="space-y-3">
+      <CardContent className="flex flex-col gap-3">
         {effectiveStream ? (
           <div className="grid gap-2 rounded-md bg-bg-muted p-3 text-xs text-fg-secondary">
             <span>{effectiveStream.log_path}</span>

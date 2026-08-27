@@ -106,9 +106,10 @@ Dashboard:
 - Dashboard is a management destination, not the default product entry.
 - StatCards first.
 - Place status distribution and the current running summary in the main two-column work area.
+- Render status distribution as directly labeled count-and-percentage bars rather than a decorative pie or donut.
 - Keep recent exports and the local archive path below the operational summary.
 - Only fact-backed charts and current-state summaries below; do not synthesize trends or recent activity from current totals.
-- Live event state visible near the top.
+- Live event state remains visible once in the global top bar; the dashboard does not duplicate it.
 
 Library:
 
@@ -149,9 +150,10 @@ Insights:
 
 Queue:
 
-- Hero progress summary.
+- Use a flat hero progress summary without gradients or decorative elevation.
 - Tabs for running/completed/failed/all.
 - Detail panel keeps item attempts visible without full page navigation.
+- The global top bar owns runtime connection status; queue cards describe batch state and must not repeat the live-connection label.
 
 Sources:
 
@@ -162,19 +164,25 @@ Sources:
 Operations:
 
 - Five tabs: maintenance, system status, logs, Cookies, database tools.
+- Keep the five tabs in that order and allow the tab row to scroll on narrow screens instead of wrapping or compressing labels.
 - System status must show worker/write lock, queue backlog, source scans, recent errors.
 - Database tools must show DB pool active, idle, and waiting metrics.
+- Runtime transport counters belong in one continuous diagnostic section rather than a second wall of StatCards.
 
 Failures and Duplicates:
 
 - Start with aggregation cards.
 - Preserve dense row scanning.
 - Provide clear links back to Tweet details.
+- Failure filters remain visible because filtering is the primary management task; keep them in one compact toolbar rather than scattering controls across cards.
+- Each duplicate hash group is one continuous section. Media items may have bounded tiles, but do not nest the whole group inside another stack of decorative cards.
 
 Tweet Detail:
 
-- 60/40 content split on desktop.
-- Media grid on the left, metadata and attempts timeline on the right.
+- Treat Tweet detail as an immersive browsing route with a centered content stream and a contextual management column.
+- The stream header owns back navigation and archive status; author, text, hashtags, media, and post metadata form one continuous article.
+- Use an approximately 65/35 content split on desktop; stack the management column below the article on narrow screens.
+- Media stays in the article stream, while organization, metadata, and attempts remain in the contextual column.
 - Dialog preview supports keyboard navigation when open.
 
 Feed:

@@ -5,7 +5,7 @@ import { Badge } from "@/components/ui/badge";
 
 export function MediaDetails({ media }: { media: MediaRow }) {
   return (
-    <div className="space-y-2 px-3 py-2.5 text-sm">
+    <div className="flex flex-col gap-2 px-3 py-2.5 text-sm">
       <div className="flex flex-wrap items-center gap-x-2 gap-y-1">
         <span className="font-medium text-fg-primary">{mediaTypeLabel(media.media_type)}</span>
         <span className="text-xs text-fg-secondary">{formatBytes(media.file_size)}</span>

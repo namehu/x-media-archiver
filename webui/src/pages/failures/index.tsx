@@ -19,6 +19,7 @@ import { Checkbox } from "@/components/ui/checkbox";
 import { DataTable } from "@/components/ui/data-table";
 import { EmptyState } from "@/components/ui/empty-state";
 import { ErrorState } from "@/components/ui/error-state";
+import { ManagementPageHeader } from "@/components/ui/management-page-header";
 import { Pagination } from "@/components/ui/pagination";
 import { Skeleton } from "@/components/ui/skeleton";
 import { StatCard } from "@/components/ui/stat-card";
@@ -309,7 +310,18 @@ export function FailuresPage() {
   );
 
   if (query.isLoading) return <FailuresSkeleton />;
-  if (query.error) return <ErrorState title="API 不可用" detail={String(query.error)} onRetry={() => void query.refetch()} />;
+  if (query.error) {
+    return (
+      <div className="flex flex-col gap-5">
+        <ManagementPageHeader
+          eyebrow="异常处理"
+          title="失败工作台"
+          description="失败项暂时无法读取。"
+        />
+        <ErrorState title="失败项不可用" detail={String(query.error)} onRetry={() => void query.refetch()} />
+      </div>
+    );
+  }
 
   const data = query.data;
   const aggregates = data?.aggregates;
@@ -319,16 +331,17 @@ export function FailuresPage() {
 
   return (
     <div className="flex flex-col gap-5">
-      <section className="flex flex-col justify-between gap-4 md:flex-row md:items-end">
-        <div>
-          <h1 className="text-2xl font-bold tracking-tight text-fg-primary">失败工作台</h1>
-          <p className="mt-1 text-sm text-fg-secondary">精确重试、忽略并追踪失败项处置历史</p>
-        </div>
-        <Button type="button" variant="outline" disabled={query.isFetching} onClick={() => void query.refetch()}>
-          <RefreshCw data-icon="inline-start" />
-          {query.isFetching ? "正在刷新…" : "刷新"}
-        </Button>
-      </section>
+      <ManagementPageHeader
+        eyebrow="异常处理"
+        title="失败工作台"
+        description="按失败原因快速定位问题；所有写操作只作用于明确选中的 Tweet。"
+        actions={
+          <Button type="button" variant="outline" disabled={query.isFetching} onClick={() => void query.refetch()}>
+            <RefreshCw data-icon="inline-start" />
+            {query.isFetching ? "正在刷新…" : "刷新"}
+          </Button>
+        }
+      />
 
       <FailureFilters
         disposition={disposition}
@@ -448,8 +461,11 @@ export function FailuresPage() {
           </CardHeader>
           <CardContent className="flex flex-col gap-3">
             {topCategories.length ? (
-              topCategories.map((category) => (
-                <div key={category.error_category} className="rounded-lg border border-border-subtle bg-bg-surface p-3">
+              topCategories.map((category, index) => (
+                <div
+                  key={category.error_category}
+                  className={index ? "border-t border-border-subtle pt-3" : undefined}
+                >
                   <div className="flex items-center justify-between gap-3">
                     <Badge tone={failureTone(category.error_category)}>{errorLabel(category.error_category)}</Badge>
                     <span className="text-sm font-semibold tabular-nums text-fg-primary">{category.count}</span>
@@ -463,7 +479,7 @@ export function FailuresPage() {
                 </div>
               ))
             ) : (
-              <p className="rounded-lg border border-border-subtle bg-bg-surface p-4 text-sm text-fg-secondary">当前范围没有错误。</p>
+              <p className="text-sm text-fg-secondary">当前范围没有错误。</p>
             )}
           </CardContent>
         </Card>
@@ -501,10 +517,11 @@ export function FailuresPage() {
 function FailuresSkeleton() {
   return (
     <div className="flex flex-col gap-5">
-      <section>
-        <h1 className="text-2xl font-bold tracking-tight text-fg-primary">失败工作台</h1>
-        <p className="mt-1 text-sm text-fg-secondary">正在加载失败项</p>
-      </section>
+      <ManagementPageHeader
+        eyebrow="异常处理"
+        title="失败工作台"
+        description="正在加载失败项与处置状态。"
+      />
       <Skeleton className="h-32 rounded-lg" />
       <div className="grid gap-4 md:grid-cols-2 xl:grid-cols-4">
         {Array.from({ length: 4 }).map((_, index) => <Skeleton key={index} className="h-32 rounded-lg" />)}

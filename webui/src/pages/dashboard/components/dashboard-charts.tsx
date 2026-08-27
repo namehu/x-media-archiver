@@ -1,20 +1,11 @@
-import { Cell, Pie, PieChart, ResponsiveContainer } from "recharts";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "../../../components/ui/card";
+import { cn } from "../../../lib/utils";
 
 export type StatusChartEntry = {
   status: string;
   label: string;
   count: number;
 };
-
-const CHART_COLORS = [
-  "hsl(var(--brand))",
-  "hsl(var(--accent))",
-  "hsl(var(--success))",
-  "hsl(var(--warning))",
-  "hsl(var(--danger))",
-  "hsl(var(--fg-tertiary))",
-];
 
 export function StatusDistributionCard({
   className,
@@ -41,54 +32,49 @@ export function StatusDistributionCard({
         {entries.length === 0 ? (
           <p className="text-sm text-fg-secondary">{emptyLabel}</p>
         ) : (
-          <div className="grid items-center gap-6 lg:grid-cols-[220px_1fr]">
-            <div className="relative mx-auto h-52 w-full max-w-56" aria-hidden="true">
-              <ResponsiveContainer>
-                <PieChart>
-                  <Pie
-                    data={entries}
-                    dataKey="count"
-                    nameKey="label"
-                    innerRadius={64}
-                    outerRadius={92}
-                    paddingAngle={2}
-                    stroke="hsl(var(--bg-elevated))"
-                    strokeWidth={3}
-                  >
-                    {entries.map((entry, index) => (
-                      <Cell key={entry.status} fill={CHART_COLORS[index % CHART_COLORS.length]} />
-                    ))}
-                  </Pie>
-                </PieChart>
-              </ResponsiveContainer>
-              <div className="pointer-events-none absolute inset-0 flex flex-col items-center justify-center">
-                <span className="text-2xl font-bold tabular-nums tracking-tight text-fg-primary">{total.toLocaleString()}</span>
-                <span className="mt-1 text-xs text-fg-tertiary">Tweet 总数</span>
+          <div className="flex flex-col gap-5">
+            <div className="flex items-end justify-between gap-4 border-b border-border-subtle pb-4">
+              <div>
+                <div className="text-3xl font-bold tabular-nums tracking-tight text-fg-primary">{total.toLocaleString()}</div>
+                <p className="mt-1 text-xs text-fg-tertiary">Tweet 总数</p>
               </div>
+              <p className="text-right text-xs leading-5 text-fg-tertiary">状态数量与占比</p>
             </div>
-            <div className="flex flex-col gap-3">
-              {entries.map((entry, index) => (
-                <div key={entry.status} className="grid grid-cols-[minmax(0,1fr)_auto] items-center gap-x-4 gap-y-1.5">
-                  <div className="flex min-w-0 items-center gap-2">
-                    <span className="size-2.5 shrink-0 rounded-sm" style={{ background: CHART_COLORS[index % CHART_COLORS.length] }} />
-                    <span className="truncate text-sm font-medium text-fg-primary">{entry.label}</span>
-                  </div>
-                  <span className="text-sm font-semibold tabular-nums text-fg-primary">{entry.count.toLocaleString()}</span>
-                  <div className="col-span-2 h-1.5 overflow-hidden rounded-full bg-bg-muted">
+            <div className="flex flex-col gap-4">
+              {entries.map((entry) => {
+                const percent = total ? (entry.count / total) * 100 : 0;
+                return (
+                  <div key={entry.status} className="flex flex-col gap-1.5">
+                    <div className="flex items-center justify-between gap-3 text-sm">
+                      <span className="font-medium text-fg-primary">{entry.label}</span>
+                      <span className="shrink-0 tabular-nums text-fg-secondary">
+                        {entry.count.toLocaleString()} · {Math.round(percent)}%
+                      </span>
+                    </div>
                     <div
-                      className="h-full rounded-full"
-                      style={{
-                        width: `${total ? Math.max((entry.count / total) * 100, 2) : 0}%`,
-                        background: CHART_COLORS[index % CHART_COLORS.length],
-                      }}
-                    />
+                      className="h-2 overflow-hidden rounded-full bg-bg-muted"
+                      role="img"
+                      aria-label={`${entry.label} ${entry.count.toLocaleString()}，占 ${Math.round(percent)}%`}
+                    >
+                      <div
+                        className={cn("h-full rounded-full", statusBarClass(entry.status))}
+                        style={{ width: `${Math.max(percent, entry.count ? 2 : 0)}%` }}
+                      />
+                    </div>
                   </div>
-                </div>
-              ))}
+                );
+              })}
             </div>
           </div>
         )}
       </CardContent>
     </Card>
   );
+}
+
+function statusBarClass(status: string) {
+  if (status.includes("failed") || status.includes("corrupt")) return "bg-danger";
+  if (status.includes("missing") || status.includes("pending")) return "bg-warning";
+  if (status.includes("verified") || status.includes("completed") || status.includes("downloaded")) return "bg-success";
+  return "bg-brand";
 }

@@ -27,7 +27,7 @@ export function LoginPage({ error, pending, onSubmit }: LoginPageProps) {
     <AuthShell>
       <Card className="overflow-hidden shadow-3">
         <CardHeader className="p-6 pb-5 sm:p-8 sm:pb-6">
-          <p className="text-xs font-semibold uppercase tracking-[0.16em] text-brand">Admin access</p>
+          <p className="text-xs font-semibold text-brand">管理员登录</p>
           <h1 className="mt-2 text-2xl font-semibold tracking-tight text-fg-primary">欢迎回来</h1>
           <CardDescription>使用此归档实例的管理员账号继续。</CardDescription>
         </CardHeader>

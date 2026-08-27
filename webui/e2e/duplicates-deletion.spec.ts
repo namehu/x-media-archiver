@@ -143,7 +143,7 @@ test.describe("Duplicates media deletion", () => {
     });
 
     await page.goto("/duplicates");
-    await page.getByLabel("Next").first().click();
+    await page.getByRole("button", { name: "下一页" }).first().click();
     await expect(page.getByText("第 21-21 组，共 21 组").first()).toBeVisible();
     await page.getByRole("button", { name: "保留一项，选择其余" }).click();
     await page.getByRole("button", { name: "删除" }).click();
@@ -242,6 +242,41 @@ async function mockShellApis(page: Page) {
           active_scan_runs: 0,
         },
         recent_errors: [],
+      },
+    }),
+  );
+  await page.route("**/api/v1/runtime/snapshot", (route) =>
+    route.fulfill({
+      json: {
+        epoch: "duplicates-test",
+        sequence: 1,
+        recent_window_seconds: 120,
+        worker: { stop_requested: false, write_lock_held: false },
+        queue: {
+          pending_items: 0,
+          processing_items: 0,
+          retryable_failed_items: 0,
+          permanent_failed_items: 0,
+          queued_runs: 0,
+          running_runs: 0,
+        },
+        sources: {
+          active_sources: 0,
+          paused_sources: 0,
+          failed_sources: 0,
+          history_enabled_sources: 0,
+          active_scan_runs: 0,
+        },
+        global: {
+          active_run_count: 0,
+          active_item_count: 0,
+          active_scan_count: 0,
+          downloaded_bytes: 0,
+        },
+        runs: [],
+        items: [],
+        scans: [],
+        recent_activity: [],
       },
     }),
   );

@@ -1,22 +1,23 @@
 import { useMemo, useState } from "react";
 import { useQuery } from "@tanstack/react-query";
 import {
+  ArrowLeft,
   CalendarDays,
   ExternalLink,
   FileText,
   FolderClosed,
   Image as ImageIcon,
   Images,
-  Loader2,
   RotateCcw,
   Tags,
 } from "lucide-react";
-import { Link, useParams } from "react-router-dom";
+import { Link, useLocation, useNavigate, useParams } from "react-router-dom";
 import { apiGet, type MediaRow, type TweetDetail } from "../../lib/api";
 import { PlatformHashtags } from "../../components/platform-hashtags";
 import { errorLabel, mediaTypeLabel, statusLabel } from "../../lib/formatters";
 import { formatDateTime } from "../../lib/utils";
 import { Badge } from "../../components/ui/badge";
+import { Avatar, AvatarFallback } from "../../components/ui/avatar";
 import { Button } from "../../components/ui/button";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "../../components/ui/card";
 import { EmptyState } from "../../components/ui/empty-state";
@@ -43,7 +44,10 @@ type DotStatus = "running" | "success" | "warning" | "danger" | "idle";
 export function TweetDetailPage() {
   const debugRedactionEnabled = useDebugRedactionEnabled();
   const { tweetId } = useParams();
+  const location = useLocation();
+  const navigate = useNavigate();
   const [organizeOpen, setOrganizeOpen] = useState(false);
+  const goBack = () => (location.key === "default" ? navigate("/library") : navigate(-1));
   const { data, isLoading, error } = useQuery({
     queryKey: ["tweet", tweetId],
     queryFn: () => apiGet<TweetDetail>(`/api/v1/library/tweets/${tweetId}`),
@@ -51,77 +55,118 @@ export function TweetDetailPage() {
   });
 
   if (isLoading) return <TweetDetailSkeleton />;
-  if (error || !data) return <ErrorState title="未找到 Tweet" detail={String(error || "未找到 Tweet")} />;
+  if (error || !data) {
+    return (
+      <div className="mx-auto min-h-[calc(100dvh-3.5rem)] max-w-[720px] border-x border-border-subtle bg-bg-base">
+        <header className="flex h-14 items-center gap-2 border-b border-border-subtle px-2 sm:px-3">
+          <Button type="button" variant="ghost" size="icon" aria-label="返回上一页" onClick={goBack}>
+            <ArrowLeft aria-hidden="true" />
+          </Button>
+          <h1 className="text-lg font-bold text-fg-primary">Tweet</h1>
+        </header>
+        <div className="p-4 sm:p-6">
+          <ErrorState title="未找到 Tweet" detail={String(error || "未找到 Tweet")} />
+        </div>
+      </div>
+    );
+  }
 
   const authorName = data.tweet.author_display_name || data.tweet.author_username || data.tweet.tweet_id;
   const tweetText = data.tweet.tweet_text || "暂无 Tweet 文本";
   const tweetHref = getDebugExternalHref(debugRedactionEnabled, data.tweet.tweet_url);
   const statusTone = toneForStatus(data.tweet.tweet_status);
+  const authorInitial = authorName.trim().slice(0, 1).toUpperCase() || "X";
 
   return (
-    <div className="mx-auto max-w-[1480px] space-y-4 sm:space-y-6">
-      <Card className="relative overflow-hidden border-border-strong bg-bg-elevated shadow-2">
-        <div className="pointer-events-none absolute inset-x-0 top-0 h-1 bg-brand" />
-        <CardContent className="p-4 sm:p-6">
-          <div className="flex flex-col gap-5 sm:gap-6 lg:flex-row lg:items-start lg:justify-between">
-            <div className="min-w-0 max-w-4xl space-y-4">
-              <div className="flex flex-wrap items-center gap-2">
-                <span className="text-xs font-semibold uppercase tracking-[0.16em] text-fg-tertiary">已归档 Tweet</span>
-                <Badge tone={statusTone} className="gap-1">
-                  <StatusDot status={dotForStatus(data.tweet.tweet_status)} />
-                  {statusLabel(data.tweet.tweet_status)}
-                </Badge>
-              </div>
-              <div {...getDebugRedactProps(debugRedactionEnabled)}>
-                <h1 className="break-words text-2xl font-bold tracking-tight text-fg-primary sm:text-3xl">
-                  {authorName}
-                </h1>
-                {data.tweet.author_username ? (
-                  <p className="mt-1 text-base text-fg-secondary">@{data.tweet.author_username}</p>
-                ) : null}
-              </div>
-              <p
-                className="whitespace-pre-wrap text-base leading-7 text-fg-primary"
-                {...getDebugRedactProps(debugRedactionEnabled)}
-              >
-                {tweetText}
-              </p>
-              <PlatformHashtags hashtags={data.hashtags ?? []} />
+    <div className="grid min-h-[calc(100dvh-3.5rem)] xl:grid-cols-[minmax(0,720px)_360px] xl:justify-center">
+      <main className="min-w-0 border-x border-border-subtle bg-bg-base">
+        <header className="sticky top-0 z-20 flex h-14 items-center justify-between gap-3 border-b border-border-subtle bg-bg-base/95 px-2 backdrop-blur sm:px-3">
+          <div className="flex min-w-0 items-center gap-2">
+            <Button
+              type="button"
+              variant="ghost"
+              size="icon"
+              aria-label="返回上一页"
+              onClick={goBack}
+            >
+              <ArrowLeft aria-hidden="true" />
+            </Button>
+            <div className="min-w-0">
+              <h1 className="truncate text-lg font-bold tracking-tight text-fg-primary">Tweet</h1>
+              <p className="text-xs tabular-nums text-fg-tertiary">{data.media.length} 个媒体</p>
             </div>
-            {tweetHref ? (
-              <Button
-                className="self-start"
-                variant="secondary"
-                size="sm"
-                title={getDebugLinkTitle(debugRedactionEnabled, "tweet", "在 X 中查看")}
-                onClick={() => window.open(tweetHref, "_blank", "noopener,noreferrer")}
-              >
-                <ExternalLink className="h-4 w-4" />在 X 中查看
-              </Button>
-            ) : null}
           </div>
-          <div className="mt-5 flex flex-col gap-2 border-t border-border-subtle pt-4 text-sm text-fg-secondary sm:mt-6 sm:flex-row sm:flex-wrap sm:gap-x-6 sm:gap-y-3">
+          <Badge tone={statusTone} className="gap-1">
+            <StatusDot status={dotForStatus(data.tweet.tweet_status)} />
+            {statusLabel(data.tweet.tweet_status)}
+          </Badge>
+        </header>
+
+        <article>
+          <div className="p-4 sm:p-5">
+            <div className="flex items-start gap-3">
+              <Avatar className="size-10 shrink-0">
+                <AvatarFallback>{authorInitial}</AvatarFallback>
+              </Avatar>
+              <div className="min-w-0 flex-1">
+                <div className="flex items-start justify-between gap-3">
+                  <div className="min-w-0" {...getDebugRedactProps(debugRedactionEnabled)}>
+                    <h2 className="truncate text-sm font-bold text-fg-primary">{authorName}</h2>
+                    <p className="truncate text-sm text-fg-secondary">
+                      {data.tweet.author_username ? `@${data.tweet.author_username}` : "已归档作者"}
+                    </p>
+                  </div>
+                  {tweetHref ? (
+                    <Button
+                      className="shrink-0"
+                      variant="ghost"
+                      size="sm"
+                      title={getDebugLinkTitle(debugRedactionEnabled, "tweet", "在 X 中查看")}
+                      onClick={() => window.open(tweetHref, "_blank", "noopener,noreferrer")}
+                    >
+                      <ExternalLink data-icon="inline-start" aria-hidden="true" />
+                      在 X 中查看
+                    </Button>
+                  ) : null}
+                </div>
+                <p
+                  className="mt-3 whitespace-pre-wrap text-[15px] leading-6 text-fg-primary sm:text-base sm:leading-7"
+                  {...getDebugRedactProps(debugRedactionEnabled)}
+                >
+                  {tweetText}
+                </p>
+                <div className="mt-3">
+                  <PlatformHashtags hashtags={data.hashtags ?? []} />
+                </div>
+              </div>
+            </div>
+          </div>
+
+          <MediaGrid media={data.media} title="媒体" emptyText="暂无媒体预览" />
+
+          <footer className="flex flex-col gap-2 border-b border-border-subtle px-4 py-4 text-sm text-fg-secondary sm:flex-row sm:flex-wrap sm:gap-x-5 sm:px-5">
             <span className="inline-flex items-center gap-2">
-              <CalendarDays className="h-4 w-4 text-fg-tertiary" />
+              <CalendarDays className="size-4 text-fg-tertiary" aria-hidden="true" />
               {formatDateTime(data.tweet.published_at)}
             </span>
             <span className="inline-flex items-center gap-2">
-              <Images className="h-4 w-4 text-fg-tertiary" />
+              <Images className="size-4 text-fg-tertiary" aria-hidden="true" />
               {data.media.length} 个媒体文件
             </span>
             <span
-              className="break-all font-mono text-xs text-fg-tertiary"
+              className="[overflow-wrap:anywhere] font-mono text-xs text-fg-tertiary"
               {...getDebugRedactProps(debugRedactionEnabled)}
             >
               {data.tweet.tweet_id}
             </span>
-          </div>
-        </CardContent>
-      </Card>
+          </footer>
+        </article>
+      </main>
 
-      <div className="grid gap-6 xl:grid-cols-[minmax(0,1fr)_360px]">
-        <MediaGrid media={data.media} title="媒体" emptyText="暂无预览" />
-        <aside className="space-y-4 xl:sticky xl:top-4 xl:self-start">
+      <aside
+        aria-label="Tweet 整理与元数据"
+        className="flex flex-col gap-4 border-r border-border-subtle bg-bg-surface p-4 xl:sticky xl:top-0 xl:max-h-[calc(100dvh-3.5rem)] xl:overflow-y-auto"
+      >
           <OrganizationCard
             organization={data.organization ?? { tweet_id: data.tweet.tweet_id, tags: [], collections: [], note: null }}
             onEdit={() => setOrganizeOpen(true)}
@@ -137,8 +182,7 @@ export function TweetDetailPage() {
             }}
           />
           <AttemptsTimeline attempts={data.attempts} title="最近尝试" emptyText="没有记录下载尝试。" />
-        </aside>
-      </div>
+      </aside>
       <OrganizationEditorDialog tweetId={tweetId ?? null} open={organizeOpen} onOpenChange={setOrganizeOpen} />
     </div>
   );
@@ -158,7 +202,7 @@ function OrganizationCard({
         <div className="flex items-start justify-between gap-3">
           <div className="flex flex-col gap-1">
             <CardTitle>整理信息</CardTitle>
-            <CardDescription>自定义标签、合集与仅保存在本地的备注</CardDescription>
+            <CardDescription>为当前 Tweet 分配标签、合集和私人备注</CardDescription>
           </div>
           <Button type="button" variant="outline" size="sm" onClick={onEdit}>
             <Tags data-icon="inline-start" />
@@ -223,25 +267,23 @@ function MediaGrid({ media, title, emptyText }: { media: MediaRow[]; title: stri
   const videos = media.filter(isVideoMedia);
   const [imagePreviewIndex, setImagePreviewIndex] = useState<number | null>(null);
   return (
-    <Card className="overflow-hidden">
-      <CardHeader className="border-b border-border-subtle bg-bg-muted/30 p-4 pb-3 sm:p-5 sm:pb-4">
-        <div className="flex items-center justify-between gap-3">
-          <div>
-            <CardTitle className="text-xl">{title}</CardTitle>
-            <CardDescription className="mt-1">点击媒体可查看大图与文件详情</CardDescription>
-          </div>
-          <Badge tone="secondary">共 {media.length} 项</Badge>
+    <section className="border-y border-border-subtle">
+      <header className="flex items-center justify-between gap-3 px-4 py-3 sm:px-5">
+        <div>
+          <h2 className="text-sm font-semibold text-fg-primary">{title}</h2>
+          <p className="mt-0.5 text-xs text-fg-tertiary">点击媒体查看大图与文件详情</p>
         </div>
-      </CardHeader>
-      <CardContent className="p-3 sm:p-5">
+        <Badge tone="secondary">{media.length}</Badge>
+      </header>
+      <div className="px-4 pb-4 sm:px-5 sm:pb-5">
         {media.length === 0 ? (
           <EmptyState icon={<ImageIcon className="h-5 w-5" />} title={emptyText} />
         ) : (
-          <div className="grid gap-3 sm:grid-cols-2 2xl:grid-cols-3">
+          <div className="grid gap-1 sm:grid-cols-2">
             {images.map((item, index) => (
               <article
                 key={`${item.local_path || item.media_url || "image"}-${index}`}
-                className="group overflow-hidden rounded-xl border border-border-subtle bg-bg-muted transition duration-base ease-out hover:-translate-y-0.5 hover:border-border-strong hover:shadow-2"
+                className="group min-w-0 overflow-hidden rounded-xl border border-border-subtle bg-bg-surface focus-within:border-border-strong hover:border-border-strong"
               >
                 <MediaThumbnail
                   src={item.media_url}
@@ -256,7 +298,7 @@ function MediaGrid({ media, title, emptyText }: { media: MediaRow[]; title: stri
             {videos.map((item, index) => (
               <article
                 key={`${item.local_path || item.media_url || "video"}-${index}`}
-                className="overflow-hidden rounded-xl border border-border-subtle bg-bg-muted"
+                className="min-w-0 overflow-hidden rounded-xl border border-border-subtle bg-bg-surface"
               >
                 <VideoMediaPlayer media={item} />
                 <MediaDetails media={item} />
@@ -264,7 +306,7 @@ function MediaGrid({ media, title, emptyText }: { media: MediaRow[]; title: stri
             ))}
           </div>
         )}
-      </CardContent>
+      </div>
       <ImagePreviewDialog
         media={images}
         activeIndex={imagePreviewIndex}
@@ -273,7 +315,7 @@ function MediaGrid({ media, title, emptyText }: { media: MediaRow[]; title: stri
           if (!open) setImagePreviewIndex(null);
         }}
       />
-    </Card>
+    </section>
   );
 }
 
@@ -312,7 +354,7 @@ function MetadataCard({
       <CardHeader>
         <CardTitle>{labels.title}</CardTitle>
       </CardHeader>
-      <CardContent className="space-y-3">
+      <CardContent className="flex flex-col gap-3">
         {meta.map((item) => (
           <div
             key={item.label}
@@ -342,7 +384,7 @@ function AttemptsTimeline({ attempts, title, emptyText }: { attempts: Attempt[];
         {attempts.length === 0 ? (
           <EmptyState icon={<RotateCcw className="h-5 w-5" />} title={emptyText} />
         ) : (
-          <ol className="relative space-y-4 before:absolute before:left-2 before:top-2 before:h-[calc(100%-16px)] before:w-px before:bg-border-subtle">
+          <ol className="relative flex flex-col gap-4 before:absolute before:left-2 before:top-2 before:h-[calc(100%-16px)] before:w-px before:bg-border-subtle">
             {attempts.map((attempt) => (
               <li key={attempt.id} className="relative grid gap-2 pl-7">
                 <span className="absolute left-0 top-1.5 flex h-4 w-4 items-center justify-center rounded-full bg-bg-elevated ring-4 ring-bg-elevated">
@@ -390,32 +432,28 @@ function AttemptsTimeline({ attempts, title, emptyText }: { attempts: Attempt[];
 
 function TweetDetailSkeleton() {
   return (
-    <div className="space-y-4">
-      <Card>
-        <CardContent className="space-y-4 p-4">
-          <Skeleton className="h-5 w-32" />
-          <Skeleton className="h-8 w-64" />
-          <Skeleton className="h-20 w-full" />
-        </CardContent>
-      </Card>
-      <div className="grid gap-4 lg:grid-cols-[minmax(0,3fr)_minmax(320px,2fr)]">
-        <Card>
-          <CardHeader>
-            <Skeleton className="h-6 w-24" />
-          </CardHeader>
-          <CardContent className="grid gap-3 sm:grid-cols-2">
-            <Skeleton className="aspect-video rounded-lg" />
-            <Skeleton className="aspect-video rounded-lg" />
-          </CardContent>
-        </Card>
-        <Card>
-          <CardContent className="space-y-3 p-4">
-            <Loader2 className="h-5 w-5 animate-spin text-brand" />
-            <Skeleton className="h-4 w-full" />
-            <Skeleton className="h-4 w-2/3" />
-          </CardContent>
-        </Card>
-      </div>
+    <div className="grid min-h-[calc(100dvh-3.5rem)] xl:grid-cols-[minmax(0,720px)_360px] xl:justify-center">
+      <main className="min-w-0 border-x border-border-subtle bg-bg-base">
+        <header className="flex h-14 items-center gap-3 border-b border-border-subtle px-3">
+          <Skeleton className="size-9 rounded-full" />
+          <div>
+            <h1 className="text-lg font-bold text-fg-primary">Tweet</h1>
+            <p className="text-xs text-fg-tertiary">正在加载归档内容</p>
+          </div>
+        </header>
+        <div className="flex gap-3 p-5">
+          <Skeleton className="size-10 shrink-0 rounded-full" />
+          <div className="flex min-w-0 flex-1 flex-col gap-3">
+            <Skeleton className="h-5 w-40" />
+            <Skeleton className="h-20 w-full" />
+            <Skeleton className="aspect-video w-full rounded-xl" />
+          </div>
+        </div>
+      </main>
+      <aside className="flex flex-col gap-4 border-r border-border-subtle bg-bg-surface p-4">
+        <Skeleton className="h-56 rounded-xl" />
+        <Skeleton className="h-40 rounded-xl" />
+      </aside>
     </div>
   );
 }

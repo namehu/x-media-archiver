@@ -30,7 +30,7 @@ export function SetupPage({ error, pending, onSubmit }: SetupPageProps) {
     <AuthShell>
       <Card className="overflow-hidden shadow-3">
         <CardHeader className="p-6 pb-5 sm:p-8 sm:pb-6">
-          <p className="text-xs font-semibold uppercase tracking-[0.16em] text-brand">First-time setup</p>
+          <p className="text-xs font-semibold text-brand">首次初始化</p>
           <h1 className="text-xl font-semibold tracking-tight text-fg-primary">初始化管理员</h1>
           <CardDescription>此实例尚未设置管理员，请完成一次性初始化。</CardDescription>
         </CardHeader>

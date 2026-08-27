@@ -1,4 +1,5 @@
 import { Badge } from "../../components/ui/badge";
+import { ManagementPageHeader } from "../../components/ui/management-page-header";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "../../components/ui/tabs";
 import { useSearchParams } from "react-router-dom";
 import { OperationResultPanel } from "./components/operation-result-panel";
@@ -25,26 +26,25 @@ export function OperationsPage() {
   };
 
   return (
-    <div className="space-y-6">
-      <section className="flex flex-col justify-between gap-4 md:flex-row md:items-end">
-        <div>
-          <h1 className="text-2xl font-bold tracking-tight text-fg-primary">操作</h1>
-          <p className="mt-1 text-sm text-fg-secondary">
-            系统状态 · 全量维护 · DB pool
-          </p>
-        </div>
-        <Badge tone={ops.isPending ? "warning" : "secondary"}>
-          {ops.isPending ? "运行中..." : "空闲"}
-        </Badge>
-      </section>
+    <div className="flex flex-col gap-6">
+      <ManagementPageHeader
+        eyebrow="维护工具"
+        title="系统操作"
+        description="查看运行状态、执行维护任务，并管理 Cookies、数据库导出与日志。"
+        actions={
+          <Badge tone={ops.isPending ? "warning" : "secondary"}>
+            {ops.isPending ? "操作运行中" : "当前空闲"}
+          </Badge>
+        }
+      />
 
       <Tabs value={activeTab} onValueChange={setActiveTab}>
-        <TabsList>
+        <TabsList className="-mx-4 overflow-x-auto px-4 sm:mx-0 sm:px-0">
           <TabsTrigger value="maintenance">维护操作</TabsTrigger>
-          <TabsTrigger value="cookies">Cookies</TabsTrigger>
           <TabsTrigger value="system">系统状态</TabsTrigger>
-          <TabsTrigger value="database">数据库工具</TabsTrigger>
           <TabsTrigger value="logs">日志</TabsTrigger>
+          <TabsTrigger value="cookies">Cookies</TabsTrigger>
+          <TabsTrigger value="database">数据库工具</TabsTrigger>
         </TabsList>
 
         <TabsContent value="maintenance">
@@ -89,7 +89,9 @@ export function OperationsPage() {
         </TabsContent>
       </Tabs>
 
-      <OperationResultPanel result={ops.lastResult} error={ops.error} isPending={ops.isPending} />
+      {ops.lastResult || ops.error || ops.isPending ? (
+        <OperationResultPanel result={ops.lastResult} error={ops.error} isPending={ops.isPending} />
+      ) : null}
     </div>
   );
 }

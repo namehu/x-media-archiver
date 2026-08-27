@@ -43,7 +43,7 @@ export function MaintenanceTab({
           <CardTitle>重新入队</CardTitle>
           <CardDescription>重新入队状态</CardDescription>
         </CardHeader>
-        <CardContent className="space-y-4">
+        <CardContent className="flex flex-col gap-4">
           <div className="grid gap-2 sm:grid-cols-2">
             {REQUEUE_STATUSES.map((status) => (
               <label key={status} className="flex items-center gap-2 rounded-md border border-border-subtle bg-bg-surface px-3 py-2 text-sm">
@@ -79,7 +79,7 @@ export function MaintenanceTab({
           <CardTitle>恢复中断任务</CardTitle>
           <CardDescription>超时分钟数</CardDescription>
         </CardHeader>
-        <CardContent className="space-y-4">
+        <CardContent className="flex flex-col gap-4">
           <Input placeholder="超时分钟数" inputMode="numeric" value={recoverTimeout} onChange={(event) => setRecoverTimeout(event.target.value)} />
           <Button type="button" variant="secondary" disabled={mutationPending} onClick={() => run("/api/v1/actions/recover-interrupted", "恢复中断任务", { timeout_minutes: numberOrNull(recoverTimeout) })}>
             恢复
@@ -92,7 +92,7 @@ export function MaintenanceTab({
           <CardTitle>全量维护</CardTitle>
           <CardDescription>上方 CSV 导出读取数据库快照；媒体回填还会补齐视频预览图。</CardDescription>
         </CardHeader>
-        <CardContent className="space-y-4">
+        <CardContent className="flex flex-col gap-4">
           <div className="rounded-lg border border-danger/20 bg-danger/10 p-3 text-sm text-danger">这些操作会扫描整个归档目录，资料库较大时可能产生较高磁盘 IO。</div>
           <label className="flex items-center gap-2 text-sm">
             <Checkbox checked={confirmFullScan} onCheckedChange={(checked) => setConfirmFullScan(Boolean(checked))} />

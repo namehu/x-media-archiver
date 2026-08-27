@@ -29,7 +29,7 @@ export function AuthShell({ children }: { children: ReactNode }) {
         <Brand inverse />
 
         <div className="max-w-md">
-          <p className="text-xs font-semibold uppercase tracking-[0.18em] text-auth-panel-fg/55">Local archive workspace</p>
+          <p className="text-xs font-semibold text-auth-panel-fg/55">本地归档工作区</p>
           <h2 className="mt-4 text-3xl font-semibold leading-tight tracking-tight xl:text-4xl">
             让本地媒体归档保持清晰、可控、可恢复。
           </h2>
@@ -52,7 +52,7 @@ export function AuthShell({ children }: { children: ReactNode }) {
           </div>
         </div>
 
-        <p className="text-xs text-auth-panel-fg/45">Local first · Privacy focused · Auditable</p>
+        <p className="text-xs text-auth-panel-fg/45">本地优先 · 隐私可控 · 全程可追溯</p>
       </aside>
 
       <section className="flex min-w-0 flex-col">

@@ -50,7 +50,7 @@ export function FailureFilters({
   const hasFilters = disposition !== "open" || status || errorCategory || search || sort !== "recent";
 
   return (
-    <div className="flex flex-col gap-4 rounded-lg border border-border-subtle bg-bg-surface p-4">
+    <div className="flex flex-col gap-4 rounded-xl border border-border-subtle bg-bg-elevated p-4">
       <ToggleGroup
         type="single"
         value={disposition}

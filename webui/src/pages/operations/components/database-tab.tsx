@@ -19,7 +19,7 @@ export function DatabaseTab({ mutationPending, exportKind, setExportKind, export
   const pool = health?.db_pool;
 
   return (
-    <section className="space-y-4">
+    <section className="flex flex-col gap-4">
       <div className="grid gap-4 md:grid-cols-3">
         <StatCard label="活跃连接" value={pool?.active ?? "-"} detail={`max ${pool?.max_size ?? "-"}`} icon={<Database className="h-4 w-4" />} />
         <StatCard label="空闲连接" value={pool?.idle ?? "-"} detail={`min ${pool?.min_size ?? "-"}`} icon={<Server className="h-4 w-4" />} tone="success" />

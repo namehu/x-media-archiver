@@ -3,16 +3,17 @@ import { expect, test, type Page } from "@playwright/test";
 const apiBaseUrl = process.env.XMA_API_BASE_URL ?? "http://127.0.0.1:18000";
 
 const routes = [
-  { path: "/", label: "仪表盘", text: "媒体文件" },
+  { path: "/", label: "首页", text: "webui-e2e fixture tweet" },
+  { path: "/dashboard", label: "系统概览", text: "媒体资产" },
   { path: "/library", label: "媒体", text: "webui-e2e fixture tweet" },
-  { path: "/insights", label: "归档洞察", text: "归档洞察" },
+  { path: "/insights", label: "洞察", text: "归档洞察" },
   { path: "/collections", label: "合集", text: "还没有合集" },
   { path: "/tags", label: "自定义标签", text: "自定义标签" },
-  { path: "/failures", label: "失败项", text: "webui-e2e-failed" },
+  { path: "/failures", label: "失败工作台", text: "webui-e2e-failed" },
   { path: "/duplicates", label: "重复媒体", text: "重复媒体" },
   { path: "/queue", label: "归档队列", text: "Run #" },
-  { path: "/sources", label: "来源", text: "webui-e2e source" },
-  { path: "/operations", label: "操作", text: "系统状态" },
+  { path: "/sources", label: "来源管理", text: "webui-e2e source" },
+  { path: "/operations", label: "系统操作", text: "系统状态" },
 ];
 
 test.describe("WebUI smoke", () => {
@@ -44,7 +45,7 @@ test.describe("WebUI smoke", () => {
       await page.getByLabel("密码", { exact: true }).fill(password);
       await page.getByLabel("确认密码").fill(password);
       await page.getByRole("button", { name: "创建管理员" }).click();
-      await expect(page.getByRole("link", { name: "仪表盘" })).toBeVisible();
+      await expect(page.getByRole("link", { name: "系统概览" })).toBeVisible();
       await page.reload();
       authScreen = await waitForAuthScreen(page);
     }
@@ -59,7 +60,7 @@ test.describe("WebUI smoke", () => {
         authSessionTransition = false;
       }
     }
-    await expect(page.getByRole("link", { name: "仪表盘" })).toBeVisible();
+    await expect(page.getByRole("link", { name: "系统概览" })).toBeVisible();
 
     for (const route of routes) {
       await page.goto(route.path);
@@ -87,7 +88,7 @@ test.describe("WebUI smoke", () => {
     await page.goBack();
     await expect(page.locator("body > .art-video-player.art-fullscreen-web")).toHaveCount(0);
     await page.goBack();
-    await expect(page.getByRole("link", { name: "操作" })).toBeVisible();
+    await expect(page.getByRole("link", { name: "系统操作" })).toBeVisible();
     await expect(page.locator("body > .art-video-player.art-fullscreen-web")).toHaveCount(0);
 
     await page.getByRole("button", { name: "账户菜单" }).click();
@@ -97,7 +98,7 @@ test.describe("WebUI smoke", () => {
     await page.getByLabel("用户名").fill("e2e-admin");
     await page.getByLabel("密码").fill(password);
     await page.getByRole("button", { name: "登 录" }).click();
-    await expect(page.getByRole("link", { name: "仪表盘" })).toBeVisible();
+    await expect(page.getByRole("link", { name: "系统概览" })).toBeVisible();
 
     const oldSessionCookies = await page.context().cookies();
     await page.getByRole("button", { name: "账户菜单" }).click();
@@ -124,7 +125,7 @@ async function waitForAuthScreen(page: Page): Promise<"authenticated" | "login" 
   await expect
     .poll(
       async () => {
-        if (await page.getByRole("link", { name: "仪表盘" }).isVisible()) authScreen = "authenticated";
+        if (await page.getByRole("link", { name: "系统概览" }).isVisible()) authScreen = "authenticated";
         else if (await page.getByRole("heading", { name: "初始化管理员" }).isVisible()) authScreen = "setup";
         else if (await page.getByRole("heading", { name: "欢迎回来" }).isVisible()) authScreen = "login";
         return authScreen !== null;
@@ -140,7 +141,7 @@ async function signIn(page: Page, password: string) {
   await page.getByLabel("密码").fill(password);
   await page.getByRole("button", { name: "登 录" }).click();
   try {
-    await page.getByRole("link", { name: "仪表盘" }).waitFor({ state: "visible", timeout: 3_000 });
+    await page.getByRole("link", { name: "系统概览" }).waitFor({ state: "visible", timeout: 3_000 });
     return true;
   } catch {
     return false;

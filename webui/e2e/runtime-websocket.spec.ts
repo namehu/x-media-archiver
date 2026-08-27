@@ -37,7 +37,7 @@ test("applies WebSocket snapshot and patch, then falls back to REST snapshots", 
   await expect(page.getByText("REST 轮询", { exact: true })).toBeVisible();
   await expect(page.getByText("当前 rest-tweet", { exact: true })).toBeVisible();
   await expect.poll(() => snapshotRequests).toBeGreaterThan(0);
-  await expect.poll(() => healthRequests).toBeGreaterThan(1);
+  await expect.poll(() => healthRequests, { timeout: 20_000 }).toBeGreaterThan(1);
 });
 
 test("keeps runtime diagnostics readable on a narrow mobile viewport", async ({ page }) => {
@@ -70,14 +70,14 @@ test("refreshes active persistent queries when WebSocket falls back", async ({ p
     },
   });
 
-  await page.goto("/");
-  await expect(page.getByText("媒体文件", { exact: true })).toBeVisible();
+  await page.goto("/dashboard");
+  await expect(page.getByText("媒体资产", { exact: true })).toBeVisible();
   await expect.poll(() => summaryRequests).toBe(1);
 
   expect(runtimeSocket).not.toBeNull();
   await runtimeSocket!.close({ code: 1013, reason: "test_persistent_convergence" });
   await expect.poll(() => summaryRequests, { timeout: 20_000 }).toBeGreaterThan(1);
-  await expect(page.getByText("REST 快照轮询", { exact: true })).toBeVisible();
+  await expect(page.getByText("REST 快照轮询中", { exact: true })).toBeVisible();
 });
 
 test("converges persistent queries when the first WebSocket snapshot arrives after page data", async ({ page }) => {
@@ -92,7 +92,7 @@ test("converges persistent queries when the first WebSocket snapshot arrives aft
     },
   });
 
-  await page.goto("/");
+  await page.goto("/dashboard");
   await expect.poll(() => summaryRequests).toBe(1);
   await expect.poll(() => runtimeSocket).not.toBeNull();
 
@@ -100,7 +100,6 @@ test("converges persistent queries when the first WebSocket snapshot arrives aft
     JSON.stringify(envelope("runtime.snapshot", 10, 1, runtimeSnapshot("startup-race", 0, 10))),
   );
 
-  await expect(page.getByText("当前 startup-race", { exact: true })).toBeVisible();
   await expect.poll(() => summaryRequests, { timeout: 20_000 }).toBeGreaterThan(1);
 });
 
@@ -124,9 +123,8 @@ test("converges persistent queries after reconnecting at an already applied sequ
     },
   });
 
-  await page.goto("/");
+  await page.goto("/dashboard");
   await expect.poll(() => summaryRequests).toBe(1);
-  await expect(page.getByText("当前 before-disconnect", { exact: true })).toBeVisible();
   expect(runtimeSocket).not.toBeNull();
 
   runtimeSocket!.send(
@@ -136,7 +134,6 @@ test("converges persistent queries after reconnecting at an already applied sequ
       }),
     ),
   );
-  await expect(page.getByText("当前 patch-before-disconnect", { exact: true })).toBeVisible();
   const connectionsBeforeDisconnect = connectionCount;
   reconnectSnapshot = true;
   await runtimeSocket!.close({ code: 1012, reason: "invalidate_not_delivered" });

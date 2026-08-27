@@ -7,8 +7,9 @@ test("feed and preview distinguish platform Hashtags from custom tags", async ({
   await page.goto("/feed");
   await expect(page.getByText("platform hashtag fixture", { exact: true })).toBeVisible();
   await expect(page.getByLabel("平台 Hashtag", { exact: true }).first()).toContainText("#AI");
-  await expect(page.getByText("自定义标签", { exact: true }).first()).toBeVisible();
-  await expect(page.getByText("重点", { exact: true }).first()).toBeVisible();
+  const feedPost = page.locator("article").filter({ hasText: "platform hashtag fixture" });
+  await expect(feedPost.getByText("自定义标签", { exact: true })).toBeVisible();
+  await expect(feedPost.getByText("重点", { exact: true })).toBeVisible();
   await expect.poll(() => page.evaluate(() => document.documentElement.scrollWidth <= window.innerWidth)).toBe(true);
 
   const hashtagLink = page.getByRole("link", { name: "搜索平台 Hashtag #AI" }).first();
@@ -32,7 +33,7 @@ test("search persists one exact Hashtag in the URL and requests bounded suggesti
   await page.getByRole("button", { name: /^筛选/ }).click();
   await expect(page.getByRole("combobox", { name: "选择平台 Hashtag" })).toContainText("#AI");
   await expect(page.getByLabel("平台 Hashtag", { exact: true }).first()).toContainText("#AI");
-  await expect(page.getByText("自定义标签", { exact: true }).first()).toBeVisible();
+  await expect(page.locator("article").getByText("自定义标签", { exact: true })).toBeVisible();
 
   await page.getByRole("combobox", { name: "选择平台 Hashtag" }).click();
   const optionsList = page.locator("[cmdk-list]");
@@ -72,7 +73,7 @@ test("detail shows read-only Hashtags and debugger mode removes search-result li
 
   await page.goto("/tweets/platform-hashtag-fixture");
   await expect(page.getByLabel("平台 Hashtag", { exact: true })).toContainText("#AI");
-  await expect(page.getByText("自定义标签", { exact: true })).toBeVisible();
+  await expect(page.getByLabel("Tweet 整理与元数据").getByText("自定义标签", { exact: true })).toBeVisible();
 
   await page.goto("/search?debugger=1&hashtag=AI&tweet_status=all");
   const redactedHashtags = page.locator('article [aria-label="平台 Hashtag"]');
