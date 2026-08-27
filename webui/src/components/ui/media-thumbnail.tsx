@@ -7,6 +7,7 @@ import { usePrivacyRedactionEnabled } from "@/lib/privacy-redaction";
 
 export function MediaThumbnail({
   src,
+  fallbackSrc,
   alt,
   mediaType,
   className,
@@ -17,6 +18,7 @@ export function MediaThumbnail({
   ariaLabel,
 }: {
   src?: string | null;
+  fallbackSrc?: string | null;
   alt: string;
   mediaType?: string | null;
   className?: string;
@@ -29,12 +31,14 @@ export function MediaThumbnail({
   const privacyRedactionEnabled = usePrivacyRedactionEnabled();
   const [loaded, setLoaded] = useState(false);
   const [failed, setFailed] = useState(false);
-  const isVideo = mediaType === "video" || Boolean(src?.match(/\.(mp4|mov|m4v|webm)(\?|$)/i));
+  const [activeSrc, setActiveSrc] = useState(src || fallbackSrc || null);
+  const isVideo = mediaType === "video" || Boolean((src || fallbackSrc)?.match(/\.(mp4|mov|m4v|webm)(\?|$)/i));
 
   useEffect(() => {
     setLoaded(false);
     setFailed(false);
-  }, [src]);
+    setActiveSrc(src || fallbackSrc || null);
+  }, [fallbackSrc, src]);
 
   return (
     <button
@@ -50,30 +54,38 @@ export function MediaThumbnail({
     >
       {privacyRedactionEnabled ? (
         <PrivacyMediaPlaceholder />
-      ) : src && !failed ? (
+      ) : activeSrc && !failed ? (
         <img
           className={cn(
             "h-full w-full transition duration-base",
             fit === "contain" ? "object-contain" : "object-cover group-hover:scale-[1.02]",
             loaded ? "opacity-100" : "opacity-0",
           )}
-          src={src}
+          src={activeSrc}
           loading="lazy"
+          decoding="async"
           alt={alt}
           onLoad={() => setLoaded(true)}
-          onError={() => setFailed(true)}
+          onError={() => {
+            if (fallbackSrc && activeSrc !== fallbackSrc) {
+              setLoaded(false);
+              setActiveSrc(fallbackSrc);
+              return;
+            }
+            setFailed(true);
+          }}
         />
       ) : null}
-      {!privacyRedactionEnabled && (!src || failed || !loaded) && (
+      {!privacyRedactionEnabled && (!activeSrc || failed || !loaded) && (
         <div className="absolute inset-0 flex items-center justify-center bg-[linear-gradient(135deg,hsl(var(--bg-muted)),hsl(var(--border-subtle)))] text-fg-tertiary">
-          {failed || !src ? (
+          {failed || !activeSrc ? (
             isVideo ? <Film className="h-6 w-6" /> : <ImageOff className="h-6 w-6" />
           ) : (
             <ImageIcon className="h-6 w-6 animate-breathe" />
           )}
         </div>
       )}
-      {!privacyRedactionEnabled && src && !failed && showTypeBadge ? (
+      {!privacyRedactionEnabled && activeSrc && !failed && showTypeBadge ? (
         <div className="absolute left-2 top-2">
           <Badge tone={isVideo ? "default" : "secondary"} className="gap-1 bg-bg-elevated/90 backdrop-blur">
             {isVideo ? <Film className="h-3 w-3" /> : <ImageIcon className="h-3 w-3" />}

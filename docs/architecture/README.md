@@ -10,6 +10,7 @@
 4. [下载器契约](downloader-contract.md)：查看下载、回填、校验和文件路径的详细契约。
 5. [来源扫描工作流](source-scanning-workflow.md)：查看来源发现、扫描会话、批量任务和调度状态机。
 6. [WebUI 实时运行态](runtime-realtime-evolution.md)：查看持久事实、运行态投影、WebSocket 和降级轮询的一致性边界。
+7. [媒体预览图任务](media-preview-jobs.md)：查看预览文件契约、持久任务、独立 worker 与调度语义。
 
 ## 文档地图
 
@@ -21,6 +22,7 @@
 | [下载器契约](downloader-contract.md) | 下载链路开发者 | gallery-dl / yt-dlp、媒体回填与校验如何协作 | `downloader.py`、`media.py`、`verifier.py` |
 | [来源扫描工作流](source-scanning-workflow.md) | 来源功能开发者 | cursor、扫描会话、批量任务和下载提交如何协作 | `services/sources.py`、`source_bulk_tasks.py` |
 | [WebUI 实时运行态](runtime-realtime-evolution.md) | 前后端开发者 | REST、WebSocket、Runtime Store 与数据库如何收敛 | runtime API、event broker、Runtime Provider |
+| [媒体预览图任务](media-preview-jobs.md) | 前后端开发者、运维人员 | 图片/视频预览如何生成、调度、恢复与展示 | `services/media_previews.py`、migration 025、Operations Maintenance |
 
 决策背景与取舍记录在 [ADR 索引](../adr/README.md)。测试边界与手工验收入口位于 [`docs/testing`](../testing/)。
 

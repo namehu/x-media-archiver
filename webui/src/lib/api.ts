@@ -193,7 +193,12 @@ export type OrganizationCollection = {
   normalized_name: string;
   description?: string | null;
   cover_media_id?: number | null;
-  cover?: { id: number; media_type?: string | null; media_url: string } | null;
+  cover?: {
+    id: number;
+    media_type?: string | null;
+    media_url: string;
+    preview_url?: string | null;
+  } | null;
   tweet_count?: number | null;
   created_at?: string | null;
   updated_at?: string | null;
@@ -757,6 +762,57 @@ export type SourceDownloadSummary = {
 
 export type RuntimeConnectionStatus = "connecting" | "connected" | "reconnecting" | "resyncing" | "stale" | "offline";
 
+export type MediaPreviewJob = {
+  id: number;
+  trigger_type: "manual" | "scheduled" | "retry";
+  mode: "reconcile" | "force";
+  status: "queued" | "running" | "completed" | "completed_with_failures" | "failed" | "cancelled";
+  schedule_id?: number | null;
+  snapshot_max_media_id?: number | null;
+  cursor_after_media_id: number;
+  total_count: number;
+  scanned_count: number;
+  generated_count: number;
+  existing_count: number;
+  failed_count: number;
+  worker_id?: string | null;
+  lease_expires_at?: string | null;
+  retry_count: number;
+  next_attempt_at?: string | null;
+  cancel_requested: boolean;
+  options: Record<string, unknown>;
+  result?: {
+    failure_samples?: Array<{ media_id: number; error: string }>;
+  } | null;
+  error_message?: string | null;
+  started_at?: string | null;
+  finished_at?: string | null;
+  created_at: string;
+  updated_at: string;
+};
+
+export type MediaPreviewJobsPage = {
+  items: MediaPreviewJob[];
+  total: number;
+  limit: number;
+  offset: number;
+};
+
+export type MediaPreviewSchedule = {
+  id: number;
+  enabled: boolean;
+  frequency_kind: "interval" | "daily" | "weekly";
+  interval_minutes: number;
+  local_time: string;
+  weekday: number;
+  timezone: string;
+  jitter_seconds: number;
+  next_run_at?: string | null;
+  last_run_at?: string | null;
+  created_at: string;
+  updated_at: string;
+};
+
 export type RuntimeRun = ArchiveRun & {
   downloaded_bytes?: number | null;
   total_bytes?: number | null;
@@ -799,6 +855,7 @@ export type RuntimeSnapshot = {
   runs: RuntimeRun[];
   items: RuntimeItem[];
   scans: SourceScanRun[];
+  preview_jobs: MediaPreviewJob[];
   recent_activity: Array<Record<string, unknown>>;
 };
 

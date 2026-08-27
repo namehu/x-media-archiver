@@ -27,6 +27,8 @@ const RUNTIME_PERSISTENT_QUERY_ROOTS = new Set([
   "archive-run",
   "health-detail",
   "library-insights",
+  "preview-jobs",
+  "preview-schedule",
 ]);
 
 export function invalidateRuntimePersistentQueries(queryClient: QueryClient) {
@@ -44,7 +46,12 @@ export function invalidateForEvent(queryClient: QueryClient, event: ServerEvent)
   const eventType = event.type || event.event_type || "";
   const payload = event.payload || {};
 
-  if (eventType === "archive.run.progress" || eventType === "source.scan.log" || eventType.startsWith("operation.log.")) {
+  if (
+    eventType === "archive.run.progress" ||
+    eventType === "source.scan.log" ||
+    eventType === "media_preview_job.progress" ||
+    eventType.startsWith("operation.log.")
+  ) {
     return;
   }
 
@@ -103,6 +110,21 @@ export function invalidateForEvent(queryClient: QueryClient, event: ServerEvent)
     void queryClient.invalidateQueries({ queryKey: ["health-detail"] });
   }
 
+  if (topic === "media_previews" || eventType.startsWith("media_preview_")) {
+    void queryClient.invalidateQueries({ queryKey: ["preview-jobs"] });
+    if (eventType.startsWith("media_preview_schedule.")) {
+      void queryClient.invalidateQueries({ queryKey: ["preview-schedule"] });
+    }
+    if (eventType === "media_preview_job.finished") {
+      void queryClient.invalidateQueries({ queryKey: ["media"] });
+      void queryClient.invalidateQueries({ queryKey: ["posts"] });
+      void queryClient.invalidateQueries({ queryKey: ["tweet"] });
+      void queryClient.invalidateQueries({ queryKey: ["duplicates"] });
+      void queryClient.invalidateQueries({ queryKey: ["sources"] });
+    }
+    return;
+  }
+
   if (topic === "library" || eventType.startsWith("library.")) {
     const deletedTweetIds = stringArrayFromPayload(payload, "tweet_ids");
     if (eventType === "library.media_deleted" && deletedTweetIds.length) {
@@ -134,13 +156,18 @@ export function createEventInvalidationScheduler(queryClient: QueryClient, delay
   return {
     schedule(event: ServerEvent) {
       const eventType = event.type || event.event_type || "";
-      if (eventType === "archive.run.progress" || eventType === "source.scan.log" || eventType.startsWith("operation.log.")) return;
+      if (
+        eventType === "archive.run.progress" ||
+        eventType === "source.scan.log" ||
+        eventType === "media_preview_job.progress" ||
+        eventType.startsWith("operation.log.")
+      ) return;
       const payload = event.payload || {};
       const identity = [
         event.topic || "",
         eventType,
         stringFromPayload(payload, "operation_id") ||
-          numberFromPayload(payload, "run_id", "archive_run_id", "source_id", "scan_run_id") ||
+          numberFromPayload(payload, "run_id", "archive_run_id", "source_id", "scan_run_id", "preview_job_id") ||
           "",
       ].join(":");
       pending.set(identity, mergeScheduledEvents(pending.get(identity), event));

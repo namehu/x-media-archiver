@@ -15,6 +15,23 @@ from xarchiver.services.media_deletion import (
 
 
 class MediaDeletionFileTests(unittest.TestCase):
+    def test_collects_image_webp_preview(self) -> None:
+        with tempfile.TemporaryDirectory() as tmp:
+            archive_dir = Path(tmp)
+            tweet_dir = archive_dir / "media" / "author" / "tweet"
+            tweet_dir.mkdir(parents=True)
+            media = tweet_dir / "tweet--p1.jpg"
+            preview = tweet_dir / "tweet--p1.preview.webp"
+            media.write_bytes(b"media")
+            preview.write_bytes(b"preview")
+
+            files = _collect_delete_files(
+                archive_dir,
+                [{"local_path": str(media), "metadata_path": None}],
+            )
+
+            self.assertEqual({item.path for item in files}, {media, preview})
+
     def test_collects_and_deletes_media_metadata_and_thumbnail(self) -> None:
         with tempfile.TemporaryDirectory() as tmp:
             archive_dir = Path(tmp)

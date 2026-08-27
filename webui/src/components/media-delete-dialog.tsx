@@ -15,6 +15,7 @@ import {
 import { Button } from "./ui/button";
 import { formatBytes } from "../lib/utils";
 import { PrivacyMediaPlaceholder } from "./ui/privacy-media-placeholder";
+import { FallbackImage } from "./ui/fallback-image";
 
 type MediaDeleteDialogProps = {
   open: boolean;
@@ -61,13 +62,15 @@ export function MediaDeleteDialog({
               {privacyRedactionEnabled ? (
                 <PrivacyMediaPlaceholder compact />
               ) : targetMedia.preview_url || targetMedia.media_url ? (
-                <img
+                <FallbackImage
                   className="size-full object-contain"
-                  src={targetMedia.preview_url || targetMedia.media_url || undefined}
+                  src={targetMedia.preview_url}
+                  fallbackSrc={targetMedia.media_url}
                   alt={getPrivacyMediaAlt(
                     privacyRedactionEnabled,
                     targetMedia.tweet_text || targetMedia.author_display_name || "待删除媒体",
                   )}
+                  fallback={<ImageOff className="size-6 text-fg-tertiary" />}
                 />
               ) : (
                 <ImageOff className="size-6 text-fg-tertiary" />

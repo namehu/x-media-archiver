@@ -274,6 +274,55 @@ class RuntimeRunResponse(FlexibleResponse):
     last_progress_at: datetime | None = None
 
 
+class MediaPreviewJobResponse(FlexibleResponse):
+    id: int
+    trigger_type: str
+    mode: str
+    status: str
+    schedule_id: int | None = None
+    snapshot_max_media_id: int | None = None
+    cursor_after_media_id: int = 0
+    total_count: int = 0
+    scanned_count: int = 0
+    generated_count: int = 0
+    existing_count: int = 0
+    failed_count: int = 0
+    worker_id: str | None = None
+    lease_expires_at: datetime | None = None
+    retry_count: int = 0
+    next_attempt_at: datetime | None = None
+    cancel_requested: bool = False
+    options: dict[str, Any] = Field(default_factory=dict)
+    result: dict[str, Any] | None = None
+    error_message: str | None = None
+    started_at: datetime | None = None
+    finished_at: datetime | None = None
+    created_at: datetime
+    updated_at: datetime
+
+
+class MediaPreviewJobsPageResponse(FlexibleResponse):
+    items: list[MediaPreviewJobResponse]
+    total: int
+    limit: int
+    offset: int
+
+
+class MediaPreviewScheduleResponse(FlexibleResponse):
+    id: int
+    enabled: bool
+    frequency_kind: str
+    interval_minutes: int
+    local_time: time
+    weekday: int
+    timezone: str
+    jitter_seconds: int
+    next_run_at: datetime | None = None
+    last_run_at: datetime | None = None
+    created_at: datetime
+    updated_at: datetime
+
+
 class RuntimeItemResponse(FlexibleResponse):
     id: int
     archive_run_item_id: int
@@ -309,6 +358,7 @@ class RuntimeSnapshotResponse(FlexibleResponse):
     runs: list[RuntimeRunResponse] = Field(default_factory=list)
     items: list[RuntimeItemResponse] = Field(default_factory=list)
     scans: list[SourceScanRunResponse] = Field(default_factory=list)
+    preview_jobs: list[MediaPreviewJobResponse] = Field(default_factory=list)
     recent_activity: list[dict[str, Any]] = Field(default_factory=list)
 
 

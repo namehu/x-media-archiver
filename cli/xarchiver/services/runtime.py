@@ -11,6 +11,7 @@ RECENT_RUNTIME_WINDOW_SECONDS = 120
 RUNTIME_ITEM_LIMIT = 500
 RUNTIME_RUN_LIMIT = 100
 RUNTIME_SCAN_LIMIT = 50
+RUNTIME_PREVIEW_JOB_LIMIT = 10
 
 ACTIVE_RUN_STATUSES = ("queued", "running", "paused", "blocked")
 ACTIVE_ITEM_STATUSES = ("pending", "blocked", "processing", "failed_retryable")
@@ -26,6 +27,7 @@ def get_runtime_snapshot() -> dict[str, object]:
             runs = get_runtime_runs(cur)
             items = get_runtime_items(cur)
             scans = get_runtime_scans(cur)
+            preview_jobs = get_runtime_preview_jobs(cur)
             queue = get_queue_summary(cur)
             sources = get_source_summary(cur)
             return {
@@ -42,6 +44,7 @@ def get_runtime_snapshot() -> dict[str, object]:
                 "runs": runs,
                 "items": items,
                 "scans": scans,
+                "preview_jobs": preview_jobs,
                 "recent_activity": [],
             }
 
@@ -177,6 +180,32 @@ def get_runtime_scans(cur) -> list[dict[str, object]]:
             list(ACTIVE_SCAN_STATUSES),
             RUNTIME_SCAN_LIMIT,
         ),
+    )
+    return [dict(row) for row in cur.fetchall()]
+
+
+def get_runtime_preview_jobs(cur) -> list[dict[str, object]]:
+    """返回活动与近期结束的预览任务，供 WebSocket 首屏快照使用。"""
+
+    # 这是跨任务状态与短时间窗口的只读 runtime 投影，固定 SQL 能直接表达
+    # “活动优先 + 近期结束”的界面水位语义。
+    cur.execute(
+        """
+        select id, trigger_type, mode, status, schedule_id, snapshot_max_media_id,
+               cursor_after_media_id, total_count, scanned_count, generated_count,
+               existing_count, failed_count, worker_id, lease_expires_at, retry_count,
+               next_attempt_at, cancel_requested, options, result, error_message,
+               started_at, finished_at, created_at, updated_at
+        from media_preview_jobs
+        where status in ('queued', 'running')
+           or coalesce(finished_at, updated_at, created_at)
+              >= now() - (%s * interval '1 second')
+        order by case when status in ('queued', 'running') then 0 else 1 end,
+                 coalesce(updated_at, created_at) desc,
+                 id desc
+        limit %s
+        """,
+        (RECENT_RUNTIME_WINDOW_SECONDS, RUNTIME_PREVIEW_JOB_LIMIT),
     )
     return [dict(row) for row in cur.fetchall()]
 

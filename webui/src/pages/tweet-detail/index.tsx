@@ -286,7 +286,8 @@ function MediaGrid({ media, title, emptyText }: { media: MediaRow[]; title: stri
                 className="group min-w-0 overflow-hidden rounded-xl border border-border-subtle bg-bg-surface focus-within:border-border-strong hover:border-border-strong"
               >
                 <MediaThumbnail
-                  src={item.media_url}
+                  src={item.preview_url}
+                  fallbackSrc={item.media_url}
                   alt={getPrivacyMediaAlt(privacyRedactionEnabled, item.local_path || mediaTypeLabel(item.media_type))}
                   mediaType={item.media_type}
                   className="rounded-none"

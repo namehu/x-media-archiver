@@ -23,6 +23,7 @@ export function VideoMediaPlayer({ media }: { media: MediaRow }) {
       setting: true,
       playbackRate: true,
       aspectRatio: true,
+      poster: media.preview_url || undefined,
       theme: brandColor(),
     });
 

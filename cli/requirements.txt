@@ -8,6 +8,7 @@ alembic
 orjson
 psycopg[binary]
 psycopg_pool
+Pillow==12.3.0
 python-dotenv
 gallery-dl
 yt-dlp

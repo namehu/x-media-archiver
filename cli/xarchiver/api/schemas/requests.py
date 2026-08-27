@@ -22,6 +22,26 @@ class BackfillRequest(BaseModel):
     normalize_files: bool = True
 
 
+class MediaPreviewJobCreateRequest(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+
+    mode: str = Field(default="reconcile", pattern="^(reconcile|force)$")
+    confirm_full_scan: bool = False
+    confirm_force: bool = False
+
+
+class MediaPreviewScheduleUpdateRequest(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+
+    enabled: bool | None = None
+    frequency_kind: str | None = Field(default=None, pattern="^(interval|daily|weekly)$")
+    interval_minutes: int | None = Field(default=None, ge=60)
+    local_time: str | None = None
+    weekday: int | None = Field(default=None, ge=0, le=6)
+    timezone: str | None = None
+    jitter_seconds: int | None = Field(default=None, ge=0, le=86400)
+
+
 class RequeueRequest(BaseModel):
     statuses: list[str] | None = None
     limit: int | None = Field(default=None, ge=1)

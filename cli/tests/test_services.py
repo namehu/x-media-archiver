@@ -33,8 +33,28 @@ class LibraryServiceTests(unittest.TestCase):
 
         self.assertEqual(row["media_relative_path"], "media/alice/1.jpg")
         self.assertEqual(row["media_url"], "/api/v1/media-file/media/alice/1.jpg")
-        self.assertEqual(row["preview_relative_path"], "media/alice/1.jpg")
-        self.assertEqual(row["preview_url"], "/api/v1/media-file/media/alice/1.jpg")
+        self.assertIsNone(row["preview_relative_path"])
+        self.assertIsNone(row["preview_url"])
+
+    def test_attach_media_url_uses_versioned_image_preview_when_present(self) -> None:
+        with tempfile.TemporaryDirectory() as tmp:
+            archive_dir = Path(tmp)
+            media_path = archive_dir / "media" / "alice" / "1.jpg"
+            preview_path = media_path.with_name("1.preview.webp")
+            media_path.parent.mkdir(parents=True)
+            media_path.write_bytes(b"image")
+            preview_path.write_bytes(b"preview")
+
+            result = attach_media_url(
+                {"local_path": str(media_path), "media_type": "photo"},
+                archive_dir,
+            )
+
+            self.assertEqual(result["preview_relative_path"], "media/alice/1.preview.webp")
+            self.assertRegex(
+                str(result["preview_url"]),
+                r"^/api/v1/media-file/media/alice/1\.preview\.webp\?v=[0-9a-f]+-[0-9a-f]+$",
+            )
 
     def test_attach_media_url_accepts_row_model(self) -> None:
         row = TweetMediaAssetRow.model_validate(

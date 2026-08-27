@@ -363,7 +363,8 @@ function DuplicateMediaCard({
         {keeper ? <Badge tone="default">建议保留</Badge> : null}
       </div>
       <MediaThumbnail
-        src={row.media_url}
+        src={row.preview_url}
+        fallbackSrc={row.media_url}
         mediaType={row.media_type}
         alt={getPrivacyMediaAlt(privacyRedactionEnabled, row.tweet_text || row.tweet_id)}
         className="rounded-b-none"

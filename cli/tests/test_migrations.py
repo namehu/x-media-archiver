@@ -46,6 +46,7 @@ class MigrationTests(unittest.TestCase):
                 "022_add_organization_audit.py",
                 "023_add_platform_hashtags.py",
                 "024_add_media_privacy_mode.py",
+                "025_add_media_preview_jobs.py",
             ],
         )
         upgrade.assert_called_once()
@@ -59,7 +60,7 @@ class MigrationTests(unittest.TestCase):
             patch("xarchiver.migrations.get_settings", return_value=settings),
             patch(
                 "xarchiver.migrations.current_alembic_revision",
-                return_value="024_add_media_privacy_mode",
+                return_value="025_add_media_preview_jobs",
             ),
             patch("xarchiver.migrations.command.upgrade") as upgrade,
         ):
@@ -108,6 +109,7 @@ class MigrationTests(unittest.TestCase):
                 "022_add_organization_audit.py",
                 "023_add_platform_hashtags.py",
                 "024_add_media_privacy_mode.py",
+                "025_add_media_preview_jobs.py",
             ],
         )
 
@@ -465,6 +467,25 @@ class MigrationTests(unittest.TestCase):
             dropped_columns,
             [("auth_admin", "media_privacy_mode")],
         )
+
+    def test_media_preview_revision_adds_job_and_singleton_schedule_tables(self) -> None:
+        module = importlib.import_module("xarchiver.alembic.versions.025_add_media_preview_jobs")
+        created_tables: list[str] = []
+        created_indexes: list[str] = []
+
+        with (
+            patch.object(module.op, "create_table", side_effect=lambda name, *_args, **_kwargs: created_tables.append(name)),
+            patch.object(module.op, "create_index", side_effect=lambda name, *_args, **_kwargs: created_indexes.append(name)),
+            patch.object(module.op, "execute"),
+        ):
+            module.upgrade()
+
+        self.assertEqual(
+            created_tables,
+            ["media_preview_scheduler_settings", "media_preview_jobs"],
+        )
+        self.assertIn("uq_media_preview_jobs_active", created_indexes)
+        self.assertEqual(module.down_revision, "024_add_media_privacy_mode")
 
 
 if __name__ == "__main__":

@@ -718,17 +718,19 @@ def _cover_payload(row: dict[str, object], archive_dir: Path) -> dict[str, objec
     if archive_root != resolved and archive_root not in resolved.parents:
         return None
     relative_path = resolved.relative_to(archive_root).as_posix()
-    preview_path = relative_path
-    if row.get("cover_media_type") == "video":
-        media_path = archive_dir / relative_path
-        candidate = media_path.with_name(f"{media_path.stem}.preview.jpg")
-        preview_path = (
-            candidate.relative_to(archive_dir).as_posix()
-            if candidate.is_file() and archive_dir in candidate.parents
-            else relative_path
+    media_type = str(row.get("cover_media_type") or "")
+    suffix = ".preview.jpg" if media_type == "video" else ".preview.webp"
+    candidate = resolved.with_name(f"{resolved.stem}{suffix}")
+    preview_url = None
+    if candidate.is_file() and archive_root in candidate.parents:
+        preview_relative_path = candidate.relative_to(archive_root).as_posix()
+        stat = candidate.stat()
+        preview_url = (
+            f"/api/v1/media-file/{preview_relative_path}?v={stat.st_mtime_ns:x}-{stat.st_size:x}"
         )
     return {
         "id": int(media_id),
-        "media_type": row.get("cover_media_type"),
-        "media_url": f"/api/v1/media-file/{preview_path}",
+        "media_type": media_type,
+        "media_url": f"/api/v1/media-file/{relative_path}",
+        "preview_url": preview_url,
     }

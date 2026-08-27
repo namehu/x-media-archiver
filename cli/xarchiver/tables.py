@@ -396,6 +396,57 @@ source_schedule_policy_sources = Table(
     Column("created_at", DateTime(timezone=True)),
 )
 
+# 媒体预览图维护任务与单例调度设置
+media_preview_scheduler_settings = Table(
+    "media_preview_scheduler_settings",
+    metadata,
+    Column("id", SmallInteger, primary_key=True),
+    Column("enabled", Boolean, nullable=False),
+    Column("frequency_kind", Text, nullable=False),
+    Column("interval_minutes", Integer, nullable=False),
+    Column("local_time", Time, nullable=False),
+    Column("weekday", SmallInteger, nullable=False),
+    Column("timezone", Text, nullable=False),
+    Column("jitter_seconds", Integer, nullable=False),
+    Column("next_run_at", DateTime(timezone=True)),
+    Column("last_run_at", DateTime(timezone=True)),
+    Column("created_at", DateTime(timezone=True), nullable=False),
+    Column("updated_at", DateTime(timezone=True), nullable=False),
+)
+
+media_preview_jobs = Table(
+    "media_preview_jobs",
+    metadata,
+    Column("id", BigInteger, primary_key=True),
+    Column("trigger_type", Text, nullable=False),
+    Column("mode", Text, nullable=False),
+    Column("status", Text, nullable=False),
+    Column(
+        "schedule_id",
+        SmallInteger,
+        ForeignKey("media_preview_scheduler_settings.id", ondelete="SET NULL"),
+    ),
+    Column("snapshot_max_media_id", BigInteger),
+    Column("cursor_after_media_id", BigInteger, nullable=False),
+    Column("total_count", Integer, nullable=False),
+    Column("scanned_count", Integer, nullable=False),
+    Column("generated_count", Integer, nullable=False),
+    Column("existing_count", Integer, nullable=False),
+    Column("failed_count", Integer, nullable=False),
+    Column("worker_id", Text),
+    Column("lease_expires_at", DateTime(timezone=True)),
+    Column("retry_count", Integer, nullable=False),
+    Column("next_attempt_at", DateTime(timezone=True)),
+    Column("cancel_requested", Boolean, nullable=False),
+    Column("options", JSONB, nullable=False),
+    Column("result", JSONB),
+    Column("error_message", Text),
+    Column("started_at", DateTime(timezone=True)),
+    Column("finished_at", DateTime(timezone=True)),
+    Column("created_at", DateTime(timezone=True), nullable=False),
+    Column("updated_at", DateTime(timezone=True), nullable=False),
+)
+
 operation_log_streams = Table(
     "operation_log_streams",
     metadata,

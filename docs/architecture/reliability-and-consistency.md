@@ -161,7 +161,7 @@ flowchart TD
 
 操作日志先写 JSONL 文件，再在持有数据库行锁时同步摘要。检测到崩溃窗口造成文件大小与 DB `byte_size` 不一致时，以 JSONL 文件重建摘要；事务提交结果不确定时不盲目截断文件，而是在新连接中重新校准。
 
-视频预览使用另一条、更短的 ffmpeg 路径：每次以 `subprocess.run(capture_output=True)` 同步执行，设置单次 timeout，成功后原子替换临时预览文件，并在 `finally` 清理临时文件。它不使用上述有界 reader、operation log writer、进程组或 drain deadline 机制。
+媒体预览由独立的 CPU/IO worker 处理，与下载和扫描的网络 worker 解耦。图片由 Pillow 转换为 WebP，视频使用一条较短的 ffmpeg 路径；两者都先写唯一临时文件，发布前锁定并复核 `media_assets` 与源文件签名，再原子替换并清理临时文件。任务自身使用租约、断点游标和有限重试，详见 [`media-preview-jobs.md`](media-preview-jobs.md)。
 
 ## 7. 跨数据库与文件系统的媒体删除
 
@@ -169,7 +169,7 @@ flowchart TD
 
 1. 客户端生成 `operation_id`，后端先读取已有 `media_delete_operations`；已完成操作直接返回结果。
 2. 按 `media_assets.id` 锁定目标，并为每个 Tweet 获取 advisory lock。
-3. 校验主文件、元数据、缩略图和视频预览都位于 `archive/media`，随后在当前、尚未提交的数据库事务中把操作审计 upsert 为 `running`。
+3. 校验主文件、元数据、下载器缩略图和图片/视频派生预览都位于 `archive/media`，随后在当前、尚未提交的数据库事务中把操作审计 upsert 为 `running`。
 4. 删除确切文件并清理空目录，不使用目录通配符。
 5. 删除对应 `media_assets` 行，将受影响 Tweet 标记为 `missing`。
 6. 把成功、缺失、错误和受影响 Tweet 写入操作结果。

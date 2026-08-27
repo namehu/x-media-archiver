@@ -89,7 +89,8 @@ export function CollectionCatalog({
           {...getPrivacyRedactProps(privacyRedactionEnabled)}
         >
           <MediaThumbnail
-            src={item.cover?.media_url}
+            src={item.cover?.preview_url}
+            fallbackSrc={item.cover?.media_url}
             mediaType={item.cover?.media_type}
             alt={getPrivacyMediaAlt(privacyRedactionEnabled, `${item.name}合集封面`)}
             ariaLabel={`打开合集 ${item.name}`}
@@ -180,7 +181,8 @@ export function CollectionDetail({
       {cover?.media_url ? (
         <div {...getPrivacyRedactProps(privacyRedactionEnabled)}>
           <MediaThumbnail
-            src={cover.media_url}
+            src={cover.preview_url}
+            fallbackSrc={cover.media_url}
             mediaType={cover.media_type}
             alt={getPrivacyMediaAlt(privacyRedactionEnabled, `${collection.name}合集封面`)}
             aspect="wide"
@@ -215,7 +217,8 @@ export function CollectionDetail({
               >
                 <div {...getPrivacyRedactProps(privacyRedactionEnabled)}>
                   <MediaThumbnail
-                    src={row.media[0]?.preview_url || row.media[0]?.media_url}
+                    src={row.media[0]?.preview_url}
+                    fallbackSrc={row.media[0]?.media_url}
                     mediaType={row.media[0]?.media_type}
                     alt={getPrivacyMediaAlt(privacyRedactionEnabled, row.tweet_text)}
                     showTypeBadge={false}

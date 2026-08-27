@@ -106,6 +106,14 @@ class MediaFileEndpointTests(TestCase):
 
         self.assertEqual(response.headers["cache-control"], "private, max-age=31536000, immutable")
 
+    def test_generated_webp_preview_has_long_lived_private_cache(self) -> None:
+        preview_path = self.media_path.with_name("1.preview.webp")
+        preview_path.write_bytes(b"preview")
+
+        response = self._response(relative_path="media/alice/1.preview.webp")
+
+        self.assertEqual(response.headers["cache-control"], "private, max-age=31536000, immutable")
+
 
 if __name__ == "__main__":
     unittest.main()

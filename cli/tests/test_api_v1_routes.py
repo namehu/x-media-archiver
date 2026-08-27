@@ -22,6 +22,7 @@ from xarchiver.api.schemas import (
     GalleryDlCompatibilityResponse,
     LibraryInsightsResponse,
     MediaDeleteRequest,
+    MediaPreviewJobCreateRequest,
     OrganizationDeleteRequest,
     PostFeedPageResponse,
     SourceBulkTaskCreateRequest,
@@ -113,6 +114,9 @@ class V1RouterSmokeTests(unittest.TestCase):
             "/api/v1/settings/cookies",
             "/api/v1/settings/gallery-dl",
             "/api/v1/health/detail",
+            "/api/v1/maintenance/preview-jobs",
+            "/api/v1/maintenance/preview-jobs/{job_id}",
+            "/api/v1/maintenance/preview-schedule",
             "/api/v1/media-file/{relative_path:path}",
             "/api/v1/auth/session",
         ]
@@ -152,6 +156,8 @@ class V1RouterSmokeTests(unittest.TestCase):
             "/api/v1/actions/export",
             "/api/v1/maintenance/backfill",
             "/api/v1/maintenance/verify",
+            "/api/v1/maintenance/preview-jobs",
+            "/api/v1/maintenance/preview-jobs/{job_id}/cancel",
             "/api/v1/settings/cookies",
             "/api/v1/settings/cookies/check",
             "/api/v1/auth/setup",
@@ -161,6 +167,9 @@ class V1RouterSmokeTests(unittest.TestCase):
         ]
         for path in expected:
             self.assertIn(path, self.post_paths, f"POST {path} not registered")
+
+    def test_v1_preview_schedule_patch_route_registered(self):
+        self.assertIn("/api/v1/maintenance/preview-schedule", self.patch_paths)
 
     def test_v1_delete_routes_registered(self):
         self.assertIn("/api/v1/settings/cookies", self.delete_paths)
@@ -701,11 +710,21 @@ class V1RouterSmokeTests(unittest.TestCase):
             ("/api/v1/maintenance/backfill", BackfillRequest()),
             ("/api/v1/maintenance/verify", VerifyRequest()),
             ("/api/v1/actions/verify", VerifyRequest()),
+            ("/api/v1/maintenance/preview-jobs", MediaPreviewJobCreateRequest()),
         ):
             with self.assertRaises(HTTPException) as ctx:
                 self.post_paths[path](req)
             self.assertEqual(ctx.exception.status_code, 400, f"{path} should reject unconfirmed")
             self.assertEqual(ctx.exception.detail, "full_scan_confirmation_required")
+
+    def test_v1_preview_force_requires_second_confirmation(self):
+        request = MediaPreviewJobCreateRequest(mode="force", confirm_full_scan=True)
+
+        with self.assertRaises(HTTPException) as ctx:
+            self.post_paths["/api/v1/maintenance/preview-jobs"](request)
+
+        self.assertEqual(ctx.exception.status_code, 400)
+        self.assertEqual(ctx.exception.detail, "preview_force_confirmation_required")
 
     def test_v1_source_create_rejects_invalid_url(self):
         with self.assertRaises(HTTPException) as ctx:
@@ -973,6 +992,8 @@ class V1RouterSmokeTests(unittest.TestCase):
         self.assertIn("/api/v1/actions/verify", paths)
         self.assertIn("/api/v1/health/detail", paths)
         self.assertIn("/api/v1/runtime/snapshot", paths)
+        self.assertIn("/api/v1/maintenance/preview-jobs", paths)
+        self.assertIn("/api/v1/maintenance/preview-schedule", paths)
         self.assertIn("/api/v1/settings/cookies", paths)
         self.assertIn("/api/v1/settings/gallery-dl", paths)
         self.assertIn("/api/v1/auth/session", paths)

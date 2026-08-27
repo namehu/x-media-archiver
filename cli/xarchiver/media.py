@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import hashlib
+import io
 import logging
 import os
 import shutil
@@ -14,6 +15,7 @@ from pathlib import Path
 from typing import Any
 
 import orjson
+from PIL import Image, ImageCms, ImageOps, UnidentifiedImageError
 from psycopg.types.json import Jsonb
 
 from xarchiver.archive import normalize_path
@@ -23,9 +25,12 @@ from xarchiver.row_models import IdRow
 MEDIA_EXTENSIONS = {".jpg", ".jpeg", ".png", ".gif", ".webp", ".mp4", ".mov", ".m4v"}
 VIDEO_EXTENSIONS = {".mp4", ".mov", ".m4v"}
 VIDEO_PREVIEW_SUFFIX = ".preview.jpg"
+IMAGE_PREVIEW_SUFFIX = ".preview.webp"
 VIDEO_THUMBNAIL_SUFFIX = ".thumb.jpg"
 VIDEO_PREVIEW_MAX_WIDTH = 640
 VIDEO_PREVIEW_TIMEOUT_SECONDS = 30
+IMAGE_PREVIEW_MAX_EDGE = 640
+IMAGE_PREVIEW_QUALITY = 82
 
 logger = logging.getLogger(__name__)
 
@@ -86,14 +91,16 @@ def backfill_media_assets(
     media_ids = upsert_media_assets(assets)
     update_tweets_from_assets(assets)
     mark_tweets_with_assets_downloaded([asset.tweet_id for asset in assets])
-    preview_result = ensure_video_previews(assets)
     return {
         "scanned": len(assets) + skipped,
         "upserted": len(assets),
         "skipped": skipped,
         "media_ids": media_ids,
         "tweet_ids": list(dict.fromkeys(asset.tweet_id for asset in assets)),
-        **preview_result,
+        # 预览图由独立持久任务生成；下载与媒体回填链路不投递、也不生成。
+        "preview_generated": 0,
+        "preview_existing": 0,
+        "preview_failed": 0,
     }
 
 
@@ -122,7 +129,94 @@ def ensure_video_preview(media_path: Path) -> str:
     if preview_path.exists() and preview_path.stat().st_mtime_ns >= source_path.stat().st_mtime_ns:
         return "existing"
 
-    attempts = [None] if source_path == thumbnail_path else ["0.5", None]
+    try:
+        temp_path = build_video_preview_temp(media_path, preview_path)
+        os.replace(temp_path, preview_path)
+        return "generated"
+    except (OSError, subprocess.SubprocessError, RuntimeError):
+        logger.warning("Video preview generation failed for %s", media_path, exc_info=True)
+        return "failed"
+
+
+def video_preview_path(media_path: Path) -> Path:
+    """返回视频预览图路径。"""
+
+    return media_path.with_name(f"{media_path.stem}{VIDEO_PREVIEW_SUFFIX}")
+
+
+def image_preview_path(media_path: Path) -> Path:
+    """返回图片 WebP 预览图路径。"""
+
+    return media_path.with_name(f"{media_path.stem}{IMAGE_PREVIEW_SUFFIX}")
+
+
+def preview_path_for_media(media_path: Path, media_type: str) -> Path:
+    """按媒体类型返回派生预览图路径。"""
+
+    return video_preview_path(media_path) if media_type == "video" else image_preview_path(media_path)
+
+
+def preview_freshness_source(media_path: Path, media_type: str) -> Path:
+    """返回用于判断预览新旧的源文件；视频优先复用下载器缩略图。"""
+
+    if media_type == "video":
+        thumbnail_path = media_path.with_name(f"{media_path.stem}{VIDEO_THUMBNAIL_SUFFIX}")
+        if thumbnail_path.is_file():
+            return thumbnail_path
+    return media_path
+
+
+def preview_is_current(media_path: Path, preview_path: Path, media_type: str) -> bool:
+    """检查预览是否存在、可解码且不早于源文件。"""
+
+    source_path = preview_freshness_source(media_path, media_type)
+    try:
+        if preview_path.stat().st_size <= 0:
+            return False
+        if preview_path.stat().st_mtime_ns < source_path.stat().st_mtime_ns:
+            return False
+        with Image.open(preview_path) as preview:
+            preview.verify()
+        return True
+    except (OSError, UnidentifiedImageError, ValueError):
+        return False
+
+
+def build_image_preview_temp(media_path: Path, preview_path: Path) -> Path:
+    """将图片首帧转换为 640px WebP，并返回同目录唯一临时文件。"""
+
+    temp_path = preview_path.with_name(f".{preview_path.stem}.{uuid.uuid4().hex}.tmp.webp")
+    try:
+        with Image.open(media_path) as opened:
+            opened.seek(0)
+            transposed = ImageOps.exif_transpose(opened)
+            transposed.load()
+            rendered = _convert_image_to_srgb(transposed)
+            rendered.thumbnail(
+                (IMAGE_PREVIEW_MAX_EDGE, IMAGE_PREVIEW_MAX_EDGE),
+                Image.Resampling.LANCZOS,
+                reducing_gap=3.0,
+            )
+            rendered.save(
+                temp_path,
+                format="WEBP",
+                quality=IMAGE_PREVIEW_QUALITY,
+                method=6,
+            )
+        if temp_path.stat().st_size <= 0:
+            raise RuntimeError("empty_image_preview")
+        return temp_path
+    except Exception:
+        temp_path.unlink(missing_ok=True)
+        raise
+
+
+def build_video_preview_temp(media_path: Path, preview_path: Path) -> Path:
+    """用 ffmpeg 生成视频 JPEG 预览，并返回同目录唯一临时文件。"""
+
+    source_path = preview_freshness_source(media_path, "video")
+    attempts = [None] if source_path != media_path else ["0.5", None]
+    last_error = "video_preview_generation_failed"
     for seek in attempts:
         temp_path = preview_path.with_name(f".{preview_path.stem}.{uuid.uuid4().hex}.tmp.jpg")
         try:
@@ -149,21 +243,34 @@ def ensure_video_preview(media_path: Path) -> str:
                 timeout=VIDEO_PREVIEW_TIMEOUT_SECONDS,
             )
             if completed.returncode == 0 and temp_path.exists() and temp_path.stat().st_size > 0:
-                os.replace(temp_path, preview_path)
-                return "generated"
-        except (OSError, subprocess.SubprocessError):
-            logger.warning("Unable to generate video preview for %s", media_path, exc_info=True)
+                return temp_path
+            last_error = "video_preview_decode_failed"
         finally:
-            temp_path.unlink(missing_ok=True)
+            if not temp_path.exists() or temp_path.stat().st_size <= 0:
+                temp_path.unlink(missing_ok=True)
+    raise RuntimeError(last_error)
 
-    logger.warning("Video preview generation failed for %s", media_path)
-    return "failed"
 
+def _convert_image_to_srgb(image: Image.Image) -> Image.Image:
+    """保留 alpha 并尽量把嵌入色彩配置转换为 sRGB。"""
 
-def video_preview_path(media_path: Path) -> Path:
-    """返回视频预览图路径。"""
-
-    return media_path.with_name(f"{media_path.stem}{VIDEO_PREVIEW_SUFFIX}")
+    has_alpha = "A" in image.getbands() or image.mode in {"LA", "PA"}
+    rgba = image.convert("RGBA") if has_alpha else None
+    color = rgba.convert("RGB") if rgba is not None else image.convert("RGB")
+    icc_profile = image.info.get("icc_profile")
+    if isinstance(icc_profile, bytes) and icc_profile:
+        try:
+            color = ImageCms.profileToProfile(
+                color,
+                ImageCms.ImageCmsProfile(io.BytesIO(icc_profile)),
+                ImageCms.createProfile("sRGB"),
+                outputMode="RGB",
+            )
+        except (ImageCms.PyCMSError, OSError, ValueError):
+            logger.debug("Unable to convert embedded image profile to sRGB", exc_info=True)
+    if rgba is not None:
+        color.putalpha(rgba.getchannel("A"))
+    return color
 
 
 def iter_metadata_paths(media_dir: Path, tweet_ids: list[str] | None = None) -> list[Path]:

@@ -396,6 +396,48 @@ class SourceSchedulePolicyRow(RowModel):
     updated_at: datetime
 
 
+class MediaPreviewScheduleRow(RowModel):
+    id: int
+    enabled: bool
+    frequency_kind: str
+    interval_minutes: int
+    local_time: time
+    weekday: int
+    timezone: str
+    jitter_seconds: int
+    next_run_at: datetime | None = None
+    last_run_at: datetime | None = None
+    created_at: datetime
+    updated_at: datetime
+
+
+class MediaPreviewJobRow(RowModel):
+    id: int
+    trigger_type: str
+    mode: str
+    status: str
+    schedule_id: int | None = None
+    snapshot_max_media_id: int | None = None
+    cursor_after_media_id: int
+    total_count: int
+    scanned_count: int
+    generated_count: int
+    existing_count: int
+    failed_count: int
+    worker_id: str | None = None
+    lease_expires_at: datetime | None = None
+    retry_count: int
+    next_attempt_at: datetime | None = None
+    cancel_requested: bool
+    options: dict[str, Any]
+    result: dict[str, Any] | None = None
+    error_message: str | None = None
+    started_at: datetime | None = None
+    finished_at: datetime | None = None
+    created_at: datetime
+    updated_at: datetime
+
+
 class SourceDiscoveryRow(RowModel):
     id: int
     tweet_id: str

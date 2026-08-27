@@ -3,6 +3,7 @@ import { cn } from "@/lib/utils";
 import type { FeedVideoPlaybackStateApi } from "../video-playback-state";
 import { FeedVideo } from "./feed-video";
 import { PrivacyMediaPlaceholder } from "@/components/ui/privacy-media-placeholder";
+import { FallbackImage } from "@/components/ui/fallback-image";
 import { usePrivacyRedactionEnabled } from "@/lib/privacy-redaction";
 
 export function PostMediaGrid({
@@ -77,12 +78,14 @@ export function PostMediaGrid({
                 aria-label={`预览第 ${index + 1} 个媒体`}
                 onClick={() => onPreview(index)}
               >
-                {item.media_url ? (
-                  <img
-                    src={item.media_url}
+                {item.preview_url || item.media_url ? (
+                  <FallbackImage
+                    src={item.preview_url}
+                    fallbackSrc={item.media_url}
                     alt={`归档帖子的第 ${index + 1} 张图片`}
                     loading="lazy"
                     className={cn("size-full", count === 1 ? "object-contain" : "object-cover")}
+                    fallback={<span className="text-sm text-white/70">媒体不可用</span>}
                   />
                 ) : (
                   <span className="text-sm text-white/70">媒体不可用</span>

@@ -749,15 +749,14 @@ def attach_media_url(row: dict[str, object] | RowModel, archive_dir: Path) -> di
 
 
 def media_preview_relative_path(values: dict[str, object], archive_dir: Path, relative_path: str) -> str:
-    """视频优先返回生成的预览图路径，否则直接复用媒体路径。"""
+    """只返回真实存在的派生预览图；原图回退由调用端显式处理。"""
 
     if not relative_path:
         return ""
     is_video = values.get("media_type") == "video" or Path(relative_path).suffix.lower() in VIDEO_EXTENSIONS
-    if not is_video:
-        return relative_path
     media_path = archive_dir / relative_path
-    preview_path = media_path.with_name(f"{media_path.stem}.preview.jpg")
+    suffix = ".preview.jpg" if is_video else ".preview.webp"
+    preview_path = media_path.with_name(f"{media_path.stem}{suffix}")
     if not preview_path.is_file():
         return ""
     return archive_relative_path(preview_path, archive_dir)

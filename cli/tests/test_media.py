@@ -6,12 +6,16 @@ from types import SimpleNamespace
 from unittest.mock import patch
 
 import orjson
+from PIL import Image
 
 from xarchiver.media import (
     asset_from_gallery_dl_metadata,
     asset_from_yt_dlp_metadata,
+    backfill_media_assets,
+    build_image_preview_temp,
     ensure_video_preview,
     ensure_video_previews,
+    image_preview_path,
     iter_metadata_paths,
     safe_path_segment,
     video_preview_path,
@@ -19,6 +23,38 @@ from xarchiver.media import (
 
 
 class MediaMetadataTests(unittest.TestCase):
+    def test_backfill_does_not_generate_or_enqueue_previews(self) -> None:
+        with tempfile.TemporaryDirectory() as tmp:
+            archive_dir = Path(tmp)
+            (archive_dir / "media").mkdir()
+            with (
+                patch("xarchiver.media.iter_metadata_paths", return_value=[]),
+                patch("xarchiver.media.upsert_media_assets", return_value=[]),
+                patch("xarchiver.media.update_tweets_from_assets"),
+                patch("xarchiver.media.mark_tweets_with_assets_downloaded"),
+                patch("xarchiver.media.ensure_video_previews") as ensure_previews,
+            ):
+                result = backfill_media_assets(archive_dir)
+
+            ensure_previews.assert_not_called()
+            self.assertEqual(result["preview_generated"], 0)
+            self.assertEqual(result["preview_existing"], 0)
+            self.assertEqual(result["preview_failed"], 0)
+
+    def test_image_preview_is_webp_bounded_and_preserves_alpha(self) -> None:
+        with tempfile.TemporaryDirectory() as tmp:
+            media_path = Path(tmp) / "large.png"
+            preview_path = image_preview_path(media_path)
+            Image.new("RGBA", (1200, 800), (255, 0, 0, 96)).save(media_path)
+
+            temp_path = build_image_preview_temp(media_path, preview_path)
+
+            self.assertNotEqual(temp_path, preview_path)
+            with Image.open(temp_path) as preview:
+                self.assertEqual(preview.format, "WEBP")
+                self.assertEqual(preview.size, (640, 427))
+                self.assertIn("A", preview.getbands())
+
     def test_scoped_metadata_paths_only_include_selected_tweet(self) -> None:
         with tempfile.TemporaryDirectory() as tmp:
             media_dir = Path(tmp) / "media"

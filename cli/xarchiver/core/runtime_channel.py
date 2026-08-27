@@ -8,7 +8,7 @@ from typing import Any
 
 from xarchiver.core.events import ArchiveEvent, event_broker
 
-PROGRESS_EVENT_TYPES = {"archive.run.progress", "source.scan.log"}
+PROGRESS_EVENT_TYPES = {"archive.run.progress", "source.scan.log", "media_preview_job.progress"}
 LOG_EVENT_TYPES = {"operation.log.appended"}
 SCAN_STATUS_BY_EVENT = {
     "source.scan.started": "running",
@@ -25,6 +25,7 @@ INVALIDATION_KEYS = {
     "stream_id",
     "log_stream_id",
     "operation_id",
+    "preview_job_id",
     "tweet_ids",
 }
 
@@ -36,6 +37,7 @@ class RuntimeProjection:
     runs: dict[int, dict[str, Any]] = field(default_factory=dict)
     items: dict[int, dict[str, Any]] = field(default_factory=dict)
     scans: dict[int, dict[str, Any]] = field(default_factory=dict)
+    preview_jobs: dict[int, dict[str, Any]] = field(default_factory=dict)
     worker: dict[str, Any] | None = None
     queue: dict[str, Any] | None = None
     global_state: dict[str, Any] | None = None
@@ -49,6 +51,8 @@ class RuntimeProjection:
             payload["items"] = list(self.items.values())
         if self.scans:
             payload["scans"] = list(self.scans.values())
+        if self.preview_jobs:
+            payload["preview_jobs"] = list(self.preview_jobs.values())
         if self.worker is not None:
             payload["worker"] = self.worker
         if self.queue is not None:
@@ -70,6 +74,7 @@ def project_runtime_events(events: list[ArchiveEvent]) -> RuntimeProjection:
         for item in payload.get("items", []) if isinstance(payload.get("items"), list) else []:
             _merge_entity(projection.items, item, aliases=("archive_run_item_id",))
         _merge_scan_event(projection, event)
+        _merge_entity(projection.preview_jobs, payload.get("preview_job"), aliases=("preview_job_id",))
         if isinstance(payload.get("worker"), dict):
             projection.worker = dict(payload["worker"])
         if isinstance(payload.get("queue"), dict):

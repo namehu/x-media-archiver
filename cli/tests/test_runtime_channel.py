@@ -97,6 +97,27 @@ class RuntimeProjectionTests(unittest.TestCase):
             ],
         )
 
+    def test_projection_coalesces_preview_progress_without_invalidating(self) -> None:
+        broker = EventBroker()
+        events = [
+            broker.publish(
+                "media_previews",
+                "media_preview_job.progress",
+                {"preview_job_id": 12, "preview_job": {"id": 12, "status": "running", "scanned_count": 4}},
+            ),
+            broker.publish(
+                "media_previews",
+                "media_preview_job.progress",
+                {"preview_job_id": 12, "preview_job": {"id": 12, "generated_count": 3}},
+            ),
+        ]
+
+        projection = project_runtime_events(events)
+
+        self.assertEqual(projection.preview_jobs[12]["scanned_count"], 4)
+        self.assertEqual(projection.preview_jobs[12]["generated_count"], 3)
+        self.assertEqual(projection.invalidations, [])
+
 
 if __name__ == "__main__":
     unittest.main()

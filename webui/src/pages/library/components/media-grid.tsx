@@ -239,7 +239,8 @@ function MediaWallTile({ row, selected, selectionMode, onToggleSelected, onPrevi
         </div>
       ) : null}
       <MediaThumbnail
-        src={row.preview_url || row.media_url}
+        src={row.preview_url}
+        fallbackSrc={row.media_url}
         mediaType={row.media_type}
         alt={getPrivacyMediaAlt(privacyRedactionEnabled, row.tweet_text || title)}
         ariaLabel={
@@ -310,7 +311,8 @@ function MediaDetailCard({ row, selected, selectionMode, onToggleSelected, onPre
       ) : null}
       <div className="w-full shrink-0 sm:w-52">
         <MediaThumbnail
-          src={row.preview_url || row.media_url}
+          src={row.preview_url}
+          fallbackSrc={row.media_url}
           mediaType={row.media_type}
           alt={getPrivacyMediaAlt(privacyRedactionEnabled, row.tweet_text || title)}
           ariaLabel={getPrivacyMediaAlt(privacyRedactionEnabled, row.tweet_text || title)}

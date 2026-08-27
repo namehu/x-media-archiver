@@ -271,7 +271,7 @@ def _collect_delete_files(archive_dir: Path, assets: list[dict[str, object]]) ->
             if path is not None:
                 files[str(path)] = DeleteFile(path, required=True)
         if local_path is not None:
-            for suffix in (".thumb.jpg", ".preview.jpg"):
+            for suffix in (".thumb.jpg", ".preview.jpg", ".preview.webp"):
                 derived_file = local_path.with_name(f"{local_path.stem}{suffix}")
                 safe_derived_file = _safe_media_path(archive_dir, derived_file)
                 assert safe_derived_file is not None

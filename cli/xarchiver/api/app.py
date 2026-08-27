@@ -46,6 +46,10 @@ from xarchiver.core.lock_manager import lock_manager
 from xarchiver.db import close_pool, open_pool
 from xarchiver.services.auth import initialize_setup_token
 from xarchiver.services.hashtags import log_gallery_dl_compatibility
+from xarchiver.services.media_previews import (
+    media_preview_worker_loop,
+    recover_expired_media_preview_jobs,
+)
 from xarchiver.services.queue import (
     count_expired_archive_item_leases,
     has_runnable_download_work,
@@ -82,7 +86,8 @@ async def app_lifespan(_: FastAPI):
     expired_items = count_expired_archive_item_leases()
     interrupted_scans = recover_interrupted_source_scan_runs()
     expired_scans = recover_expired_source_scan_leases()
-    if expired_items or interrupted_scans or expired_scans:
+    expired_preview_jobs = recover_expired_media_preview_jobs()
+    if expired_items or interrupted_scans or expired_scans or expired_preview_jobs:
         logger.warning(
             "Recovered interrupted or expired worker leases on startup.",
             extra={
@@ -91,11 +96,19 @@ async def app_lifespan(_: FastAPI):
                     "archive_items": expired_items,
                     "interrupted_source_scans": interrupted_scans,
                     "expired_source_scans": expired_scans,
+                    "expired_media_preview_jobs": expired_preview_jobs,
                 },
             },
         )
     workers = [
         Thread(target=network_worker_loop, args=(worker_id,), name="archive-network-worker", daemon=True),
+        Thread(
+            target=media_preview_worker_loop,
+            args=(f"{worker_id}-preview",),
+            kwargs={"stop_event": stop_worker, "settings": settings},
+            name="media-preview-worker",
+            daemon=True,
+        ),
     ]
     for worker in workers:
         worker.start()

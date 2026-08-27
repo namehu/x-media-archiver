@@ -366,7 +366,7 @@ erDiagram
 
 ```text
 archive/
-  media/<author_id>/<tweet_id>/    媒体、下载器元数据、缩略图与视频预览
+  media/<author_id>/<tweet_id>/    媒体、下载器元数据、缩略图与图片/视频派生预览
   logs/source-scan-logs/           来源扫描 JSONL 操作日志
   logs/download-logs/              下载 JSONL 操作日志
   logs/hashtag-backfill/           平台 Hashtag 历史维护 JSONL 操作日志

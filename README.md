@@ -11,6 +11,7 @@ tweet URLs -> scoped download -> scoped media_assets backfill -> scoped verify
 - [系统架构总览](docs/architecture/system-overview.md)
 - [核心数据模型](docs/architecture/data-model.md)
 - [可靠性与一致性设计](docs/architecture/reliability-and-consistency.md)
+- [媒体预览图任务](docs/architecture/media-preview-jobs.md)
 - [架构文档索引](docs/architecture/README.md)与[架构决策记录](docs/adr/README.md)
 
 ## 快速开始
@@ -151,7 +152,7 @@ docker-compose run --rm xarchiver backfill-media --full
 docker-compose run --rm xarchiver verify --full
 ```
 
-这些维护命令会遍历归档文件，对大库可能产生显著磁盘 I/O。`backfill-media` 还会为缺失预览图的视频生成最大宽度 640px 的轻量 JPEG；CSV export 仅读取数据库快照，不会进行媒体文件 hash 扫描。
+这些维护命令会遍历归档文件，对大库可能产生显著磁盘 I/O。媒体回填不生成预览图，也不投递预览任务；图片 WebP 与视频 JPEG 预览由 WebUI `Operations -> 维护操作` 中的独立手动或定时任务生成。CSV export 仅读取数据库快照，不会进行媒体文件 hash 扫描。
 
 ## 本地 API 与 WebUI
 
@@ -252,6 +253,11 @@ PUT /api/v1/source-schedule-policies/{policy_id}/sources
 DELETE /api/v1/source-schedule-policies/{policy_id}
 POST /api/v1/maintenance/backfill
 POST /api/v1/maintenance/verify
+POST /api/v1/maintenance/preview-jobs
+GET /api/v1/maintenance/preview-jobs
+POST /api/v1/maintenance/preview-jobs/{job_id}/cancel
+GET /api/v1/maintenance/preview-schedule
+PATCH /api/v1/maintenance/preview-schedule
 ```
 
 运行 WebUI：
@@ -292,7 +298,7 @@ Search 以 Tweet 为结果单位，使用 PostgreSQL 全文检索与 trigram 搜
 
 Collections 提供自定义标签、手工合集与私人备注整理。单条 Tweet 的自定义标签、合集和备注只会在点击“保存整理”后通过一个数据库事务同时保存；关闭存在未保存更改的弹窗时会先要求确认放弃，保存失败则保留当前输入以便重试。
 
-Archive Queue 支持粘贴 URL 或选择本地 TXT/JSONL 文件（浏览器侧解析后提交）来创建结构化的数据库任务。Operations 可触发 requeue、recover-interrupted 与数据库快照 export。完整 backfill 与完整 verify 被隔离在 Maintenance 下，并要求显式确认磁盘扫描。媒体库和重复媒体页均支持显式勾选并批量永久删除最多 200 个媒体项；重复媒体页按完整 SHA-256 组分页，可为每组保留建议项并选择其余副本。删除会清理主文件、对应元数据、标准缩略图和派生视频预览图，保留 Tweet、来源和下载历史，将 Tweet 标记为 `missing`，并写入幂等删除审计。
+Archive Queue 支持粘贴 URL 或选择本地 TXT/JSONL 文件（浏览器侧解析后提交）来创建结构化的数据库任务。Operations 可触发 requeue、recover-interrupted、数据库快照 export，以及与下载完全解耦的媒体预览任务。预览任务支持手动补齐、强制重建和默认关闭的内部定时计划；图片生成最长边 640 的 WebP，视频生成最大宽度 640 的 JPEG，进度通过现有 Runtime WebSocket 展示。完整 backfill 与完整 verify 被隔离在 Maintenance 下，并要求显式确认磁盘扫描。媒体库和重复媒体页均支持显式勾选并批量永久删除最多 200 个媒体项；重复媒体页按完整 SHA-256 组分页，可为每组保留建议项并选择其余副本。删除会清理主文件、对应元数据、下载器缩略图和图片/视频派生预览，保留 Tweet、来源和下载历史，将 Tweet 标记为 `missing`，并写入幂等删除审计。
 
 Sources 记录长期存在的 X/Twitter 来源，例如个人页、媒体页、likes、bookmarks、搜索页或手工集合。一个 source 可向同一 Archive Queue 提交发现的 tweet URL，同时保留 source-to-tweet 的可追溯关系。当前实现提供了可恢复的 source 模型、手动 discovered-URL 提交，以及用于 profile timeline 和用户媒体页的小批量 `gallery-dl` 扫描。普通 source 扫描只记录 discovered tweets，不会隐式提交下载；用户可以明确创建“更新并下载本轮新增”的组合任务，系统通过扫描运行关联精确圈定本轮首次发现的 Tweet。发现列表可按媒体类型和下载状态服务端筛选，默认下载只提交当前筛选下尚未完成的 Tweet，已完成项不会重新下载。下载提交的 `media_type=video/photo` 是 Tweet 级范围筛选，图文混合 Tweet 会整体处理并下载全部媒体；强制重新下载当前筛选属于高级操作。每次受控扫描会在 `archive_sources.cursor_state` 中记录其逻辑 batch window、重复/新增数量以及 cursor 诊断信息。
 

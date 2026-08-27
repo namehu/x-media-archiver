@@ -98,7 +98,7 @@ notes:
   - The original tweet id is available in display_id, webpage_url_basename, webpage_url, and _old_archive_ids.
   - yt-dlp writes cookies back to the file passed with --cookies. The CLI writes the selected cookie source to archive/state/runtime-cookies.txt and passes that runtime copy to yt-dlp.
   - yt-dlp downloaded .mp4, .jpg thumbnail, and .info.json.
-  - 媒体回填会优先基于下载器缩略图生成同目录 `<media-stem>.preview.jpg`；缩略图不存在时使用 ffmpeg 从视频截帧。该文件是可重建的 WebUI 派生预览，不写入 `media_assets`，也不影响媒体校验状态。
+  - 下载器产生的 `.jpg` 缩略图会随视频一起保留，但下载和媒体回填不会生成 WebUI 预览，也不会投递预览任务。独立预览任务之后可优先基于该缩略图生成 `<media-stem>.preview.jpg`；详见 [`media-preview-jobs.md`](media-preview-jobs.md)。
 ```
 
 ## Cookies 来源契约

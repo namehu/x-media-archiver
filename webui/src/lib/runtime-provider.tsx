@@ -9,6 +9,7 @@ import { useQueryClient } from "@tanstack/react-query";
 import { create } from "zustand";
 import {
   apiGet,
+  type MediaPreviewJob,
   type RuntimeGlobal,
   type RuntimeItem,
   type RuntimeRun,
@@ -86,6 +87,8 @@ type RuntimeState = {
   activeItemIdByTweetId: Record<string, number>;
   /** 来源扫描 run 索引 */
   scansById: Record<number, SourceScanRun>;
+  /** 媒体预览图任务索引 */
+  previewJobsById: Record<number, MediaPreviewJob>;
   diagnostics: RuntimeDiagnostics;
 };
 
@@ -155,6 +158,7 @@ const initialRuntimeState: RuntimeState = {
   itemsById: {},
   activeItemIdByTweetId: {},
   scansById: {},
+  previewJobsById: {},
   diagnostics: {
     startedAt: Date.now(),
     transport: "websocket",
@@ -528,6 +532,9 @@ function replaceRuntimeWithSnapshot(current: RuntimeState, snapshot: RuntimeSnap
   const scansById: Record<number, SourceScanRun> = {};
   for (const scan of snapshot.scans) scansById[scan.id] = scan;
 
+  const previewJobsById: Record<number, MediaPreviewJob> = {};
+  for (const job of snapshot.preview_jobs ?? []) previewJobsById[job.id] = job;
+
   return {
     ...current,
     epoch: snapshot.epoch,
@@ -541,6 +548,7 @@ function replaceRuntimeWithSnapshot(current: RuntimeState, snapshot: RuntimeSnap
     itemsById,
     activeItemIdByTweetId,
     scansById,
+    previewJobsById,
   };
 }
 
@@ -551,14 +559,17 @@ function applyRuntimePatch(current: RuntimeState, envelope: RuntimeWsEnvelope): 
   const runValues = Array.isArray(payload.runs) ? payload.runs : [];
   const itemValues = Array.isArray(payload.items) ? payload.items : [];
   const scanValues = Array.isArray(payload.scans) ? payload.scans : [];
+  const previewJobValues = Array.isArray(payload.preview_jobs) ? payload.preview_jobs : [];
 
   let runsById = current.runsById;
   let itemsById = current.itemsById;
   let activeItemIdByTweetId = current.activeItemIdByTweetId;
   let scansById = current.scansById;
+  let previewJobsById = current.previewJobsById;
   let runsChanged = false;
   let itemsChanged = false;
   let scansChanged = false;
+  let previewJobsChanged = false;
 
   for (const value of runValues) {
     const run = normalizeRuntimeRun(value);
@@ -598,6 +609,16 @@ function applyRuntimePatch(current: RuntimeState, envelope: RuntimeWsEnvelope): 
     scansById[scan.id] = mergeDefined(scansById[scan.id], scan);
   }
 
+  for (const value of previewJobValues) {
+    const job = normalizePreviewJob(value);
+    if (!job) continue;
+    if (!previewJobsChanged) {
+      previewJobsById = { ...previewJobsById };
+      previewJobsChanged = true;
+    }
+    previewJobsById[job.id] = mergeDefined(previewJobsById[job.id], job);
+  }
+
   const worker = isRecord(payload.worker) ? { ...current.worker, ...payload.worker } as RuntimeState["worker"] : current.worker;
   const queue = isRecord(payload.queue) ? { ...current.queue, ...payload.queue } as RuntimeState["queue"] : current.queue;
   const suppliedGlobal = isRecord(payload.global)
@@ -614,6 +635,7 @@ function applyRuntimePatch(current: RuntimeState, envelope: RuntimeWsEnvelope): 
     itemsById,
     activeItemIdByTweetId,
     scansById,
+    previewJobsById,
   };
   if (runsChanged || itemsChanged || scansChanged) next = { ...next, global: recomputeGlobal(next) };
   return next;
@@ -642,6 +664,13 @@ function normalizeRuntimeScan(value: unknown): SourceScanRun | null {
   const id = numberValue(value.id ?? value.scan_run_id ?? value.source_scan_run_id);
   if (!id) return null;
   return { ...value, id } as SourceScanRun;
+}
+
+function normalizePreviewJob(value: unknown): MediaPreviewJob | null {
+  if (!isRecord(value)) return null;
+  const id = numberValue(value.id ?? value.preview_job_id);
+  if (!id) return null;
+  return { ...value, id } as MediaPreviewJob;
 }
 
 /** 归一化 item 载荷：补齐 id / archive_run_id / tweet_id / status / lastSequence；缺任一关键字段返回 null */
