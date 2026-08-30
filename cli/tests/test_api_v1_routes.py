@@ -522,6 +522,8 @@ class V1RouterSmokeTests(unittest.TestCase):
                 author_username="alice",
                 text="hello",
                 media_type="photo",
+                sort="random",
+                seed="timeline-seed",
                 limit=20,
                 offset=0,
             )
@@ -535,9 +537,28 @@ class V1RouterSmokeTests(unittest.TestCase):
             author_username="alice",
             text="hello",
             media_type="photo",
+            sort="random",
+            seed="timeline-seed",
             limit=20,
             offset=0,
         )
+
+    def test_v1_library_posts_requires_seed_for_random_sort(self):
+        with self.assertRaises(HTTPException) as raised:
+            self.get_paths["/api/v1/library/posts"](
+                source_id=None,
+                source_type=None,
+                author_username=None,
+                text=None,
+                media_type=None,
+                sort="random",
+                seed="   ",
+                limit=20,
+                offset=0,
+            )
+
+        self.assertEqual(raised.exception.status_code, 400)
+        self.assertEqual(raised.exception.detail, "random_feed_seed_required")
 
     def test_v1_library_search_delegates_filters_and_validates_response(self):
         response = {

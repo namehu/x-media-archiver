@@ -104,6 +104,29 @@ class SearchUnitTests(unittest.TestCase):
         self.assertEqual(params["limit"], 20)
         self.assertEqual(params["offset"], 40)
 
+    def test_build_post_feed_query_uses_parameterized_seed_for_random_sort(self) -> None:
+        sql, params = build_post_feed_query(
+            sort="random",
+            seed="timeline-seed",
+            limit=10,
+            offset=20,
+        )
+        normalized_sql = sql.lower()
+
+        self.assertIn("order by md5(concat(", normalized_sql)
+        self.assertIn("tweets.tweet_id", normalized_sql)
+        self.assertNotIn("random()", normalized_sql)
+        self.assertNotIn("setseed", normalized_sql)
+        self.assertEqual(params["post_random_seed"], "timeline-seed")
+        self.assertEqual(params["limit"], 10)
+        self.assertEqual(params["offset"], 20)
+
+    def test_build_post_feed_query_rejects_invalid_random_sort_arguments(self) -> None:
+        with self.assertRaisesRegex(ValueError, "requires a seed"):
+            build_post_feed_query(sort="random", seed="   ")
+        with self.assertRaisesRegex(ValueError, "unsupported post feed sort"):
+            build_post_feed_query(sort="popular")
+
     def test_post_feed_count_and_media_queries_use_verified_media(self) -> None:
         count_sql, count_params = build_post_feed_count_query()
         media_sql, media_params = build_post_feed_media_query(["one", "two"])

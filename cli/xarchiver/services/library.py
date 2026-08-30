@@ -371,6 +371,8 @@ def list_posts_page(
     author_username: str | None = None,
     text: str | None = None,
     media_type: str | None = None,
+    sort: str = "newest",
+    seed: str | None = None,
     limit: int = 20,
     offset: int = 0,
 ) -> dict[str, object]:
@@ -382,6 +384,8 @@ def list_posts_page(
         author_username=author_username,
         text=text,
         media_type=media_type,
+        sort=sort,
+        seed=seed,
         limit=limit,
         offset=offset,
     )

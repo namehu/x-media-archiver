@@ -15,8 +15,10 @@ export function FeedList({
   activeVideoId,
   previewOpen,
   deletedTweetIds,
+  randomMode,
   onLoadMore,
   onRetryLoadMore,
+  onReshuffle,
   onStateChanged,
   onActivateVideo,
   onRequestDelete,
@@ -33,8 +35,10 @@ export function FeedList({
   activeVideoId: string | null;
   previewOpen: boolean;
   deletedTweetIds: Set<string>;
+  randomMode: boolean;
   onLoadMore: () => void;
   onRetryLoadMore: () => void;
+  onReshuffle: () => void;
   onStateChanged: (state: StateSnapshot) => void;
   onActivateVideo: (videoId: string | null) => void;
   onRequestDelete: (post: PostFeedRow) => void;
@@ -95,6 +99,8 @@ export function FeedList({
             isFetchingNextPage={isFetchingNextPage}
             error={nextPageError}
             onRetry={onRetryLoadMore}
+            randomMode={randomMode}
+            onReshuffle={onReshuffle}
           />
         ),
       }}
@@ -107,11 +113,15 @@ function FeedFooter({
   isFetchingNextPage,
   error,
   onRetry,
+  randomMode,
+  onReshuffle,
 }: {
   hasNextPage: boolean;
   isFetchingNextPage: boolean;
   error: unknown;
   onRetry: () => void;
+  randomMode: boolean;
+  onReshuffle: () => void;
 }) {
   if (error) {
     return (
@@ -126,5 +136,15 @@ function FeedFooter({
   if (isFetchingNextPage)
     return <p className="px-4 py-4 text-center text-[13px] text-fg-secondary">正在加载更多帖子…</p>;
   if (hasNextPage) return <p className="px-4 py-4 text-center text-[13px] text-fg-tertiary">继续下拉加载更多</p>;
+  if (randomMode) {
+    return (
+      <div className="flex flex-col items-center gap-2 px-4 py-5 text-center">
+        <p className="text-[13px] text-fg-tertiary">本轮已浏览完</p>
+        <Button type="button" variant="outline" size="sm" onClick={onReshuffle}>
+          重新随机
+        </Button>
+      </div>
+    );
+  }
   return <p className="px-4 py-4 text-center text-[13px] text-fg-tertiary">已经浏览完全部帖子</p>;
 }

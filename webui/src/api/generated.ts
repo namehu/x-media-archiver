@@ -5269,6 +5269,8 @@ export interface operations {
                 author_username?: string | null;
                 text?: string | null;
                 media_type?: string | null;
+                sort?: string;
+                seed?: string | null;
                 limit?: number;
                 offset?: number;
             };

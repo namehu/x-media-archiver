@@ -1,5 +1,5 @@
 import { useId } from "react";
-import { Search, SlidersHorizontal, X } from "lucide-react";
+import { Search, Shuffle, SlidersHorizontal, X } from "lucide-react";
 import type { ArchiveSourceListItem } from "@/lib/api";
 import { AuthorCombobox } from "@/components/author-combobox";
 import { Badge } from "@/components/ui/badge";
@@ -15,7 +15,11 @@ export type FeedFilters = {
   author: string;
   text: string;
   media_type: string;
+  sort: FeedSort;
+  seed: string;
 };
+
+export type FeedSort = "newest" | "random";
 
 export const DEFAULT_FEED_FILTERS: FeedFilters = {
   source_id: "",
@@ -23,6 +27,8 @@ export const DEFAULT_FEED_FILTERS: FeedFilters = {
   author: "",
   text: "",
   media_type: "",
+  sort: "newest",
+  seed: "",
 };
 
 export function FeedFilterPanel({
@@ -61,6 +67,32 @@ export function FeedFilterPanel({
           }}
         >
           <FieldGroup className="gap-4">
+            <Field className="gap-2">
+              <FieldLabel htmlFor={`${fieldId}-sort`}>排列方式</FieldLabel>
+              <Select
+                value={filters.sort}
+                onValueChange={(sort: FeedSort) => onFiltersChange({ ...filters, sort })}
+              >
+                <SelectTrigger id={`${fieldId}-sort`}>
+                  <SelectValue />
+                </SelectTrigger>
+                <SelectContent>
+                  <SelectGroup>
+                    <SelectItem value="newest">最新优先</SelectItem>
+                    <SelectItem value="random">
+                      <span className="flex items-center gap-2">
+                        <Shuffle className="size-4" aria-hidden="true" />
+                        随机时间线
+                      </span>
+                    </SelectItem>
+                  </SelectGroup>
+                </SelectContent>
+              </Select>
+              <p className="text-xs leading-relaxed text-fg-tertiary">
+                随机顺序会保持稳定，只有点击“重新随机”才会更换。
+              </p>
+            </Field>
+
             <Field className="gap-2">
               <FieldLabel htmlFor={`${fieldId}-source`}>来源</FieldLabel>
               <Select

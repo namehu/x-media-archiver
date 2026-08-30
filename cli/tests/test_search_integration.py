@@ -21,6 +21,7 @@ class SearchIntegrationTests(unittest.TestCase):
     feed_tweet_id = "search-feed-fixture-4"
     wildcard_literal_tweet_id = "search-wildcard-literal-5"
     wildcard_near_tweet_id = "search-wildcard-near-6"
+    random_tweet_ids = tuple(f"search-random-fixture-{index}" for index in range(1, 7))
 
     def setUp(self) -> None:
         self.cleanup_db()
@@ -151,6 +152,36 @@ class SearchIntegrationTests(unittest.TestCase):
                         """,
                         (tweet_id, f"/tmp/{tweet_id}.jpg"),
                     )
+                for index, tweet_id in enumerate(self.random_tweet_ids, start=1):
+                    marker = "keep" if index % 2 else "drop"
+                    cur.execute(
+                        """
+                        insert into tweets (
+                            tweet_id, url, author_username, author_display_name, text,
+                            published_at, imported_at, download_status
+                        )
+                        values (%s, %s, 'random_feed_author', 'Random Feed Author', %s,
+                                now() - (%s * interval '1 minute'),
+                                now() - (%s * interval '1 minute'), 'verified')
+                        """,
+                        (
+                            tweet_id,
+                            f"https://x.com/random_feed_author/status/{tweet_id}",
+                            f"random timeline {marker}",
+                            index,
+                            index,
+                        ),
+                    )
+                    cur.execute(
+                        """
+                        insert into media_assets (
+                            tweet_id, media_index, media_type, local_path,
+                            source_engine, download_status
+                        )
+                        values (%s, 1, 'photo', %s, 'test', 'verified')
+                        """,
+                        (tweet_id, f"/tmp/{tweet_id}.jpg"),
+                    )
                 cur.execute(
                     """
                     insert into download_attempts (
@@ -188,6 +219,7 @@ class SearchIntegrationTests(unittest.TestCase):
                     self.feed_tweet_id,
                     self.wildcard_literal_tweet_id,
                     self.wildcard_near_tweet_id,
+                    *self.random_tweet_ids,
                 ):
                     cur.execute("delete from tweets where tweet_id = %s", (tweet_id,))
                 cur.execute(
@@ -257,6 +289,34 @@ class SearchIntegrationTests(unittest.TestCase):
         self.assertEqual(
             [row["media_type"] for row in page["rows"][0]["media"]],
             ["photo", "video"],
+        )
+
+    def test_random_post_feed_is_stable_across_pages_and_filters(self) -> None:
+        def page_ids(*, seed: str, text: str | None = None, limit: int = 10, offset: int = 0) -> list[str]:
+            posts, _, _ = search_post_feed(
+                author_username="random_feed_author",
+                text=text,
+                sort="random",
+                seed=seed,
+                limit=limit,
+                offset=offset,
+            )
+            return [row.tweet_id for row in posts]
+
+        first_page = page_ids(seed="alpha", limit=3)
+        repeated_first_page = page_ids(seed="alpha", limit=3)
+        second_page = page_ids(seed="alpha", limit=3, offset=3)
+        complete_order = first_page + second_page
+        different_order = page_ids(seed="bravo")
+        filtered_order = page_ids(seed="alpha", text="keep")
+
+        self.assertEqual(first_page, repeated_first_page)
+        self.assertFalse(set(first_page) & set(second_page))
+        self.assertCountEqual(complete_order, self.random_tweet_ids)
+        self.assertNotEqual(complete_order, different_order)
+        self.assertEqual(
+            filtered_order,
+            [tweet_id for tweet_id in complete_order if int(tweet_id.rsplit("-", 1)[1]) % 2],
         )
 
     def test_get_tweet_detail_maps_rows_to_response_dicts(self) -> None:

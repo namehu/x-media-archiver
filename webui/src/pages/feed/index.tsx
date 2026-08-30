@@ -1,7 +1,7 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { useInfiniteQuery, useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
-import { Heart, ListFilter, SlidersHorizontal } from "lucide-react";
-import { useLocation, useNavigate, useNavigationType } from "react-router-dom";
+import { Heart, ListFilter, Shuffle, SlidersHorizontal } from "lucide-react";
+import { useLocation, useNavigate, useNavigationType, useSearchParams } from "react-router-dom";
 import { toast } from "sonner";
 import type { StateSnapshot } from "react-virtuoso";
 import {
@@ -19,13 +19,14 @@ import { ErrorState } from "@/components/ui/error-state";
 import { Sheet, SheetContent, SheetDescription, SheetHeader, SheetTitle } from "@/components/ui/sheet";
 import { Skeleton } from "@/components/ui/skeleton";
 import { ToggleGroup, ToggleGroupItem } from "@/components/ui/toggle-group";
-import { createDialogHistoryEntry } from "@/lib/dialog-history";
+import { closeDialogHistoryEntry, createDialogHistoryEntry } from "@/lib/dialog-history";
 import { formatDeletedBytes, mediaDeleteErrorMessage, type MediaDeleteResponse } from "@/lib/media-deletion";
 import { DEFAULT_FEED_FILTERS, FeedFilterPanel, type FeedFilters } from "./components/feed-filter-panel";
 import { FeedList } from "./components/feed-list";
 import { PostDeleteDialog } from "./components/post-delete-dialog";
 import { PostPreviewDialog } from "./components/post-preview-dialog";
 import { getFeedBrowseState, saveFeedBrowseState } from "./feed-browse-state";
+import { ensureRandomSeed, readFeedFilters, sameFeedFilters, writeFeedFilters } from "./feed-query-state";
 import type { FeedVideoPlaybackSnapshot, FeedVideoPlaybackState } from "./video-playback-state";
 
 const PAGE_SIZE = 20;
@@ -36,21 +37,35 @@ type PostDeleteTarget = {
   estimatedBytes: number;
 };
 
+type FeedPreviewState = {
+  activeTweetId: string;
+  historyToken: string;
+  tweetIds: string[];
+  postsByTweetId: Record<string, PostFeedRow>;
+  capturedPageCount: number;
+  mediaIndexes: Record<string, number>;
+};
+
 export function FeedPage() {
   const location = useLocation();
   const navigate = useNavigate();
   const navigationType = useNavigationType();
+  const [, setSearchParams] = useSearchParams();
   const queryClient = useQueryClient();
   const [restoredState] = useState(() => (navigationType === "POP" ? getFeedBrowseState(location.key) : undefined));
-  const [filters, setFilters] = useState<FeedFilters>(() => restoredState?.filters ?? { ...DEFAULT_FEED_FILTERS });
-  const [submitted, setSubmitted] = useState<FeedFilters>(
-    () => restoredState?.submittedFilters ?? { ...DEFAULT_FEED_FILTERS },
+  const [initialFilters] = useState(() => ensureRandomSeed(readFeedFilters(new URLSearchParams(location.search))));
+  const [canRestoreInitialState] = useState(() =>
+    Boolean(restoredState && sameFeedFilters(restoredState.submittedFilters, initialFilters)),
   );
-  const [restoreListState, setRestoreListState] = useState<StateSnapshot | null>(restoredState?.listState ?? null);
+  const [filters, setFilters] = useState<FeedFilters>(initialFilters);
+  const [submitted, setSubmitted] = useState<FeedFilters>(initialFilters);
+  const [restoreListState, setRestoreListState] = useState<StateSnapshot | null>(
+    canRestoreInitialState ? (restoredState?.listState ?? null) : null,
+  );
   const [listVersion, setListVersion] = useState(0);
   const [mobileFiltersOpen, setMobileFiltersOpen] = useState(false);
   const [activeVideoId, setActiveVideoId] = useState<string | null>(null);
-  const [preview, setPreview] = useState<{ post: PostFeedRow; index: number; historyToken: string } | null>(null);
+  const [preview, setPreview] = useState<FeedPreviewState | null>(null);
   const [deleteTargetPost, setDeleteTargetPost] = useState<PostDeleteTarget | null>(null);
   const [deleteDialogOpen, setDeleteDialogOpen] = useState(false);
   const [deleteOperationId, setDeleteOperationId] = useState<string | null>(null);
@@ -60,8 +75,9 @@ export function FeedPage() {
   const submittedRef = useRef(submitted);
   const listStateRef = useRef<StateSnapshot | null>(restoreListState);
   const previewResumeFrameRef = useRef<number | null>(null);
+  const closingPreviewHistoryTokenRef = useRef<string | null>(null);
   const videoPlaybackStatesRef = useRef<Map<string, FeedVideoPlaybackState>>(
-    new Map(restoredState?.videoPlaybackStates ?? []),
+    new Map(canRestoreInitialState ? (restoredState?.videoPlaybackStates ?? []) : []),
   );
   filtersRef.current = filters;
   submittedRef.current = submitted;
@@ -89,10 +105,21 @@ export function FeedPage() {
       const nextOffset = lastPage.offset + lastPage.count;
       return lastPage.count > 0 && nextOffset < lastPage.total_count ? nextOffset : undefined;
     },
-    gcTime: Infinity,
-    refetchOnMount: restoredState ? false : true,
+    // 随机轮次会产生一次性的 seed 查询键，较短回收期可限制历史轮次占用的内存。
+    gcTime: submitted.sort === "random" ? 5 * 60_000 : Infinity,
+    refetchOnMount: canRestoreInitialState ? false : true,
   });
-  const rows = useMemo(() => postsQuery.data?.pages.flatMap((page) => page.rows) ?? [], [postsQuery.data]);
+  const rows = useMemo(
+    () => dedupePosts(postsQuery.data?.pages.flatMap((page) => page.rows) ?? []),
+    [postsQuery.data],
+  );
+  const previewPosts = useMemo(
+    () =>
+      preview?.tweetIds
+        .map((tweetId) => preview.postsByTweetId[tweetId])
+        .filter((post): post is PostFeedRow => Boolean(post)) ?? [],
+    [preview],
+  );
   const totalCount = postsQuery.data?.pages[0]?.total_count ?? 0;
   const deleteMutation = useMutation({
     mutationFn: (operationId: string) => {
@@ -112,7 +139,6 @@ export function FeedPage() {
       setDeleteOperationId(null);
       setDeleteTargetPost(null);
       setActiveVideoId(null);
-      setPreview((current) => (current?.post.tweet_id === deletedTweetId ? null : current));
       if (deletedPost) {
         for (const media of deletedPost.media) {
           videoPlaybackStatesRef.current.delete(`${deletedPost.tweet_id}:${media.id}`);
@@ -155,6 +181,28 @@ export function FeedPage() {
     [location.key],
   );
 
+  useEffect(() => {
+    setPreview((current) => {
+      if (!current) return null;
+      return reconcilePreviewSnapshot(current, postsQuery.data?.pages ?? [], deletedTweetIds);
+    });
+  }, [deletedTweetIds, postsQuery.data?.pages]);
+
+  useEffect(() => {
+    if (!preview) {
+      closingPreviewHistoryTokenRef.current = null;
+      return;
+    }
+    // 快照被删空时只弹出一次对话框历史条目，避免重复 Back 或重复清理。
+    if (preview.tweetIds.length || closingPreviewHistoryTokenRef.current === preview.historyToken) return;
+
+    closingPreviewHistoryTokenRef.current = preview.historyToken;
+    closeDialogHistoryEntry(preview.historyToken, () => {
+      closingPreviewHistoryTokenRef.current = null;
+      setPreview(null);
+    });
+  }, [preview]);
+
   const getVideoState = useCallback((videoId: string) => videoPlaybackStatesRef.current.get(videoId), []);
 
   const updateVideoState = useCallback((videoId: string, snapshot: FeedVideoPlaybackSnapshot) => {
@@ -182,6 +230,28 @@ export function FeedPage() {
       videoPlaybackStatesRef.current.delete(`${post.tweet_id}:${media.id}`);
     }
   }, []);
+
+  useEffect(() => {
+    const parsed = readFeedFilters(new URLSearchParams(location.search));
+    // 每次从 URL 进入页面都重建标准化过滤条件，缺失 seed 的 random 会延续当前 seed，避免刷新后“无意重排”。
+    const nextFilters =
+      parsed.sort === "random" && !parsed.seed && submittedRef.current.sort === "random"
+        ? { ...parsed, seed: submittedRef.current.seed || crypto.randomUUID() }
+        : ensureRandomSeed(parsed);
+    if (!sameFeedFilters(parsed, nextFilters)) {
+      setSearchParams((current) => writeFeedFilters(current, nextFilters), { replace: true });
+    }
+    if (sameFeedFilters(nextFilters, submittedRef.current)) return;
+
+    listStateRef.current = null;
+    setRestoreListState(null);
+    setListVersion((version) => version + 1);
+    setActiveVideoId(null);
+    clearVideoPlaybackStates();
+    setDeletedTweetIds(new Set());
+    setFilters(nextFilters);
+    setSubmitted(nextFilters);
+  }, [clearVideoPlaybackStates, location.search, setSearchParams]);
 
   const schedulePreviewResume = useCallback(
     (videoId: string | null) => {
@@ -216,19 +286,27 @@ export function FeedPage() {
     [clearVideoPlaybackStates, queryClient],
   );
 
+  const commitSubmittedFilters = useCallback(
+    (nextFilters: FeedFilters) => {
+      setDeletedTweetIds(new Set());
+      resetListAndQuery(nextFilters);
+      setFilters(nextFilters);
+      setSubmitted(nextFilters);
+      setSearchParams((current) => writeFeedFilters(current, nextFilters));
+    },
+    [resetListAndQuery, setSearchParams],
+  );
+
   const applyFilters = () => {
-    const nextFilters = { ...filters };
-    setDeletedTweetIds(new Set());
-    resetListAndQuery(nextFilters);
-    setSubmitted(nextFilters);
+    commitSubmittedFilters(ensureRandomSeed({ ...filters }));
   };
 
   const resetFilters = () => {
-    const nextFilters = { ...DEFAULT_FEED_FILTERS };
-    setDeletedTweetIds(new Set());
-    resetListAndQuery(nextFilters);
-    setFilters(nextFilters);
-    setSubmitted(nextFilters);
+    commitSubmittedFilters({
+      ...DEFAULT_FEED_FILTERS,
+      sort: submitted.sort,
+      seed: submitted.seed,
+    });
   };
 
   const switchFeed = (value: string) => {
@@ -238,11 +316,18 @@ export function FeedPage() {
       source_id: "",
       source_type: value === "likes" ? "likes" : "",
     };
-    setDeletedTweetIds(new Set());
-    resetListAndQuery(nextFilters);
-    setFilters(nextFilters);
-    setSubmitted(nextFilters);
+    commitSubmittedFilters(nextFilters);
   };
+
+  const reshuffle = useCallback(() => {
+    const nextFilters: FeedFilters = {
+      ...submittedRef.current,
+      sort: "random",
+      seed: crypto.randomUUID(),
+    };
+    queryClient.removeQueries({ queryKey: ["posts", query], exact: true });
+    commitSubmittedFilters(nextFilters);
+  }, [commitSubmittedFilters, query, queryClient]);
 
   const handleListStateChanged = useCallback(
     (state: StateSnapshot) => {
@@ -335,6 +420,21 @@ export function FeedPage() {
                 </span>
               </ToggleGroupItem>
             </ToggleGroup>
+            {submitted.sort === "random" ? (
+              <div className="flex min-h-10 items-center gap-2 border-t border-border-subtle px-4 py-1.5 sm:px-5">
+                <Shuffle className="size-4 shrink-0 text-brand" aria-hidden="true" />
+                <p className="min-w-0 flex-1 truncate text-xs font-medium text-fg-secondary">随机时间线</p>
+                <Button
+                  type="button"
+                  variant="ghost"
+                  size="sm"
+                  className="h-8 shrink-0 rounded-full px-3 text-xs"
+                  onClick={reshuffle}
+                >
+                  重新随机
+                </Button>
+              </div>
+            ) : null}
           </header>
 
           {postsQuery.isLoading ? <FeedSkeleton /> : null}
@@ -358,8 +458,10 @@ export function FeedPage() {
               activeVideoId={activeVideoId}
               previewOpen={Boolean(preview)}
               deletedTweetIds={deletedTweetIds}
+              randomMode={submitted.sort === "random"}
               onLoadMore={() => void postsQuery.fetchNextPage()}
               onRetryLoadMore={() => void postsQuery.fetchNextPage()}
+              onReshuffle={reshuffle}
               onStateChanged={handleListStateChanged}
               onActivateVideo={setActiveVideoId}
               onRequestDelete={openPostDeleteDialog}
@@ -371,13 +473,24 @@ export function FeedPage() {
                   window.cancelAnimationFrame(previewResumeFrameRef.current);
                   previewResumeFrameRef.current = null;
                 }
+                // 冻结当前列表顺序；预览期间只把后续新加载的分页追加到末尾。
                 const dialogEntry = createDialogHistoryEntry(location.state);
                 setActiveVideoId(null);
                 void navigate(
                   { pathname: location.pathname, search: location.search, hash: location.hash },
                   { state: dialogEntry.state },
                 );
-                setPreview({ post, index, historyToken: dialogEntry.token });
+                const previewableRows = rows.filter(
+                  (row) => isPreviewablePost(row) && !deletedTweetIds.has(row.tweet_id),
+                );
+                setPreview({
+                  activeTweetId: post.tweet_id,
+                  historyToken: dialogEntry.token,
+                  tweetIds: previewableRows.map((row) => row.tweet_id),
+                  postsByTweetId: snapshotPosts(previewableRows),
+                  capturedPageCount: postsQuery.data?.pages.length ?? 0,
+                  mediaIndexes: { [post.tweet_id]: index },
+                });
               }}
             />
           ) : null}
@@ -426,18 +539,41 @@ export function FeedPage() {
       </Sheet>
 
       <PostPreviewDialog
-        post={preview?.post ?? null}
-        activeIndex={preview?.index ?? 0}
+        posts={previewPosts}
+        activeTweetId={preview?.activeTweetId ?? null}
+        activeIndex={preview ? (preview.mediaIndexes[preview.activeTweetId] ?? 0) : 0}
         historyToken={preview?.historyToken ?? null}
+        hasNextPage={Boolean(postsQuery.hasNextPage)}
+        isFetchingNextPage={postsQuery.isFetchingNextPage}
+        nextPageError={postsQuery.isFetchNextPageError ? postsQuery.error : null}
+        endLabel={submitted.sort === "random" ? "本轮已浏览完" : "已经浏览完"}
         getVideoState={getVideoState}
         updateVideoState={updateVideoState}
-        onActiveIndexChange={(index) => setPreview((current) => (current ? { ...current, index } : null))}
+        onActiveTweetChange={(tweetId) =>
+          setPreview((current) => (current ? { ...current, activeTweetId: tweetId } : null))
+        }
+        onActiveIndexChange={(index) =>
+          setPreview((current) =>
+            current
+              ? {
+                  ...current,
+                  mediaIndexes: { ...current.mediaIndexes, [current.activeTweetId]: index },
+                }
+              : null,
+          )
+        }
+        onLoadMore={() => void postsQuery.fetchNextPage()}
+        onRetryLoadMore={() => void postsQuery.fetchNextPage()}
         onOpenChange={(open) => {
           if (open) return;
           const currentPreview = preview;
-          const media = currentPreview?.post.media[currentPreview.index];
+          const currentPost = currentPreview?.postsByTweetId[currentPreview.activeTweetId] ?? null;
+          const currentMediaIndex = currentPreview
+            ? (currentPreview.mediaIndexes[currentPreview.activeTweetId] ?? 0)
+            : 0;
+          const media = currentPost?.media[currentMediaIndex];
           const videoId =
-            currentPreview && media?.media_type === "video" ? `${currentPreview.post.tweet_id}:${media.id}` : null;
+            currentPost && media?.media_type === "video" ? `${currentPost.tweet_id}:${media.id}` : null;
           setPreview(null);
           schedulePreviewResume(videoId);
         }}
@@ -477,6 +613,8 @@ function feedQueryString(filters: FeedFilters, pagination: Record<string, string
     author_username: filters.author,
     text: filters.text,
     media_type: filters.media_type,
+    sort: filters.sort,
+    seed: filters.sort === "random" ? filters.seed : "",
     ...pagination,
   });
 }
@@ -484,6 +622,82 @@ function feedQueryString(filters: FeedFilters, pagination: Record<string, string
 function countActiveFilters(filters: FeedFilters) {
   return [filters.source_id || filters.source_type, filters.author, filters.text, filters.media_type].filter(Boolean)
     .length;
+}
+
+function dedupePosts(rows: PostFeedRow[]) {
+  const seen = new Set<string>();
+  return rows.filter((row) => {
+    if (seen.has(row.tweet_id)) return false;
+    seen.add(row.tweet_id);
+    return true;
+  });
+}
+
+function reconcilePreviewSnapshot(
+  current: FeedPreviewState,
+  pages: PostFeedPageResponse[],
+  deletedTweetIds: Set<string>,
+): FeedPreviewState {
+  // 预览列表只允许“追加”新获取页，确保已加载顺序稳定，不因后续 refetch 改变当前导航顺序。
+  const previousPosition = Math.max(current.tweetIds.indexOf(current.activeTweetId), 0);
+  const knownTweetIds = new Set(current.tweetIds);
+  const removedTweetIds = new Set(deletedTweetIds);
+  const postsByTweetId = { ...current.postsByTweetId };
+
+  for (const page of pages) {
+    for (const post of page.rows) {
+      if (!knownTweetIds.has(post.tweet_id)) continue;
+      if (!isPreviewablePost(post)) {
+        removedTweetIds.add(post.tweet_id);
+        continue;
+      }
+      postsByTweetId[post.tweet_id] = snapshotPost(post);
+    }
+  }
+
+  const appendedTweetIds: string[] = [];
+  // 跳过打开预览时已经捕获的页，只从后续新增页追加条目。
+  for (const page of pages.slice(current.capturedPageCount)) {
+    for (const post of page.rows) {
+      if (knownTweetIds.has(post.tweet_id) || removedTweetIds.has(post.tweet_id) || !isPreviewablePost(post)) {
+        continue;
+      }
+      knownTweetIds.add(post.tweet_id);
+      appendedTweetIds.push(post.tweet_id);
+      postsByTweetId[post.tweet_id] = snapshotPost(post);
+    }
+  }
+
+  const tweetIds = [...current.tweetIds, ...appendedTweetIds].filter((tweetId) => !removedTweetIds.has(tweetId));
+  for (const tweetId of removedTweetIds) delete postsByTweetId[tweetId];
+  const activeTweetId = tweetIds.includes(current.activeTweetId)
+    ? current.activeTweetId
+    : (tweetIds[Math.min(previousPosition, tweetIds.length - 1)] ?? current.activeTweetId);
+
+  return {
+    ...current,
+    activeTweetId,
+    tweetIds,
+    postsByTweetId,
+    capturedPageCount: Math.max(current.capturedPageCount, pages.length),
+  };
+}
+
+function snapshotPosts(posts: PostFeedRow[]) {
+  return Object.fromEntries(posts.map((post) => [post.tweet_id, snapshotPost(post)]));
+}
+
+function snapshotPost(post: PostFeedRow): PostFeedRow {
+  return {
+    ...post,
+    hashtags: [...(post.hashtags ?? [])],
+    tags: [...(post.tags ?? [])],
+    media: post.media.map((media) => ({ ...media })),
+  };
+}
+
+function isPreviewablePost(post: PostFeedRow) {
+  return post.media.length > 0;
 }
 
 function FeedSkeleton() {

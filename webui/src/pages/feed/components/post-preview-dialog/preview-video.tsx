@@ -31,6 +31,8 @@ export function PreviewVideo({
   getVideoState,
   updateVideoState,
   onControlToggle,
+  onTweetGesture,
+  onTweetWheel,
   overlay,
 }: {
   src: string;
@@ -38,19 +40,28 @@ export function PreviewVideo({
   active: boolean;
   videoId: string;
   onControlToggle?: React.Dispatch<React.SetStateAction<boolean>>;
+  onTweetGesture?: (direction: -1 | 1) => void;
+  onTweetWheel?: (deltaY: number) => void;
   overlay?: ReactNode;
 } & FeedVideoPlaybackStateApi) {
   const containerRef = useRef<HTMLDivElement>(null);
   const longPressTimerRef = useRef<number | null>(null);
   const restorePlaybackRateRef = useRef<number | null>(null);
   const seekOverlaySnapshotRef = useRef<{ delta: number; targetTime: number } | null>(null);
+  // 通过 ref 缓存回调，避免父组件渲染抖动导致 Artplayer 事件监听器引用变化并重建播放器。
+  const onTweetGestureRef = useRef(onTweetGesture);
+  const onTweetWheelRef = useRef(onTweetWheel);
+  onTweetGestureRef.current = onTweetGesture;
+  onTweetWheelRef.current = onTweetWheel;
   const gestureRef = useRef<{
     pointerId: number;
     startX: number;
     startY: number;
+    startedAt: number;
     startTime: number;
     targetTime: number;
     seekActive: boolean;
+    verticalActive: boolean;
   } | null>(null);
   const [gestureOverlay, setGestureOverlay] = useState<
     | null
@@ -129,6 +140,7 @@ export function PreviewVideo({
     });
 
     const keepFullWebPlayerAccessible = () => {
+      // 某些浏览器会将全屏播放器标记 aria-hidden；对话框场景下需恢复到可访问树。
       if (player.fullscreenWeb && interactionSurface.getAttribute("aria-hidden") === "true") {
         interactionSurface.removeAttribute("aria-hidden");
       }
@@ -281,9 +293,11 @@ export function PreviewVideo({
         pointerId: event.pointerId,
         startX: event.clientX,
         startY: event.clientY,
+        startedAt: performance.now(),
         startTime: player.currentTime,
         targetTime: player.currentTime,
         seekActive: false,
+        verticalActive: false,
       };
 
       // Keep ordinary taps on the video so Artplayer can emit its click/control
@@ -296,6 +310,7 @@ export function PreviewVideo({
           !currentGesture ||
           currentGesture.pointerId !== event.pointerId ||
           currentGesture.seekActive ||
+          currentGesture.verticalActive ||
           !player.playing
         ) {
           return;
@@ -318,23 +333,54 @@ export function PreviewVideo({
       syncPreviewChromeVisibility();
     };
 
+    const handleWheel = (event: WheelEvent) => {
+      const handleTweetWheel = onTweetWheelRef.current;
+      if (!handleTweetWheel || isInteractiveTarget(event.target) || Math.abs(event.deltaY) <= Math.abs(event.deltaX)) {
+        return;
+      }
+      event.preventDefault();
+      event.stopPropagation();
+      handleTweetWheel(event.deltaY);
+    };
+
     const handlePointerMove = (event: PointerEvent) => {
       const currentGesture = gestureRef.current;
       if (!currentGesture || currentGesture.pointerId !== event.pointerId) return;
 
       const deltaX = event.clientX - currentGesture.startX;
       const deltaY = event.clientY - currentGesture.startY;
+      const movedVertically =
+        Boolean(onTweetGestureRef.current) &&
+        Math.abs(deltaY) >= SEEK_ACTIVATION_DISTANCE_PX &&
+        Math.abs(deltaY) > Math.abs(deltaX) * 1.15;
       const movedFarEnough = Math.abs(deltaX) >= SEEK_ACTIVATION_DISTANCE_PX && Math.abs(deltaX) > Math.abs(deltaY);
       const movedToCancelHold =
         Math.abs(deltaX) >= LONG_PRESS_CANCEL_DISTANCE_PX || Math.abs(deltaY) >= LONG_PRESS_CANCEL_DISTANCE_PX;
 
-      if (!currentGesture.seekActive && movedFarEnough) {
+      if (!currentGesture.seekActive && !currentGesture.verticalActive && movedVertically) {
+        currentGesture.verticalActive = true;
+        captureGesturePointer(event.pointerId);
+        clearLongPressTimer();
+        stopFastForward();
+      } else if (!currentGesture.seekActive && !currentGesture.verticalActive && movedFarEnough) {
         currentGesture.seekActive = true;
         captureGesturePointer(event.pointerId);
         clearLongPressTimer();
         stopFastForward();
       } else if (!currentGesture.seekActive && movedToCancelHold) {
         clearLongPressTimer();
+      }
+
+      if (currentGesture.verticalActive) {
+        // 垂直拖动仅作为“翻帖”手势反馈，不影响横向快进。
+        interactionSurface.style.transition = "none";
+        interactionSurface.style.transform = `translate3d(0, ${deltaY}px, 0)`;
+        interactionSurface.style.opacity = String(
+          Math.max(0.58, 1 - Math.abs(deltaY) / Math.max(interactionSurface.clientHeight, 1)),
+        );
+        event.preventDefault();
+        event.stopPropagation();
+        return;
       }
 
       if (!currentGesture.seekActive) return;
@@ -374,6 +420,9 @@ export function PreviewVideo({
 
       const pointerId = currentGesture?.pointerId ?? event?.pointerId;
       const seeking = currentGesture?.seekActive ?? false;
+      const navigatingTweet = currentGesture?.verticalActive ?? false;
+      const verticalDelta = event && currentGesture ? event.clientY - currentGesture.startY : 0;
+      const verticalElapsed = currentGesture ? Math.max(performance.now() - currentGesture.startedAt, 1) : 1;
 
       clearLongPressTimer();
       stopFastForward();
@@ -382,6 +431,18 @@ export function PreviewVideo({
 
       if (seeking) {
         setGestureOverlay(null);
+      }
+
+      if (navigatingTweet) {
+        const shouldNavigate =
+          Math.abs(verticalDelta) >= 72 ||
+          (Math.abs(verticalDelta) >= 24 && Math.abs(verticalDelta) / verticalElapsed >= 0.55);
+        interactionSurface.style.transition = window.matchMedia("(prefers-reduced-motion: reduce)").matches
+          ? "none"
+          : "transform 180ms ease-out, opacity 180ms ease-out";
+        interactionSurface.style.transform = "translate3d(0, 0, 0)";
+        interactionSurface.style.opacity = "1";
+        if (shouldNavigate) onTweetGestureRef.current?.(verticalDelta < 0 ? 1 : -1);
       }
 
       if (pointerId !== undefined && interactionSurface.hasPointerCapture(pointerId)) {
@@ -395,6 +456,7 @@ export function PreviewVideo({
     interactionSurface.addEventListener("pointercancel", finishGesture, true);
     interactionSurface.addEventListener("lostpointercapture", finishGesture, true);
     interactionSurface.addEventListener("click", handlePlayerClick);
+    interactionSurface.addEventListener("wheel", handleWheel, { passive: false });
 
     if (!initialState || !initialState.ended) {
       void player.play().catch(() => undefined);
@@ -426,6 +488,7 @@ export function PreviewVideo({
       interactionSurface.removeEventListener("pointercancel", finishGesture, true);
       interactionSurface.removeEventListener("lostpointercapture", finishGesture, true);
       interactionSurface.removeEventListener("click", handlePlayerClick);
+      interactionSurface.removeEventListener("wheel", handleWheel);
       player.off("control", handlePlayerChromeChange);
       player.off("hover", handlePlayerChromeChange);
       controlVisibilityObserver.disconnect();
@@ -434,7 +497,15 @@ export function PreviewVideo({
       overlayPluginApi?.destroy();
       cleanupPlayer();
     };
-  }, [active, getVideoState, onControlToggle, previewUrl, src, updateVideoState, videoId]);
+  }, [
+    active,
+    getVideoState,
+    onControlToggle,
+    previewUrl,
+    src,
+    updateVideoState,
+    videoId,
+  ]);
 
   if (!active) {
     return previewUrl ? (

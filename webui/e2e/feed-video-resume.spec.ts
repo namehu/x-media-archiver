@@ -1,4 +1,4 @@
-import { expect, test, type Page, type Route } from "@playwright/test";
+import { expect, test, type Page, type Route, type WebSocketRoute } from "@playwright/test";
 
 test.beforeEach(async ({ context }) => {
   await context.addInitScript(() => sessionStorage.setItem("xma:webui:adult-content-acknowledged", "1"));
@@ -10,11 +10,173 @@ declare global {
       advancePreviewVideo: (seconds: number) => void;
       listVideoCurrentTime: () => number | null;
       listVideoPaused: () => boolean | null;
+      rememberPreviewVideo: () => void;
+      previewVideoIsStable: () => boolean;
     };
   }
 }
 
 test.describe("Feed video resume", () => {
+  test("keeps a seeded random timeline in the URL and navigates posts without adding history entries", async ({ page }) => {
+    const posts = [
+      feedImagePost("random-one", "随机帖子一"),
+      feedImagePost("random-two", "随机帖子二"),
+      feedImagePost("random-three", "随机帖子三"),
+      feedImagePost("random-four", "随机帖子四"),
+    ];
+    const postsRequest = page.waitForRequest((request) => new URL(request.url()).pathname === "/api/v1/library/posts");
+    await mockFeedApis(page, posts);
+
+    await page.goto("/feed?sort=random&seed=stable-seed&text=%E9%9A%8F%E6%9C%BA");
+    const requestUrl = new URL((await postsRequest).url());
+    expect(requestUrl.searchParams.get("sort")).toBe("random");
+    expect(requestUrl.searchParams.get("seed")).toBe("stable-seed");
+    expect(requestUrl.searchParams.get("text")).toBe("随机");
+
+    await page.getByRole("button", { name: "重置筛选" }).click();
+    await expect(page).toHaveURL(/sort=random/);
+    await expect(page).toHaveURL(/seed=stable-seed/);
+    expect(new URL(page.url()).searchParams.has("text")).toBe(false);
+
+    const firstPost = page.locator("article").filter({ hasText: "随机帖子一" });
+    await firstPost.getByRole("button", { name: "预览第 1 个媒体" }).click();
+    const dialog = page.getByRole("dialog");
+    await expect(dialog.getByText("随机帖子一", { exact: true })).toBeVisible();
+
+    await page.keyboard.press("j");
+    await expect(dialog.getByText("随机帖子二", { exact: true })).toBeVisible();
+    await dialog.getByRole("button", { name: "上一条帖子（K）" }).click();
+    await expect(dialog.getByText("随机帖子一", { exact: true })).toBeVisible();
+
+    const surface = dialog.locator('[data-preview-tweet-surface="true"]');
+    await surface.dispatchEvent("pointerdown", {
+      pointerId: 9,
+      pointerType: "touch",
+      button: 0,
+      clientX: 240,
+      clientY: 620,
+    });
+    await surface.dispatchEvent("pointermove", {
+      pointerId: 9,
+      pointerType: "touch",
+      button: 0,
+      clientX: 240,
+      clientY: 430,
+    });
+    await surface.dispatchEvent("pointerup", {
+      pointerId: 9,
+      pointerType: "touch",
+      button: 0,
+      clientX: 240,
+      clientY: 430,
+    });
+    await expect(dialog.getByText("随机帖子二", { exact: true })).toBeVisible();
+
+    for (let index = 0; index < 7; index += 1) {
+      await surface.dispatchEvent("wheel", { deltaX: 0, deltaY: 80 });
+      await page.waitForTimeout(100);
+    }
+    await expect(dialog.getByText("随机帖子三", { exact: true })).toBeVisible();
+    await expect(dialog.getByText("随机帖子四", { exact: true })).toHaveCount(0);
+
+    await page.waitForTimeout(200);
+    await surface.dispatchEvent("wheel", { deltaX: 0, deltaY: 80 });
+    await expect(dialog.getByText("随机帖子四", { exact: true })).toBeVisible();
+
+    await page.keyboard.press("Escape");
+    await expect(dialog).toHaveCount(0);
+    await expect(page).toHaveURL(/sort=random/);
+    await expect(page).toHaveURL(/seed=stable-seed/);
+
+    const oldSeed = new URL(page.url()).searchParams.get("seed");
+    await page.getByRole("button", { name: "重新随机", exact: true }).first().click();
+    await expect.poll(() => new URL(page.url()).searchParams.get("seed")).not.toBe(oldSeed);
+  });
+
+  test("keeps the opened preview order stable across a first-page refetch", async ({ page }) => {
+    const runtime = await installRuntimeSocket(page);
+    let posts = [feedImagePost("snapshot-one", "快照帖子一"), feedImagePost("snapshot-two", "快照帖子二")];
+    await mockFeedApis(page, () => posts);
+
+    await page.goto("/feed");
+    await page
+      .locator("article")
+      .filter({ hasText: "快照帖子一" })
+      .getByRole("button", { name: "预览第 1 个媒体" })
+      .click();
+    const dialog = page.getByRole("dialog");
+    await expect(dialog.getByText("快照帖子一", { exact: true })).toBeVisible();
+
+    posts = [
+      feedImagePost("new-first-page-post", "刷新后新首屏帖子"),
+      feedImagePost("snapshot-one", "快照帖子一（已更新）"),
+      feedImagePost("snapshot-two", "快照帖子二"),
+    ];
+    const socket = await runtime.socket();
+    socket.send(
+      JSON.stringify(
+        runtimeEnvelope("runtime.invalidate", 11, 2, {
+          events: [{ topic: "library", event_type: "library.metadata_updated", payload: {} }],
+        }),
+      ),
+    );
+
+    await expect(dialog.getByText("快照帖子一（已更新）", { exact: true })).toBeVisible();
+    await page.keyboard.press("j");
+    await expect(dialog.getByText("快照帖子二", { exact: true })).toBeVisible();
+    await expect(dialog.getByText("刷新后新首屏帖子", { exact: true })).toHaveCount(0);
+  });
+
+  test("removes media-empty preview items, chooses a neighbor, and closes the sole history entry", async ({ page }) => {
+    const runtime = await installRuntimeSocket(page);
+    await mockFeedApis(page, [
+      feedImagePost("deleted-preview-one", "待删除预览一"),
+      feedImagePost("deleted-preview-two", "待删除预览二"),
+    ]);
+
+    await page.goto("/feed");
+    await page
+      .locator("article")
+      .filter({ hasText: "待删除预览一" })
+      .getByRole("button", { name: "预览第 1 个媒体" })
+      .click();
+    const dialog = page.getByRole("dialog");
+    const socket = await runtime.socket();
+
+    socket.send(
+      JSON.stringify(
+        runtimeEnvelope("runtime.invalidate", 11, 2, {
+          events: [
+            {
+              topic: "library",
+              event_type: "library.media_deleted",
+              payload: { tweet_ids: ["deleted-preview-one"] },
+            },
+          ],
+        }),
+      ),
+    );
+    await expect(dialog.getByText("待删除预览二", { exact: true })).toBeVisible();
+
+    socket.send(
+      JSON.stringify(
+        runtimeEnvelope("runtime.invalidate", 12, 3, {
+          events: [
+            {
+              topic: "library",
+              event_type: "library.media_deleted",
+              payload: { tweet_ids: ["deleted-preview-two"] },
+            },
+          ],
+        }),
+      ),
+    );
+    await expect(dialog).toHaveCount(0);
+    await expect
+      .poll(() => page.evaluate(() => history.state?.usr?.__dialog_history__ ?? null))
+      .toBeNull();
+  });
+
   test("resumes the feed video from the preview playback position", async ({ page }) => {
     await installMediaElementMock(page);
     await mockFeedApis(page);
@@ -39,6 +201,104 @@ test.describe("Feed video resume", () => {
     await expect.poll(() => page.evaluate(() => window.__feedVideoTest.listVideoPaused())).toBe(false);
     await expect.poll(() => page.evaluate(() => window.__feedVideoTest.listVideoCurrentTime())).toBeGreaterThan(6.5);
     expect(await page.evaluate(() => window.__feedVideoTest.listVideoCurrentTime())).toBeLessThan(7.5);
+  });
+
+  test("keeps one preview player across history and prefetch state updates", async ({ page }) => {
+    const runtime = await installRuntimeSocket(page);
+    let exposeNextPage = false;
+    let nextPageRequestCount = 0;
+    let releaseNextPage!: () => void;
+    const nextPageGate = new Promise<void>((resolve) => {
+      releaseNextPage = resolve;
+    });
+    await installMediaElementMock(page);
+    await mockFeedApis(page, [feedPost(), feedImagePost("prefetched-post", "预取帖子")], {
+      pageSize: 1,
+      totalCount: () => (exposeNextPage ? 2 : 1),
+      waitForOffset: async (offset) => {
+        if (offset === 0) return;
+        nextPageRequestCount += 1;
+        await nextPageGate;
+      },
+    });
+
+    await page.goto("/feed");
+    await page.locator('[data-feed-media="true"] video').click();
+    const dialog = page.getByRole("dialog");
+    const fullWebPlayer = page.locator("body > .art-video-player.art-fullscreen-web");
+    await expect(fullWebPlayer.locator("video")).toHaveCount(1);
+    await page.evaluate(() => window.__feedVideoTest.rememberPreviewVideo());
+
+    await page.evaluate(() => {
+      const current = history.state as { usr?: Record<string, unknown> } | null;
+      const next = {
+        ...current,
+        usr: { ...current?.usr, __player_stability_marker__: Date.now() },
+      };
+      history.replaceState(next, "", location.href);
+      window.dispatchEvent(new PopStateEvent("popstate", { state: next }));
+    });
+    await expect(dialog).toBeVisible();
+    await expect.poll(() => page.evaluate(() => window.__feedVideoTest.previewVideoIsStable())).toBe(true);
+    await expect(fullWebPlayer.locator("video")).toHaveCount(1);
+
+    exposeNextPage = true;
+    const socket = await runtime.socket();
+    socket.send(
+      JSON.stringify(
+        runtimeEnvelope("runtime.invalidate", 11, 2, {
+          events: [{ topic: "library", event_type: "library.metadata_updated", payload: {} }],
+        }),
+      ),
+    );
+    let stableWhileFetching = false;
+    try {
+      await expect.poll(() => nextPageRequestCount).toBe(1);
+      stableWhileFetching = await page.evaluate(() => window.__feedVideoTest.previewVideoIsStable());
+    } finally {
+      releaseNextPage();
+    }
+    expect(stableWhileFetching).toBe(true);
+    await expect(fullWebPlayer.locator("video")).toHaveCount(1);
+
+    await expect(fullWebPlayer.getByText("1/2", { exact: true })).toBeVisible();
+    await expect.poll(() => page.evaluate(() => window.__feedVideoTest.previewVideoIsStable())).toBe(true);
+    await expect(fullWebPlayer.locator("video")).toHaveCount(1);
+  });
+
+  test("switches posts from a vertical gesture on the fullscreen video surface", async ({ page }) => {
+    await installMediaElementMock(page);
+    await mockFeedApis(page, [feedPost(), feedImagePost("after-video", "视频后的帖子")]);
+
+    await page.goto("/feed");
+    await page.locator('[data-feed-media="true"] video').click();
+    const fullWebPlayer = page.locator("body > .art-video-player.art-fullscreen-web");
+    await expect(fullWebPlayer.getByRole("button", { name: "下一条帖子（J）" })).toBeVisible();
+
+    await fullWebPlayer.dispatchEvent("pointerdown", {
+      pointerId: 12,
+      pointerType: "touch",
+      button: 0,
+      clientX: 240,
+      clientY: 620,
+    });
+    await fullWebPlayer.dispatchEvent("pointermove", {
+      pointerId: 12,
+      pointerType: "touch",
+      button: 0,
+      clientX: 240,
+      clientY: 410,
+    });
+    await fullWebPlayer.dispatchEvent("pointerup", {
+      pointerId: 12,
+      pointerType: "touch",
+      button: 0,
+      clientX: 240,
+      clientY: 410,
+    });
+
+    await expect(page.getByRole("dialog").getByText("视频后的帖子", { exact: true })).toBeVisible();
+    await expect(page.locator("body > .art-video-player.art-fullscreen-web")).toHaveCount(0);
   });
 
   test("keeps preview information inside the fullWeb player on narrow screens", async ({ page }) => {
@@ -95,6 +355,7 @@ async function installMediaElementMock(page: Page) {
     };
 
     const states = new WeakMap<HTMLMediaElement, MediaState>();
+    let rememberedPreviewVideo: HTMLVideoElement | null = null;
 
     const getState = (element: HTMLMediaElement) => {
       let state = states.get(element);
@@ -232,11 +493,25 @@ async function installMediaElementMock(page: Page) {
         const video = document.querySelector<HTMLVideoElement>('[data-feed-media="true"] video');
         return video ? video.paused : null;
       },
+      rememberPreviewVideo() {
+        rememberedPreviewVideo = document.querySelector<HTMLVideoElement>(".art-video-player video");
+      },
+      previewVideoIsStable() {
+        return rememberedPreviewVideo !== null && rememberedPreviewVideo === document.querySelector(".art-video-player video");
+      },
     };
   });
 }
 
-async function mockFeedApis(page: Page) {
+async function mockFeedApis(
+  page: Page,
+  postsSource: Array<Record<string, unknown>> | (() => Array<Record<string, unknown>>) = [feedPost()],
+  options: {
+    pageSize?: number;
+    totalCount?: () => number;
+    waitForOffset?: (offset: number) => Promise<void>;
+  } = {},
+) {
   await page.route("**/api/v1/**", async (route) => {
     const request = route.request();
     const url = new URL(request.url());
@@ -257,7 +532,18 @@ async function mockFeedApis(page: Page) {
       return json(route, { rows: [], count: 0, total_count: 0, limit: 200, offset: 0 });
     }
     if (path === "/api/v1/library/posts" && request.method() === "GET") {
-      return json(route, { rows: [feedPost()], count: 1, total_count: 1, limit: 20, offset: 0 });
+      const posts = typeof postsSource === "function" ? postsSource() : postsSource;
+      const offset = Number(url.searchParams.get("offset") ?? 0);
+      await options.waitForOffset?.(offset);
+      const pageSize = options.pageSize ?? 20;
+      const rows = posts.slice(offset, offset + pageSize);
+      return json(route, {
+        rows,
+        count: rows.length,
+        total_count: options.totalCount?.() ?? posts.length,
+        limit: pageSize,
+        offset,
+      });
     }
     if (path.startsWith("/api/v1/media-file/")) {
       return route.fulfill({ status: 204, body: "" });
@@ -265,6 +551,80 @@ async function mockFeedApis(page: Page) {
 
     return route.fulfill({ status: 404, json: { error: `Unhandled test route: ${path}` } });
   });
+}
+
+async function installRuntimeSocket(page: Page) {
+  let runtimeSocket: WebSocketRoute | null = null;
+  await page.routeWebSocket("**/api/v1/runtime/ws", (socket) => {
+    runtimeSocket = socket;
+    socket.send(JSON.stringify(runtimeEnvelope("runtime.snapshot", 10, 1, runtimeSnapshot())));
+  });
+  return {
+    socket: () => expect.poll(() => runtimeSocket).not.toBeNull().then(() => runtimeSocket!),
+  };
+}
+
+function runtimeEnvelope(type: string, sequence: number, connectionSequence: number, payload: Record<string, unknown>) {
+  return {
+    protocol: 1,
+    type,
+    epoch: "feed-preview-test",
+    sequence,
+    connection_sequence: connectionSequence,
+    sent_at: "2026-08-30T00:00:00Z",
+    payload,
+  };
+}
+
+function runtimeSnapshot() {
+  return {
+    epoch: "feed-preview-test",
+    sequence: 10,
+    recent_window_seconds: 120,
+    worker: { stop_requested: false, write_lock_held: false },
+    queue: healthDetail().queue,
+    sources: healthDetail().sources,
+    global: {
+      active_run_count: 0,
+      active_item_count: 0,
+      active_scan_count: 0,
+      downloaded_bytes: 0,
+      total_bytes: null,
+      speed_bps: null,
+    },
+    runs: [],
+    items: [],
+    scans: [],
+    recent_activity: [],
+  };
+}
+
+function feedImagePost(tweetId: string, text: string) {
+  return {
+    ...feedPost(),
+    tweet_id: tweetId,
+    tweet_url: `https://x.com/example/status/${tweetId}`,
+    tweet_text: text,
+    media: [
+      {
+        id: Number(tweetId.replace(/\D/g, "")) || text.charCodeAt(text.length - 1),
+        tweet_id: tweetId,
+        media_index: 0,
+        media_type: "photo",
+        media_status: "verified",
+        source_engine: "fixture",
+        local_path: `/archive/media/example/${tweetId}/0.jpg`,
+        media_relative_path: `media/example/${tweetId}/0.jpg`,
+        media_url: "data:image/gif;base64,R0lGODlhAQABAAAAACw=",
+        preview_relative_path: `media/example/${tweetId}/0.jpg`,
+        preview_url: "data:image/gif;base64,R0lGODlhAQABAAAAACw=",
+        file_size: 64,
+        width: 1,
+        height: 1,
+        duration_ms: null,
+      },
+    ],
+  };
 }
 
 function feedPost() {

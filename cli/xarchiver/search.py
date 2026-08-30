@@ -6,12 +6,15 @@ from datetime import datetime
 
 from sqlalchemy import (
     Integer,
+    Text,
     and_,
     bindparam,
     case,
+    cast,
     exists,
     false,
     func,
+    literal,
     literal_column,
     or_,
     select,
@@ -289,6 +292,8 @@ def search_post_feed(
     author_username: str | None = None,
     text: str | None = None,
     media_type: str | None = None,
+    sort: str = "newest",
+    seed: str | None = None,
     limit: int = 20,
     offset: int = 0,
 ) -> tuple[list[PostFeedRow], list[PostFeedMediaRow], int]:
@@ -300,6 +305,8 @@ def search_post_feed(
         author_username=author_username,
         text=text,
         media_type=media_type,
+        sort=sort,
+        seed=seed,
         limit=limit,
         offset=offset,
     )
@@ -330,10 +337,19 @@ def build_post_feed_query(
     author_username: str | None = None,
     text: str | None = None,
     media_type: str | None = None,
+    sort: str = "newest",
+    seed: str | None = None,
     limit: int = 20,
     offset: int = 0,
 ) -> tuple[str, dict[str, object]]:
     """构造帖子流分页查询。"""
+
+    normalized_sort = str(sort).strip().lower()
+    if normalized_sort not in {"newest", "random"}:
+        raise ValueError(f"unsupported post feed sort: {sort}")
+    normalized_seed = str(seed or "").strip()
+    if normalized_sort == "random" and not normalized_seed:
+        raise ValueError("random post feed sort requires a seed")
 
     statement = (
         select(
@@ -346,14 +362,26 @@ def build_post_feed_query(
             tweets.c.download_status.label("tweet_status"),
         )
         .where(*build_post_feed_conditions(source_id, source_type, author_username, text, media_type))
-        .order_by(
+        .limit(bindparam("limit", limit))
+        .offset(bindparam("offset", offset))
+    )
+    if normalized_sort == "random":
+        # 相同 seed 的排序键必须跨请求稳定，offset 分页才能沿用同一排列。
+        random_key = func.md5(
+            func.concat(
+                cast(bindparam("post_random_seed", normalized_seed), Text),
+                cast(literal(":"), Text),
+                tweets.c.tweet_id,
+            )
+        )
+        # tweet_id 作为二级键，确保极少数哈希碰撞时仍有唯一顺序。
+        statement = statement.order_by(random_key, tweets.c.tweet_id)
+    else:
+        statement = statement.order_by(
             tweets.c.published_at.desc().nulls_last(),
             tweets.c.imported_at.desc(),
             tweets.c.tweet_id.desc(),
         )
-        .limit(bindparam("limit", limit))
-        .offset(bindparam("offset", offset))
-    )
     return compile_query(statement)
 
 

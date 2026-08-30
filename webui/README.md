@@ -69,6 +69,8 @@ Sources
 
 Search is Tweet-first and uses the local PostgreSQL full-text and trigram indexes across Tweet text, authors, tags, collections, and private notes. Its keyword, filters, sort, and pagination state are URL-backed; the default status is verified content. The result list reuses the Feed post card and full-screen media preview.
 
+Feed keeps its submitted filters and ordering in the URL. It supports the default newest-first order and a stable seeded random order that composes with All, Likes, source, author, text, and media-type filters. The full-screen preview moves vertically through Tweets in the active Feed order and horizontally through media within a Tweet, with touch, wheel/trackpad, keyboard, and visible-button alternatives while preserving video playback state and one-step Back/Escape dismissal.
+
 Operations can trigger:
 
 ```text

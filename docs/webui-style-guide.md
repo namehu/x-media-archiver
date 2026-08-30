@@ -194,6 +194,8 @@ Feed:
 - Post anatomy follows avatar rail, single-line author metadata, body text, organization context, then dominant media.
 - Media uses stable aspect ratios and X-like one/two/four-item compositions with large rounded media corners.
 - On wide screens, filters live in the right contextual column; on narrow screens, filters move into a Sheet.
+- Treat newest/random as an ordering dimension independent from All/Likes and the content filters. Submitted filters, ordering, and the random seed remain URL-backed; only an explicit reshuffle replaces the seed.
+- In the full-screen Feed preview, vertical navigation changes Tweets in the frozen-and-appended Feed order while horizontal navigation changes media within the active Tweet. Touch gestures must direction-lock around video seeking, and visible controls plus arrow keys and J/K remain available.
 - Preserve scroll, video playback, and preview state when navigating back.
 
 ## Interaction

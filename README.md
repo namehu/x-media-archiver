@@ -215,6 +215,11 @@ GET /api/v1/runtime/snapshot
 GET /api/v1/runtime/diagnostics
 ```
 
+`GET /api/v1/library/posts` 默认按发布时间、导入时间和 Tweet ID 倒序返回 Feed；传入
+`sort=random&seed=<seed>` 时，会对同一筛选结果生成可跨页复现的稳定随机顺序。随机模式必须提供
+1–128 字符的 seed；相同 seed 与静态候选集合保持相同顺序，后台同时新增或删除数据时仍可能因
+offset 分页产生未加载边界漂移。
+
 主要写 API endpoints 由相应的作用域锁或任务控制语义保护；需要全局互斥的维护动作冲突时返回 `409 write_action_in_progress`。
 
 ```text
@@ -295,6 +300,8 @@ Sources
 ```
 
 Search 以 Tweet 为结果单位，使用 PostgreSQL 全文检索与 trigram 搜索正文、作者、自定义标签、平台 Hashtag、合集和私人备注；支持来源、日期、媒体类型、归档状态、单个平台 Hashtag、自定义标签、合集与排序筛选。平台 Hashtag 联想按需加载且每次最多 20 条，点击 Feed、Search、预览或 Tweet Detail 中的平台 Hashtag 会进入可复制、刷新后保持的精确搜索 URL。平台 Hashtag 是 gallery-dl 落盘元数据中的只读事实，不与用户可编辑的自定义标签混用。关键词和全部筛选条件会同步到 URL，默认只展示已校验归档内容；从 Hashtag 徽标进入搜索时会显式使用“全部状态”。搜索需要先应用最新数据库迁移；10 万条纯合成数据的基准与页面验收记录见 [`docs/testing/tweet-search-acceptance.md`](docs/testing/tweet-search-acceptance.md)。
+
+Feed 的已提交筛选、最新/随机排列方式和随机 seed 同步到 URL。随机时间线可以继续组合“全部 / 我的喜欢”与来源、作者、正文、媒体类型筛选；只有“重新随机”会更换 seed。全屏预览中可上下切换当前 Feed 顺序里的 Tweet、左右切换同一 Tweet 的媒体，并支持触摸、滚轮/触控板、`J/K`、方向键和可见按钮；关闭预览后仍恢复列表滚动位置与视频播放状态。
 
 Collections 提供自定义标签、手工合集与私人备注整理。单条 Tweet 的自定义标签、合集和备注只会在点击“保存整理”后通过一个数据库事务同时保存；关闭存在未保存更改的弹窗时会先要求确认放弃，保存失败则保留当前输入以便重试。
 

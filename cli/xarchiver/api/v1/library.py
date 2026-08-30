@@ -142,11 +142,16 @@ def posts(
     author_username: str | None = Query(None, max_length=100),
     text: str | None = Query(None, max_length=500),
     media_type: str | None = Query(None, pattern="^(photo|video)$"),
+    sort: str = Query("newest", pattern="^(newest|random)$"),
+    seed: str | None = Query(None, min_length=1, max_length=128),
     limit: int = Query(20, ge=1, le=50),
     offset: int = Query(0, ge=0),
 ) -> dict[str, object]:
     """按来源、作者和媒体类型等条件分页查询帖子流。"""
 
+    # 对外保证随机时间线一定携带 seed；否则同一页会出现不可复现的顺序并打断翻页。
+    if sort == "random" and not str(seed or "").strip():
+        raise HTTPException(status_code=400, detail="random_feed_seed_required")
     return list_posts_page(
         get_settings(),
         source_id=source_id,
@@ -154,6 +159,8 @@ def posts(
         author_username=author_username,
         text=text,
         media_type=media_type,
+        sort=sort,
+        seed=seed,
         limit=limit,
         offset=offset,
     )
