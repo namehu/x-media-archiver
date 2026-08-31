@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import re
 from enum import StrEnum
 
 
@@ -122,7 +123,10 @@ def classify_x_error(stderr: str | None, *, no_output_hint: bool = True) -> Erro
         return ErrorCategory.AUTH_REQUIRED
     if "403" in text or "forbidden" in text or "unauthorized" in text:
         return ErrorCategory.AUTH_REQUIRED
-    if "429" in text or "rate" in text:
+    if "429" in text or "too many requests" in text or re.search(
+        r"\b(?:rate[-_ ]?limit(?:ed|ing)?|ratelimit(?:ed|ing)?)\b",
+        text,
+    ):
         return ErrorCategory.RATE_LIMITED
     if any(
         pattern in text

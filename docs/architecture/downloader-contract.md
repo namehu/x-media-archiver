@@ -133,6 +133,27 @@ archive/media/<author_id>/<tweet_id>/<tweet_id>--p<media_index>.<ext>
 ID-like segments, not usernames, because usernames can change and path-unsafe characters should not
 control archive layout.
 
+同一条 Tweet 的同一 `media_index` 在数据库中是一个逻辑媒体，不因下载引擎不同而
+生成两条 `media_assets`。scoped backfill 同时发现 gallery-dl 与 yt-dlp 产物时优先
+登记 gallery-dl 的稳定 `author_id` 路径；fallback 文件保留在磁盘，不在普通回填或
+迁移中物理删除。revision `026_unify_cross_engine_media` 会合并历史重复数据库记录，
+保留状态最完整的记录并重定向封面、下载尝试引用。
+
+## 批次部分成功契约
+
+下载器进程退出码只描述整个子进程，不能直接覆盖批次中的每条 Tweet。CLI 必须遵守：
+
+```text
+1. 子进程结束后，无论退出码是否为 0，都先对当前 Tweet scope 执行媒体回填。
+2. 按当前引擎实际发现的落盘产物标记成功；成功项不得继承批次 stderr。
+3. 未产出媒体的 Tweet 只使用可明确归属给自身的 stderr 分类。
+4. 某条失败项没有可归属日志时，使用 download_no_output / failed_retryable，允许 fallback。
+5. 批次同时包含成功与失败时，download job 状态为 partial，并分别写入逐 Tweet attempt。
+```
+
+这保证某条无视频 Tweet 的 yt-dlp 错误不会把同批已经落盘的视频误标为
+`unsupported_media`，也保证非零退出码之前已写入的媒体不会遗漏回填。
+
 ## 下载进度契约
 
 下载进度按以下优先级采集：
@@ -274,11 +295,11 @@ auth_required:
   默认处理：failed_retryable；用户应检查 cookies。
 
 rate_limited:
-  429 或 rate limit。
+  429、Too Many Requests 或明确的 rate-limit / ratelimit 文本。
   默认处理：failed_retryable，等待 backoff 后重试。
 
 network_error:
-  timeout、connection、temporary failure 等网络问题。
+  timeout、connection、temporary failure、TLS/SSL EOF 等网络问题。
   默认处理：failed_retryable，等待 backoff 后重试。
 
 unsupported_media:
@@ -295,6 +316,7 @@ unknown:
 ```text
 gallery-dl "No results" 更接近 download_no_output。
 yt-dlp "No video could be found in this tweet" 更接近 unsupported_media。
+普通文本中的 "rate"（例如 transfer rate）不能单独判为 rate_limited。
 如果同一 queue item 经 fallback 后有多个 attempt，最终 item error 使用最后一个 attempt 的分类，但历史 attempts 必须完整保留。
 ```
 

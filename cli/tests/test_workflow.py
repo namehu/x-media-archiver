@@ -53,6 +53,29 @@ class WorkflowTests(unittest.TestCase):
         self.assertEqual(result["download"]["yt_dlp"]["job_id"], None)
         self.assertEqual(result["download"]["yt_dlp_candidate_count"], 0)
 
+    def test_scoped_pipeline_uses_current_engine_outcomes_for_fallback_scope(self) -> None:
+        settings = SimpleNamespace()
+        gallery_result = {
+            "job_id": 1,
+            "count": 2,
+            "downloaded_tweet_ids": ["1"],
+            "media_backfill": {"media_ids": [7, 8], "tweet_ids": ["1", "2"]},
+        }
+        fallback_result = {
+            "job_id": 2,
+            "count": 1,
+            "downloaded_tweet_ids": ["2"],
+            "media_backfill": {"media_ids": [8], "tweet_ids": ["2"]},
+        }
+        with (
+            patch("xarchiver.workflow.download", side_effect=[gallery_result, fallback_result]) as download,
+            patch("xarchiver.workflow.verify_media_assets", return_value={"verified": 2, "missing": 0, "corrupt": 0}),
+            patch("xarchiver.workflow.get_library_snapshot", return_value={"media_total": 2, "verified_total": 2}),
+        ):
+            process_tweet_scope(["1", "2"], settings)
+
+        self.assertEqual(download.call_args_list[1].kwargs["tweet_ids"], ["2"])
+
     def test_archive_urls_recovers_interrupted_runs_before_import(self) -> None:
         settings = SimpleNamespace(stuck_timeout_minutes=120)
         with (

@@ -31,6 +31,7 @@ VIDEO_PREVIEW_MAX_WIDTH = 640
 VIDEO_PREVIEW_TIMEOUT_SECONDS = 30
 IMAGE_PREVIEW_MAX_EDGE = 640
 IMAGE_PREVIEW_QUALITY = 82
+SOURCE_ENGINE_PRIORITY = {"gallery-dl": 0, "yt-dlp": 1}
 
 logger = logging.getLogger(__name__)
 
@@ -74,34 +75,80 @@ def backfill_media_assets(
             "skipped": 0,
             "media_ids": [],
             "tweet_ids": [],
+            "media_ids_by_engine": {},
+            "tweet_ids_by_engine": {},
             "preview_generated": 0,
             "preview_existing": 0,
             "preview_failed": 0,
         }
 
-    assets: list[MediaAsset] = []
+    discovered_assets: list[MediaAsset] = []
     skipped = 0
     for metadata_path in iter_metadata_paths(media_dir, tweet_ids):
         asset = asset_from_metadata(media_dir, metadata_path, normalize_files)
         if asset is None:
             skipped += 1
             continue
-        assets.append(asset)
+        discovered_assets.append(asset)
 
+    assets = select_preferred_assets(discovered_assets)
     media_ids = upsert_media_assets(assets)
     update_tweets_from_assets(assets)
     mark_tweets_with_assets_downloaded([asset.tweet_id for asset in assets])
+    media_ids_by_engine: dict[str, list[int]] = {}
+    tweet_ids_by_engine: dict[str, list[str]] = {}
+    for asset in discovered_assets:
+        engine_tweet_ids = tweet_ids_by_engine.setdefault(asset.source_engine, [])
+        if asset.tweet_id not in engine_tweet_ids:
+            engine_tweet_ids.append(asset.tweet_id)
+    for asset, media_id in zip(assets, media_ids, strict=True):
+        media_ids_by_engine.setdefault(asset.source_engine, []).append(media_id)
     return {
-        "scanned": len(assets) + skipped,
+        "scanned": len(discovered_assets) + skipped,
         "upserted": len(assets),
-        "skipped": skipped,
+        "skipped": skipped + len(discovered_assets) - len(assets),
         "media_ids": media_ids,
         "tweet_ids": list(dict.fromkeys(asset.tweet_id for asset in assets)),
+        "media_ids_by_engine": media_ids_by_engine,
+        "tweet_ids_by_engine": tweet_ids_by_engine,
         # 预览图由独立持久任务生成；下载与媒体回填链路不投递、也不生成。
         "preview_generated": 0,
         "preview_existing": 0,
         "preview_failed": 0,
     }
+
+
+def select_preferred_assets(assets: list[MediaAsset]) -> list[MediaAsset]:
+    """同一 Tweet 媒体位置只保留一个可用引擎产物，优先 gallery-dl。"""
+
+    selected: dict[tuple[str, int], MediaAsset] = {}
+    unindexed: list[MediaAsset] = []
+    for asset in assets:
+        if asset.media_index is None:
+            unindexed.append(asset)
+            continue
+        key = (asset.tweet_id, asset.media_index)
+        current = selected.get(key)
+        if current is None or source_engine_priority(asset.source_engine) < source_engine_priority(
+            current.source_engine
+        ):
+            selected[key] = asset
+    return sorted(
+        [*selected.values(), *unindexed],
+        key=lambda asset: (
+            asset.tweet_id,
+            asset.media_index is None,
+            asset.media_index or 0,
+            source_engine_priority(asset.source_engine),
+            asset.local_path.as_posix(),
+        ),
+    )
+
+
+def source_engine_priority(source_engine: str) -> int:
+    """返回媒体引擎的稳定优先级；未知引擎排在已知 fallback 之后。"""
+
+    return SOURCE_ENGINE_PRIORITY.get(source_engine, len(SOURCE_ENGINE_PRIORITY))
 
 
 def ensure_video_previews(assets: list[MediaAsset]) -> dict[str, int]:
@@ -519,8 +566,8 @@ def upsert_media_assets(assets: list[MediaAsset]) -> list[int]:
                         updated_at
                     )
                     values (%s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, 'downloaded', %s, now())
-                    on conflict (tweet_id, media_index, source_engine)
-                    where media_index is not null and source_engine is not null
+                    on conflict (tweet_id, media_index)
+                    where media_index is not null
                     do update set
                         media_type = excluded.media_type,
                         local_path = excluded.local_path,
@@ -531,9 +578,11 @@ def upsert_media_assets(assets: list[MediaAsset]) -> list[int]:
                         width = excluded.width,
                         height = excluded.height,
                         duration_ms = excluded.duration_ms,
+                        source_engine = excluded.source_engine,
                         metadata_path = excluded.metadata_path,
                         download_status = case
-                            when media_assets.download_status = 'verified' then 'verified'
+                            when media_assets.download_status = 'verified'
+                              and media_assets.sha256 = excluded.sha256 then 'verified'
                             else 'downloaded'
                         end,
                         error_message = null,

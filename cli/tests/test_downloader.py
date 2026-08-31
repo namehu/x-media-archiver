@@ -1,6 +1,7 @@
 import subprocess
 import tempfile
 import unittest
+from contextlib import ExitStack
 from pathlib import Path
 from queue import Queue
 from threading import Event, Lock
@@ -14,10 +15,13 @@ from xarchiver.downloader import (
     TextTailBuffer,
     build_command,
     classify_error,
+    classify_missing_tweets,
     create_job,
+    download,
     download_log_relative_path,
     download_output_log_level,
     estimate_downloaded_bytes_by_tweet,
+    extract_tweet_stderr,
     fetch_download_candidates,
     finish_job,
     flush_download_log_entries,
@@ -75,7 +79,65 @@ class DownloaderTests(unittest.TestCase):
     def test_classify_error_uses_queue_category_contract(self) -> None:
         self.assertEqual(classify_error(1, "HTTP Error 404: not found"), "invalid_url")
         self.assertEqual(classify_error(1, "Connection timed out"), "network_error")
+        self.assertEqual(
+            classify_error(1, "transfer rate dropped after SSLError: UNEXPECTED_EOF_WHILE_READING"),
+            "network_error",
+        )
         self.assertEqual(classify_error(2, "unexpected stderr"), "unknown")
+
+    def test_extract_tweet_stderr_keeps_batch_errors_with_their_tweet(self) -> None:
+        stderr = """[1/2] https://x.com/author/status/111
+SSLError: UNEXPECTED_EOF_WHILE_READING
+[2/2] https://x.com/author/status/222
+ERROR: [twitter] 222: No video could be found in this tweet
+"""
+
+        segments = extract_tweet_stderr(stderr, {"111", "222"})
+
+        self.assertIn("SSLError", segments["111"])
+        self.assertNotIn("No video", segments["111"])
+        self.assertIn("No video", segments["222"])
+
+    def test_extract_tweet_stderr_stops_at_an_unselected_tweet_marker(self) -> None:
+        stderr = """[1/2] https://x.com/author/status/111
+first tweet warning
+[2/2] https://x.com/author/status/222
+second tweet warning
+"""
+
+        segments = extract_tweet_stderr(stderr, {"111"})
+
+        self.assertIn("first tweet warning", segments["111"])
+        self.assertNotIn("second tweet warning", segments["111"])
+
+    def test_missing_tweet_without_own_error_stays_retryable(self) -> None:
+        tweets = [
+            {"tweet_id": "111", "url": "https://x.com/author/status/111"},
+            {"tweet_id": "222", "url": "https://x.com/author/status/222"},
+        ]
+        stderr = "ERROR: [twitter] 222: No video could be found in this tweet"
+
+        details = classify_missing_tweets(tweets, 1, stderr)
+
+        self.assertEqual(details["111"]["category"], "download_no_output")
+        self.assertEqual(details["111"]["status"], "failed_retryable")
+        self.assertEqual(details["222"]["category"], "unsupported_media")
+        self.assertEqual(details["222"]["status"], "failed_permanent")
+
+    def test_missing_tweets_share_a_command_wide_network_error(self) -> None:
+        tweets = [
+            {"tweet_id": "111", "url": "https://x.com/author/status/111"},
+            {"tweet_id": "222", "url": "https://x.com/author/status/222"},
+        ]
+
+        details = classify_missing_tweets(
+            tweets,
+            1,
+            "SSLError: UNEXPECTED_EOF_WHILE_READING",
+        )
+
+        self.assertEqual(details["111"]["category"], "network_error")
+        self.assertEqual(details["222"]["category"], "network_error")
 
     def test_download_log_helpers_use_stable_path_and_levels(self) -> None:
         self.assertEqual(download_log_relative_path(114), "logs/download-logs/job-114.jsonl")
@@ -83,6 +145,94 @@ class DownloaderTests(unittest.TestCase):
         self.assertEqual(download_output_log_level("yt-dlp", "stdout", "[download] 20%"), "info")
         self.assertEqual(download_output_log_level("yt-dlp", "stderr", "0 errors so far"), "info")
         self.assertEqual(download_output_log_level("gallery-dl", "stderr", "[warning] retry"), "warning")
+
+    def test_download_backfills_partial_batch_before_classifying_failures(self) -> None:
+        tweets = [
+            {"tweet_id": "111", "url": "https://x.com/author/status/111"},
+            {"tweet_id": "222", "url": "https://x.com/author/status/222"},
+        ]
+        process_result = subprocess.CompletedProcess(
+            args=["yt-dlp"],
+            returncode=1,
+            stdout="",
+            stderr="ERROR: [twitter] 222: No video could be found in this tweet",
+        )
+        backfill_result = {
+            "scanned": 1,
+            "upserted": 1,
+            "skipped": 0,
+            "media_ids": [71],
+            "tweet_ids": ["111"],
+            "media_ids_by_engine": {"yt-dlp": [71]},
+            "tweet_ids_by_engine": {"yt-dlp": ["111"]},
+        }
+        settings = SimpleNamespace(archive_dir=Path("/tmp/archive"))
+
+        with ExitStack() as stack:
+            for target in (
+                "ensure_archive_dirs",
+                "append_download_log",
+                "log_download_event",
+                "set_tweets_downloading",
+                "mark_run_items_progress",
+                "mark_run_items_finished",
+            ):
+                stack.enter_context(patch(f"xarchiver.downloader.{target}"))
+            stack.enter_context(
+                patch("xarchiver.downloader.fetch_download_candidates", return_value=tweets)
+            )
+            stack.enter_context(
+                patch("xarchiver.downloader.write_input_file", return_value=Path("/tmp/input.txt"))
+            )
+            stack.enter_context(patch("xarchiver.downloader.create_job", return_value=9))
+            stack.enter_context(
+                patch("xarchiver.downloader.get_download_job_log_stream_id", return_value=None)
+            )
+            stack.enter_context(
+                patch(
+                    "xarchiver.downloader.prepare_cookies",
+                    return_value=Path("/tmp/cookies.txt"),
+                )
+            )
+            stack.enter_context(patch("xarchiver.downloader.validate_cookie_file", return_value=None))
+            stack.enter_context(patch("xarchiver.downloader.build_command", return_value=["yt-dlp"]))
+            stack.enter_context(patch("xarchiver.downloader.shutil.which", return_value="/usr/bin/yt-dlp"))
+            stack.enter_context(
+                patch("xarchiver.downloader.run_command_with_progress", return_value=process_result)
+            )
+            stack.enter_context(
+                patch("xarchiver.downloader.backfill_media_assets", return_value=backfill_result)
+            )
+            stack.enter_context(
+                patch("xarchiver.downloader.sync_gallery_hashtags_after_backfill", return_value=None)
+            )
+            stack.enter_context(
+                patch("xarchiver.downloader.fetch_media_sizes", return_value={"111": 100})
+            )
+            attempts = stack.enter_context(patch("xarchiver.downloader.mark_attempts"))
+            mark_downloaded = stack.enter_context(patch("xarchiver.downloader.mark_tweets_downloaded"))
+            mark_failed = stack.enter_context(patch("xarchiver.downloader.mark_tweets_failed"))
+            finish = stack.enter_context(patch("xarchiver.downloader.finish_job"))
+            result = download(
+                "yt-dlp",
+                settings,
+                limit=None,
+                dry_run=False,
+                tweet_ids=["111", "222"],
+                archive_run_id=3,
+                run_item_ids={"111": 31, "222": 32},
+            )
+
+        self.assertEqual(result["downloaded_tweet_ids"], ["111"])
+        self.assertEqual(result["media_backfill"], backfill_result)
+        self.assertEqual(attempts.call_args_list[0].args[1], [tweets[0]])
+        self.assertEqual(attempts.call_args_list[0].args[3], "downloaded")
+        self.assertEqual(attempts.call_args_list[1].args[1], [tweets[1]])
+        self.assertEqual(attempts.call_args_list[1].args[3], "failed_permanent")
+        self.assertEqual(attempts.call_args_list[1].args[5], "unsupported_media")
+        mark_downloaded.assert_called_once_with(["111"])
+        mark_failed.assert_called_once_with(["222"], "failed_permanent", "unsupported_media")
+        finish.assert_called_once_with(9, "partial", 1, 1, "unsupported_media")
 
     def test_download_log_buffer_batches_stdout_and_stderr(self) -> None:
         pending: Queue[dict[str, object]] = Queue()

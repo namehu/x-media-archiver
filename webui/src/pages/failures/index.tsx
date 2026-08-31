@@ -2,7 +2,7 @@ import { useEffect, useMemo, useState } from "react";
 import { AlertTriangle, Ban, Bug, FileWarning, RefreshCw, RotateCcw } from "lucide-react";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import type { ColumnDef } from "@tanstack/react-table";
-import { Link, useSearchParams } from "react-router-dom";
+import { Link, useNavigate, useSearchParams } from "react-router-dom";
 import { toast } from "sonner";
 import type {
   ActionResponse,
@@ -51,6 +51,7 @@ const PAGE_SIZE = 100;
 export function FailuresPage() {
   const privacyRedactionEnabled = usePrivacyRedactionEnabled();
   const queryClient = useQueryClient();
+  const navigate = useNavigate();
   const [searchParams, setSearchParams] = useSearchParams();
   const [selectedIds, setSelectedIds] = useState<Set<string>>(() => new Set());
   const [ignoreIds, setIgnoreIds] = useState<string[]>([]);
@@ -101,7 +102,17 @@ export function FailuresPage() {
     const skipped = result.skipped_count
       ? `，跳过 ${result.skipped_count} 项${formatSkipReasons(result.skip_reasons)}`
       : "";
-    toast.success(`${label} ${result.succeeded_count} 项${skipped}`);
+    const message = `${label} ${result.succeeded_count} 项${skipped}`;
+    if (result.run_id) {
+      toast.success(message, {
+        action: {
+          label: `查看任务 #${result.run_id}`,
+          onClick: () => navigate(`/archive-queue?run=${result.run_id}`),
+        },
+      });
+    } else {
+      toast.success(message);
+    }
     setIgnoreIds([]);
     setRetryConfirmIds([]);
     setRestoreConfirmIds([]);

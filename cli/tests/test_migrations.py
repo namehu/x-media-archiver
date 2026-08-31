@@ -47,6 +47,7 @@ class MigrationTests(unittest.TestCase):
                 "023_add_platform_hashtags.py",
                 "024_add_media_privacy_mode.py",
                 "025_add_media_preview_jobs.py",
+                "026_unify_cross_engine_media.py",
             ],
         )
         upgrade.assert_called_once()
@@ -60,7 +61,7 @@ class MigrationTests(unittest.TestCase):
             patch("xarchiver.migrations.get_settings", return_value=settings),
             patch(
                 "xarchiver.migrations.current_alembic_revision",
-                return_value="025_add_media_preview_jobs",
+                return_value="026_unify_cross_engine_media",
             ),
             patch("xarchiver.migrations.command.upgrade") as upgrade,
         ):
@@ -110,6 +111,7 @@ class MigrationTests(unittest.TestCase):
                 "023_add_platform_hashtags.py",
                 "024_add_media_privacy_mode.py",
                 "025_add_media_preview_jobs.py",
+                "026_unify_cross_engine_media.py",
             ],
         )
 
@@ -486,6 +488,20 @@ class MigrationTests(unittest.TestCase):
         )
         self.assertIn("uq_media_preview_jobs_active", created_indexes)
         self.assertEqual(module.down_revision, "024_add_media_privacy_mode")
+
+    def test_cross_engine_media_revision_preserves_references_and_unifies_identity(self) -> None:
+        module = importlib.import_module("xarchiver.alembic.versions.026_unify_cross_engine_media")
+        captured_sql: list[str] = []
+
+        with patch.object(module.op, "execute", side_effect=lambda value: captured_sql.append(str(value))):
+            module.upgrade()
+
+        sql = captured_sql[0]
+        self.assertIn("update collections", sql)
+        self.assertIn("update download_attempts", sql)
+        self.assertIn("delete from media_assets", sql)
+        self.assertIn("on media_assets(tweet_id, media_index)", sql)
+        self.assertEqual(module.down_revision, "025_add_media_preview_jobs")
 
 
 if __name__ == "__main__":

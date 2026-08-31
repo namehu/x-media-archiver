@@ -309,6 +309,11 @@ Tweet 全局搜索从 revision `021_add_tweet_search` 起依赖 PostgreSQL `pg_t
 
 revision `023_add_platform_hashtags` 只创建平台 Hashtag、Tweet 关系、历史维护审计和搜索刷新 trigger；迁移本身不会扫描历史 JSON、重建既有搜索投影或访问 X。后续新增关系由 trigger 精确刷新对应 Tweet。服务启动会记录实际 gallery-dl 版本；当前契约 fixture 验证 `1.32.1`，其他版本只产生告警而不阻断服务或下载。
 
+revision `026_unify_cross_engine_media` 将 `(tweet_id, media_index)` 统一为跨下载引擎的
+逻辑媒体唯一键。升级时会合并 gallery-dl / yt-dlp 的历史重复数据库记录，并把集合封面和
+下载尝试引用指向保留记录；迁移不会删除归档目录中的物理媒体文件。生产升级前仍应按本章
+备份流程保存数据库快照。
+
 本项目不再使用仓库根目录的顺序 `sql/*.sql` migration。一次性本地验证可用
 `db reset --yes` 删除 public schema 并重新应用 Alembic baseline 与后续 revision；该命令只适合可丢弃数据库。
 

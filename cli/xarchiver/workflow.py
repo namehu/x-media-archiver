@@ -125,7 +125,12 @@ def summarize_download_result(result: dict[str, object]) -> dict[str, object]:
 def empty_download_result() -> dict[str, object]:
     """表示无需启动 fallback 下载器的空结果，不创建下载 Job。"""
 
-    return {"job_id": None, "count": 0, "media_backfill": {"media_ids": [], "tweet_ids": []}}
+    return {
+        "job_id": None,
+        "count": 0,
+        "downloaded_tweet_ids": [],
+        "media_backfill": {"media_ids": [], "tweet_ids": []},
+    }
 
 
 def download_media_ids(result: dict[str, object]) -> list[int]:
@@ -140,6 +145,9 @@ def download_media_ids(result: dict[str, object]) -> list[int]:
 def download_tweet_ids(result: dict[str, object]) -> list[str]:
     """从下载结果中提取回填得到的 tweet_id 列表。"""
 
+    downloaded_tweet_ids = result.get("downloaded_tweet_ids")
+    if isinstance(downloaded_tweet_ids, list):
+        return [str(value) for value in downloaded_tweet_ids]
     backfill = result.get("media_backfill")
     if not isinstance(backfill, dict):
         return []

@@ -18,6 +18,7 @@ from xarchiver.media import (
     image_preview_path,
     iter_metadata_paths,
     safe_path_segment,
+    select_preferred_assets,
     video_preview_path,
 )
 
@@ -68,6 +69,58 @@ class MediaMetadataTests(unittest.TestCase):
             paths = iter_metadata_paths(media_dir, ["tweet-1"])
 
             self.assertEqual(paths, [first])
+
+    def test_preferred_assets_choose_gallery_dl_for_same_media_position(self) -> None:
+        gallery_asset = SimpleNamespace(
+            tweet_id="tweet-id",
+            media_index=1,
+            source_engine="gallery-dl",
+            local_path=Path("author-id/tweet-id/tweet-id--p1.mp4"),
+        )
+        fallback_asset = SimpleNamespace(
+            tweet_id="tweet-id",
+            media_index=1,
+            source_engine="yt-dlp",
+            local_path=Path("author/tweet-id/tweet-id--p1.mp4"),
+        )
+
+        selected = select_preferred_assets([fallback_asset, gallery_asset])
+
+        self.assertEqual(selected, [gallery_asset])
+
+    def test_backfill_reports_selected_assets_by_engine(self) -> None:
+        gallery_asset = SimpleNamespace(
+            tweet_id="tweet-id",
+            media_index=1,
+            source_engine="gallery-dl",
+            local_path=Path("author-id/tweet-id/tweet-id--p1.mp4"),
+        )
+        fallback_asset = SimpleNamespace(
+            tweet_id="tweet-id",
+            media_index=1,
+            source_engine="yt-dlp",
+            local_path=Path("author/tweet-id/tweet-id--p1.mp4"),
+        )
+        with tempfile.TemporaryDirectory() as tmp:
+            archive_dir = Path(tmp)
+            (archive_dir / "media").mkdir()
+            with (
+                patch("xarchiver.media.iter_metadata_paths", return_value=[Path("one.json"), Path("two.json")]),
+                patch("xarchiver.media.asset_from_metadata", side_effect=[fallback_asset, gallery_asset]),
+                patch("xarchiver.media.upsert_media_assets", return_value=[17]) as upsert,
+                patch("xarchiver.media.update_tweets_from_assets"),
+                patch("xarchiver.media.mark_tweets_with_assets_downloaded"),
+            ):
+                result = backfill_media_assets(archive_dir, tweet_ids=["tweet-id"])
+
+        self.assertEqual(upsert.call_args.args[0], [gallery_asset])
+        self.assertEqual(result["upserted"], 1)
+        self.assertEqual(result["skipped"], 1)
+        self.assertEqual(result["media_ids_by_engine"], {"gallery-dl": [17]})
+        self.assertEqual(
+            result["tweet_ids_by_engine"],
+            {"gallery-dl": ["tweet-id"], "yt-dlp": ["tweet-id"]},
+        )
 
     def test_gallery_dl_metadata_maps_to_media_asset(self) -> None:
         with tempfile.TemporaryDirectory() as tmp:

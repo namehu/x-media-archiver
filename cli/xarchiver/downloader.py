@@ -12,7 +12,7 @@ import re
 import shutil
 import subprocess
 import time
-from collections import deque
+from collections import Counter, deque
 from dataclasses import dataclass, field
 from pathlib import Path
 from queue import Empty, Full, Queue
@@ -66,6 +66,10 @@ GALLERY_DL_SIZE_RE = re.compile(
     r"^(?P<value>\d+(?:\.\d+)?)(?P<unit>[KMGTPEZY]?)(?P<binary>i?)$",
     re.IGNORECASE,
 )
+TWEET_STATUS_URL_RE = re.compile(
+    r"https?://(?:www\.)?(?:x|twitter)\.com/[^\s/]+/status/(?P<tweet_id>\d+)"
+)
+YTDLP_TWEET_ERROR_RE = re.compile(r"\[twitter\]\s+(?P<tweet_id>\d+):", re.IGNORECASE)
 GALLERY_DL_OUTPUT_MODE = {
     "start": f"{GALLERY_DL_PROGRESS_PREFIX}start|{{}}\n",
     "success": f"{GALLERY_DL_PROGRESS_PREFIX}success|{{}}\n",
@@ -284,141 +288,100 @@ def download(
         append_download_log(log_stream_id, "error", "download", "下载器进程异常退出。", exception=exc)
         finish_job(job_id, "failed", 0, len(tweets), ErrorCategory.WORKER_ERROR.value)
         raise
-    raw_stderr_excerpt = result.stderr[-4000:] if result.stderr else None
-    stderr_excerpt = redact_sensitive_text(raw_stderr_excerpt) or None
+    raw_stderr = result.stderr or ""
+    mark_run_items_progress(job_id, tweets, run_item_ids, "下载器完成，正在回填媒体")
+    append_download_log(
+        log_stream_id,
+        "info" if result.returncode == 0 else "warning",
+        "download",
+        "下载器已结束，开始回填本批已落盘媒体。",
+        context={"exit_code": result.returncode},
+    )
+    # 下载器允许混合批次部分成功。无论整体退出码如何，都必须先回填本批
+    # 已落盘文件，再按 Tweet 结果决定 fallback 和错误状态。
+    backfill_result = backfill_media_assets(
+        settings.archive_dir,
+        tweet_ids=[tweet["tweet_id"] for tweet in tweets],
+    )
+    downloaded_ids = backfilled_tweet_ids_for_engine(backfill_result, engine)
+    downloaded = [tweet for tweet in tweets if tweet["tweet_id"] in downloaded_ids]
+    missing = [tweet for tweet in tweets if tweet["tweet_id"] not in downloaded_ids]
+    hashtag_result = sync_gallery_hashtags_after_backfill(
+        settings,
+        engine,
+        engine_backfill_result(backfill_result, engine),
+        log_stream_id,
+    )
+    if hashtag_result is not None:
+        backfill_result["hashtags"] = hashtag_result
+    media_sizes = fetch_media_sizes([tweet["tweet_id"] for tweet in tweets])
+    append_download_log(
+        log_stream_id,
+        "info" if not missing else "warning",
+        "download",
+        "媒体回填完成。",
+        context={"downloaded_count": len(downloaded), "missing_count": len(missing)},
+    )
+    mark_run_items_finished(downloaded, run_item_ids, media_sizes, "下载完成，等待校验")
+    mark_attempts(
+        job_id,
+        downloaded,
+        engine,
+        "downloaded",
+        result.returncode,
+        None,
+        None,
+        run_item_ids,
+    )
+    mark_tweets_downloaded([tweet["tweet_id"] for tweet in downloaded])
 
-    if result.returncode == 0:
-        mark_run_items_progress(job_id, tweets, run_item_ids, "下载器完成，正在回填媒体")
-        append_download_log(log_stream_id, "info", "download", "下载器已完成，开始回填媒体索引。")
-        backfill_result = backfill_media_assets(
-            settings.archive_dir,
-            tweet_ids=[tweet["tweet_id"] for tweet in tweets],
-        )
-        hashtag_result = sync_gallery_hashtags_after_backfill(
-            settings,
+    failure_details = classify_missing_tweets(missing, result.returncode, raw_stderr)
+    for tweet in missing:
+        tweet_id = str(tweet["tweet_id"])
+        detail = failure_details[tweet_id]
+        mark_attempts(
+            job_id,
+            [tweet],
             engine,
-            backfill_result,
-            log_stream_id,
+            detail["status"],
+            result.returncode,
+            detail["category"],
+            detail["stderr_excerpt"],
+            run_item_ids,
         )
-        if hashtag_result is not None:
-            backfill_result["hashtags"] = hashtag_result
-        media_sizes = fetch_media_sizes([tweet["tweet_id"] for tweet in tweets])
-        downloaded_ids = set(backfill_result["tweet_ids"])
-        downloaded = [tweet for tweet in tweets if tweet["tweet_id"] in downloaded_ids]
-        missing = [tweet for tweet in tweets if tweet["tweet_id"] not in downloaded_ids]
-        append_download_log(
-            log_stream_id,
-            "info" if not missing else "warning",
-            "download",
-            "媒体回填完成。",
-            context={"downloaded_count": len(downloaded), "missing_count": len(missing)},
-        )
-        mark_run_items_finished(downloaded, run_item_ids, media_sizes, "下载完成，等待校验")
+        mark_tweets_failed([tweet_id], detail["status"], detail["category"])
         mark_run_items_progress(
             job_id,
-            missing,
+            [tweet],
             run_item_ids,
-            "下载器未产出文件",
+            f"下载失败: {detail['category']}",
             downloaded_bytes=0,
             total_bytes=0,
             speed_bps=0,
             apply_to_all_items=True,
         )
 
-        mark_attempts(
-            job_id,
-            downloaded,
-            engine,
-            "downloaded",
-            0,
-            None,
-            stderr_excerpt,
-            run_item_ids,
-        )
-        mark_attempts(
-            job_id,
-            missing,
-            engine,
-            "failed_retryable",
-            0,
-            ErrorCategory.DOWNLOAD_NO_OUTPUT.value,
-            stderr_excerpt,
-            run_item_ids,
-        )
-        mark_tweets_downloaded([tweet["tweet_id"] for tweet in downloaded])
-        mark_tweets_failed(
-            [tweet["tweet_id"] for tweet in missing],
-            "failed_retryable",
-            ErrorCategory.DOWNLOAD_NO_OUTPUT.value,
-        )
-        status = "finished" if not missing else "partial"
-        finish_job(
-            job_id,
-            status,
-            len(downloaded),
-            len(missing),
-            None if not missing else ErrorCategory.DOWNLOAD_NO_OUTPUT.value,
-        )
-        log_download_event(
-            "download.job.completed",
-            job_id=job_id,
-            engine=engine,
-            status=status,
-            exit_code=result.returncode,
-            success_count=len(downloaded),
-            failed_count=len(missing),
-            error_category=None if not missing else ErrorCategory.DOWNLOAD_NO_OUTPUT.value,
-        )
-    else:
-        category = classify_error(result.returncode, raw_stderr_excerpt)
-        append_download_log(
-            log_stream_id,
-            "error",
-            "download",
-            f"下载器以退出码 {result.returncode} 结束: {category}。",
-        )
-        status = (
-            "failed_permanent"
-            if category in {item.value for item in PERMANENT_DOWNLOAD_CATEGORIES}
-            else "failed_retryable"
-        )
-        mark_attempts(
-            job_id,
-            tweets,
-            engine,
-            status,
-            result.returncode,
-            category,
-            stderr_excerpt,
-            run_item_ids,
-        )
-        mark_tweets_failed([tweet["tweet_id"] for tweet in tweets], status, category)
-        mark_run_items_progress(
-            job_id,
-            tweets,
-            run_item_ids,
-            f"下载失败: {category}",
-            downloaded_bytes=0,
-            speed_bps=0,
-            apply_to_all_items=True,
-        )
-        finish_job(job_id, "failed", 0, len(tweets), category)
-        log_download_event(
-            "download.job.failed",
-            job_id=job_id,
-            engine=engine,
-            status="failed",
-            exit_code=result.returncode,
-            error_category=category,
-            failed_count=len(tweets),
-        )
+    job_category = summarize_failure_category(failure_details)
+    status = "finished" if not missing else "partial" if downloaded else "failed"
+    finish_job(job_id, status, len(downloaded), len(missing), job_category)
+    log_download_event(
+        "download.job.completed" if downloaded or not missing else "download.job.failed",
+        job_id=job_id,
+        engine=engine,
+        status=status,
+        exit_code=result.returncode,
+        success_count=len(downloaded),
+        failed_count=len(missing),
+        error_category=job_category,
+    )
 
     return {
         "job_id": job_id,
         "input_path": input_path,
         "count": len(tweets),
         "exit_code": result.returncode,
-        "media_backfill": backfill_result if result.returncode == 0 else None,
+        "downloaded_tweet_ids": sorted(downloaded_ids),
+        "media_backfill": backfill_result,
     }
 
 
@@ -1824,6 +1787,94 @@ def classify_error(exit_code: int, stderr: str | None) -> str:
     return category_value(classify_x_error(stderr)) or ErrorCategory.UNKNOWN.value
 
 
+def extract_tweet_stderr(stderr: str, tweet_ids: set[str]) -> dict[str, str]:
+    """从批次 stderr 中提取可明确归属到单条 Tweet 的日志片段。"""
+
+    segments: dict[str, list[str]] = {}
+    current_tweet_id: str | None = None
+    for line in stderr.splitlines():
+        direct_match = YTDLP_TWEET_ERROR_RE.search(line)
+        url_match = TWEET_STATUS_URL_RE.search(line)
+        matched_tweet_id = (
+            direct_match.group("tweet_id")
+            if direct_match is not None
+            else url_match.group("tweet_id") if url_match is not None else None
+        )
+        if matched_tweet_id is not None:
+            # 即使 marker 属于已成功、因而不在待分类集合中的 Tweet，也必须
+            # 截断前一个片段，避免后续全局日志被错误归给上一条失败项。
+            current_tweet_id = matched_tweet_id if matched_tweet_id in tweet_ids else None
+        if current_tweet_id is not None:
+            segments.setdefault(current_tweet_id, []).append(line)
+    return {
+        tweet_id: "\n".join(lines)[-4000:]
+        for tweet_id, lines in segments.items()
+    }
+
+
+def classify_missing_tweets(
+    tweets: list[DownloadCandidateRow],
+    exit_code: int,
+    stderr: str,
+) -> dict[str, dict[str, str | None]]:
+    """逐 Tweet 分类未产出媒体项，避免把同批其他 Tweet 的错误串写进来。"""
+
+    tweet_ids = {str(tweet["tweet_id"]) for tweet in tweets}
+    stderr_by_tweet = extract_tweet_stderr(stderr, tweet_ids)
+    has_tweet_marker = bool(YTDLP_TWEET_ERROR_RE.search(stderr) or TWEET_STATUS_URL_RE.search(stderr))
+    global_stderr = stderr[-4000:] if exit_code != 0 and stderr and not has_tweet_marker else None
+    details: dict[str, dict[str, str | None]] = {}
+    permanent_categories = {item.value for item in PERMANENT_DOWNLOAD_CATEGORIES}
+    for tweet in tweets:
+        tweet_id = str(tweet["tweet_id"])
+        tweet_stderr = stderr_by_tweet.get(tweet_id) or global_stderr
+        category = (
+            classify_error(exit_code, tweet_stderr)
+            if exit_code != 0 and tweet_stderr
+            else ErrorCategory.DOWNLOAD_NO_OUTPUT.value
+        )
+        details[tweet_id] = {
+            "category": category,
+            "status": "failed_permanent" if category in permanent_categories else "failed_retryable",
+            "stderr_excerpt": redact_sensitive_text(tweet_stderr) or None,
+        }
+    return details
+
+
+def summarize_failure_category(details: dict[str, dict[str, str | None]]) -> str | None:
+    """为 Job 摘要选择出现次数最多的逐 Tweet 错误类别。"""
+
+    categories = [str(detail["category"]) for detail in details.values() if detail.get("category")]
+    if not categories:
+        return None
+    counts = Counter(categories)
+    return min(counts, key=lambda category: (-counts[category], category))
+
+
+def backfilled_tweet_ids_for_engine(backfill_result: dict[str, object], engine: str) -> set[str]:
+    """读取本次引擎真正产出的 Tweet；兼容旧测试或调用方结果结构。"""
+
+    by_engine = backfill_result.get("tweet_ids_by_engine")
+    if isinstance(by_engine, dict):
+        values = by_engine.get(engine, [])
+        if isinstance(values, list):
+            return {str(value) for value in values}
+        return set()
+    return {str(value) for value in backfill_result.get("tweet_ids", [])}
+
+
+def engine_backfill_result(backfill_result: dict[str, object], engine: str) -> dict[str, object]:
+    """把跨引擎回填摘要收窄为当前引擎，供引擎附属流程使用。"""
+
+    result = dict(backfill_result)
+    result["tweet_ids"] = sorted(backfilled_tweet_ids_for_engine(backfill_result, engine))
+    by_engine = backfill_result.get("media_ids_by_engine")
+    result["media_ids"] = list(by_engine.get(engine, [])) if isinstance(by_engine, dict) else list(
+        backfill_result.get("media_ids", [])
+    )
+    return result
+
+
 def download_log_relative_path(job_id: int) -> str:
     """构造下载 Job 对应的 archive 相对 JSONL 路径。"""
 
@@ -1921,7 +1972,15 @@ def download_output_log_level(engine: str, stream_name: str, line: str) -> str:
 def empty_backfill_result() -> dict[str, object]:
     """返回空的媒体回填结果结构。"""
 
-    return {"scanned": 0, "upserted": 0, "skipped": 0, "media_ids": [], "tweet_ids": []}
+    return {
+        "scanned": 0,
+        "upserted": 0,
+        "skipped": 0,
+        "media_ids": [],
+        "tweet_ids": [],
+        "media_ids_by_engine": {},
+        "tweet_ids_by_engine": {},
+    }
 
 
 def log_download_event(event: str, **details: object) -> None:
