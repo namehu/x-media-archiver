@@ -1,4 +1,4 @@
-import { expect, test, type Page, type Route, type WebSocketRoute } from "@playwright/test";
+import { expect, test, type Locator, type Page, type Route, type WebSocketRoute } from "@playwright/test";
 
 test.beforeEach(async ({ context }) => {
   await context.addInitScript(() => sessionStorage.setItem("xma:webui:adult-content-acknowledged", "1"));
@@ -301,6 +301,35 @@ test.describe("Feed video resume", () => {
     await expect(page.locator("body > .art-video-player.art-fullscreen-web")).toHaveCount(0);
   });
 
+  test("swipes both directions between media in the active post", async ({ page }) => {
+    await page.setViewportSize({ width: 375, height: 812 });
+    const post = feedImagePost("horizontal-media", "双向媒体滑动");
+    post.media = [0, 1, 2].map((mediaIndex) => ({
+      ...post.media[0],
+      id: 700 + mediaIndex,
+      media_index: mediaIndex,
+      local_path: `/archive/media/example/horizontal-media/${mediaIndex}.jpg`,
+      media_relative_path: `media/example/horizontal-media/${mediaIndex}.jpg`,
+    }));
+    await mockFeedApis(page, [post]);
+
+    await page.goto("/feed");
+    await page.getByRole("button", { name: "预览第 1 个媒体" }).click();
+    const dialog = page.getByRole("dialog");
+    const swipeSurface = dialog.locator(".swiper-slide-active img");
+    const currentSlide = dialog.locator(".swiper-pagination-current");
+    await expect(currentSlide).toHaveText("1");
+
+    await swipeHorizontally(swipeSurface, 320, 70, 31);
+    await expect(currentSlide).toHaveText("2");
+
+    await swipeHorizontally(swipeSurface, 70, 320, 32);
+    await expect(currentSlide).toHaveText("1");
+
+    await swipeHorizontally(swipeSurface, 320, 70, 33, [230, 140]);
+    await expect(currentSlide).toHaveText("2");
+  });
+
   test("keeps preview information inside the fullWeb player on narrow screens", async ({ page }) => {
     await page.setViewportSize({ width: 390, height: 844 });
     await page.addInitScript(() => {
@@ -340,6 +369,38 @@ test.describe("Feed video resume", () => {
     await expect(bottomControls).toHaveCSS("opacity", "1");
   });
 });
+
+async function swipeHorizontally(
+  target: Locator,
+  startX: number,
+  endX: number,
+  pointerId: number,
+  intermediateX: number[] = [],
+) {
+  await target.dispatchEvent("pointerdown", {
+    pointerId,
+    pointerType: "touch",
+    button: 0,
+    clientX: startX,
+    clientY: 420,
+  });
+  for (const clientX of [...intermediateX, endX]) {
+    await target.dispatchEvent("pointermove", {
+      pointerId,
+      pointerType: "touch",
+      button: 0,
+      clientX,
+      clientY: 420,
+    });
+  }
+  await target.dispatchEvent("pointerup", {
+    pointerId,
+    pointerType: "touch",
+    button: 0,
+    clientX: endX,
+    clientY: 420,
+  });
+}
 
 async function installMediaElementMock(page: Page) {
   await page.addInitScript(() => {

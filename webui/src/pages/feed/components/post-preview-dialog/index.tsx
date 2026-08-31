@@ -93,6 +93,7 @@ export function PostPreviewDialog({
     startX: number;
     startY: number;
     startedAt: number;
+    startMediaIndex: number;
     axis: "pending" | "horizontal" | "vertical";
   } | null>(null);
   const availablePosts = useMemo(() => posts ?? (post ? [post] : []), [post, posts]);
@@ -259,6 +260,7 @@ export function PostPreviewDialog({
       startX: event.clientX,
       startY: event.clientY,
       startedAt: performance.now(),
+      startMediaIndex: swiperRef.current?.activeIndex ?? activeIndex,
       axis: "pending",
     };
     setMotion((current) => ({ ...current, animate: false }));
@@ -290,16 +292,40 @@ export function PostPreviewDialog({
   const handlePointerEnd = (event: ReactPointerEvent<HTMLDivElement>) => {
     const gesture = pointerGestureRef.current;
     if (!gesture || gesture.pointerId !== event.pointerId) return;
+    const deltaX = event.clientX - gesture.startX;
     const deltaY = event.clientY - gesture.startY;
     const elapsed = Math.max(performance.now() - gesture.startedAt, 1);
-    const velocity = Math.abs(deltaY) / elapsed;
-    const shouldMove =
+    const verticalVelocity = Math.abs(deltaY) / elapsed;
+    const shouldMoveVertically =
       gesture.axis === "vertical" &&
-      (Math.abs(deltaY) >= 72 || (Math.abs(deltaY) >= 24 && velocity >= 0.55));
+      (Math.abs(deltaY) >= 72 || (Math.abs(deltaY) >= 24 && verticalVelocity >= 0.55));
     pointerGestureRef.current = null;
     if (swiperRef.current) swiperRef.current.allowTouchMove = true;
 
-    if (shouldMove) {
+    if (gesture.axis === "horizontal") {
+      const horizontalVelocity = Math.abs(deltaX) / elapsed;
+      const shouldMoveHorizontally =
+        Math.abs(deltaX) >= 72 || (Math.abs(deltaX) >= 24 && horizontalVelocity >= 0.55);
+      setMotion({ offsetY: 0, opacity: 1, animate: true });
+      const mediaCount = activePost?.media.length ?? 0;
+      if (!shouldMoveHorizontally || mediaCount === 0) return;
+
+      suppressClickRef.current = true;
+      const targetIndex = Math.min(
+        Math.max(gesture.startMediaIndex + (deltaX < 0 ? 1 : -1), 0),
+        mediaCount - 1,
+      );
+      const gestureSwiper = swiperRef.current;
+      // Swiper 14 may consume a coalesced first move only to unlock its threshold.
+      // Let its pointerup finish first, then recover only if the intended slide was not committed.
+      queueMicrotask(() => {
+        if (!gestureSwiper || gestureSwiper.destroyed || gestureSwiper.activeIndex === targetIndex) return;
+        gestureSwiper.slideTo(targetIndex);
+      });
+      return;
+    }
+
+    if (shouldMoveVertically) {
       moveTweet(deltaY < 0 ? 1 : -1);
       return;
     }
