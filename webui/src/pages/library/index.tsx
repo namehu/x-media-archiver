@@ -353,7 +353,7 @@ export function LibraryPage() {
     const dialogEntry = createDialogHistoryEntry(location.state);
     void navigate(
       { pathname: location.pathname, search: location.search, hash: location.hash },
-      { state: dialogEntry.state },
+      { state: dialogEntry.state, flushSync: true },
     );
     setPreview({ mediaId: row.id, historyToken: dialogEntry.token });
   };

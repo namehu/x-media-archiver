@@ -6,6 +6,7 @@ test.beforeEach(async ({ context }) => {
 
 const PAGE_SIZE = 60;
 const TOTAL_COUNT = 130;
+const DETAIL_MEDIA_INDEX = 125;
 
 test.describe("Library infinite loading", () => {
   test.beforeEach(async ({ page }) => {
@@ -38,14 +39,14 @@ test.describe("Library infinite loading", () => {
     await expect(page.getByText("已加载 60 项")).toBeVisible();
     expect(requestedOffsets[0]).toBe(0);
 
-    const loadedCount = await scrollUntilLoaded(page, 120);
-    expect(new Set(requestedOffsets)).toEqual(new Set([0, 60]));
+    const loadedCount = await scrollUntilLoaded(page, TOTAL_COUNT);
+    expect(new Set(requestedOffsets)).toEqual(new Set([0, 60, 120]));
 
     const scrollTop = await appScrollTop(page);
-    await page.getByRole("button", { name: "媒体 55", exact: true }).click();
-    await expect(page.getByRole("dialog")).toContainText("媒体 55");
+    await page.getByRole("button", { name: `媒体 ${DETAIL_MEDIA_INDEX}`, exact: true }).click();
+    await expect(page.getByRole("dialog")).toContainText(`媒体 ${DETAIL_MEDIA_INDEX}`);
     await page.getByRole("button", { name: "Tweet 详情" }).click();
-    await expect(page).toHaveURL(/\/tweets\/tweet-55$/);
+    await expect(page).toHaveURL(new RegExp(`/tweets/tweet-${DETAIL_MEDIA_INDEX}$`));
 
     await page.goBack();
     await expect(page).toHaveURL(/\/library$/);
@@ -53,7 +54,7 @@ test.describe("Library infinite loading", () => {
     await expect
       .poll(() => appScrollTop(page))
       .toBeGreaterThanOrEqual(Math.max(0, scrollTop - 2));
-    expect(new Set(requestedOffsets)).toEqual(new Set([0, 60]));
+    expect(new Set(requestedOffsets)).toEqual(new Set([0, 60, 120]));
   });
 
   test("starts a new library visit at the top when using sidebar navigation", async ({ page }) => {

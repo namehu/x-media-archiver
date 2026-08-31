@@ -72,14 +72,15 @@ test.describe("Feed video resume", () => {
     });
     await expect(dialog.getByText("随机帖子二", { exact: true })).toBeVisible();
 
-    for (let index = 0; index < 7; index += 1) {
-      await surface.dispatchEvent("wheel", { deltaX: 0, deltaY: 80 });
-      await page.waitForTimeout(100);
-    }
+    await surface.evaluate((element) => {
+      for (let index = 0; index < 7; index += 1) {
+        element.dispatchEvent(new WheelEvent("wheel", { bubbles: true, cancelable: true, deltaY: 80 }));
+      }
+    });
     await expect(dialog.getByText("随机帖子三", { exact: true })).toBeVisible();
     await expect(dialog.getByText("随机帖子四", { exact: true })).toHaveCount(0);
 
-    await page.waitForTimeout(200);
+    await page.waitForTimeout(250);
     await surface.dispatchEvent("wheel", { deltaX: 0, deltaY: 80 });
     await expect(dialog.getByText("随机帖子四", { exact: true })).toBeVisible();
 

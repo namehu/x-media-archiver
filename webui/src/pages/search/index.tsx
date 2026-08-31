@@ -275,7 +275,7 @@ export function SearchPage() {
                   const dialogEntry = createDialogHistoryEntry(location.state);
                   void navigate(
                     { pathname: location.pathname, search: location.search, hash: location.hash },
-                    { state: dialogEntry.state },
+                    { state: dialogEntry.state, flushSync: true },
                   );
                   setActiveVideoId(null);
                   setPreview({ post: row, index, historyToken: dialogEntry.token });

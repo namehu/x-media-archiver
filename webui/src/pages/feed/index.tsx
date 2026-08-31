@@ -478,7 +478,7 @@ export function FeedPage() {
                 setActiveVideoId(null);
                 void navigate(
                   { pathname: location.pathname, search: location.search, hash: location.hash },
-                  { state: dialogEntry.state },
+                  { state: dialogEntry.state, flushSync: true },
                 );
                 const previewableRows = rows.filter(
                   (row) => isPreviewablePost(row) && !deletedTweetIds.has(row.tweet_id),

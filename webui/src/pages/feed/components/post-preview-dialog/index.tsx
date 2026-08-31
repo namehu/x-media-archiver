@@ -84,6 +84,7 @@ export function PostPreviewDialog({
   const swiperRef = useRef<SwiperInstance | null>(null);
   const surfaceRef = useRef<HTMLDivElement>(null);
   const activeHistoryTokenRef = useRef<string | null>(null);
+  const closingHistoryTokenRef = useRef<string | null>(null);
   const motionFrameRef = useRef<number | null>(null);
   const requestedAtPostCountRef = useRef<number | null>(null);
   const suppressClickRef = useRef(false);
@@ -112,7 +113,12 @@ export function PostPreviewDialog({
       onOpenChange(false);
       return;
     }
-    closeDialogHistoryEntry(historyToken, () => onOpenChange(false));
+    if (closingHistoryTokenRef.current === historyToken) return;
+    closingHistoryTokenRef.current = historyToken;
+    closeDialogHistoryEntry(historyToken, () => {
+      closingHistoryTokenRef.current = null;
+      onOpenChange(false);
+    });
   }, [historyToken, onOpenChange]);
 
   useEffect(() => {
@@ -135,9 +141,16 @@ export function PostPreviewDialog({
       return undefined;
     }
 
-    // 打开时本地状态先于路由 state 更新；只有观察到自身 token 后，
-    // token 消失才表示该历史条目已被 Back 或关闭动作弹出。
-    if (activeHistoryTokenRef.current === historyToken) onOpenChange(false);
+    // 路由 effect 观察到 token 前也可能收到快速 Escape；关闭意图与已激活
+    // token 任一命中，都能在 POP 后安全退出且不提前恢复列表视频。
+    if (
+      activeHistoryTokenRef.current === historyToken ||
+      closingHistoryTokenRef.current === historyToken
+    ) {
+      activeHistoryTokenRef.current = null;
+      closingHistoryTokenRef.current = null;
+      onOpenChange(false);
+    }
     return undefined;
   }, [historyToken, location.state, onOpenChange]);
 

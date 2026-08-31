@@ -56,6 +56,7 @@ export function LibraryMediaPreviewDialog({
   const location = useLocation();
   const swiperRef = useRef<SwiperInstance | null>(null);
   const activeHistoryTokenRef = useRef<string | null>(null);
+  const closingHistoryTokenRef = useRef<string | null>(null);
   const [contextExpanded, setContextExpanded] = useState(false);
   const activeIndex = useMemo(
     () => (activeMediaId === null ? -1 : media.findIndex((item) => item.id === activeMediaId)),
@@ -68,7 +69,12 @@ export function LibraryMediaPreviewDialog({
       onOpenChange(false);
       return;
     }
-    closeDialogHistoryEntry(historyToken, () => onOpenChange(false));
+    if (closingHistoryTokenRef.current === historyToken) return;
+    closingHistoryTokenRef.current = historyToken;
+    closeDialogHistoryEntry(historyToken, () => {
+      closingHistoryTokenRef.current = null;
+      onOpenChange(false);
+    });
   }, [historyToken, onOpenChange]);
 
   useEffect(() => {
@@ -119,7 +125,15 @@ export function LibraryMediaPreviewDialog({
       activeHistoryTokenRef.current = historyToken;
       return undefined;
     }
-    if (activeHistoryTokenRef.current === historyToken) onOpenChange(false);
+    // 快速关闭可能早于路由 effect 观察 token，保留意图直到 POP 完成。
+    if (
+      activeHistoryTokenRef.current === historyToken ||
+      closingHistoryTokenRef.current === historyToken
+    ) {
+      activeHistoryTokenRef.current = null;
+      closingHistoryTokenRef.current = null;
+      onOpenChange(false);
+    }
     return undefined;
   }, [historyToken, location.state, onOpenChange]);
 
