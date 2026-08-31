@@ -328,6 +328,7 @@ def normalize_records(records: list[dict[str, Any]], trigger_type: str) -> list[
     for record in records:
         url = str(record.get("url") or "").strip()
         tweet_id = extract_tweet_id(url)
+        raw_import = record["raw_import"] if "raw_import" in record else record
         rows.append(
             {
                 "tweet_id": tweet_id,
@@ -339,7 +340,7 @@ def normalize_records(records: list[dict[str, Any]], trigger_type: str) -> list[
                 "source_type": record.get("source_type") or trigger_type,
                 "source_url": record.get("source_url"),
                 "collected_at": record.get("collected_at"),
-                "raw_import": json_safe_value(record),
+                "raw_import": json_safe_value(raw_import),
             }
         )
     return rows

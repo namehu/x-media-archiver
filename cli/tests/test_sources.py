@@ -1229,6 +1229,46 @@ class SourceDiscoveryIntegrationTests(unittest.TestCase):
         with self.assertRaisesRegex(ValueError, "source_already_exists"):
             create_source("user_media", "https://x.com/sourcefixture/media")
 
+    def test_submit_source_downloads_preserves_tweet_raw_import(self) -> None:
+        source = create_source("user_media", self.source_urls[0])
+        raw_import = {
+            "tweet": {"id": self.tweet_id, "conversation_id": "919900000000000000"},
+            "media_items": [{"type": "photo", "url": "https://pbs.twimg.com/media/sourcefixture"}],
+        }
+        record_source_discoveries(
+            int(source["id"]),
+            [
+                {
+                    "tweet_id": self.tweet_id,
+                    "url": f"https://x.com/sourcefixture/status/{self.tweet_id}",
+                    "author_username": "sourcefixture",
+                    "author_display_name": "Source Fixture",
+                    "text": "完整扫描记录",
+                    "published_at": None,
+                    "collected_at": None,
+                    "raw_import": raw_import,
+                }
+            ],
+        )
+
+        submitted = submit_source_downloads(int(source["id"]), "all_unsubmitted")
+
+        with connect() as conn:
+            with conn.cursor() as cur:
+                cur.execute(
+                    """
+                    select t.raw_import, i.input_payload
+                    from tweets t
+                    join archive_run_items i on i.tweet_id = t.tweet_id
+                    where t.tweet_id = %s and i.archive_run_id = %s
+                    """,
+                    (self.tweet_id, submitted["run_id"]),
+                )
+                row = cur.fetchone()
+
+        self.assertEqual(row["raw_import"], raw_import)
+        self.assertEqual(row["input_payload"]["raw_import"], raw_import)
+
     def test_delete_source_soft_deletes_without_removing_history(self) -> None:
         source = create_source("user_media", self.source_urls[0])
         record_source_discoveries(

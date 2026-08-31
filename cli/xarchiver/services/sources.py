@@ -3421,6 +3421,7 @@ def submit_source_downloads(
             "source_type": row.get("source_type"),
             "source_url": row.get("source_url"),
             "collected_at": row.get("collected_at"),
+            "raw_import": row.get("raw_import"),
         }
         for row in rows
     ]

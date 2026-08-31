@@ -2,7 +2,7 @@
 
 > 状态：活跃路线图
 >
-> 最后更新：2026-08-14
+> 最后更新：2026-08-31
 >
 > 产品方向：在可信归档底座之上，把项目升级为可检索、可整理的个人媒体库。
 
@@ -12,10 +12,11 @@
 
 1. CLI、API 与 WebUI 共享的数据库归档队列，以及逐 Tweet 下载、回填、校验和重试审计。
 2. 来源发现、原生 cursor 历史扫描、可恢复扫描会话、批量任务和命名定时策略。
-3. Archive Queue、Sources、Feed、Search、Insights、Library、Collections、Tweet Detail、Failures、Duplicates 与 Operations 页面。
-4. 单管理员认证、Cookies 检测、结构化日志、SSE 与只读 WebSocket 运行态投影。
-5. 按 `media_assets.id` 精确执行的媒体物理删除、SHA-256 重复项治理和删除审计。
-6. Ruff、后端单元/集成测试、WebUI build、扩展 build 与 Playwright E2E 工作流。
+3. Archive Queue、Sources、Feed、Search、Insights、Library、Collections、Tags、Tweet Detail、Failures、Duplicates 与 Operations 页面。
+4. 单管理员认证、成人内容 Gate、账号级媒体隐私模式、Cookies 检测、结构化日志、SSE 与只读 WebSocket 运行态投影。
+5. 按 `media_assets.id` 精确执行的媒体物理删除、SHA-256 重复项治理、删除审计，以及与下载解耦的媒体预览任务。
+6. 带可复现 seed 的随机 Feed、跨 Tweet/媒体双轴全屏预览，以及滚动位置和视频进度恢复。
+7. Ruff、后端单元/集成测试、WebUI build、扩展 build 与 Playwright E2E 工作流。
 
 当前架构继续保持单管理员、单实例和本地优先。除非部署目标发生变化，不引入多租户、分布式 worker 或跨进程 runtime bus。
 
@@ -123,7 +124,33 @@
 
 ### 后续数据完整性事项
 
-- [ ] 单独修复来源提交下载时瘦记录覆盖 `tweets.raw_import` 的问题；该缓存问题不作为平台 Hashtag 的事实来源，也不阻塞 M5。
+- [x] 来源提交下载时保留扫描阶段的完整 `tweets.raw_import`，队列提交载荷不再用瘦记录覆盖原始缓存；该缓存仍不作为平台 Hashtag 的事实来源。
+
+## M6：隐私保护、预览维护与媒体浏览
+
+目标：在现有归档与整理能力之上，补齐敏感媒体保护、派生预览维护和更适合连续浏览的 Feed 体验。
+
+### 隐私与访问边界
+
+- [x] 未开启媒体隐私模式时，每个浏览器标签页首次进入业务路由都需要完成成人内容确认；退出或认证失效后清除当前标签页确认。
+- [x] 新增账号级媒体隐私模式；启用后遮蔽敏感字段，不挂载或请求图片、视频和播放器，并保留可访问的业务页面结构。
+- [x] 覆盖认证模式与 `AUTH_MODE=disabled` 下的偏好持久化、关闭隐私模式前确认、保存失败回滚和窄屏可访问性。
+
+### 媒体预览维护
+
+- [x] 将图片 WebP 与视频 JPEG 预览生成从下载、媒体回填和全量校验中解耦，使用独立的持久化维护任务。
+- [x] 支持手动补齐、强制重建、取消和默认关闭的内部定时计划；进度复用现有 Runtime WebSocket 与 REST 快照降级。
+- [x] 媒体物理删除同步清理派生预览；Feed、Library、Collections、Duplicates 与 Tweet Detail 统一使用有界预览和失败回退。
+
+### Feed 浏览体验
+
+- [x] Feed 支持带 seed 的稳定随机顺序，并与全部/喜欢范围、来源、作者、正文和媒体类型筛选共同同步到 URL。
+- [x] 全屏预览支持上下切换 Tweet、左右切换同一 Tweet 媒体，以及触摸、滚轮、方向键、`J/K` 和可见按钮操作。
+- [x] 接近已加载末尾时按当前 Feed 顺序继续分页；关闭后恢复列表滚动位置和视频播放进度，并以 Playwright E2E 覆盖关键交互竞态。
+
+### WebUI 事实基线
+
+- [x] 完成 Phase 4 界面统一，页面复用共享布局与组件，遵循中文单语、桌面/窄屏响应式和无障碍规范。
 
 ## 每个里程碑的完成标准
 
