@@ -1545,7 +1545,7 @@ class SourceDiscoveryIntegrationTests(unittest.TestCase):
             page = list_sources_page(sort_by=sort_by, limit=1)
             self.assertLessEqual(page["count"], 1)
 
-    def test_source_failed_download_count_only_uses_latest_tweet_item(self) -> None:
+    def test_source_failed_download_count_uses_current_tweet_status_after_manual_retry(self) -> None:
         source = create_source("user_media", self.source_urls[0])
         record_source_discoveries(
             int(source["id"]),
@@ -1570,15 +1570,39 @@ class SourceDiscoveryIntegrationTests(unittest.TestCase):
                     (first["run_id"],),
                 )
                 cur.execute("update archive_runs set status = 'completed_with_failures' where id = %s", (first["run_id"],))
+                cur.execute(
+                    "update tweets set download_status = 'failed_permanent' where tweet_id = %s",
+                    (self.tweet_id,),
+                )
             conn.commit()
-        second = submit_source_downloads(int(source["id"]), "download_missing")
+
+        failed_page = list_sources_page(search="sourcefixture", limit=10)
+        failed_row = next(item for item in failed_page["rows"] if item["id"] == source["id"])
+        self.assertEqual(failed_row["failed_download_count"], 1)
+
         with connect() as conn:
             with conn.cursor() as cur:
                 cur.execute(
-                    "update archive_run_items set status = 'verified' where archive_run_id = %s",
-                    (second["run_id"],),
+                    """
+                    insert into archive_runs (trigger_type, status, result)
+                    values ('manual_retry', 'completed', '{}'::jsonb)
+                    returning id
+                    """
                 )
-                cur.execute("update archive_runs set status = 'completed' where id = %s", (second["run_id"],))
+                retry_run_id = int(cur.fetchone()["id"])
+                cur.execute(
+                    """
+                    insert into archive_run_items (
+                      archive_run_id, tweet_id, input_payload, status
+                    )
+                    values (%s, %s, '{}'::jsonb, 'verified')
+                    """,
+                    (retry_run_id, self.tweet_id),
+                )
+                cur.execute(
+                    "update tweets set download_status = 'verified' where tweet_id = %s",
+                    (self.tweet_id,),
+                )
             conn.commit()
 
         page = list_sources_page(search="sourcefixture", limit=10)

@@ -148,6 +148,7 @@ def download(
     tweet_ids: list[str] | None = None,
     archive_run_id: int | None = None,
     run_item_ids: dict[str, int] | None = None,
+    use_download_archive: bool = True,
 ) -> dict[str, object]:
     """执行一次下载任务，并把结果回写到数据库。"""
 
@@ -176,7 +177,12 @@ def download(
         "info",
         "download",
         "下载任务已创建。",
-        context={"engine": engine, "tweet_count": len(tweets), "dry_run": dry_run},
+        context={
+            "engine": engine,
+            "tweet_count": len(tweets),
+            "dry_run": dry_run,
+            "download_archive_enabled": use_download_archive,
+        },
     )
     log_download_event(
         "download.job.started",
@@ -239,7 +245,13 @@ def download(
         }
 
     # 先准备好下载器命令；如果命令不存在，则在真正启动前快速失败。
-    command = build_command(engine, settings, input_path, cookie_path)
+    command = build_command(
+        engine,
+        settings,
+        input_path,
+        cookie_path,
+        use_download_archive=use_download_archive,
+    )
     executable = command[0]
     if shutil.which(executable) is None:
         category = ErrorCategory.COMMAND_NOT_FOUND.value
@@ -554,7 +566,14 @@ def prepare_cookies(settings: Settings) -> Path | None:
     return runtime_cookie_file
 
 
-def build_command(engine: str, settings: Settings, input_path: Path, cookie_path: Path | None) -> list[str]:
+def build_command(
+    engine: str,
+    settings: Settings,
+    input_path: Path,
+    cookie_path: Path | None,
+    *,
+    use_download_archive: bool = True,
+) -> list[str]:
     """构造 gallery-dl 或 yt-dlp 命令行参数。"""
 
     sleep_min = format_sleep_seconds(getattr(settings, "downloader_sleep_min_seconds", 2.0))
@@ -587,14 +606,20 @@ def build_command(engine: str, settings: Settings, input_path: Path, cookie_path
             "--sleep",
             sleep_range,
             "--write-metadata",
-            "--download-archive",
-            str(settings.archive_dir / "state" / "gallery-dl-downloaded.txt"),
-            "-i",
-            str(input_path),
         ]
+        if use_download_archive:
+            command.extend(
+                [
+                    "--download-archive",
+                    str(settings.archive_dir / "state" / "gallery-dl-downloaded.txt"),
+                ]
+            )
+        else:
+            command.append("--no-skip")
+        command.extend(["-i", str(input_path)])
         return command
 
-    return [
+    command = [
         "yt-dlp",
         "--newline",
         "--no-color",
@@ -612,13 +637,29 @@ def build_command(engine: str, settings: Settings, input_path: Path, cookie_path
         "1",
         "--progress-template",
         f"download:{YTDLP_PROGRESS_PREFIX}%(info.display_id)s|%(progress.status)s|%(progress.downloaded_bytes)s|%(progress.total_bytes)s|%(progress.total_bytes_estimate)s|%(progress.speed)s",
-        "--download-archive",
-        str(settings.archive_dir / "state" / "yt-dlp-downloaded.txt"),
-        "-a",
-        str(input_path),
-        "-o",
-        str(settings.archive_dir / "media" / "%(uploader_id)s" / "%(display_id)s" / "%(display_id)s.%(ext)s"),
     ]
+    if use_download_archive:
+        command.extend(
+            [
+                "--download-archive",
+                str(settings.archive_dir / "state" / "yt-dlp-downloaded.txt"),
+            ]
+        )
+    command.extend(
+        [
+            "-a",
+            str(input_path),
+            "-o",
+            str(
+                settings.archive_dir
+                / "media"
+                / "%(uploader_id)s"
+                / "%(display_id)s"
+                / "%(display_id)s.%(ext)s"
+            ),
+        ]
+    )
+    return command
 
 
 def format_sleep_range(min_seconds: float, max_seconds: float) -> str:

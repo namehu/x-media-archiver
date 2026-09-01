@@ -378,7 +378,13 @@ def retry_command(
 
     settings = get_settings()
     selected_engine = engine or "yt-dlp"
-    result = run_download(selected_engine, settings, limit, dry_run)
+    result = run_download(
+        selected_engine,
+        settings,
+        limit,
+        dry_run,
+        use_download_archive=False,
+    )
     console.print(result)
 
 

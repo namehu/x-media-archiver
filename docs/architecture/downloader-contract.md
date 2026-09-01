@@ -36,6 +36,12 @@ metadata file path: <media-file>.json
 download archive behavior: --download-archive writes a SQLite file at archive/state/gallery-dl-downloaded.txt
 ```
 
+普通首次下载继续使用下载器 archive 去重；人工重试、批量 requeue 和同一队列条目的自动重试会省略
+`--download-archive`，让数据库中的失败/缺失事实优先于下载器历史。否则媒体文件或元数据丢失后，
+gallery-dl 仍会因为旧 archive ID 输出 `skip`，导致 scoped backfill 永远无法恢复该 Tweet。
+gallery-dl 重试还会使用 `--no-skip`，覆盖“同名媒体已存在但元数据缺失”的孤儿文件场景；该强制覆盖
+只作用于数据库明确进入重试的 Tweet，不改变普通首次下载和已 verified Tweet 的去重行为。
+
 ### 平台 Hashtag 元数据契约
 
 已验证的 gallery-dl `1.32.1` Twitter extractor 会在普通 Tweet 与 Note Tweet 的媒体元数据顶层输出可选 `hashtags: list[str]`；值不带前导 `#`，无 Hashtag 时字段可以缺失。项目只在 gallery-dl 下载成功、scoped media backfill 已把元数据路径登记到 `media_assets.metadata_path` 后读取对应磁盘 JSON。

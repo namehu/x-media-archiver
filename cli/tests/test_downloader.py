@@ -512,6 +512,36 @@ second tweet warning
         self.assertIn("output.ansi=false", command)
         self.assertIn("output.shorten=false", command)
         self.assertIn("downloader.progress=1.0", command)
+        self.assertIn("--download-archive", command)
+        self.assertNotIn("--no-skip", command)
+
+    def test_retry_commands_omit_stale_download_archives(self) -> None:
+        settings = SimpleNamespace(
+            archive_dir=Path("/app/archive"),
+            downloader_sleep_min_seconds=0,
+            downloader_sleep_max_seconds=3,
+        )
+        input_path = Path("/app/archive/raw/input.txt")
+        cookie_path = Path("/app/archive/state/runtime-cookies.txt")
+
+        gallery_command = build_command(
+            "gallery-dl",
+            settings,
+            input_path,
+            cookie_path,
+            use_download_archive=False,
+        )
+        yt_dlp_command = build_command(
+            "yt-dlp",
+            settings,
+            input_path,
+            cookie_path,
+            use_download_archive=False,
+        )
+
+        self.assertNotIn("--download-archive", gallery_command)
+        self.assertNotIn("--download-archive", yt_dlp_command)
+        self.assertIn("--no-skip", gallery_command)
 
     def test_yt_dlp_command_includes_sleep_options(self) -> None:
         settings = SimpleNamespace(

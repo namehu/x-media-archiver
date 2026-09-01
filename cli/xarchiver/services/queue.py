@@ -444,10 +444,21 @@ def process_next_queued_run(settings: Settings, worker_id: str | None = None) ->
     run_id = int(claimed[0]["archive_run_id"])
     item_ids = {str(row["tweet_id"]): int(row["id"]) for row in claimed}
     tweet_ids = list(item_ids)
+    run = get_run(run_id)
+    use_download_archive = should_use_download_archive(
+        run.trigger_type if run is not None else None,
+        claimed,
+    )
     log_queue_event("archive.worker.claimed", run_id=run_id, item_count=len(claimed))
     try:
         with ArchiveItemLeaseHeartbeat([int(row["id"]) for row in claimed], worker_id) as lease:
-            pipeline = process_tweet_scope(tweet_ids, settings, archive_run_id=run_id, item_ids=item_ids)
+            pipeline = process_tweet_scope(
+                tweet_ids,
+                settings,
+                archive_run_id=run_id,
+                item_ids=item_ids,
+                use_download_archive=use_download_archive,
+            )
             lease.ensure_active()
             update_processed_items(run_id, claimed, settings, pipeline, worker_id=worker_id)
             lease.ensure_active()
@@ -471,6 +482,17 @@ def process_next_queued_run(settings: Settings, worker_id: str | None = None) ->
         status=detail.get("status"),
     )
     return detail
+
+
+def should_use_download_archive(
+    trigger_type: str | None,
+    claimed: list[ArchiveClaimedItemRow],
+) -> bool:
+    """普通首次下载使用归档；显式或自动重试必须重新检查真实媒体。"""
+
+    if trigger_type in {"manual_retry", "manual_requeue"}:
+        return False
+    return not any(int(row["retry_count"]) > 0 for row in claimed)
 
 
 def claim_next_items(

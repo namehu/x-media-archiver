@@ -432,17 +432,7 @@ def build_sources_query(
         )
         .scalar_subquery()
     )
-    latest_download_item_id = build_latest_source_download_item_id()
-    failed_download_count = (
-        select(func.count(archive_run_items.c.id).cast(Integer))
-        .select_from(archive_run_items.join(archive_runs, archive_runs.c.id == archive_run_items.c.archive_run_id))
-        .where(
-            archive_runs.c.source_id == archive_sources.c.id,
-            archive_run_items.c.status.in_({"failed_retryable", "failed_permanent"}),
-            archive_run_items.c.id == latest_download_item_id,
-        )
-        .scalar_subquery()
-    )
+    failed_download_count = build_source_current_failed_count()
     schedule_enabled = (
         select(func.count(source_schedule_policy_sources.c.policy_id) > 0)
         .select_from(
@@ -688,22 +678,7 @@ def build_source_filters(
             )
             .correlate(archive_sources)
         )
-        latest_download_item_id = build_latest_source_download_item_id()
-        failed_download = (
-            select(archive_run_items.c.id)
-            .select_from(
-                archive_run_items.join(
-                    archive_runs,
-                    archive_runs.c.id == archive_run_items.c.archive_run_id,
-                )
-            )
-            .where(
-                archive_runs.c.source_id == archive_sources.c.id,
-                archive_run_items.c.status.in_({"failed_retryable", "failed_permanent"}),
-                archive_run_items.c.id == latest_download_item_id,
-            )
-            .correlate(archive_sources)
-        )
+        failed_download = build_source_current_failed_exists()
         failed_scan = (
             select(source_scan_runs.c.id)
             .where(
@@ -760,7 +735,7 @@ def build_source_filters(
                     archive_sources.c.error_category.is_not(None),
                     archive_sources.c.status == "failed",
                     failed_scan.exists(),
-                    failed_download.exists(),
+                    failed_download,
                 )
             )
         elif normalized_operation == "scheduled":
@@ -768,20 +743,37 @@ def build_source_filters(
     return filters
 
 
-def build_latest_source_download_item_id() -> ColumnElement[int | None]:
-    """返回来源内同一 Tweet 最近一次下载条目的关联子查询。"""
+def build_source_current_failed_count() -> ColumnElement[int]:
+    """统计来源发现 Tweet 的当前失败状态，不把历史 Run 失败当成当前事实。"""
 
-    latest_item = archive_run_items.alias("latest_source_download_item")
-    latest_item_run = archive_runs.alias("latest_source_download_run")
+    discovery = source_discovered_tweets.alias("failed_source_discovery_count")
+    current_tweet = tweets.alias("failed_source_current_tweet_count")
     return (
-        select(func.max(latest_item.c.id))
-        .select_from(latest_item.join(latest_item_run, latest_item_run.c.id == latest_item.c.archive_run_id))
+        select(func.count(discovery.c.id).cast(Integer))
+        .select_from(discovery.join(current_tweet, current_tweet.c.tweet_id == discovery.c.tweet_id))
         .where(
-            latest_item_run.c.source_id == archive_sources.c.id,
-            latest_item.c.tweet_id == archive_run_items.c.tweet_id,
+            discovery.c.source_id == archive_sources.c.id,
+            current_tweet.c.download_status.in_({"failed_retryable", "failed_permanent", "corrupt"}),
         )
-        .correlate(archive_sources, archive_run_items)
+        .correlate(archive_sources)
         .scalar_subquery()
+    )
+
+
+def build_source_current_failed_exists() -> ColumnElement[bool]:
+    """判断来源是否仍有当前失败 Tweet，供来源操作状态筛选复用。"""
+
+    discovery = source_discovered_tweets.alias("failed_source_discovery_exists")
+    current_tweet = tweets.alias("failed_source_current_tweet_exists")
+    return (
+        select(discovery.c.id)
+        .select_from(discovery.join(current_tweet, current_tweet.c.tweet_id == discovery.c.tweet_id))
+        .where(
+            discovery.c.source_id == archive_sources.c.id,
+            current_tweet.c.download_status.in_({"failed_retryable", "failed_permanent", "corrupt"}),
+        )
+        .correlate(archive_sources)
+        .exists()
     )
 
 

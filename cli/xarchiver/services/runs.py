@@ -44,10 +44,18 @@ def run_download(
     settings: Settings,
     limit: int | None = None,
     dry_run: bool = False,
+    *,
+    use_download_archive: bool = True,
 ) -> dict[str, object]:
     """直接执行下载器入口。"""
 
-    return download(engine, settings, limit, dry_run)
+    return download(
+        engine,
+        settings,
+        limit,
+        dry_run,
+        use_download_archive=use_download_archive,
+    )
 
 
 def run_backfill(

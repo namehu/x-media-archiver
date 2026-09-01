@@ -60,6 +60,7 @@ def process_tweet_scope(
     limit: int | None = None,
     archive_run_id: int | None = None,
     item_ids: dict[str, int] | None = None,
+    use_download_archive: bool = True,
 ) -> dict[str, object]:
     """对一批 tweet 执行 gallery-dl、yt-dlp、回填与校验。"""
 
@@ -71,6 +72,7 @@ def process_tweet_scope(
         tweet_ids=tweet_ids,
         archive_run_id=archive_run_id,
         run_item_ids=item_ids,
+        use_download_archive=use_download_archive,
     )
     gallery_downloaded_tweet_ids = set(download_tweet_ids(gallery_result))
     fallback_tweet_ids = [tweet_id for tweet_id in tweet_ids if tweet_id not in gallery_downloaded_tweet_ids]
@@ -83,6 +85,7 @@ def process_tweet_scope(
             tweet_ids=fallback_tweet_ids,
             archive_run_id=archive_run_id,
             run_item_ids=item_ids,
+            use_download_archive=use_download_archive,
         )
     else:
         fallback_result = empty_download_result()

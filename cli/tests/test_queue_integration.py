@@ -16,6 +16,7 @@ from xarchiver.services.queue import (
     pause_run,
     process_next_queued_run,
     retry_run,
+    should_use_download_archive,
     stop_run,
     submit_archive_batch,
 )
@@ -53,6 +54,21 @@ class QueueIntegrationTests(unittest.TestCase):
 
     def record(self, tweet_id: str) -> dict[str, str]:
         return {"url": f"https://x.com/queue/status/{tweet_id}"}
+
+    def test_retry_work_ignores_stale_downloader_archives(self) -> None:
+        self.assertFalse(should_use_download_archive("manual_retry", []))
+        self.assertFalse(
+            should_use_download_archive(
+                "test_queue_retry",
+                [{"retry_count": 1}],
+            )
+        )
+        self.assertTrue(
+            should_use_download_archive(
+                "test_queue_initial",
+                [{"retry_count": 0}],
+            )
+        )
 
     def create_source_id(self) -> int:
         with connect() as conn:

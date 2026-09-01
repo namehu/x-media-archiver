@@ -39,6 +39,29 @@ class WorkflowTests(unittest.TestCase):
         self.assertEqual(download.call_args_list[0].kwargs["archive_run_id"], 9)
         self.assertEqual(download.call_args_list[0].kwargs["run_item_ids"], {"1": 13})
 
+    def test_scoped_retry_bypasses_download_archive_for_both_engines(self) -> None:
+        settings = SimpleNamespace()
+        empty_download = {
+            "job_id": 1,
+            "count": 0,
+            "media_backfill": {"media_ids": [], "tweet_ids": []},
+        }
+        with (
+            patch("xarchiver.workflow.download", side_effect=[empty_download, empty_download]) as download,
+            patch(
+                "xarchiver.workflow.verify_media_assets",
+                return_value={"verified": 0, "missing": 0, "corrupt": 0},
+            ),
+            patch(
+                "xarchiver.workflow.get_library_snapshot",
+                return_value={"media_total": 0, "verified_total": 0},
+            ),
+        ):
+            process_tweet_scope(["1"], settings, use_download_archive=False)
+
+        self.assertFalse(download.call_args_list[0].kwargs["use_download_archive"])
+        self.assertFalse(download.call_args_list[1].kwargs["use_download_archive"])
+
     def test_scoped_pipeline_skips_ytdlp_when_gallery_dl_downloaded_every_tweet(self) -> None:
         settings = SimpleNamespace()
         gallery_result = {"job_id": 1, "count": 1, "media_backfill": {"media_ids": [7], "tweet_ids": ["1"]}}
