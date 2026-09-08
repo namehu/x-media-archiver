@@ -243,7 +243,268 @@ test.describe("Library infinite loading", () => {
   });
 });
 
+const SKIP_DELETE_CONFIRMATION_KEY = "xma:webui:library-delete-confirmation-skipped";
+type DeleteBody = { operation_id: string; media_ids: number[]; confirm_physical_delete: boolean };
+
+test.describe("Library session deletion", () => {
+  test.beforeEach(async ({ page }) => {
+    await mockShellApis(page);
+  });
+
+  test("remembers only confirmed opt-in across preview, reload and batch deletion", async ({ page, context }, testInfo) => {
+    await page.setViewportSize({ width: 390, height: 844 });
+    const bodies: DeleteBody[] = [];
+    await mockDeletableMedia(page, bodies, 5);
+    await page.goto("/library");
+    await page.getByRole("button", { name: "媒体 0", exact: true }).click();
+    await page.keyboard.press("Delete");
+    const dialog = page.getByRole("alertdialog");
+    const checkbox = dialog.getByRole("checkbox", { name: "本次不再提示" });
+    await expect(checkbox).not.toBeChecked();
+    await checkbox.check();
+    await expect(dialog).toContainText("当前标签页会话内有效，刷新后仍生效");
+    await page.screenshot({ animations: "disabled", path: testInfo.outputPath("confirmation-mobile-light.png") });
+    await dialog.getByRole("button", { name: "取消", exact: true }).click();
+    expect(await page.evaluate((key) => sessionStorage.getItem(key), SKIP_DELETE_CONFIRMATION_KEY)).toBeNull();
+    expect(bodies).toHaveLength(0);
+
+    await page.keyboard.press("Delete");
+    await expect(checkbox).not.toBeChecked();
+    await dialog.getByRole("button", { name: "永久删除此媒体", exact: true }).click();
+    await expect(page.getByRole("dialog")).toContainText("媒体 1");
+    await expect(page.getByRole("button", { name: "永久删除当前媒体" })).toBeEnabled();
+    await page.keyboard.press("Delete");
+    await expect(dialog).toBeVisible();
+    await checkbox.check();
+    await dialog.getByRole("button", { name: "永久删除此媒体", exact: true }).click();
+    await expect(page.getByRole("dialog")).toContainText("媒体 2");
+    await expect(page.getByRole("button", { name: "永久删除当前媒体" })).toBeEnabled();
+    await page.getByRole("button", { name: "永久删除当前媒体" }).click();
+    await expect(page.getByRole("dialog")).toContainText("媒体 3");
+    await expect(dialog).toHaveCount(0);
+    expect(bodies.map((body) => body.media_ids)).toEqual([[1], [2], [3]]);
+    expect(new Set(bodies.map((body) => body.operation_id)).size).toBe(3);
+
+    await page.reload();
+    await enterDeleteSelection(page, [4, 5]);
+    await page.keyboard.press("Delete");
+    await expect(page.getByText("当前筛选条件下没有媒体")).toBeVisible();
+    await expect(dialog).toHaveCount(0);
+    expect(bodies[3]).toMatchObject({ media_ids: [4, 5], confirm_physical_delete: true });
+
+    const newTab = await context.newPage();
+    await mockShellApis(newTab);
+    await mockDeletableMedia(newTab, [], 1);
+    await newTab.goto("/library");
+    await newTab.getByRole("button", { name: "媒体 0", exact: true }).click();
+    await newTab.keyboard.press("Delete");
+    await expect(newTab.getByRole("alertdialog")).toBeVisible();
+    await newTab.close();
+  });
+
+  test("ignores missing targets, organization selections, input focus and covering overlays", async ({ page }) => {
+    const bodies: DeleteBody[] = [];
+    await mockDeletableMedia(page, bodies, 3);
+    await page.goto("/library");
+    await page.evaluate((key) => sessionStorage.setItem(key, "1"), SKIP_DELETE_CONFIRMATION_KEY);
+    await expect(page.getByText("已加载 3 项")).toBeVisible();
+    await page.keyboard.press("Delete");
+    await page.getByRole("button", { name: "批量操作和更多选项" }).click();
+    await page.getByRole("menuitem", { name: "整理 Tweet" }).click();
+    await page.getByRole("checkbox").first().check();
+    await page.keyboard.press("Delete");
+    expect(bodies).toHaveLength(0);
+    await page.keyboard.press("Escape");
+
+    await enterDeleteSelection(page, [1, 2]);
+    await page.getByRole("button", { name: "账户菜单" }).click();
+    await page.keyboard.press("Delete");
+    expect(bodies).toHaveLength(0);
+    await page.keyboard.press("Escape");
+    await page.keyboard.press("Control+k");
+    await expect(page.getByRole("combobox")).toBeVisible();
+    await page.getByRole("combobox").fill("test");
+    await page.getByRole("combobox").evaluate((element: HTMLInputElement) => element.setSelectionRange(0, 1));
+    await page.keyboard.press("Delete");
+    await expect(page.getByRole("combobox")).toHaveValue("est");
+    await page.getByRole("dialog").focus();
+    await page.keyboard.press("Delete");
+    expect(bodies).toHaveLength(0);
+    await page.keyboard.press("Escape");
+    await page.keyboard.press("Backspace");
+    await page.keyboard.press("Shift+Delete");
+    expect(bodies).toHaveLength(0);
+    await page.getByRole("button", { name: "删除", exact: true }).click();
+    await expect(page.getByText("已删除 2 项媒体，释放 2.0 KB")).toBeVisible();
+    expect(bodies[0].media_ids).toEqual([1, 2]);
+
+    await page.getByRole("button", { name: "媒体 2", exact: true }).click();
+    await page.getByRole("dialog").evaluate((element) => {
+      const input = document.createElement("div");
+      input.contentEditable = "true";
+      input.setAttribute("aria-label", "编辑测试");
+      input.textContent = "abc";
+      element.appendChild(input);
+      input.focus();
+    });
+    await page.keyboard.press("Delete");
+    expect(bodies).toHaveLength(1);
+    await page.getByLabel("编辑测试").evaluate((element) => element.remove());
+    await page.getByRole("dialog").focus();
+    await page.keyboard.press("Delete");
+    await expect(page.getByRole("dialog")).toHaveCount(0);
+    expect(bodies[1].media_ids).toEqual([3]);
+  });
+
+  test("locks pending requests and ignores held Delete even after advancing", async ({ page }) => {
+    const bodies: DeleteBody[] = [];
+    let release!: () => void;
+    const pending = new Promise<void>((resolve) => { release = resolve; });
+    await mockDeletableMedia(page, bodies, 3, async () => { await pending; return false; });
+    await page.goto("/library");
+    await page.evaluate((key) => sessionStorage.setItem(key, "1"), SKIP_DELETE_CONFIRMATION_KEY);
+    await page.getByRole("button", { name: "媒体 0", exact: true }).click();
+    await page.keyboard.down("Delete");
+    await expect(page.getByRole("button", { name: "永久删除当前媒体" })).toBeDisabled();
+    await page.keyboard.press("ArrowRight");
+    await page.keyboard.down("Delete");
+    await page.getByRole("dialog").dispatchEvent("keydown", { key: "Delete" });
+    expect(bodies).toHaveLength(1);
+    await expect(page.getByRole("dialog")).toContainText("媒体 0");
+    release();
+    await expect(page.getByRole("dialog")).toContainText("媒体 1");
+    await expect(page.getByRole("button", { name: "永久删除当前媒体" })).toBeEnabled();
+    await page.keyboard.down("Delete");
+    expect(bodies).toHaveLength(1);
+    await page.keyboard.up("Delete");
+    await page.getByRole("dialog").evaluate(() => {
+      window.dispatchEvent(new KeyboardEvent("keydown", { key: "Delete" }));
+      window.dispatchEvent(new KeyboardEvent("keydown", { key: "Delete" }));
+    });
+    await expect(page.getByRole("dialog")).toContainText("媒体 2");
+    expect(bodies.map((body) => body.media_ids)).toEqual([[1], [2]]);
+  });
+
+  test("shows quick-delete errors and retries the exact operation", async ({ page }, testInfo) => {
+    const bodies: DeleteBody[] = [];
+    await mockDeletableMedia(page, bodies, 3, async () => bodies.length === 1);
+    await page.goto("/library");
+    await page.evaluate((key) => sessionStorage.setItem(key, "1"), SKIP_DELETE_CONFIRMATION_KEY);
+    await page.getByRole("button", { name: "媒体 2", exact: true }).click();
+    await page.keyboard.press("Delete");
+    await expect(page.getByRole("dialog")).toContainText("媒体 2");
+    await expect(page.getByRole("alert")).toContainText("请先停止任务后重试");
+    await expect(page.getByRole("alertdialog")).toHaveCount(0);
+    await page.screenshot({ animations: "disabled", path: testInfo.outputPath("preview-delete-error-desktop.png") });
+    await page.getByRole("button", { name: "重试删除" }).click();
+    await expect(page.getByRole("dialog")).toContainText("媒体 1");
+    expect(bodies[1]).toEqual(bodies[0]);
+    await expect(page.getByRole("alert")).toHaveCount(0);
+
+    await page.evaluate((key) => sessionStorage.removeItem(key), SKIP_DELETE_CONFIRMATION_KEY);
+    await expect(page.getByRole("button", { name: "永久删除当前媒体" })).toBeEnabled();
+    await page.keyboard.press("Delete");
+    await expect(page.getByRole("alertdialog")).toBeVisible();
+    await page.evaluate(() => document.documentElement.classList.add("dark"));
+    await page.screenshot({ animations: "disabled", path: testInfo.outputPath("confirmation-desktop-dark.png") });
+  });
+
+  test("keeps failed batch targets and reuses their operation on Del retry", async ({ page }, testInfo) => {
+    await page.setViewportSize({ width: 390, height: 844 });
+    const bodies: DeleteBody[] = [];
+    await mockDeletableMedia(page, bodies, 2, async () => bodies.length < 3);
+    await page.goto("/library");
+    await page.evaluate((key) => {
+      sessionStorage.setItem(key, "1");
+      document.documentElement.classList.add("dark");
+    }, SKIP_DELETE_CONFIRMATION_KEY);
+    await enterDeleteSelection(page, [1, 2]);
+    await page.keyboard.press("Delete");
+    await expect(page.getByRole("alert")).toContainText("请先停止任务后重试");
+    await expect(page.getByRole("checkbox", { name: "选择媒体 1", exact: true })).toBeChecked();
+    await expect(page.getByRole("checkbox", { name: "选择媒体 2", exact: true })).toBeChecked();
+    await expect(page.getByRole("alertdialog")).toHaveCount(0);
+    await expect(page.getByRole("button", { name: "删除", exact: true })).toBeEnabled();
+    await page.screenshot({ animations: "disabled", path: testInfo.outputPath("batch-delete-error-mobile-dark.png") });
+    await page.keyboard.press("Delete");
+    await expect.poll(() => bodies.length).toBe(2);
+    await expect(page.getByRole("alert")).toContainText("请先停止任务后重试");
+    expect(bodies[1]).toEqual(bodies[0]);
+    await page.getByRole("button", { name: "重试删除" }).click();
+    await expect(page.getByText("当前筛选条件下没有媒体")).toBeVisible();
+    expect(bodies[2]).toEqual(bodies[0]);
+    await expect(page.getByRole("alert")).toHaveCount(0);
+    await expect(page.getByRole("alertdialog")).toHaveCount(0);
+    await expect(page.locator("[data-app-scroll-container]")).toBeVisible();
+    expect(await page.locator("[data-app-scroll-container]").evaluate((element) => element.scrollWidth <= element.clientWidth)).toBe(true);
+  });
+
+  for (const blockedMethod of ["getItem", "setItem"] as const) {
+    test(`keeps asking when sessionStorage ${blockedMethod} fails`, async ({ page }) => {
+      const bodies: DeleteBody[] = [];
+      await mockDeletableMedia(page, bodies, 2);
+      await page.goto("/library");
+      await page.evaluate(({ key, method }) => {
+        const original = Storage.prototype[method];
+        Object.defineProperty(Storage.prototype, method, {
+          value: function (this: Storage, ...args: string[]) {
+            if (this === sessionStorage && args[0] === key) throw new DOMException("Blocked", "SecurityError");
+            return Reflect.apply(original, this, args);
+          },
+        });
+      }, { key: SKIP_DELETE_CONFIRMATION_KEY, method: blockedMethod });
+      await page.getByRole("button", { name: "媒体 0", exact: true }).click();
+      await page.keyboard.press("Delete");
+      await page.getByRole("checkbox", { name: "本次不再提示" }).check();
+      await page.getByRole("button", { name: "永久删除此媒体", exact: true }).click();
+      await expect(page.getByRole("dialog")).toContainText("媒体 1");
+      await expect(page.getByRole("button", { name: "永久删除当前媒体" })).toBeEnabled();
+      await page.keyboard.press("Delete");
+      await expect(page.getByRole("alertdialog")).toBeVisible();
+      expect(bodies).toHaveLength(1);
+    });
+  }
+});
+
+async function enterDeleteSelection(page: Page, ids: number[]) {
+  await page.getByRole("button", { name: "批量操作和更多选项" }).click();
+  await page.getByRole("menuitem", { name: "删除媒体", exact: true }).click();
+  for (const id of ids) await page.getByRole("checkbox", { name: `选择媒体 ${id}`, exact: true }).check();
+}
+
+async function mockDeletableMedia(
+  page: Page,
+  bodies: DeleteBody[],
+  count: number,
+  shouldFail: () => Promise<boolean> = async () => false,
+) {
+  let rows = createMediaRows(0, count);
+  await page.route("**/api/v1/library/media?**", (route) => route.fulfill({
+    json: { rows, count: rows.length, total_count: rows.length, limit: PAGE_SIZE, offset: 0 },
+  }));
+  await page.route("**/api/v1/library/media", async (route) => {
+    if (route.request().method() !== "DELETE") return route.fallback();
+    const body = route.request().postDataJSON() as DeleteBody;
+    bodies.push(body);
+    if (await shouldFail()) return route.fulfill({ status: 409, json: { detail: "media in use" } });
+    rows = rows.filter((row) => !body.media_ids.includes(row.id));
+    return route.fulfill({ json: {
+      action: "delete-library-media",
+      status: "completed",
+      result: {
+        operation_id: body.operation_id,
+        deleted_media_count: body.media_ids.length,
+        deleted_file_count: body.media_ids.length,
+        deleted_bytes: 1024 * body.media_ids.length,
+        missing_file_count: 0,
+        tweet_ids: body.media_ids.map((id) => `tweet-${id - 1}`),
+      },
+    } });
+  });
+}
+
 async function mockShellApis(page: Page) {
+  await page.routeWebSocket("**/api/v1/runtime/ws", (socket) => socket.close());
   await page.route("**/api/v1/auth/session", (route) =>
     route.fulfill({
       json: {

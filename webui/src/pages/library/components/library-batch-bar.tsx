@@ -1,4 +1,4 @@
-import { Tags, Trash2, X } from "lucide-react";
+import { Loader2, Tags, Trash2, X } from "lucide-react";
 import { Badge } from "../../../components/ui/badge";
 import { Button } from "../../../components/ui/button";
 import { formatBytes } from "../../../lib/utils";
@@ -8,6 +8,7 @@ export function LibraryBatchBar({
   mode,
   count,
   estimatedBytes,
+  pending,
   onCancel,
   onOrganize,
   onDelete,
@@ -15,6 +16,7 @@ export function LibraryBatchBar({
   mode: LibrarySelectionMode;
   count: number;
   estimatedBytes: number;
+  pending: boolean;
   onCancel: () => void;
   onOrganize: () => void;
   onDelete: () => void;
@@ -36,13 +38,16 @@ export function LibraryBatchBar({
           type="button"
           variant={isOrganizing ? "default" : "destructive"}
           size="sm"
-          disabled={!count}
+          disabled={!count || pending}
+          aria-keyshortcuts={isOrganizing ? undefined : "Delete"}
+          title={isOrganizing ? undefined : "删除所选媒体（Del）"}
           onClick={isOrganizing ? onOrganize : onDelete}
         >
-          {isOrganizing ? <Tags data-icon="inline-start" /> : <Trash2 data-icon="inline-start" />}
-          {isOrganizing ? "批量整理" : "删除"}
+          {pending ? <Loader2 data-icon="inline-start" className="animate-spin" /> :
+            isOrganizing ? <Tags data-icon="inline-start" /> : <Trash2 data-icon="inline-start" />}
+          {pending ? "正在删除" : isOrganizing ? "批量整理" : "删除"}
         </Button>
-        <Button type="button" variant="ghost" size="sm" onClick={onCancel}>
+        <Button type="button" variant="ghost" size="sm" disabled={pending} onClick={onCancel}>
           <X data-icon="inline-start" />
           取消
         </Button>

@@ -119,6 +119,8 @@ Library:
 - The primary media view is a virtualized square grid with 4px gutters, cover-cropped thumbnails, and responsive density. Start with three columns on a standard phone; reveal author and dimension metadata on hover or keyboard focus without reserving a caption row for every item.
 - The detail view uses flat, continuous media rows rather than repeated floating cards.
 - Use `MediaThumbnail` for image/video previews and preserve stable aspect ratios, scroll position, grid state, selection state, and preview navigation.
+- Library deletion confirmation offers an unchecked “本次不再提示” option. Only confirming with it checked enables single-item and batch deletion without another prompt for the current `sessionStorage` lifetime. `Del` shares this flow, targets the current preview or deletion-mode selection, and ignores editable focus, covering overlays, modified keys, held repeats, and pending requests. Deletion errors remain visible with a retry action. Feed and Duplicates retain per-operation confirmation.
+- Library deletion success uses one reusable, non-interactive bottom-center toast with a 1.5-second duration so repeated deletion does not stack notifications or cover the preview's top-right controls.
 
 Search:
 

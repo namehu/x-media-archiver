@@ -1,11 +1,10 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { Images, ListFilter } from "lucide-react";
 import { toast } from "sonner";
-import { useInfiniteQuery, useMutation, useQueryClient } from "@tanstack/react-query";
+import { useInfiniteQuery, useQueryClient } from "@tanstack/react-query";
 import { useLocation, useNavigate, useNavigationType } from "react-router-dom";
 import type { GridStateSnapshot } from "react-virtuoso";
 import {
-  apiDelete,
   apiGet,
   mediaQueryString,
   type MediaRow,
@@ -24,11 +23,7 @@ import {
 import { LibraryResultsToolbar } from "./components/library-results-toolbar";
 import { MediaGrid } from "./components/media-grid";
 import { MediaDeleteDialog } from "../../components/media-delete-dialog";
-import {
-  formatDeletedBytes,
-  mediaDeleteErrorMessage,
-  type MediaDeleteResponse,
-} from "../../lib/media-deletion";
+import { formatDeletedBytes } from "../../lib/media-deletion";
 import { getLibraryBrowseState, saveLibraryBrowseState } from "./library-browse-state";
 import { BulkOrganizationDialog } from "./components/bulk-organization-dialog";
 import { LibraryBatchBar } from "./components/library-batch-bar";
@@ -41,14 +36,12 @@ import {
   type LibraryViewMode,
 } from "./library-view-state";
 import { closeDialogHistoryEntry, createDialogHistoryEntry } from "../../lib/dialog-history";
+import { useLibraryMediaDeletion } from "./use-library-media-deletion";
+import { canHandleLibraryDeleteKey, hasLibraryShortcutOverlay } from "./library-delete-shortcut";
+import { LibraryDeleteError } from "./components/library-delete-error";
 
 const PAGE_SIZE = 60;
 const MAX_DELETE_SELECTION = 200;
-
-type DeleteTarget = {
-  kind: "selection" | "preview";
-  rows: MediaRow[];
-};
 
 export function LibraryPage() {
   const location = useLocation();
@@ -78,9 +71,6 @@ export function LibraryPage() {
   const [selectedTweetIds, setSelectedTweetIds] = useState<Set<string>>(() => new Set());
   const [selectionMode, setSelectionMode] = useState<LibrarySelectionMode | null>(null);
   const [bulkDialogOpen, setBulkDialogOpen] = useState(false);
-  const [deleteDialogOpen, setDeleteDialogOpen] = useState(false);
-  const [deleteOperationId, setDeleteOperationId] = useState<string | null>(null);
-  const [deleteTarget, setDeleteTarget] = useState<DeleteTarget | null>(null);
   const [preview, setPreview] = useState<{ mediaId: number; historyToken: string } | null>(null);
   const [deletedMediaIds, setDeletedMediaIds] = useState<Set<number>>(() => new Set());
   const filtersRef = useRef(filters);
@@ -130,10 +120,6 @@ export function LibraryPage() {
     () => selectedRows.reduce((total, row) => total + (row.file_size ?? 0), 0),
     [selectedRows],
   );
-  const deleteTargetBytes = useMemo(
-    () => deleteTarget?.rows.reduce((total, row) => total + (row.file_size ?? 0), 0) ?? 0,
-    [deleteTarget],
-  );
 
   const exitSelectionMode = useCallback(() => {
     setSelectedIds(new Set());
@@ -147,53 +133,46 @@ export function LibraryPage() {
     closeDialogHistoryEntry(token, () => setPreview(null));
   }, [preview]);
 
-  const deleteMutation = useMutation({
-    mutationFn: (operationId: string) => {
-      if (!deleteTarget?.rows.length) throw new Error("未选择要删除的媒体。");
-      return apiDelete<MediaDeleteResponse>("/api/v1/library/media", {
-        body: {
-          operation_id: operationId,
-          media_ids: deleteTarget.rows.map((row) => row.id),
-          confirm_physical_delete: true,
-        },
-      });
-    },
-    onSuccess: async (response) => {
-      const completedTarget = deleteTarget;
-      const deletedIds = new Set(completedTarget?.rows.map((row) => row.id) ?? []);
-      const previewIndex = preview ? rows.findIndex((row) => row.id === preview.mediaId) : -1;
-      const nextPreview =
-        completedTarget?.kind === "preview" && previewIndex >= 0
-          ? rows.slice(previewIndex + 1).find((row) => !deletedIds.has(row.id)) ??
-            [...rows.slice(0, previewIndex)].reverse().find((row) => !deletedIds.has(row.id)) ??
-            null
-          : null;
+  const deletion = useLibraryMediaDeletion(async (response, completedTarget) => {
+    const deletedIds = new Set(completedTarget.rows.map((row) => row.id));
+    const updatePreview = completedTarget.kind === "preview" &&
+      completedTarget.previewHistoryToken === preview?.historyToken &&
+      preview && deletedIds.has(preview.mediaId);
+    const previewIndex = preview ? rows.findIndex((row) => row.id === preview.mediaId) : -1;
+    const nextPreview =
+      updatePreview && previewIndex >= 0
+        ? rows.slice(previewIndex + 1).find((row) => !deletedIds.has(row.id)) ??
+          [...rows.slice(0, previewIndex)].reverse().find((row) => !deletedIds.has(row.id)) ??
+          null
+        : null;
 
-      setDeleteDialogOpen(false);
-      setDeleteOperationId(null);
-      setDeleteTarget(null);
-      setDeletedMediaIds((current) => new Set([...current, ...deletedIds]));
-      if (completedTarget?.kind === "selection") exitSelectionMode();
-      if (completedTarget?.kind === "preview") {
-        if (nextPreview) {
-          setPreview((current) => (current ? { ...current, mediaId: nextPreview.id } : current));
-        } else {
-          closePreviewAfterDelete();
-        }
+    setDeletedMediaIds((current) => new Set([...current, ...deletedIds]));
+    if (completedTarget.kind === "selection") exitSelectionMode();
+    if (updatePreview) {
+      if (nextPreview) {
+        setPreview((current) => (current ? { ...current, mediaId: nextPreview.id } : current));
+      } else {
+        closePreviewAfterDelete();
       }
+    }
 
-      await Promise.all([
-        queryClient.invalidateQueries({ queryKey: ["media"] }),
-        queryClient.invalidateQueries({ queryKey: ["tweet"] }),
-        queryClient.invalidateQueries({ queryKey: ["summary"] }),
-        queryClient.invalidateQueries({ queryKey: ["failures"] }),
-        queryClient.invalidateQueries({ queryKey: ["duplicates"] }),
-        queryClient.invalidateQueries({ queryKey: ["source-discovered"] }),
-      ]);
-      toast.success(
-        `已删除 ${response.result.deleted_media_count} 项媒体，释放 ${formatDeletedBytes(response.result.deleted_bytes)}`,
-      );
-    },
+    await Promise.all([
+      queryClient.invalidateQueries({ queryKey: ["media"] }),
+      queryClient.invalidateQueries({ queryKey: ["tweet"] }),
+      queryClient.invalidateQueries({ queryKey: ["summary"] }),
+      queryClient.invalidateQueries({ queryKey: ["failures"] }),
+      queryClient.invalidateQueries({ queryKey: ["duplicates"] }),
+      queryClient.invalidateQueries({ queryKey: ["source-discovered"] }),
+    ]);
+    toast.success(
+      `已删除 ${response.result.deleted_media_count} 项媒体，释放 ${formatDeletedBytes(response.result.deleted_bytes)}`,
+      {
+        id: "library-media-delete-success",
+        position: "bottom-center",
+        duration: 1500,
+        style: { pointerEvents: "none" },
+      },
+    );
   });
 
   useEffect(() => {
@@ -233,15 +212,15 @@ export function LibraryPage() {
   }, [gridVersion, mediaQuery.data, scrollParent]);
 
   useEffect(() => {
-    if (!selectionMode || bulkDialogOpen || deleteDialogOpen) return undefined;
+    if (!selectionMode || preview || bulkDialogOpen || deletion.dialogOpen || deletion.pending) return undefined;
     const handleKeyDown = (event: KeyboardEvent) => {
-      if (event.key !== "Escape") return;
+      if (event.key !== "Escape" || event.defaultPrevented || hasLibraryShortcutOverlay()) return;
       event.preventDefault();
       exitSelectionMode();
     };
     window.addEventListener("keydown", handleKeyDown);
     return () => window.removeEventListener("keydown", handleKeyDown);
-  }, [bulkDialogOpen, deleteDialogOpen, exitSelectionMode, selectionMode]);
+  }, [bulkDialogOpen, deletion.dialogOpen, deletion.pending, exitSelectionMode, preview, selectionMode]);
 
   useEffect(() => {
     const availableIds = new Set(rows.map((row) => row.id));
@@ -325,20 +304,31 @@ export function LibraryPage() {
     }
   };
 
-  const openSelectionDeleteDialog = () => {
-    if (!selectedRows.length) return;
-    deleteMutation.reset();
-    setDeleteTarget({ kind: "selection", rows: selectedRows });
-    setDeleteOperationId(crypto.randomUUID());
-    setDeleteDialogOpen(true);
+  const deleteSelection = () => {
+    deletion.requestDelete({ kind: "selection", rows: selectedRows });
   };
 
-  const openPreviewDeleteDialog = (row: MediaRow) => {
-    deleteMutation.reset();
-    setDeleteTarget({ kind: "preview", rows: [row] });
-    setDeleteOperationId(crypto.randomUUID());
-    setDeleteDialogOpen(true);
+  const deletePreviewMedia = (row: MediaRow) => {
+    deletion.requestDelete({ kind: "preview", rows: [row], previewHistoryToken: preview?.historyToken });
   };
+
+  useEffect(() => {
+    if (deletion.pending || deletion.dialogOpen || filtersSheetOpen || bulkDialogOpen) return;
+    const handleKeyDown = (event: KeyboardEvent) => {
+      if (!canHandleLibraryDeleteKey(event, Boolean(preview))) return;
+      const targetRows = preview ? rows.filter((row) => row.id === preview.mediaId)
+        : selectionMode === "delete" ? selectedRows : [];
+      if (!targetRows.length) return;
+      event.preventDefault();
+      deletion.requestDelete({
+        kind: preview ? "preview" : "selection",
+        rows: targetRows,
+        previewHistoryToken: preview?.historyToken,
+      });
+    };
+    window.addEventListener("keydown", handleKeyDown);
+    return () => window.removeEventListener("keydown", handleKeyDown);
+  }, [bulkDialogOpen, deletion, filtersSheetOpen, preview, rows, selectedRows, selectionMode]);
 
   const openPreview = (row: MediaRow) => {
     if (scrollParent) scrollTopsRef.current[viewMode] = scrollParent.scrollTop;
@@ -422,6 +412,11 @@ export function LibraryPage() {
         />
 
         {mediaQuery.isLoading ? <LibrarySkeleton viewMode={viewMode} /> : null}
+        {deletion.error && !deletion.dialogOpen && !preview ? (
+          <div className="p-4">
+            <LibraryDeleteError error={deletion.error} onRetry={deletion.retry} />
+          </div>
+        ) : null}
         {mediaQuery.error && !mediaQuery.data ? (
           <div className="p-4 sm:p-5">
             <ErrorState
@@ -494,7 +489,8 @@ export function LibraryPage() {
           count={selectionMode === "organize" ? selectedTweetIds.size : selectedIds.size}
           estimatedBytes={selectedBytes}
           onCancel={exitSelectionMode}
-          onDelete={openSelectionDeleteDialog}
+          pending={deletion.pending}
+          onDelete={deleteSelection}
           onOrganize={() => setBulkDialogOpen(true)}
         />
       ) : null}
@@ -506,35 +502,33 @@ export function LibraryPage() {
         hasNextPage={Boolean(mediaQuery.hasNextPage)}
         isFetchingNextPage={mediaQuery.isFetchingNextPage}
         nextPageError={mediaQuery.isFetchNextPageError ? mediaQuery.error : null}
+        deletePending={deletion.pending}
+        deleteError={!deletion.dialogOpen ? deletion.error : null}
+        deleteDialogOpen={deletion.dialogOpen}
+        onRetryDelete={deletion.retry}
         onActiveMediaChange={(mediaId) => setPreview((current) => (current ? { ...current, mediaId } : current))}
         onLoadMore={() => void mediaQuery.fetchNextPage()}
         onRetryLoadMore={() => void mediaQuery.fetchNextPage()}
         onOpenChange={(open) => {
           if (!open) setPreview(null);
         }}
-        onDelete={openPreviewDeleteDialog}
+        onDelete={deletePreviewMedia}
         onViewTweet={(route) => {
           setPreview(null);
           void navigate(route, { replace: true });
         }}
       />
       <MediaDeleteDialog
-        open={deleteDialogOpen}
-        count={deleteTarget?.rows.length ?? 0}
-        estimatedBytes={deleteTargetBytes}
-        pending={deleteMutation.isPending}
-        error={deleteMutation.error ? mediaDeleteErrorMessage(deleteMutation.error) : null}
-        targetMedia={deleteTarget?.kind === "preview" ? deleteTarget.rows[0] : null}
-        onOpenChange={(open) => {
-          setDeleteDialogOpen(open);
-          if (!open) {
-            setDeleteOperationId(null);
-            setDeleteTarget(null);
-          }
-        }}
-        onConfirm={() => {
-          if (deleteOperationId) deleteMutation.mutate(deleteOperationId);
-        }}
+        open={deletion.dialogOpen}
+        count={deletion.target?.rows.length ?? 0}
+        estimatedBytes={deletion.target?.rows.reduce((total, row) => total + (row.file_size ?? 0), 0) ?? 0}
+        pending={deletion.pending}
+        error={deletion.error}
+        targetMedia={deletion.target?.kind === "preview" ? deletion.target.rows[0] : null}
+        skipConfirmation={deletion.skipConfirmation}
+        onSkipConfirmationChange={deletion.setSkipConfirmation}
+        onOpenChange={deletion.onDialogOpenChange}
+        onConfirm={deletion.confirmDelete}
       />
       <BulkOrganizationDialog
         tweetIds={Array.from(selectedTweetIds)}

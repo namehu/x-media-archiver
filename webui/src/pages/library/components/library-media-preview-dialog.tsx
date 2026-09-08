@@ -20,6 +20,7 @@ import { Badge } from "../../../components/ui/badge";
 import { Button } from "../../../components/ui/button";
 import { Dialog, DialogContent, DialogDescription, DialogHeader, DialogTitle } from "../../../components/ui/dialog";
 import { PrivacyMediaPlaceholder } from "../../../components/ui/privacy-media-placeholder";
+import { LibraryDeleteError } from "./library-delete-error";
 import "swiper/css";
 
 type LibraryMediaPreviewDialogProps = {
@@ -30,6 +31,10 @@ type LibraryMediaPreviewDialogProps = {
   hasNextPage: boolean;
   isFetchingNextPage: boolean;
   nextPageError: unknown;
+  deletePending: boolean;
+  deleteDialogOpen: boolean;
+  deleteError: string | null;
+  onRetryDelete: () => void;
   onActiveMediaChange: (mediaId: number) => void;
   onLoadMore: () => void;
   onRetryLoadMore: () => void;
@@ -46,6 +51,10 @@ export function LibraryMediaPreviewDialog({
   hasNextPage,
   isFetchingNextPage,
   nextPageError,
+  deletePending,
+  deleteDialogOpen,
+  deleteError,
+  onRetryDelete,
   onActiveMediaChange,
   onLoadMore,
   onRetryLoadMore,
@@ -63,6 +72,12 @@ export function LibraryMediaPreviewDialog({
     [activeMediaId, media],
   );
   const activeMedia = activeIndex >= 0 ? media[activeIndex] : null;
+  const interactionsDisabled = deletePending || deleteDialogOpen;
+
+  useEffect(() => {
+    if (interactionsDisabled) swiperRef.current?.keyboard.disable();
+    else swiperRef.current?.keyboard.enable();
+  }, [interactionsDisabled]);
 
   const handleClose = useCallback(() => {
     if (!historyToken) {
@@ -107,17 +122,17 @@ export function LibraryMediaPreviewDialog({
   }, [activeIndex, hasNextPage, isFetchingNextPage, media.length, nextPageError, onLoadMore]);
 
   useEffect(() => {
-    if (!activeMedia) return undefined;
+    if (!activeMedia || interactionsDisabled) return undefined;
     const handleKeyDown = (event: globalThis.KeyboardEvent) => {
       if (event.key !== "Enter") return;
       const target = event.target;
-      if (target instanceof HTMLElement && target.closest("button, a, input, textarea, select, video")) return;
+      if (target instanceof HTMLElement && (target.isContentEditable || target.closest("button, a, input, textarea, select, video"))) return;
       event.preventDefault();
       setContextExpanded((current) => !current);
     };
     window.addEventListener("keydown", handleKeyDown);
     return () => window.removeEventListener("keydown", handleKeyDown);
-  }, [activeMedia]);
+  }, [activeMedia, interactionsDisabled]);
 
   useEffect(() => {
     if (!historyToken) return undefined;
@@ -147,6 +162,7 @@ export function LibraryMediaPreviewDialog({
       }}
     >
       <DialogContent
+        data-library-media-preview
         className="left-0 top-0 h-[100dvh] w-screen max-w-none translate-x-0 translate-y-0 overflow-hidden rounded-none border-0 bg-black p-0 [&>button]:hidden"
         onPointerDownOutside={(event) => event.preventDefault()}
         onInteractOutside={(event) => event.preventDefault()}
@@ -161,7 +177,8 @@ export function LibraryMediaPreviewDialog({
             className="size-full"
             modules={[Keyboard]}
             initialSlide={activeIndex}
-            keyboard={{ enabled: true }}
+            keyboard={{ enabled: !interactionsDisabled }}
+            allowTouchMove={!interactionsDisabled}
             observer
             observeParents
             resizeObserver
@@ -169,6 +186,7 @@ export function LibraryMediaPreviewDialog({
               swiperRef.current = swiper;
             }}
             onSlideChange={(swiper) => {
+              if (interactionsDisabled) return;
               const nextMedia = media[swiper.activeIndex];
               if (nextMedia) onActiveMediaChange(nextMedia.id);
               if (swiper.activeIndex >= media.length - 3 && hasNextPage && !isFetchingNextPage && !nextPageError) {
@@ -186,6 +204,7 @@ export function LibraryMediaPreviewDialog({
           <PreviewHeader
             media={activeMedia}
             expanded={contextExpanded}
+            deletePending={deletePending}
             onToggleExpanded={() => setContextExpanded((current) => !current)}
             onClose={handleClose}
             onDelete={() => onDelete(activeMedia)}
@@ -198,7 +217,7 @@ export function LibraryMediaPreviewDialog({
             size="icon"
             className="absolute left-4 top-1/2 z-20 hidden -translate-y-1/2 rounded-full bg-black/45 text-white backdrop-blur hover:bg-black/65 hover:text-white sm:inline-flex"
             aria-label="上一项媒体"
-            disabled={activeIndex <= 0}
+            disabled={interactionsDisabled || activeIndex <= 0}
             onClick={() => swiperRef.current?.slidePrev()}
           >
             <ChevronLeft />
@@ -209,7 +228,7 @@ export function LibraryMediaPreviewDialog({
             size="icon"
             className="absolute right-4 top-1/2 z-20 hidden -translate-y-1/2 rounded-full bg-black/45 text-white backdrop-blur hover:bg-black/65 hover:text-white sm:inline-flex"
             aria-label="下一项媒体"
-            disabled={activeIndex >= media.length - 1 && !hasNextPage}
+            disabled={interactionsDisabled || (activeIndex >= media.length - 1 && !hasNextPage)}
             onClick={() => {
               if (activeIndex >= media.length - 1 && hasNextPage) onLoadMore();
               else swiperRef.current?.slideNext();
@@ -219,6 +238,7 @@ export function LibraryMediaPreviewDialog({
           </Button>
 
           <div className="pointer-events-none absolute inset-x-0 bottom-0 z-20 flex flex-col items-center gap-2 bg-gradient-to-t from-black/80 via-black/45 to-transparent px-4 pb-[max(1.25rem,env(safe-area-inset-bottom))] pt-16 text-white">
+            {deleteError ? <LibraryDeleteError error={deleteError} onRetry={onRetryDelete} /> : null}
             <div className="flex flex-wrap items-center justify-center gap-2 text-xs text-white/75">
               <span>{activeIndex + 1} / {totalCount.toLocaleString()}</span>
               <span>·</span>
@@ -255,6 +275,7 @@ export function LibraryMediaPreviewDialog({
 function PreviewHeader({
   media,
   expanded,
+  deletePending,
   onToggleExpanded,
   onClose,
   onDelete,
@@ -262,6 +283,7 @@ function PreviewHeader({
 }: {
   media: MediaRow;
   expanded: boolean;
+  deletePending: boolean;
   onToggleExpanded: () => void;
   onClose: () => void;
   onDelete: () => void;
@@ -314,10 +336,13 @@ function PreviewHeader({
               size="sm"
               className="rounded-full"
               aria-label="永久删除当前媒体"
+              aria-keyshortcuts="Delete"
+              title="永久删除当前媒体（Del）"
+              disabled={deletePending}
               onClick={onDelete}
             >
-              <Trash2 data-icon="inline-start" />
-              <span className="hidden sm:inline">删除</span>
+              {deletePending ? <Loader2 data-icon="inline-start" className="animate-spin" /> : <Trash2 data-icon="inline-start" />}
+              <span className="hidden sm:inline">{deletePending ? "正在删除" : "删除"}</span>
             </Button>
             <Button
               type="button"

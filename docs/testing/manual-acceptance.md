@@ -139,7 +139,10 @@ npm run check
 - [ ] 系统状态面板能显示写操作锁、队列积压、来源扫描、最近批次、最近扫描和最近错误。
 - [ ] 最近错误中的链接可正常跳转。
 - [ ] Full backfill 和 Full verify 保留显式确认语义。
-- [ ] Feed、Library 和 Duplicates 的媒体删除均按明确选择的 `media_assets.id` 执行，限制在 `archive/media`，要求二次确认并保留 Tweet、任务历史和删除审计。
+- [ ] Feed、Library 和 Duplicates 的媒体删除均按明确选择的 `media_assets.id` 执行，限制在 `archive/media`，默认要求二次确认并保留 Tweet、任务历史和删除审计。
+- [ ] Library 删除确认中的“本次不再提示”默认未勾选；勾选后取消不保存，勾选并确认才使当前 `sessionStorage` 生命周期内的单项和批量删除免确认，刷新和站内跳转仍生效，不影响 Feed / Duplicates。存储读写异常时后续删除继续确认。
+- [ ] Library 按 Del 在预览中删除当前媒体，否则仅删除“删除媒体”模式的勾选项；无目标、整理模式、输入框 / contenteditable、其他弹层、修饰键组合和按住 Del 不触发删除，请求进行中禁止重复提交。
+- [ ] Library 免确认删除失败时，页面或预览中能看到错误并使用原操作 ID 重试；预览删除成功前进到下一项、无下一项则退到上一项、全部删完关闭预览。桌面和窄屏下确认弹窗及错误反馈均可操作。
 - [ ] 后端写操作按作用域互斥：同一来源冲突，或全局维护动作与任一 scoped 写操作冲突时返回 `409 write_action_in_progress`；不同来源的 scoped 操作可以并行。
 
 ### OpenAPI / WebUI 类型

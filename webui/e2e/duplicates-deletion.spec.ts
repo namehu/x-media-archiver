@@ -13,6 +13,7 @@ test.describe("Duplicates media deletion", () => {
     await mockDuplicates(page, createGroups());
 
     await page.goto("/duplicates");
+    await page.evaluate(() => sessionStorage.setItem("xma:webui:library-delete-confirmation-skipped", "1"));
     await page.getByRole("button", { name: "保留一项，选择其余" }).first().click();
 
     await expect(page.getByRole("checkbox", { name: "选择媒体 1" })).not.toBeChecked();
@@ -22,6 +23,7 @@ test.describe("Duplicates media deletion", () => {
     await expect(page).toHaveURL(/\/duplicates$/);
     await page.getByRole("button", { name: "删除" }).click();
     await expect(page.getByRole("alertdialog")).toContainText("1 个重复组的全部媒体");
+    await expect(page.getByRole("checkbox", { name: "本次不再提示" })).toHaveCount(0);
   });
 
   test("deletes the selected media ids and refreshes the grouped page", async ({ page }) => {

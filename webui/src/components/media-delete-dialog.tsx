@@ -1,3 +1,4 @@
+import { useId } from "react";
 import { AlertTriangle, ImageOff, Loader2 } from "lucide-react";
 import type { MediaRow } from "../lib/api";
 import { getPrivacyMediaAlt, getPrivacyRedactProps, usePrivacyRedactionEnabled } from "../lib/privacy-redaction";
@@ -16,6 +17,8 @@ import { Button } from "./ui/button";
 import { formatBytes } from "../lib/utils";
 import { PrivacyMediaPlaceholder } from "./ui/privacy-media-placeholder";
 import { FallbackImage } from "./ui/fallback-image";
+import { Checkbox } from "./ui/checkbox";
+import { Field, FieldContent, FieldDescription, FieldGroup, FieldLabel } from "./ui/field";
 
 type MediaDeleteDialogProps = {
   open: boolean;
@@ -25,6 +28,8 @@ type MediaDeleteDialogProps = {
   error: string | null;
   fullySelectedGroupCount?: number;
   targetMedia?: MediaRow | null;
+  skipConfirmation?: boolean;
+  onSkipConfirmationChange?: (checked: boolean) => void;
   onOpenChange: (open: boolean) => void;
   onConfirm: () => void;
 };
@@ -37,15 +42,18 @@ export function MediaDeleteDialog({
   error,
   fullySelectedGroupCount = 0,
   targetMedia = null,
+  skipConfirmation = false,
+  onSkipConfirmationChange,
   onOpenChange,
   onConfirm,
 }: MediaDeleteDialogProps) {
   const privacyRedactionEnabled = usePrivacyRedactionEnabled();
+  const skipConfirmationId = useId();
   const title = targetMedia ? "永久删除此媒体？" : "永久删除所选媒体？";
 
   return (
     <AlertDialog open={open} onOpenChange={(nextOpen) => !pending && onOpenChange(nextOpen)}>
-      <AlertDialogContent>
+      <AlertDialogContent className="max-h-[calc(100dvh-2rem)] overflow-y-auto">
         <AlertDialogHeader>
           <AlertDialogTitle>{title}</AlertDialogTitle>
           <AlertDialogDescription className="flex flex-col gap-2">
@@ -102,6 +110,25 @@ export function MediaDeleteDialog({
             <AlertTitle>删除失败</AlertTitle>
             <AlertDescription>{error}</AlertDescription>
           </Alert>
+        ) : null}
+        {onSkipConfirmationChange ? (
+          <FieldGroup>
+            <Field orientation="horizontal" data-disabled={pending}>
+              <Checkbox
+                id={skipConfirmationId}
+                checked={skipConfirmation}
+                disabled={pending}
+                aria-describedby={`${skipConfirmationId}-description`}
+                onCheckedChange={(checked) => onSkipConfirmationChange(checked === true)}
+              />
+              <FieldContent>
+                <FieldLabel htmlFor={skipConfirmationId} className="min-h-6">本次不再提示</FieldLabel>
+                <FieldDescription id={`${skipConfirmationId}-description`}>
+                  当前标签页会话内有效，刷新后仍生效。
+                </FieldDescription>
+              </FieldContent>
+            </Field>
+          </FieldGroup>
         ) : null}
         <AlertDialogFooter>
           <AlertDialogCancel disabled={pending}>取消</AlertDialogCancel>
