@@ -137,7 +137,7 @@ def posts(
     source_id: int | None = Query(None, ge=1),
     source_type: str | None = Query(
         None,
-        pattern="^(profile|user_media|likes|bookmarks|search|manual)$",
+        pattern="^(profile|user_media|user_photos|user_videos|likes|bookmarks|search|manual)$",
     ),
     author_username: str | None = Query(None, max_length=100),
     text: str | None = Query(None, max_length=500),

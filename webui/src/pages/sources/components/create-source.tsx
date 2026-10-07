@@ -6,7 +6,7 @@ import { Input } from "@/components/ui/input";
 import { Select, SelectContent, SelectGroup, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { ApiError } from "@/lib/api";
 import { sourceTypeLabel } from "@/lib/formatters";
-import { SOURCE_TYPES } from "../utils";
+import { CREATABLE_SOURCE_TYPES } from "../utils";
 
 export function CreateSource({
   open,
@@ -43,7 +43,7 @@ export function CreateSource({
       if (parts.includes("search")) return "search";
       if (parts.includes("bookmarks")) return "bookmarks";
       if (parts.includes("likes")) return "likes";
-      if (parts[1] === "media") return "user_media";
+      if (parts[1] === "media") return parsed.searchParams.get("filter") === "photo" ? "user_photos" : "user_videos";
       if (parts.length === 1 && !["home", "i"].includes(parts[0])) return "profile";
     } catch {
       return null;
@@ -55,6 +55,20 @@ export function CreateSource({
     setSourceUrl(nextUrl);
     const inferred = inferSourceType(nextUrl);
     if (inferred) setSourceType(inferred);
+  }
+
+  function handleSourceTypeChange(nextType: string) {
+    setSourceType(nextType);
+    if (nextType !== "user_photos" && nextType !== "user_videos") return;
+    try {
+      const parsed = new URL(sourceUrl.trim());
+      const username = parsed.pathname.split("/").filter(Boolean)[0];
+      if (!username) return;
+      parsed.pathname = `/${username}/media`;
+      parsed.search = nextType === "user_photos" ? "?filter=photo" : "";
+      parsed.hash = "";
+      setSourceUrl(parsed.toString());
+    } catch { /* Keep invalid input visible for the existing form validation. */ }
   }
 
   return (
@@ -85,13 +99,13 @@ export function CreateSource({
               <div className="flex flex-col gap-4 pt-1">
                 <Field>
                   <FieldLabel htmlFor="source-type">来源类型</FieldLabel>
-                  <Select value={sourceType} onValueChange={setSourceType} disabled={!hasSourceUrl}>
+                  <Select value={sourceType} onValueChange={handleSourceTypeChange} disabled={!hasSourceUrl}>
                     <SelectTrigger id="source-type">
                       <SelectValue />
                     </SelectTrigger>
                     <SelectContent>
                       <SelectGroup>
-                        {SOURCE_TYPES.map((type) => (
+                        {CREATABLE_SOURCE_TYPES.map((type) => (
                           <SelectItem key={type} value={type}>
                             {sourceTypeLabel(type)}
                           </SelectItem>
@@ -99,6 +113,9 @@ export function CreateSource({
                       </SelectGroup>
                     </SelectContent>
                   </Select>
+                  {sourceType === "user_photos" || sourceType === "user_videos" ? (
+                    <FieldDescription>图片与视频来源各自扫描；含两种媒体的推文共享完整归档结果。</FieldDescription>
+                  ) : null}
                 </Field>
 
                 <Field>

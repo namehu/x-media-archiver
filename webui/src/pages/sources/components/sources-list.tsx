@@ -207,7 +207,8 @@ export function SourcesList({
   const allFilteredChecked = selectAllFiltered
     ? (excludedSourceIds.size ? "indeterminate" : true)
     : (selectedSourceIds.size ? "indeterminate" : false);
-  const allFilteredDisabled = deletedFilter !== "active" || (data?.total_count ?? 0) > 200;
+  const selectableCount = data?.selectable_count ?? data?.total_count ?? 0;
+  const allFilteredDisabled = deletedFilter !== "active" || selectableCount === 0 || selectableCount > 200;
   const sortableRows = rows.filter(
     (source) =>
       canReorder &&
@@ -272,7 +273,7 @@ export function SourcesList({
         </div>
       </div>
 
-      {(data?.total_count ?? 0) > 200 && selectionMode ? (
+      {selectableCount > 200 && selectionMode ? (
         <p className="text-xs text-fg-secondary">当前筛选超过 200 个来源，无法一键全选；请缩小范围或逐项选择已加载来源。</p>
       ) : null}
 
@@ -287,7 +288,7 @@ export function SourcesList({
               onCheckedChange={(checked) => onToggleAllFiltered(checked === true)}
             />
             <label className="min-w-0 text-sm font-medium text-fg-primary" htmlFor="sources-select-all-filtered">
-              {selectionCount > 0 ? `已选择 ${selectionCount} 个来源` : `选择当前筛选的 ${data?.total_count ?? 0} 个来源`}
+              {selectionCount > 0 ? `已选择 ${selectionCount} 个来源` : `选择当前筛选的 ${selectableCount} 个可操作来源`}
             </label>
             {selectAllFiltered ? <span className="hidden text-xs text-fg-secondary md:inline">冻结当前筛选快照</span> : null}
           </div>
@@ -534,8 +535,8 @@ function SourceListItem({
         {selectionMode ? (
           <Checkbox
             aria-label={`选择${source.label || source.author_username || `来源 ${source.id}`}`}
-            checked={checked}
-            disabled={isDeleted}
+            checked={!isDeleted && source.source_type !== "user_media" && checked}
+            disabled={isDeleted || source.source_type === "user_media"}
             onCheckedChange={(value) => onToggleSource(source.id, value === true)}
           />
         ) : showDragHandle ? (

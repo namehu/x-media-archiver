@@ -47,7 +47,9 @@ export function SourceDetailContent({
         <Alert>
           <AlertTitle>此来源已软删除</AlertTitle>
           <AlertDescription>
-            已发现 Tweet、媒体文件、下载任务和扫描历史仍然保留。重新新增相同 URL 会恢复这个来源。
+            {source.source_type === "user_media"
+              ? "旧媒体来源的发现记录、媒体与任务历史已保留。新增图片或视频来源会建立独立扫描进度，不会恢复此旧来源。"
+              : "已发现 Tweet、媒体文件、下载任务和扫描历史仍然保留。重新新增相同 URL 会恢复这个来源。"}
           </AlertDescription>
         </Alert>
       ) : null}

@@ -641,7 +641,7 @@ export type ArchiveSourceDetail = ArchiveSourceBase & {
 
 export type ArchiveSource = ArchiveSourceDetail;
 
-export type SourcePageResponse = PageResponse<ArchiveSourceListItem>;
+export type SourcePageResponse = PageResponse<ArchiveSourceListItem> & { selectable_count?: number };
 export type SourceDiscoveryPageResponse = PageResponse<SourceDiscovery> & {
   unfiltered_total_count: number;
   action_counts: {

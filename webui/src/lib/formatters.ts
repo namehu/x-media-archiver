@@ -77,7 +77,9 @@ export function triggerLabel(trigger?: string | null): string {
 const SOURCE_TYPE_LABELS: Record<string, string> = {
   all: "全部来源",
   profile: "博主主页",
-  user_media: "博主媒体页",
+  user_media: "旧媒体来源",
+  user_photos: "博主图片",
+  user_videos: "博主视频",
   likes: "点赞",
   bookmarks: "书签",
   search: "搜索",

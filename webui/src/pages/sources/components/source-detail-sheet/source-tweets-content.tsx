@@ -52,7 +52,9 @@ export function SourceOverviewContent({
       {readonly ? (
         <Alert>
           <AlertTitle>此来源处于只读状态</AlertTitle>
-          <AlertDescription>发现记录、下载状态和扫描历史仍然保留；重新新增相同 URL 可以恢复来源。</AlertDescription>
+          <AlertDescription>{source.source_type === "user_media"
+              ? "旧媒体来源保留发现记录和归档历史，不再接收新任务。请使用独立的图片或视频来源继续扫描，已有归档会自动去重。"
+              : "发现记录、下载状态和扫描历史仍然保留；重新新增相同 URL 可以恢复来源。"}</AlertDescription>
         </Alert>
       ) : (
         <div className="grid gap-4 xl:grid-cols-2">
@@ -174,7 +176,7 @@ export function SourceTweetsContent({
     <div className="flex min-h-0 flex-1 flex-col overflow-hidden rounded-xl border border-border-subtle bg-bg-surface">
       {readonly ? (
         <Alert className="mb-4 shrink-0">
-          <AlertTitle>已删除来源只读查看</AlertTitle>
+          <AlertTitle>此来源仅可查看历史记录</AlertTitle>
           <AlertDescription>可以查看发现记录和下载状态，不能继续提交下载。</AlertDescription>
         </Alert>
       ) : null}

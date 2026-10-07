@@ -82,8 +82,8 @@ class SourceBulkTaskIntegrationTests(unittest.TestCase):
         }
 
     def test_create_task_freezes_sources_and_assigns_waves(self) -> None:
-        first = create_source("user_media", self.source_urls[0])
-        second = create_source("user_media", self.source_urls[1])
+        first = create_source("user_videos", self.source_urls[0])
+        second = create_source("user_videos", self.source_urls[1])
 
         task = create_source_bulk_task(
             "refresh_latest",
@@ -103,7 +103,7 @@ class SourceBulkTaskIntegrationTests(unittest.TestCase):
             create_source_bulk_task("refresh_latest", source_ids=[])
 
     def test_resuming_auth_blocked_task_requeues_its_failed_sources(self) -> None:
-        source = create_source("user_media", self.source_urls[0])
+        source = create_source("user_videos", self.source_urls[0])
         task = create_source_bulk_task("refresh_latest", source_ids=[int(source["id"])])
         item_id = int(task["items"][0]["id"])
         with connect() as conn:
@@ -235,7 +235,7 @@ class SourceBulkTaskIntegrationTests(unittest.TestCase):
         self.assertEqual(submit.call_args.kwargs["limit"], 50)
 
     def test_auth_circuit_breaker_requires_three_consecutive_failures(self) -> None:
-        sources = [create_source("user_media", url) for url in self.source_urls[0:2] + self.source_urls[3:6]]
+        sources = [create_source("user_videos", url) for url in self.source_urls[0:2] + self.source_urls[3:6]]
         task = create_source_bulk_task(
             "refresh_latest",
             source_ids=[int(source["id"]) for source in sources],
@@ -280,7 +280,7 @@ class SourceBulkTaskIntegrationTests(unittest.TestCase):
         self.assertTrue(circuit_breaker_triggered(int(task["id"])))
 
     def test_first_discovery_keeps_exact_scan_run_association(self) -> None:
-        source = create_source("user_media", self.source_urls[0])
+        source = create_source("user_videos", self.source_urls[0])
         record_source_discoveries(
             int(source["id"]),
             [self.record(self.tweet_ids[0])],
@@ -321,7 +321,7 @@ class SourceBulkTaskIntegrationTests(unittest.TestCase):
         self.assertEqual(rows[1]["first_discovered_scan_run_id"], scan_run_id)
 
     def test_schedule_policy_is_disabled_by_default_and_can_be_enabled(self) -> None:
-        source = create_source("user_media", self.source_urls[0])
+        source = create_source("user_videos", self.source_urls[0])
 
         policy = create_source_schedule_policy(
             label="test-bulk-daily",
@@ -342,7 +342,7 @@ class SourceBulkTaskIntegrationTests(unittest.TestCase):
         self.assertEqual(persisted["source_ids"], [source["id"]])
 
     def test_schedule_policy_creation_rolls_back_when_source_snapshot_fails(self) -> None:
-        source = create_source("user_media", self.source_urls[0])
+        source = create_source("user_videos", self.source_urls[0])
         with (
             patch(
                 "xarchiver.services.source_bulk_tasks.resolve_source_ids",
@@ -365,7 +365,7 @@ class SourceBulkTaskIntegrationTests(unittest.TestCase):
         self.assertEqual(count, 0)
 
     def test_due_schedule_coalesces_while_previous_task_is_active(self) -> None:
-        source = create_source("user_media", self.source_urls[0])
+        source = create_source("user_videos", self.source_urls[0])
         policy = create_source_schedule_policy(
             label="test-bulk-coalesce",
             action="refresh_latest",
@@ -429,7 +429,7 @@ class SourceBulkTaskIntegrationTests(unittest.TestCase):
         self.assertEqual(task_count, 2)
 
     def test_schedule_download_caps_cannot_be_raised(self) -> None:
-        source = create_source("user_media", self.source_urls[0])
+        source = create_source("user_videos", self.source_urls[0])
 
         policy = create_source_schedule_policy(
             label="test-bulk-caps",

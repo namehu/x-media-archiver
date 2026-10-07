@@ -325,6 +325,15 @@ archive_sources = Table(
     Column("updated_at", DateTime(timezone=True)),
 )
 
+source_media_splits = Table(
+    "source_media_splits",
+    metadata,
+    Column("old_source_id", BigInteger, primary_key=True),
+    Column("photos_source_id", BigInteger),
+    Column("videos_source_id", BigInteger),
+    Column("created_at", DateTime(timezone=True)),
+)
+
 source_schedule_policies = Table(
     "source_schedule_policies",
     metadata,
@@ -483,6 +492,7 @@ source_scan_runs = Table(
     metadata,
     Column("id", BigInteger),
     Column("source_id", BigInteger),
+    Column("trigger_type", Text),
     Column("status", Text),
     Column("discovered_tweet_count", Integer),
     Column("new_tweet_count", Integer),

@@ -1,5 +1,6 @@
 import { useId } from "react";
 import { Search, Shuffle, SlidersHorizontal, X } from "lucide-react";
+import { sourceTypeLabel } from "@/lib/formatters";
 import type { ArchiveSourceListItem } from "@/lib/api";
 import { AuthorCombobox } from "@/components/author-combobox";
 import { Badge } from "@/components/ui/badge";
@@ -113,7 +114,7 @@ export function FeedFilterPanel({
                     <SelectItem value="all">全部来源</SelectItem>
                     {sources.map((source) => (
                       <SelectItem key={source.id} value={String(source.id)}>
-                        {source.label || source.author_username || `来源 #${source.id}`}
+                        {source.label || source.author_username || `来源 #${source.id}`} · {sourceTypeLabel(source.source_type)}
                       </SelectItem>
                     ))}
                   </SelectGroup>

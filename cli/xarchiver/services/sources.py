@@ -69,6 +69,15 @@ from xarchiver.services.queue import (
     list_runs,
     submit_archive_batch,
 )
+from xarchiver.services.source_types import (
+    LEGACY_MEDIA_SOURCE_TYPE,
+    MEDIA_SOURCE_TYPES,
+    READ_SOURCE_TYPES,
+    SCAN_SOURCE_TYPES,
+    filter_source_media_records,
+    media_source_url,
+    require_current_source,
+)
 from xarchiver.sql_builder import compile_query
 from xarchiver.tables import (
     archive_run_items,
@@ -86,7 +95,7 @@ from xarchiver.tables import (
     tweets,
 )
 
-VALID_SOURCE_TYPES = {"profile", "user_media", "likes", "bookmarks", "search", "manual"}
+VALID_SOURCE_TYPES = READ_SOURCE_TYPES
 VALID_SOURCE_STATUSES = {"active", "paused", "completed", "failed"}
 VALID_SOURCE_DELETED_FILTERS = {"active", "deleted", "all"}
 VALID_SOURCE_SORT_FIELDS = {
@@ -182,69 +191,42 @@ def create_source(
     """规范化来源类型和 URL 后，创建新的归档来源。"""
 
     source_type = normalize_source_type(source_type)
-    source_url = normalize_source_url(source_url)
+    require_current_source({"source_type": source_type})
+    source_url = media_source_url(source_type, normalize_source_url(source_url))
     author_username = author_username or infer_author_username(source_type, source_url)
     try:
         with connect() as conn:
             with conn.cursor() as cur:
-                cur.execute(
-                    """
-                    select *
-                    from archive_sources
-                    where source_url = %s
-                    limit 1
-                    """,
-                    (source_url,),
-                )
+                cur.execute(*compile_query(
+                    select(archive_sources).where(
+                        archive_sources.c.source_url == source_url,
+                        archive_sources.c.source_type != LEGACY_MEDIA_SOURCE_TYPE,
+                    ).with_for_update().limit(1)
+                ))
                 existing = cur.fetchone()
                 if existing and existing["deleted_at"] is None:
                     raise ValueError("source_already_exists")
+                values = dict(
+                    source_type=source_type, source_url=source_url,
+                    label=label, author_username=author_username,
+                )
                 if existing:
                     existing_source = ArchiveSourceRow.model_validate(dict(existing))
                     cursor_state = set_active_scan_session_state(
-                        existing_source.cursor_state,
-                        "stopped",
-                        enabled=False,
+                        existing_source.cursor_state, "stopped", enabled=False,
                     )
-                    cur.execute(
-                        """
-                        update archive_sources
-                        set source_type = %s,
-                            source_url = %s,
-                            label = %s,
-                            author_username = %s,
-                            status = 'active',
-                            is_pinned = false,
-                            manual_order = 0,
-                            cursor_state = %s,
-                            next_scan_at = null,
-                            error_category = null,
-                            error_message = null,
-                            deleted_at = null,
-                            updated_at = now()
-                        where id = %s
-                        returning *
-                        """,
-                        (
-                            source_type,
-                            source_url,
-                            label,
-                            author_username,
-                            Jsonb(cursor_state),
-                            existing_source.id,
-                        ),
+                    statement = update(archive_sources).where(
+                        archive_sources.c.id == existing_source.id,
+                    ).values(
+                        **values, status="active", is_pinned=False, manual_order=0,
+                        cursor_state=Jsonb(cursor_state), next_scan_at=None, error_category=None,
+                        error_message=None, deleted_at=None, updated_at=func.now(),
                     )
                     event_type = "source.restored"
                 else:
-                    cur.execute(
-                        """
-                        insert into archive_sources (source_type, source_url, label, author_username)
-                        values (%s, %s, %s, %s)
-                        returning *
-                        """,
-                        (source_type, source_url, label, author_username),
-                    )
+                    statement = insert(archive_sources).values(**values)
                     event_type = "source.created"
+                cur.execute(*compile_query(statement.returning(archive_sources)))
                 row = dict(ArchiveSourceRow.model_validate(dict(cur.fetchone())))
             conn.commit()
     except UniqueViolation as exc:
@@ -318,10 +300,15 @@ def list_sources_page(
         search=search,
         operational_filter=operational_filter,
     )
+    selectable_count = count_sources(
+        status=status, source_type=source_type, deleted=deleted, search=search,
+        operational_filter=operational_filter, selectable_only=True,
+    )
     return {
         "rows": [dict(row) for row in rows],
         "count": len(rows),
         "total_count": total_count,
+        "selectable_count": selectable_count,
         "limit": limit,
         "offset": offset,
     }
@@ -333,6 +320,7 @@ def count_sources(
     deleted: str = "active",
     search: str | None = None,
     operational_filter: str | None = None,
+    selectable_only: bool = False,
 ) -> int:
     """按与 ``list_sources`` 相同的过滤条件统计来源数量。"""
 
@@ -342,6 +330,7 @@ def count_sources(
         deleted=deleted,
         search=search,
         operational_filter=operational_filter,
+        selectable_only=selectable_only,
     )
     with connect() as conn:
         with conn.cursor() as cur:
@@ -575,6 +564,7 @@ def build_count_sources_query(
     deleted: str = "active",
     search: str | None = None,
     operational_filter: str | None = None,
+    selectable_only: bool = False,
 ) -> tuple[str, dict[str, object]]:
     """构造与 ``build_sources_query`` 对应的数量查询。"""
 
@@ -587,6 +577,11 @@ def build_count_sources_query(
         search=search,
         operational_filter=operational_filter,
     )
+    if selectable_only:
+        statement = statement.where(
+            archive_sources.c.deleted_at.is_(None),
+            archive_sources.c.source_type != LEGACY_MEDIA_SOURCE_TYPE,
+        )
     return compile_query(statement)
 
 
@@ -706,6 +701,7 @@ def build_source_filters(
                 or_(
                     enabled_schedule.where(source_schedule_policies.c.next_run_at <= func.now()).exists(),
                     and_(
+                        archive_sources.c.source_type.in_(sorted(SCAN_SOURCE_TYPES)),
                         archive_sources.c.cursor_state["automation_enabled"].astext == "true",
                         or_(archive_sources.c.next_scan_at.is_(None), archive_sources.c.next_scan_at <= func.now()),
                     ),
@@ -726,7 +722,10 @@ def build_source_filters(
                 or_(
                     active_bulk_item.exists(),
                     active_download.exists(),
-                    archive_sources.c.cursor_state["automation_enabled"].astext == "true",
+                    and_(
+                        archive_sources.c.source_type.in_(sorted(SCAN_SOURCE_TYPES)),
+                        archive_sources.c.cursor_state["automation_enabled"].astext == "true",
+                    ),
                 )
             )
         elif normalized_operation == "error":
@@ -1345,6 +1344,8 @@ def update_source_status(source_id: int, status: str) -> dict[str, object]:
     source = get_source(source_id)
     if source is None:
         raise ValueError("source_not_found")
+    if status != "paused":
+        require_current_source(source)
     cursor_state = source.get("cursor_state") if isinstance(source.get("cursor_state"), dict) else {}
     active_scan_run = source.get("active_scan_run")
     running_scan_run = (
@@ -1408,7 +1409,8 @@ def start_source_scan_session(
     source = get_source(source_id)
     if source is None:
         raise ValueError("source_not_found")
-    if str(source.get("source_type")) not in {"profile", "user_media", "likes"}:
+    require_current_source(source)
+    if str(source.get("source_type")) not in SCAN_SOURCE_TYPES:
         raise ValueError("source_scan_not_supported")
     cursor_state = source.get("cursor_state") if isinstance(source.get("cursor_state"), dict) else {}
     if cursor_state.get("automation_enabled") and cursor_state.get("active_scan_mode") not in {None, mode}:
@@ -1458,6 +1460,7 @@ def resume_source_scan_session(source_id: int) -> dict[str, object]:
     source = get_source(source_id)
     if source is None:
         raise ValueError("source_not_found")
+    require_current_source(source)
     cursor_state = source.get("cursor_state") if isinstance(source.get("cursor_state"), dict) else {}
     if not cursor_state.get("active_scan_mode"):
         raise ValueError("source_scan_session_not_found")
@@ -1670,6 +1673,7 @@ def fetch_due_history_source() -> dict[str, object] | None:
         .where(
             archive_sources.c.status == "active",
             archive_sources.c.deleted_at.is_(None),
+            archive_sources.c.source_type.in_(sorted(SCAN_SOURCE_TYPES)),
             archive_sources.c.cursor_state["automation_enabled"].astext == "true",
             or_(archive_sources.c.next_scan_at.is_(None), archive_sources.c.next_scan_at <= func.now()),
             bulk_task_allows_scan,
@@ -2043,11 +2047,12 @@ def scan_source(
     source = get_source(source_id)
     if source is None:
         raise ValueError("source_not_found")
+    require_current_source(source)
     if str(source.get("status")) == "paused":
         raise ValueError("source_paused")
     source_url = str(source.get("source_url") or "")
     source_type = str(source.get("source_type") or "")
-    if source_type not in {"profile", "user_media", "likes"}:
+    if source_type not in SCAN_SOURCE_TYPES:
         raise ValueError("source_scan_not_supported")
     scan_url = build_gallery_dl_scan_url(source_type, source_url)
     cursor_state = source.get("cursor_state") if isinstance(source.get("cursor_state"), dict) else {}
@@ -2057,7 +2062,8 @@ def scan_source(
     mode = normalize_session_mode_for_trigger(scan_trigger, session_mode)
     advances_cursor = scan_trigger != "latest_refresh" or session_mode == "latest_refresh"
     session = get_scan_session(cursor_state, mode) if mode else {}
-    scan_cursor = None if not advances_cursor else session.get("extractor_cursor") or cursor_state.get("extractor_cursor")
+    # An empty/reset session cursor must never fall back to another mode's cursor.
+    scan_cursor = (session if mode else cursor_state).get("extractor_cursor") if advances_cursor else None
     range_state = session if mode else cursor_state
     scan_range = build_scan_range(range_state, limit, restart=restart)
     scan_run_id = start_source_scan_run(
@@ -2093,6 +2099,14 @@ def scan_source(
                 continuation_cursor=str(scan_cursor) if scan_cursor else None,
                 cookie_path=prepare_cookies(settings),
                 scan_run_id=scan_run_id,
+                worker_id=worker_id,
+            )
+            raw_count = len(records)
+            records = filter_source_media_records(source_type, records)
+            scan_meta = {**scan_meta, "raw_record_count": raw_count, "matched_record_count": len(records)}
+            append_source_scan_log(
+                scan_run_id, "info", "source-scan",
+                f"本批枚举 {raw_count} 条推文，来源类型匹配 {len(records)} 条。",
                 worker_id=worker_id,
             )
             ensure_source_scan_lease(scan_run_id, worker_id)
@@ -3167,6 +3181,8 @@ def build_gallery_dl_scan_url(source_type: str, source_url: str) -> str:
     parts = [part for part in parsed.path.split("/") if part]
     if source_type == "profile" and len(parts) == 1:
         return f"{parsed.scheme}://{parsed.netloc}/{parts[0]}/timeline"
+    if source_type in MEDIA_SOURCE_TYPES:
+        return media_source_url(source_type, source_url)
     if source_type == "user_media" and len(parts) == 1:
         return f"{parsed.scheme}://{parsed.netloc}/{parts[0]}/media"
     return source_url
@@ -3233,6 +3249,7 @@ def record_source_discoveries(
     source = get_source(source_id)
     if source is None:
         raise ValueError("source_not_found")
+    require_current_source(source)
     if not records:
         raise ValueError("records_required")
     source_url = str(source.get("source_url") or "")
@@ -3368,6 +3385,7 @@ def submit_source_downloads(
     source = get_source(source_id)
     if source is None:
         raise ValueError("source_not_found")
+    require_current_source(source)
     normalized_scope = scope.strip().lower()
     if normalized_scope not in {
         "selected",
@@ -3988,7 +4006,7 @@ def normalize_source_url(source_url: str) -> str:
 def infer_author_username(source_type: str, source_url: str) -> str | None:
     """在可能的情况下，从 profile 类 URL 推断来源归属用户名。"""
 
-    if source_type not in {"profile", "user_media", "likes"}:
+    if source_type not in {*SCAN_SOURCE_TYPES, LEGACY_MEDIA_SOURCE_TYPE}:
         return None
     path_parts = [part for part in urlparse(source_url).path.split("/") if part]
     if not path_parts:

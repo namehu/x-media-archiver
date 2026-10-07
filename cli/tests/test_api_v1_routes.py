@@ -385,7 +385,7 @@ class V1RouterSmokeTests(unittest.TestCase):
         with self.assertRaises(ValueError):
             SourceBulkTaskCreateRequest(
                 task_type="refresh_latest",
-                source_filter={"source_type": "user_media", "wave_size": 50},
+                source_filter={"source_type": "user_videos", "wave_size": 50},
             )
 
     def test_v1_source_bulk_task_retry_forwards_confirmation(self):

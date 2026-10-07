@@ -72,7 +72,8 @@ export function ScanActions({
   const activeMode = getActiveScanMode(source);
   const automationEnabled = Boolean(cursorState.automation_enabled);
   const isStopped = cursorState.automation_state === "stopped";
-  const isPaused = !isStopped && (source.status === "paused" || cursorState.automation_state === "paused");
+  const hasSession = Boolean(cursorState.active_scan_mode);
+  const isPaused = hasSession && !isStopped && (source.status === "paused" || cursorState.automation_state === "paused");
   const isRunning =
     Boolean(activeRun) ||
     (automationEnabled && source.status === "active" && cursorState.automation_state !== "stopped");

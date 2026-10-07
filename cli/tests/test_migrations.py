@@ -48,6 +48,7 @@ class MigrationTests(unittest.TestCase):
                 "024_add_media_privacy_mode.py",
                 "025_add_media_preview_jobs.py",
                 "026_unify_cross_engine_media.py",
+                "027_split_media_sources.py",
             ],
         )
         upgrade.assert_called_once()
@@ -61,7 +62,7 @@ class MigrationTests(unittest.TestCase):
             patch("xarchiver.migrations.get_settings", return_value=settings),
             patch(
                 "xarchiver.migrations.current_alembic_revision",
-                return_value="026_unify_cross_engine_media",
+                return_value="027_split_media_sources",
             ),
             patch("xarchiver.migrations.command.upgrade") as upgrade,
         ):
@@ -112,6 +113,7 @@ class MigrationTests(unittest.TestCase):
                 "024_add_media_privacy_mode.py",
                 "025_add_media_preview_jobs.py",
                 "026_unify_cross_engine_media.py",
+                "027_split_media_sources.py",
             ],
         )
 

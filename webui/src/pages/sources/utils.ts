@@ -6,7 +6,8 @@ export function unwrapActionResult(response: Record<string, unknown>) {
   return result && typeof result === "object" ? (result as Record<string, unknown>) : response;
 }
 
-export const SOURCE_TYPES = ["profile", "user_media", "likes", "bookmarks", "search", "manual"] as const;
+export const CREATABLE_SOURCE_TYPES = ["profile", "user_photos", "user_videos", "likes", "bookmarks", "search", "manual"] as const;
+export const SOURCE_TYPES = [...CREATABLE_SOURCE_TYPES, "user_media"] as const;
 export const SOURCE_DELETED_FILTERS = ["active", "deleted", "all"] as const;
 export type SourceDeletedFilter = (typeof SOURCE_DELETED_FILTERS)[number];
 export type SourceSortBy =

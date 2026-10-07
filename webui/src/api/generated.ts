@@ -4625,6 +4625,11 @@ export interface components {
             offset: number;
             /** Rows */
             rows: components["schemas"]["ArchiveSourceListResponse"][];
+            /**
+             * Selectable Count
+             * @default 0
+             */
+            selectable_count: number;
         } & {
             [key: string]: unknown;
         };

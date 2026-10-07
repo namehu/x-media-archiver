@@ -24,7 +24,7 @@ class InsightsIntegrationTests(unittest.TestCase):
                     """
                     insert into archive_sources (source_type, source_url, label, status)
                     values
-                      ('user_media', %s, 'Insights media', 'active'),
+                      ('user_videos', %s, 'Insights media', 'active'),
                       ('likes', %s, 'Insights likes', 'active')
                     returning id
                     """,

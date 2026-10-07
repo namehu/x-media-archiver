@@ -21,6 +21,7 @@ from xarchiver.core.events import publish_event
 from xarchiver.db import connect
 from xarchiver.row_models import SourceBulkTaskItemRow, SourceBulkTaskRow, SourceSchedulePolicyRow
 from xarchiver.services.queue import pause_run, resume_run, stop_run
+from xarchiver.services.source_types import LEGACY_MEDIA_SOURCE_TYPE, SCAN_SOURCE_TYPES
 from xarchiver.services.sources import (
     get_source,
     list_sources,
@@ -50,7 +51,7 @@ VALID_FREQUENCY_KINDS = {"interval", "daily", "weekly"}
 ACTIVE_TASK_STATUSES = {"queued", "running", "pausing", "paused", "blocked"}
 ACTIVE_ITEM_STATUSES = {"queued", "scanning", "waiting_download", "downloading"}
 TERMINAL_ITEM_STATUSES = {"succeeded", "skipped", "failed", "cancelled"}
-SCANNABLE_SOURCE_TYPES = {"profile", "user_media", "likes"}
+SCANNABLE_SOURCE_TYPES = SCAN_SOURCE_TYPES
 DEFAULT_WAVE_SIZE = 10
 MAX_SOURCE_COUNT = 200
 DEFAULT_MANUAL_CONFIRM_THRESHOLD = 500
@@ -327,6 +328,7 @@ def has_due_source_scan() -> bool:
     statement = select(archive_sources.c.id).where(
         archive_sources.c.status == "active",
         archive_sources.c.deleted_at.is_(None),
+        archive_sources.c.source_type.in_(sorted(SCANNABLE_SOURCE_TYPES)),
         archive_sources.c.cursor_state["automation_enabled"].astext == "true",
         or_(archive_sources.c.next_scan_at.is_(None), archive_sources.c.next_scan_at <= func.now()),
         task_allowed,
@@ -450,6 +452,7 @@ def assign_source_schedule_policy(policy_id: int, source_ids: list[int]) -> dict
     if fetch_policy_row(policy_id) is None:
         raise ValueError("source_schedule_policy_not_found")
     normalized_ids = normalize_source_ids(source_ids)
+    reject_legacy_source_ids(normalized_ids)
     if not normalized_ids:
         raise ValueError("source_schedule_policy_sources_required")
     with connect() as conn:
@@ -616,11 +619,13 @@ def normalize_task_options(options: SourceBulkTaskOptions | None, settings: Sett
 
 def resolve_source_ids(source_ids: list[int] | None, source_filter: SourceSelectionFilter) -> list[int]:
     if source_ids is not None:
-        return normalize_source_ids(source_ids)
+        normalized_ids = normalize_source_ids(source_ids)
+        reject_legacy_source_ids(normalized_ids)
+        return normalized_ids
     search = to_optional_str(source_filter.get("search"))
     if search and len(search) > 200:
         raise ValueError("source_bulk_task_search_too_long")
-    rows = list_sources(
+    filters = dict(
         status=to_optional_str(source_filter.get("status")),
         source_type=to_optional_str(source_filter.get("source_type")),
         deleted=to_optional_str(source_filter.get("deleted")) or "active",
@@ -628,18 +633,40 @@ def resolve_source_ids(source_ids: list[int] | None, source_filter: SourceSelect
         sort_direction=to_optional_str(source_filter.get("sort_direction")) or "desc",
         search=search,
         operational_filter=to_optional_str(source_filter.get("operational_filter")),
-        limit=MAX_SOURCE_COUNT + 1,
-        offset=0,
     )
-    if len(rows) > MAX_SOURCE_COUNT:
-        raise ValueError("source_bulk_task_too_many_sources")
     raw_excluded = source_filter.get("exclude_source_ids", [])
     if not isinstance(raw_excluded, (list, tuple, set)):
         raise ValueError("invalid_source_bulk_task_exclusions")
     if len(raw_excluded) > MAX_SOURCE_COUNT:
         raise ValueError("source_bulk_task_too_many_exclusions")
     excluded = {int(source_id) for source_id in raw_excluded if int(source_id) > 0}
-    return [row.id for row in rows if row.id not in excluded]
+    # Historical sources must not consume the frozen selection's 200-source budget.
+    selected = []
+    offset = 0
+    while True:
+        rows = list_sources(**filters, limit=MAX_SOURCE_COUNT + 1, offset=offset)
+        selected.extend(
+            row.id for row in rows
+            if row.id not in excluded and row.source_type != LEGACY_MEDIA_SOURCE_TYPE and row.deleted_at is None
+        )
+        if len(selected) > MAX_SOURCE_COUNT:
+            raise ValueError("source_bulk_task_too_many_sources")
+        if len(rows) < MAX_SOURCE_COUNT + 1:
+            return selected
+        offset += len(rows)
+
+
+def reject_legacy_source_ids(source_ids: list[int]) -> None:
+    if not source_ids:
+        return
+    with connect() as conn:
+        with conn.cursor() as cur:
+            cur.execute(*compile_query(select(archive_sources.c.id).where(
+                archive_sources.c.id.in_(source_ids),
+                archive_sources.c.source_type == LEGACY_MEDIA_SOURCE_TYPE,
+            ).limit(1)))
+            if cur.fetchone() is not None:
+                raise ValueError("legacy_media_source_read_only")
 
 
 def normalize_source_ids(source_ids: list[int]) -> list[int]:
@@ -1097,6 +1124,8 @@ def ineligible_source_reason(
         return "source_not_found_or_deleted"
     if source.get("deleted_at"):
         return "source_deleted"
+    if source.get("source_type") == LEGACY_MEDIA_SOURCE_TYPE:
+        return "legacy_media_source_read_only"
     if task.task_type != "download_missing" and str(source.get("source_type")) not in SCANNABLE_SOURCE_TYPES:
         return "source_scan_not_supported"
     if task.task_type != "download_missing" and str(source.get("status")) == "paused":
@@ -1407,7 +1436,12 @@ def schedule_has_active_task(policy_id: int) -> bool:
 def fetch_policy_source_ids(policy_id: int) -> list[int]:
     statement = (
         select(source_schedule_policy_sources.c.source_id)
-        .where(source_schedule_policy_sources.c.policy_id == policy_id)
+        .select_from(source_schedule_policy_sources.join(archive_sources, source_schedule_policy_sources.c.source_id == archive_sources.c.id))
+        .where(
+            source_schedule_policy_sources.c.policy_id == policy_id,
+            archive_sources.c.deleted_at.is_(None),
+            archive_sources.c.source_type != LEGACY_MEDIA_SOURCE_TYPE,
+        )
         .order_by(source_schedule_policy_sources.c.source_id.asc())
         .limit(MAX_SOURCE_COUNT)
     )

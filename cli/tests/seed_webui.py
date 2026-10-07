@@ -40,7 +40,7 @@ def main() -> None:
                   cursor_state, discovered_count, submitted_count
                 )
                 values (
-                  'user_media', %s, 'webui-e2e source', 'webui_e2e', 'active',
+                  'user_videos', %s, 'webui-e2e source', 'webui_e2e', 'active',
                   %s, 2, 2
                 )
                 returning id
@@ -67,7 +67,7 @@ def main() -> None:
                     'WebUI E2E',
                     now() - interval '1 day',
                     'webui-e2e fixture tweet with a verified media row',
-                    'user_media',
+                    'user_videos',
                     %s,
                     'verified',
                     %s,
@@ -81,7 +81,7 @@ def main() -> None:
                     'WebUI E2E',
                     now() - interval '2 days',
                     'webui-e2e failed tweet for failure page smoke test',
-                    'user_media',
+                    'user_videos',
                     %s,
                     'failed_retryable',
                     %s,

@@ -52,6 +52,7 @@ ERROR_HTTP_STATUS_BY_CODE = {
     "archive_run_not_found": 404,
     "source_has_no_unsubmitted_tweets": 409,
     "source_already_exists": 409,
+    "legacy_media_source_read_only": 409,
     "source_delete_active_work": 409,
     "source_delete_confirmation_required": 400,
     "source_not_found": 404,

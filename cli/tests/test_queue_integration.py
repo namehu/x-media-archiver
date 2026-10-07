@@ -76,7 +76,7 @@ class QueueIntegrationTests(unittest.TestCase):
                 cur.execute(
                     """
                     insert into archive_sources (source_type, source_url, author_username)
-                    values ('user_media', 'https://x.com/queue-source/media', 'queue-source')
+                    values ('user_videos', 'https://x.com/queue-source/media', 'queue-source')
                     returning id
                     """
                 )

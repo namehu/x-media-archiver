@@ -377,7 +377,7 @@ time.sleep(60)
 
     def test_infer_author_username_for_media_url(self) -> None:
         self.assertEqual(
-            infer_author_username("user_media", "https://x.com/example/media"),
+            infer_author_username("user_videos", "https://x.com/example/media"),
             "example",
         )
 
@@ -807,7 +807,7 @@ time.sleep(60)
                 "xarchiver.services.sources.get_source",
                 return_value={
                     "status": "active",
-                    "source_type": "user_media",
+                    "source_type": "user_videos",
                     "source_url": "https://x.com/example/media",
                     "cursor_state": cursor,
                 },
@@ -868,7 +868,7 @@ time.sleep(60)
                 "xarchiver.services.sources.get_source",
                 return_value={
                     "status": "active",
-                    "source_type": "user_media",
+                    "source_type": "user_videos",
                     "source_url": "https://x.com/example/media",
                     "cursor_state": cursor,
                 },
@@ -943,7 +943,7 @@ time.sleep(60)
                 "xarchiver.services.sources.get_source",
                 return_value={
                     "status": "active",
-                    "source_type": "user_media",
+                    "source_type": "user_videos",
                     "source_url": "https://x.com/example/media",
                     "cursor_state": cursor,
                 },
@@ -1004,7 +1004,7 @@ time.sleep(60)
                 "xarchiver.services.sources.get_source",
                 return_value={
                     "status": "active",
-                    "source_type": "user_media",
+                    "source_type": "user_videos",
                     "source_url": "https://x.com/example/media",
                     "cursor_state": cursor,
                 },
@@ -1161,7 +1161,7 @@ class SourceDiscoveryIntegrationTests(unittest.TestCase):
                     """,
                     (self.tweet_ids,),
                 )
-                cur.execute("delete from archive_sources where source_url = any(%s)", (self.source_urls,))
+                cur.execute("delete from archive_sources where source_url = any(%s)", (self.source_urls + [self.source_urls[2] + "/media"],))
                 cur.execute("delete from tweets where tweet_id = any(%s)", (self.tweet_ids,))
             conn.commit()
 
@@ -1223,14 +1223,14 @@ class SourceDiscoveryIntegrationTests(unittest.TestCase):
         self.assertEqual(row["trigger_type"], "latest_refresh")
 
     def test_create_source_rejects_duplicate_normalized_url(self) -> None:
-        source = create_source("user_media", "http://twitter.com/sourcefixture/media/")
+        source = create_source("user_videos", "http://twitter.com/sourcefixture/media/")
 
         self.assertEqual(source["source_url"], self.source_urls[0])
         with self.assertRaisesRegex(ValueError, "source_already_exists"):
-            create_source("user_media", "https://x.com/sourcefixture/media")
+            create_source("user_videos", "https://x.com/sourcefixture/media")
 
     def test_submit_source_downloads_preserves_tweet_raw_import(self) -> None:
-        source = create_source("user_media", self.source_urls[0])
+        source = create_source("user_videos", self.source_urls[0])
         raw_import = {
             "tweet": {"id": self.tweet_id, "conversation_id": "919900000000000000"},
             "media_items": [{"type": "photo", "url": "https://pbs.twimg.com/media/sourcefixture"}],
@@ -1270,7 +1270,7 @@ class SourceDiscoveryIntegrationTests(unittest.TestCase):
         self.assertEqual(row["input_payload"]["raw_import"], raw_import)
 
     def test_delete_source_soft_deletes_without_removing_history(self) -> None:
-        source = create_source("user_media", self.source_urls[0])
+        source = create_source("user_videos", self.source_urls[0])
         record_source_discoveries(
             int(source["id"]),
             [
@@ -1348,10 +1348,10 @@ class SourceDiscoveryIntegrationTests(unittest.TestCase):
             list_sources_page(deleted="archived")
 
     def test_create_source_restores_soft_deleted_source(self) -> None:
-        source = create_source("user_media", self.source_urls[0], label="旧来源")
+        source = create_source("user_videos", self.source_urls[0], label="旧来源")
         delete_source(int(source["id"]), confirm_delete=True)
 
-        restored = create_source("user_media", "https://x.com/sourcefixture/media", label="恢复来源")
+        restored = create_source("user_videos", "https://x.com/sourcefixture/media", label="恢复来源")
 
         self.assertEqual(restored["id"], source["id"])
         self.assertEqual(restored["label"], "恢复来源")
@@ -1360,7 +1360,7 @@ class SourceDiscoveryIntegrationTests(unittest.TestCase):
         self.assertIsNotNone(get_source(int(source["id"])))
 
     def test_delete_source_rejects_unconfirmed_request(self) -> None:
-        source = create_source("user_media", self.source_urls[0])
+        source = create_source("user_videos", self.source_urls[0])
 
         with self.assertRaisesRegex(ValueError, "source_delete_confirmation_required"):
             delete_source(int(source["id"]))
@@ -1379,7 +1379,7 @@ class SourceDiscoveryIntegrationTests(unittest.TestCase):
             delete_source(int(source["id"]), confirm_delete=True)
 
     def test_delete_source_rejects_active_download_run(self) -> None:
-        source = create_source("user_media", self.source_urls[0])
+        source = create_source("user_videos", self.source_urls[0])
         record_source_discoveries(
             int(source["id"]),
             [
@@ -1401,7 +1401,7 @@ class SourceDiscoveryIntegrationTests(unittest.TestCase):
             delete_source(int(source["id"]), confirm_delete=True)
 
     def test_delete_source_rejects_stopped_run_with_processing_item(self) -> None:
-        source = create_source("user_media", self.source_urls[0])
+        source = create_source("user_videos", self.source_urls[0])
         record_source_discoveries(
             int(source["id"]),
             [
@@ -1439,7 +1439,7 @@ class SourceDiscoveryIntegrationTests(unittest.TestCase):
             delete_source(int(source["id"]), confirm_delete=True)
 
     def test_repeated_discovery_preserves_first_discovered_at(self) -> None:
-        source = create_source("user_media", "https://x.com/sourcefixture/media")
+        source = create_source("user_videos", "https://x.com/sourcefixture/media")
         first = {
             "tweet_id": self.tweet_id,
             "url": f"https://x.com/sourcefixture/status/{self.tweet_id}",
@@ -1497,13 +1497,13 @@ class SourceDiscoveryIntegrationTests(unittest.TestCase):
     def test_list_sources_page_supports_filters_offset_and_total_count(self) -> None:
         baseline = list_sources_page(
             status="paused",
-            source_type="user_media",
+            source_type="user_videos",
             search="sourcefixture",
             limit=1,
             offset=0,
         )["total_count"]
-        first = create_source("user_media", self.source_urls[0])
-        second = create_source("user_media", self.source_urls[1])
+        first = create_source("user_videos", self.source_urls[0])
+        second = create_source("user_videos", self.source_urls[1])
         create_source("profile", self.source_urls[2])
         with connect() as conn:
             with conn.cursor() as cur:
@@ -1519,7 +1519,7 @@ class SourceDiscoveryIntegrationTests(unittest.TestCase):
 
         page = list_sources_page(
             status="paused",
-            source_type="user_media",
+            source_type="user_videos",
             search="sourcefixture",
             limit=1,
             offset=1,
@@ -1546,7 +1546,7 @@ class SourceDiscoveryIntegrationTests(unittest.TestCase):
             self.assertLessEqual(page["count"], 1)
 
     def test_source_failed_download_count_uses_current_tweet_status_after_manual_retry(self) -> None:
-        source = create_source("user_media", self.source_urls[0])
+        source = create_source("user_videos", self.source_urls[0])
         record_source_discoveries(
             int(source["id"]),
             [
@@ -1613,9 +1613,9 @@ class SourceDiscoveryIntegrationTests(unittest.TestCase):
         self.assertNotIn(source["id"], [item["id"] for item in error_page["rows"]])
 
     def test_sources_sorting_uses_pin_manual_order_and_created_at_fallback(self) -> None:
-        first = create_source("user_media", self.source_urls[0])
-        second = create_source("user_media", self.source_urls[1])
-        third = create_source("user_media", self.source_urls[2])
+        first = create_source("user_videos", self.source_urls[0])
+        second = create_source("user_videos", self.source_urls[1])
+        third = create_source("user_videos", self.source_urls[2])
         with connect() as conn:
             with conn.cursor() as cur:
                 cur.execute("update archive_sources set created_at = '2099-01-01 00:00:00+00' where id = %s", (first["id"],))
@@ -1644,9 +1644,9 @@ class SourceDiscoveryIntegrationTests(unittest.TestCase):
             update_source_pin(999999999, True)
 
     def test_reorder_sources_persists_manual_order_within_one_partition(self) -> None:
-        first = create_source("user_media", self.source_urls[0])
-        second = create_source("user_media", self.source_urls[1])
-        third = create_source("user_media", self.source_urls[2])
+        first = create_source("user_videos", self.source_urls[0])
+        second = create_source("user_videos", self.source_urls[1])
+        third = create_source("user_videos", self.source_urls[2])
 
         result = reorder_sources([int(third["id"]), int(first["id"]), int(second["id"])])
         page = list_sources_page(limit=1000)
@@ -1657,9 +1657,9 @@ class SourceDiscoveryIntegrationTests(unittest.TestCase):
         self.assertGreaterEqual(result["updated_count"], 3)
 
     def test_reorder_sources_rejects_deleted_or_cross_pinned_sources(self) -> None:
-        first = create_source("user_media", self.source_urls[0])
-        second = create_source("user_media", self.source_urls[1])
-        third = create_source("user_media", self.source_urls[2])
+        first = create_source("user_videos", self.source_urls[0])
+        second = create_source("user_videos", self.source_urls[1])
+        third = create_source("user_videos", self.source_urls[2])
 
         update_source_pin(int(first["id"]), True)
         with self.assertRaisesRegex(ValueError, "source_reorder_cross_pinned_partition"):
@@ -1693,7 +1693,7 @@ class SourceDiscoveryIntegrationTests(unittest.TestCase):
         self.assertNotIn("scan_runs", detail)
 
     def test_stop_paused_scan_session_leaves_source_operable(self) -> None:
-        source = create_source("user_media", self.source_urls[0])
+        source = create_source("user_videos", self.source_urls[0])
         with connect() as conn:
             with conn.cursor() as cur:
                 cur.execute(
@@ -1731,7 +1731,7 @@ class SourceDiscoveryIntegrationTests(unittest.TestCase):
         self.assertEqual(stopped["cursor_state"]["scan_sessions"]["from_start"]["state"], "stopped")
 
     def test_pause_and_resume_scan_session_preserve_checkpoint(self) -> None:
-        source = create_source("user_media", self.source_urls[0])
+        source = create_source("user_videos", self.source_urls[0])
         started = start_source_scan_session(int(source["id"]), "history", limit=20)
         cursor_state = {
             **started["cursor_state"],
@@ -1835,7 +1835,7 @@ class SourceDiscoveryIntegrationTests(unittest.TestCase):
         self.assertTrue(started["cursor_state"]["automation_enabled"])
 
     def test_list_source_discovered_page_supports_pagination(self) -> None:
-        source = create_source("user_media", self.source_urls[0])
+        source = create_source("user_videos", self.source_urls[0])
         records = [
             {
                 "tweet_id": tweet_id,
@@ -1860,7 +1860,7 @@ class SourceDiscoveryIntegrationTests(unittest.TestCase):
         self.assertEqual(page["rows"][0]["tweet_id"], self.tweet_ids[0])
 
     def test_source_discovered_filters_facets_and_media_type_downloads(self) -> None:
-        source = create_source("user_media", self.source_urls[0])
+        source = create_source("user_videos", self.source_urls[0])
         tweet_ids = [
             self.tweet_ids[0],
             self.tweet_ids[1],
@@ -2010,7 +2010,7 @@ class SourceDiscoveryIntegrationTests(unittest.TestCase):
                 conn.commit()
 
     def test_source_download_queues_and_claims_tweets_in_visible_order(self) -> None:
-        source = create_source("user_media", self.source_urls[0])
+        source = create_source("user_videos", self.source_urls[0])
         record_source_discoveries(
             int(source["id"]),
             [
@@ -2082,7 +2082,7 @@ class SourceDiscoveryIntegrationTests(unittest.TestCase):
         self.assertNotEqual(page["rows"][0]["id"], second_id)
 
     def test_retry_failed_source_download_requeues_existing_failed_item(self) -> None:
-        source = create_source("user_media", self.source_urls[0])
+        source = create_source("user_videos", self.source_urls[0])
         record_source_discoveries(
             int(source["id"]),
             [
@@ -2151,7 +2151,7 @@ class SourceDiscoveryIntegrationTests(unittest.TestCase):
         self.assertEqual(run["status"], "queued")
 
     def test_retry_failed_source_download_is_noop_without_failed_items(self) -> None:
-        source = create_source("user_media", self.source_urls[0])
+        source = create_source("user_videos", self.source_urls[0])
 
         result = submit_source_downloads(int(source["id"]), "failed")
 
@@ -2160,7 +2160,7 @@ class SourceDiscoveryIntegrationTests(unittest.TestCase):
         self.assertEqual(result["tasks"]["queued_count"], 0)
 
     def test_missing_discoveries_are_not_failed_downloads(self) -> None:
-        source = create_source("user_media", self.source_urls[0])
+        source = create_source("user_videos", self.source_urls[0])
         record_source_discoveries(
             int(source["id"]),
             [
@@ -2198,7 +2198,7 @@ class SourceDiscoveryIntegrationTests(unittest.TestCase):
         self.assertEqual(retried["submitted_count"], 0)
 
     def test_download_summary_only_aggregates_active_run_progress(self) -> None:
-        source = create_source("user_media", self.source_urls[0])
+        source = create_source("user_videos", self.source_urls[0])
         record_source_discoveries(
             int(source["id"]),
             [
@@ -2272,7 +2272,7 @@ class SourceDiscoveryIntegrationTests(unittest.TestCase):
         self.assertEqual(summary["speed_bps"], 25)
 
     def test_batch_progress_is_counted_once_across_run_items(self) -> None:
-        source = create_source("user_media", self.source_urls[0])
+        source = create_source("user_videos", self.source_urls[0])
         record_source_discoveries(
             int(source["id"]),
             [
@@ -2328,7 +2328,7 @@ class SourceDiscoveryIntegrationTests(unittest.TestCase):
         self.assertEqual(progress["speed_bps"], 25)
 
     def test_tweet_progress_updates_each_item_and_clears_stale_speeds(self) -> None:
-        source = create_source("user_media", self.source_urls[0])
+        source = create_source("user_videos", self.source_urls[0])
         record_source_discoveries(
             int(source["id"]),
             [

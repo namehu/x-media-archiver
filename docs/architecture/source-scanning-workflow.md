@@ -65,6 +65,18 @@ flowchart LR
 
 ## 3. 扫描会话模型
 
+### 媒体来源的独立边界
+
+- `user_photos` 使用 `/media?filter=photo`，`user_videos` 使用 `/media`；它们是两条独立 `archive_sources` 记录，不合并时间线、分页 cursor 或扫描统计。
+- 当前适配 gallery-dl 1.32.9：该版本 Twitter media extractor 未把 `filter=photo` 转成独立的上游请求。两个来源分别调用现有枚举器，再依据解析结果的 `media_types` 筛选 Tweet；不能把本实现视为新版网页原生接口的完整性保证。两种来源全部扫描时会重复枚举上游，扫描请求量可能增加。
+- 批次范围、continuation cursor 与末尾判断依据枚举器的原始批次。筛选后为零但仍有 cursor 时继续扫描；错误不推进 cursor。扫描日志记录原始条数和匹配条数，发现及重复统计只计算所属来源匹配的 Tweet。
+- 每个来源的 `history`、`latest_refresh`、`from_start` 仍各有 session。空 session 不借用其他模式的 cursor；新来源从空 cursor 启动，遇到已归档 Tweet 也继续历史扫描。
+- 图片来源收录含 photo 的 Tweet，视频来源收录含 video（含 animated GIF）的 Tweet。混合 Tweet 在两个发现池内都保留全部媒体，不拆分下载文件。下载队列按全局 Tweet ID 复用进行中任务、跳过 verified 项；失败、缺失及显式强制下载沿用原有语义。
+- 旧 `user_media` 禁止新建、扫描、继续扫描、导入发现和提交下载，不进入新的批量任务或定时派发；既有历史仍可读，已有任务可按原方式结束。显式拆分保留旧发现关系与 cursor，不将旧进度复制给新来源。迁移步骤见 [部署说明](../deploy/media-source-split.md)。
+- `GET /api/v1/sources` 的 `total_count` 仍统计符合筛选的全部来源；新增 `selectable_count` 仅统计其中未删除且非旧媒体的可操作来源，用于批量选择计数与 200 来源上限。
+
+### 三种扫描模式
+
 Sources 详情页统一使用“扫描来源”面板，不再区分“基础扫描”和“高级扫描”。扫描会话分为三类：
 
 | 会话模式 | active_scan_mode | trigger_type | 业务目标 | 停止规则 | 恢复规则 |

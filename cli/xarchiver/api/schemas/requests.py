@@ -138,7 +138,7 @@ class ArchiveRunCancelItemsRequest(BaseModel):
 
 # 来源管理与扫描请求
 class SourceCreateRequest(BaseModel):
-    source_type: str = Field(pattern="^(profile|user_media|likes|bookmarks|search|manual)$")
+    source_type: str = Field(pattern="^(profile|user_photos|user_videos|likes|bookmarks|search|manual)$")
     source_url: str
     label: str | None = None
     author_username: str | None = None
@@ -202,7 +202,7 @@ class SourceSelectionFilterRequest(BaseModel):
     status: str | None = Field(default=None, pattern="^(active|paused|completed|failed)$")
     source_type: str | None = Field(
         default=None,
-        pattern="^(profile|user_media|likes|bookmarks|search|manual)$",
+        pattern="^(profile|user_media|user_photos|user_videos|likes|bookmarks|search|manual)$",
     )
     deleted: str = Field(default="active", pattern="^(active|deleted|all)$")
     sort_by: str = Field(

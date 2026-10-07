@@ -29,6 +29,7 @@ from xarchiver.services.runs import (
     run_requeue,
     run_verify,
 )
+from xarchiver.services.source_media_splits import split_media_sources
 from xarchiver.services.sources import (
     create_source,
     list_sources,
@@ -167,7 +168,7 @@ def archive_jsonl_command(
 @sources_app.command("create")
 def source_create_command(
     source_url: str = typer.Argument(..., help="X/Twitter source URL."),
-    source_type: str = typer.Option("profile", help="profile, user_media, likes, bookmarks, search, or manual."),
+    source_type: str = typer.Option("profile", help="profile, user_photos, user_videos, likes, bookmarks, search, or manual."),
     label: str | None = typer.Option(None, help="Human-readable label."),
     author_username: str | None = typer.Option(None, help="Override inferred author username."),
 ) -> None:
@@ -175,6 +176,22 @@ def source_create_command(
 
     result = create_source(source_type, source_url, label=label, author_username=author_username)
     console.print(result)
+
+
+@sources_app.command("split-media")
+def source_split_media_command(
+    source_id: list[int] | None = typer.Option(None, "--source-id", help="Legacy source ID; repeat for multiple sources."),
+    all_sources: bool = typer.Option(False, "--all", help="Select all legacy media sources."),
+    apply: bool = typer.Option(False, "--apply", help="Apply splits after backup and stopping related work; default is read-only preview."),
+) -> None:
+    """预览或显式拆分旧媒体来源，保留历史并创建暂停的新来源。"""
+    try:
+        result = split_media_sources(source_id, all_sources=all_sources, apply=apply)
+    except ValueError as exc:
+        raise typer.BadParameter(str(exc)) from exc
+    console.print_json(data=result)
+    if result["blocked_count"]:
+        raise typer.Exit(1)
 
 
 @sources_app.command("list")

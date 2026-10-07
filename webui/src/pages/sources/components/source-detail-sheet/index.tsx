@@ -101,6 +101,7 @@ export function SourceDetailPanel({
   const [tweetFilters, setTweetFilters] = React.useState(DEFAULT_TWEET_FILTERS);
   const persistedScanLimit = source ? preferredScanLimit(source, policy) : 20;
   const isDeleted = Boolean(source?.deleted_at);
+  const isReadOnly = isDeleted || source?.source_type === "user_media";
   const discoveredQuery = useSourceDiscovered(source?.id ?? null, activeTab === "tweets", isDeleted, tweetFilters);
   const downloadsQuery = useSourceDownloads(
     source?.id ?? null,
@@ -205,7 +206,7 @@ export function SourceDetailPanel({
             downloads={downloadsQuery.data as SourceDownloadSummary | undefined}
             statusLabel={statusLabel}
             now={now}
-            readonly={isDeleted}
+            readonly={isReadOnly}
           />
         </TabsContent>
 
@@ -226,7 +227,7 @@ export function SourceDetailPanel({
             statusLabel={statusLabel}
             filters={tweetFilters}
             onFiltersChange={setTweetFilters}
-            readonly={isDeleted}
+            readonly={isReadOnly}
           />
         </TabsContent>
 
@@ -247,7 +248,7 @@ export function SourceDetailPanel({
 
         <TabsContent value="advanced" className="min-h-0 flex-1 overflow-y-auto px-4 pb-8 pt-5 sm:px-6">
           <div className="mx-auto flex max-w-4xl flex-col gap-6">
-            {!isDeleted ? (
+            {!isReadOnly ? (
               <section className="flex flex-col gap-3">
                 <div>
                   <h2 className="text-base font-semibold text-fg-primary">提交与导入</h2>

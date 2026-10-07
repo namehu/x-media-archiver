@@ -797,6 +797,7 @@ class ArchiveRunsPageResponse(PageMetaResponse):
 
 class SourcesPageResponse(PageMetaResponse):
     rows: list[ArchiveSourceListResponse]
+    selectable_count: int = 0
 
 
 class DuplicatesPageResponse(PageMetaResponse):

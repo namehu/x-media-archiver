@@ -454,6 +454,8 @@ DOWNLOADER_PROGRESS_FALLBACK_INTERVAL_SECONDS=10 # 全目录进度兜底扫描�
 
 ### 8.3 来源扫描（与下载独立）
 
+旧媒体来源升级为图片/视频独立来源时，请执行 [媒体来源拆分流程](media-source-split.md)。迁移 `027` 仅升级结构，数据拆分由默认只读的 `sources split-media` 显式执行；新来源不继承旧 cursor。
+
 ```env
 SOURCE_SCAN_BATCH_SIZE=20         # native cursor 模式下每批目标 Tweet 窗口
 SOURCE_SCAN_SLEEP_MIN_SECONDS=0

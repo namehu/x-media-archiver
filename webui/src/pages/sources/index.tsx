@@ -126,13 +126,14 @@ export function SourcesPage() {
       rows,
       count: rows.length,
       total_count: firstPage?.total_count ?? 0,
+      selectable_count: firstPage?.selectable_count ?? firstPage?.total_count ?? 0,
       limit: firstPage?.limit ?? 50,
       offset: 0,
     };
   }, [sourcesQuery.data]);
 
   const bulk = useSourceBulkWorkflow({
-    totalCount: sourcesData.total_count,
+    totalCount: sourcesData.selectable_count,
     sourceTypeFilter,
     sourceDeletedFilter,
     sortBy,

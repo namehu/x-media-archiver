@@ -24,6 +24,13 @@ class RowModel(BaseModel):
         return getattr(self, key, default)
 
 
+class SourceMediaSplitRow(RowModel):
+    old_source_id: int
+    photos_source_id: int
+    videos_source_id: int
+    created_at: datetime
+
+
 # 认证相关行模型
 class AuthAdminRow(RowModel):
     id: int

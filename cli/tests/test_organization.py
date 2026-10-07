@@ -280,7 +280,7 @@ class OrganizationIntegrationTests(unittest.TestCase):
                 cur.execute(
                     """
                     insert into archive_sources (source_type, source_url, author_username)
-                    values ('user_media', %s, 'organization_fixture')
+                    values ('user_videos', %s, 'organization_fixture')
                     returning id
                     """,
                     (self.source_url,),
