@@ -36,6 +36,7 @@ from xarchiver.media import backfill_media_assets
 from xarchiver.row_models import DownloadCandidateRow, IdRow
 from xarchiver.services.cookies import resolve_cookie_content
 from xarchiver.services.hashtags import gallery_dl_compatibility, sync_registered_gallery_hashtags
+from xarchiver.services.network import proxy_arguments
 from xarchiver.services.operation_logs import (
     append_operation_log_entries,
     append_operation_log_entry,
@@ -616,6 +617,7 @@ def build_command(
             )
         else:
             command.append("--no-skip")
+        command.extend(proxy_arguments(engine, getattr(settings, "network_proxy_url", None)))
         command.extend(["-i", str(input_path)])
         return command
 
@@ -645,6 +647,7 @@ def build_command(
                 str(settings.archive_dir / "state" / "yt-dlp-downloaded.txt"),
             ]
         )
+    command.extend(proxy_arguments(engine, getattr(settings, "network_proxy_url", None)))
     command.extend(
         [
             "-a",
@@ -1848,7 +1851,7 @@ def extract_tweet_stderr(stderr: str, tweet_ids: set[str]) -> dict[str, str]:
         if current_tweet_id is not None:
             segments.setdefault(current_tweet_id, []).append(line)
     return {
-        tweet_id: "\n".join(lines)[-4000:]
+        tweet_id: redact_sensitive_text("\n".join(lines))[-4000:]
         for tweet_id, lines in segments.items()
     }
 
@@ -1863,7 +1866,7 @@ def classify_missing_tweets(
     tweet_ids = {str(tweet["tweet_id"]) for tweet in tweets}
     stderr_by_tweet = extract_tweet_stderr(stderr, tweet_ids)
     has_tweet_marker = bool(YTDLP_TWEET_ERROR_RE.search(stderr) or TWEET_STATUS_URL_RE.search(stderr))
-    global_stderr = stderr[-4000:] if exit_code != 0 and stderr and not has_tweet_marker else None
+    global_stderr = redact_sensitive_text(stderr)[-4000:] if exit_code != 0 and stderr and not has_tweet_marker else None
     details: dict[str, dict[str, str | None]] = {}
     permanent_categories = {item.value for item in PERMANENT_DOWNLOAD_CATEGORIES}
     for tweet in tweets:

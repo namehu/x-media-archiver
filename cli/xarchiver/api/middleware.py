@@ -24,6 +24,7 @@ from starlette.responses import Response
 
 from xarchiver.config import get_settings
 from xarchiver.services.auth import SESSION_COOKIE, authenticate_session
+from xarchiver.services.operation_logs import json_safe_context, redact_sensitive_text
 
 request_id_var: ContextVar[str | None] = ContextVar("request_id", default=None)
 LOCAL_DEV_ORIGINS = frozenset({"http://127.0.0.1:5173", "http://localhost:5173"})
@@ -127,7 +128,7 @@ class JsonLogFormatter(logging.Formatter):
             "timestamp": datetime.now(UTC).isoformat(),
             "level": record.levelname.lower(),
             "logger": record.name,
-            "message": record.getMessage(),
+            "message": redact_sensitive_text(record.getMessage()),
         }
         request_id = getattr(record, "request_id", None)
         if request_id:
@@ -144,9 +145,9 @@ class JsonLogFormatter(logging.Formatter):
         ):
             value = getattr(record, key, None)
             if value is not None:
-                payload[key] = value
+                payload[key] = json_safe_context(value)
         if record.exc_info:
-            payload["exception"] = self.formatException(record.exc_info)
+            payload["exception"] = redact_sensitive_text(self.formatException(record.exc_info))
         return json.dumps(payload, ensure_ascii=False, default=str)
 
 

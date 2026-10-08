@@ -22,6 +22,7 @@ from urllib.parse import urlparse, urlunparse
 
 from psycopg.errors import UniqueViolation
 from psycopg.types.json import Jsonb
+from pydantic import SecretStr
 from sqlalchemy import (
     Integer,
     and_,
@@ -55,6 +56,7 @@ from xarchiver.row_models import (
     SourceScanSummaryRow,
     TweetRow,
 )
+from xarchiver.services.network import proxy_arguments
 from xarchiver.services.operation_logs import (
     append_operation_log_entries,
     close_operation_log_stream,
@@ -2094,6 +2096,7 @@ def scan_source(
                 cookie_path=prepare_cookies(settings),
                 scan_run_id=scan_run_id,
                 worker_id=worker_id,
+                network_proxy_url=getattr(settings, "network_proxy_url", None),
             )
             ensure_source_scan_lease(scan_run_id, worker_id)
             result = finish_scan_source_result(
@@ -2120,13 +2123,14 @@ def scan_source(
             worker_id=worker_id,
             exception=exc,
         )
-        mark_source_scan_result(source_id, error_category="failed", error_message=str(exc))
+        safe_error = redact_sensitive_text(str(exc))
+        mark_source_scan_result(source_id, error_category="failed", error_message=safe_error)
         finish_source_scan_run(
             scan_run_id,
             "failed",
             cursor_after=cursor_state,
             error_category="failed",
-            error_message=str(exc),
+            error_message=safe_error,
             worker_id=worker_id,
         )
         log_source_scan_event(
@@ -2300,6 +2304,8 @@ def discover_records_with_gallery_dl(
     cookie_path: Path | None = None,
     scan_run_id: int | None = None,
     worker_id: str | None = None,
+    *,
+    network_proxy_url: str | SecretStr | None = None,
 ) -> tuple[list[dict[str, Any]], dict[str, object]]:
     """执行 gallery-dl，并把其 JSON 输出转换成规范推文记录。"""
 
@@ -2332,6 +2338,7 @@ def discover_records_with_gallery_dl(
     command.extend(["--verbose", "-o", f"limit={limit}", "--post-range", f"1-{limit}"])
     if continuation_cursor:
         command.extend(["-o", f"cursor={continuation_cursor}"])
+    command.extend(proxy_arguments("gallery-dl", network_proxy_url))
     command.append(source_url)
     result = (
         run_gallery_dl_streaming(command, scan_run_id, worker_id)
@@ -2339,7 +2346,7 @@ def discover_records_with_gallery_dl(
         else subprocess.run(command, capture_output=True, text=True, check=False)
     )
     raw_stderr_excerpt = result.stderr[-4000:] if result.stderr else None
-    stderr_excerpt = redact_sensitive_text(raw_stderr_excerpt) or None
+    stderr_excerpt = redact_sensitive_text(result.stderr)[-4000:] or None
     if result.returncode != 0:
         return [], {
             "exit_code": result.returncode,
@@ -2389,7 +2396,7 @@ def detect_gallery_dl_exhausted_retry(stderr: str | None) -> tuple[str, str] | N
             continue
         category = classify_source_error(line)
         if category != ErrorCategory.UNKNOWN.value:
-            return category, redact_sensitive_text(line[-1000:])
+            return category, redact_sensitive_text(line)[-1000:]
     return None
 
 
@@ -2411,6 +2418,9 @@ def detect_gallery_dl_soft_error(stderr: str | None) -> tuple[str, str] | None:
             retry_category = classify_source_error(line)
             if retry_category != ErrorCategory.UNKNOWN.value:
                 retry_signals.append((index, retry_category, line))
+        elif "][error]" in line.lower() and classify_source_error(line) == ErrorCategory.NETWORK_ERROR.value:
+            # 代理认证/连接错误也可能以 0 退出，不能将空输出当作扫描完成。
+            retry_signals.append((index, ErrorCategory.NETWORK_ERROR.value, line))
 
     latest_http = http_signals[-1] if http_signals else None
     latest_api = api_signals[-1] if api_signals else None
@@ -2430,7 +2440,7 @@ def detect_gallery_dl_soft_error(stderr: str | None) -> tuple[str, str] | None:
     if final_kind == "http" and latest_http is not None and latest_http[1] < 400:
         return None
     if final_kind == "retry" and latest_retry is not None:
-        return latest_retry[1], redact_sensitive_text(latest_retry[2][-1000:])
+        return latest_retry[1], redact_sensitive_text(latest_retry[2])[-1000:]
 
     relevant_http = latest_http
     if final_kind == "api" and relevant_http is not None and relevant_http[1] < 400:

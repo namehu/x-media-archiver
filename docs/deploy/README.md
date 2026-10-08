@@ -1,6 +1,6 @@
 # x-media-archiver 生产部署手册
 
-最后更新：2026-08-09
+最后更新：2026-10-07
 
 本手册是 x-media-archiver 生产环境的统一操作指南。**推荐用预构建镜像部署**：一个自包含镜像同时含 FastAPI 后端与构建好的 WebUI（同源 serve），服务器只需 `docker pull` + 一份 compose 即可启动，并支持随镜像附带 Postgres 或接外部 Supabase。手册同时保留从源码运行的开发路径。
 
@@ -463,6 +463,123 @@ OPERATION_LOG_MAX_BYTES=10485760 # 单个任务日志流 JSONL 文件大小上�
 
 `SOURCE_SCAN_*` 只影响来源发现，不影响下载队列。调高 sleep 区间可降低触发 X/Twitter 限流的风险，代价是吞吐下降。
 来源扫描的详细日志写入 `ARCHIVE_DIR/logs/source-scan-logs/`；下载任务会把脱敏后的下载器 stdout/stderr 写入 `ARCHIVE_DIR/logs/download-logs/`；平台 Hashtag 历史维护摘要写入 `ARCHIVE_DIR/logs/hashtag-backfill/`。数据库只保存日志流索引和摘要，单条日志流使用 `OPERATION_LOG_MAX_BYTES` 限制大小。进程异常退出若留下部分 JSON 或部分 UTF-8 尾行，下一次追加会自动恢复到最后一条完整记录并写入告警；文件中间损坏不会自动截断，需要人工检查存储介质或备份。
+
+### 8.4 HTTP 代理（mihomo）
+
+在 `.env`（开发）或 `.env.production`（生产）中配置容器可访问的代理地址：
+
+```env
+NETWORK_PROXY_URL=http://mihomo:7890
+# 也可连接已发布到局域网的端口：
+# NETWORK_PROXY_URL=http://192.168.1.10:7890
+```
+
+这会同时覆盖 gallery-dl / yt-dlp 媒体下载、来源扫描及 Cookies 检测。空值保留原有网络行为；显式地址优先于 HTTP_PROXY / HTTPS_PROXY / NO_PROXY 等环境代理，失败不自动直连。修改后需要重新创建应用容器，单纯 `restart` 不会更新容器环境变量。生产使用的新版本镜像必须包含此功能。
+
+**同机独立 Compose 的推荐方式**：让 mihomo 和应用加入一个外部共享网络，使用稳定服务名和 mihomo 的容器内端口。应用同时保留默认网络，以连接 Postgres；Postgres 不加入代理网络。
+
+先创建一次共享网络（已有同名网络时无需再次创建）：
+
+```bash
+docker network create xma-proxy
+```
+
+在 mihomo 的 Compose 配置中加入以下片段（`mihomo` 替换为其实际服务名；显式 alias 保持应用地址稳定）：
+
+```yaml
+services:
+  mihomo:
+    networks:
+      default: {}
+      proxy:
+        aliases: [mihomo]
+networks:
+  proxy:
+    external: true
+    name: xma-proxy
+```
+
+重新创建 mihomo 容器以应用网络配置。mihomo 的配置文件应允许应用容器连接，例如：
+
+```yaml
+mixed-port: 7890
+allow-lan: true
+bind-address: "*"
+```
+
+`mixed-port` 同时支持 HTTP 与 SOCKS，此项目使用其中的 HTTP 功能。也可以使用单独的 HTTP `port`。如配置了 `lan-allowed-ips`，应允许共享 Docker 网络网段。以上监听地址位于 mihomo 容器内；共享网络方式无需向宿主机发布代理端口。`external-controller` 是管理 API，不能作为代理地址。若 mihomo 使用 `network_mode: host`，应改用可访问的宿主机局域网 IP 与代理端口，而非上述共享 bridge 网络。
+
+开发环境：保存为 `docker-compose.proxy.yml`，作为叠加文件使用：
+
+```yaml
+services:
+  xarchiver:
+    networks:
+      - default
+      - proxy
+networks:
+  proxy:
+    external: true
+    name: xma-proxy
+```
+
+```bash
+docker compose -f docker-compose.yml -f docker-compose.proxy.yml run --rm --service-ports xarchiver serve
+# 单次 CLI 命令也使用相同叠加文件，例如：
+# docker compose -f docker-compose.yml -f docker-compose.proxy.yml run --rm xarchiver download
+```
+
+生产环境：保存为 `docker-compose.prod.proxy.yml`：
+
+```yaml
+services:
+  app:
+    networks:
+      - default
+      - proxy
+networks:
+  proxy:
+    external: true
+    name: xma-proxy
+```
+
+```bash
+docker compose --env-file .env.production -f docker-compose.prod.yml -f docker-compose.prod.proxy.yml up -d --force-recreate app
+```
+
+使用 Traefik 时继续加入 `-f docker-compose.traefik.yml`；保留 `default`、`proxy`、`traefik` 三个网络。容器内 `127.0.0.1` 指向应用自身，不能用来访问另一个 mihomo 容器。局域网 IP 方式使用宿主机发布端口，共享网络方式使用容器内端口，两者不一定相同。
+
+**代理认证**：可使用 `http://user:password@mihomo:7890`，用户名和密码中的特殊字符应 URL 编码，例如 `@` → `%40`、`#` → `%23`。在 Compose `.env` 中使用单引号保留含 `$` 的值。代理 URL 不要提交、打印或共享；应用的配置表示、校验错误、操作日志和错误摘要会隐藏认证信息，下载器启动参数和 Docker 环境仍可被有宿主机权限的人读取。
+
+**不携带 X Cookies 的单次连通性检查**：下面仅通过已配置代理向 `example.com` 发起一次 HTTPS HEAD 请求，验证 CONNECT 与 TLS 可用；不检测 X 登录状态或 mihomo 分流规则。应用未配置代理时会退出，避免检查意外直连。
+
+```bash
+docker compose --env-file .env.production -f docker-compose.prod.yml -f docker-compose.prod.proxy.yml exec -T app python - <<'PY'
+import requests
+from xarchiver.config import get_settings
+from xarchiver.services.operation_logs import redact_sensitive_text
+
+proxy = get_settings().network_proxy_url
+if proxy is None:
+    raise SystemExit("NETWORK_PROXY_URL 未配置")
+with requests.Session() as session:
+    session.trust_env = False
+    address = proxy.get_secret_value()
+    try:
+        response = session.head(
+            "https://example.com",
+            proxies={"http": address, "https": address},
+            timeout=15,
+            allow_redirects=False,
+        )
+        response.raise_for_status()
+        print(f"代理 HTTPS 连通，HTTP {response.status_code}")
+    except requests.RequestException as error:
+        raise SystemExit(redact_sensitive_text(str(error))) from None
+PY
+```
+
+开发环境将命令首行替换为 `docker compose -f docker-compose.yml -f docker-compose.proxy.yml run --rm -T --no-deps --entrypoint python xarchiver - <<'PY'`，其余 Python 内容不变。真实 X 下载仍按正常提交、下载与重试流程执行，不作为默认连通性测试。
 
 ---
 

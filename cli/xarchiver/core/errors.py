@@ -112,6 +112,16 @@ def classify_x_error(stderr: str | None, *, no_output_hint: bool = True) -> Erro
     """根据 X 相关工具输出粗略归类错误类型。"""
 
     text = (stderr or "").lower()
+    # Proxy authentication belongs to the network path, not X account cookies.
+    if any(
+        pattern in text
+        for pattern in (
+            "proxyerror", "proxy error", "proxy authentication", "proxy-authenticate",
+            "proxy authorization", "proxy-authorization", "cannot connect to proxy",
+            "unable to connect to proxy", "tunnel connection failed",
+        )
+    ) or re.search(r"\b407\b", text):
+        return ErrorCategory.NETWORK_ERROR
     if "cookies" in text and any(
         pattern in text for pattern in ("not found", "could not", "invalid", "empty")
     ):

@@ -28,6 +28,7 @@ from xarchiver.core.errors import (
     classify_x_error,
 )
 from xarchiver.db import connect
+from xarchiver.services.network import proxy_arguments
 from xarchiver.services.operation_logs import redact_sensitive_text
 from xarchiver.sql_builder import compile_query
 from xarchiver.tables import cookie_config
@@ -331,8 +332,9 @@ def run_cookie_check(
             "limit=1",
             "--post-range",
             "1-1",
-            COOKIE_CHECK_URL,
         ]
+        command.extend(proxy_arguments("gallery-dl", getattr(settings, "network_proxy_url", None)))
+        command.append(COOKIE_CHECK_URL)
         try:
             result = subprocess.run(
                 command,

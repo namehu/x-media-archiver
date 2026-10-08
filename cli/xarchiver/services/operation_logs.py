@@ -22,6 +22,8 @@ DEFAULT_LOG_READ_LIMIT = 200
 MAX_LOG_READ_LIMIT = 1000
 logger = logging.getLogger(__name__)
 SENSITIVE_PATTERNS = (
+    (re.compile(r"(https?://)[^\s/]+@", re.IGNORECASE), r"\1[redacted]@"),
+    (re.compile(r"(proxy-authorization:\s*)[^\n\r]+", re.IGNORECASE), r"\1[redacted]"),
     (re.compile(r"(auth_token=)[^\s;&]+", re.IGNORECASE), r"\1[redacted]"),
     (re.compile(r"(ct0=)[^\s;&]+", re.IGNORECASE), r"\1[redacted]"),
     (re.compile(r"(cookie:\s*)[^\n\r]+", re.IGNORECASE), r"\1[redacted]"),
@@ -662,7 +664,7 @@ def normalize_log_level(level: str) -> str:
 
 
 def redact_sensitive_text(value: str | None) -> str:
-    """在日志落盘前对 cookie 和数据库凭据做脱敏。"""
+    """在日志落盘前对 cookie、代理和数据库凭据做脱敏。"""
 
     if value is None:
         return ""
@@ -673,8 +675,10 @@ def redact_sensitive_text(value: str | None) -> str:
 
 
 def json_safe_context(value: Any) -> Any:
-    """把常见 Python 值转换为可 JSON 序列化的结构。"""
+    """把常见 Python 值转换为可 JSON 序列化的脱敏结构。"""
 
+    if isinstance(value, str):
+        return redact_sensitive_text(value)
     if isinstance(value, dict):
         return {str(key): json_safe_context(item) for key, item in value.items()}
     if isinstance(value, list):

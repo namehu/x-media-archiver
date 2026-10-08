@@ -25,6 +25,12 @@ sample count: 2
 6. 不可访问 / 删除 tweet:
 ```
 
+## 统一出站代理
+
+`NETWORK_PROXY_URL` 为媒体下载（含 yt-dlp fallback 与重试）、来源扫描和 Cookies 检测共用的 HTTP 代理地址，支持 `http://[user:password@]host[:port]`。空值不添加代理参数，保留下载器原有网络行为；显式配置通过 `--proxy` 传给下载器，gallery-dl 同时设置全局 `proxy-env=false`，覆盖继承的环境代理。代理失败不回退直连，连接失败、超时与 HTTP 407 按 `network_error` 处理，不将代理认证失败标记为 X Cookies 无效。来源扫描即使遇到下载器以 0 退出的终端网络错误，也丢弃可能不完整的输出且不推进 cursor。
+
+代理 URL 使用 SecretStr 保存，配置校验错误不显示输入；日志与持久错误摘要隐藏 URL 用户信息和 Proxy-Authorization。设置通过环境变量加载，修改后需重新创建应用容器，不提供运行时 WebUI 写入口。第一版只接受 HTTP 代理地址，HTTPS 目标仍通过 HTTP CONNECT 转发；不增加 SOCKS 依赖。部署方式见[HTTP 代理](../deploy/README.md#84-http-代理mihomo)。
+
 ## gallery-dl 字段验证
 
 ```text

@@ -40,6 +40,14 @@ secrets/cookies.txt
 
 cookie 文件必须使用 Netscape cookie 格式，并包含 X/Twitter 的 `auth_token` 与 `ct0`。请仅保留在本地；该文件已被 git 忽略。WebUI 的 `Operations -> Cookies` 可在保存后通过 X Bookmarks 最小化请求检测登录状态；检测不会保存 Bookmarks 内容，也不会自动刷新或回写 token。
 
+下载、来源扫描和 Cookies 检测可统一使用 HTTP 代理，在 `.env`（开发）或 `.env.production`（生产）中设置：
+
+```env
+NETWORK_PROXY_URL=http://mihomo:7890
+```
+
+该地址必须能从应用容器访问。与独立 mihomo 容器同机部署时，可通过共享 Docker 网络使用 `mihomo` 服务名；也可填写局域网 IP。配置为空时保留原有网络行为，显式配置时覆盖下载器继承的环境代理，连接失败不会自动切回直连。HTTP 代理可以转发 X 的 HTTPS 请求。修改环境变量后需重新创建应用容器；共享网络、认证和无 Cookie 连通性检查见[部署手册的 HTTP 代理章节](docs/deploy/README.md#84-http-代理mihomo)。
+
 用每行一个 tweet URL 替换 `examples/tweet_urls.example.txt`：
 
 ```text

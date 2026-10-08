@@ -4,19 +4,27 @@ from functools import lru_cache
 from pathlib import Path
 from typing import Literal
 
-from pydantic import Field
+from pydantic import Field, SecretStr, field_validator
 from pydantic_settings import BaseSettings, SettingsConfigDict
+
+from xarchiver.services.network import normalize_proxy_url
 
 
 class Settings(BaseSettings):
     """从环境变量和 `.env` 文件加载的全局配置。"""
 
-    model_config = SettingsConfigDict(env_file=".env", env_file_encoding="utf-8", extra="ignore")
+    model_config = SettingsConfigDict(
+        env_file=".env",
+        env_file_encoding="utf-8",
+        extra="ignore",
+        hide_input_in_errors=True,
+    )
 
     database_url: str = Field(alias="DATABASE_URL")
     archive_dir: Path = Field(default=Path("/app/archive"), alias="ARCHIVE_DIR")
     cookie_file: Path = Field(default=Path("/app/secrets/cookies.txt"), alias="COOKIE_FILE")
     default_download_engine: str = Field(default="gallery-dl", alias="DEFAULT_DOWNLOAD_ENGINE")
+    network_proxy_url: SecretStr | None = Field(default=None, alias="NETWORK_PROXY_URL", repr=False)
     retry_limit: int = Field(default=3, alias="RETRY_LIMIT")
     retry_backoff_minutes: int = Field(default=15, alias="RETRY_BACKOFF_MINUTES")
     stuck_timeout_minutes: int = Field(default=120, alias="STUCK_TIMEOUT_MINUTES")
@@ -50,6 +58,12 @@ class Settings(BaseSettings):
     )
     auth_session_ttl_hours: int = Field(default=168, alias="AUTH_SESSION_TTL_HOURS", ge=1, le=8760)
     runtime_ws_enabled: bool = Field(default=True, alias="RUNTIME_WS_ENABLED")
+
+    @field_validator("network_proxy_url", mode="before")
+    @classmethod
+    def validate_network_proxy_url(cls, value: str | SecretStr | None) -> SecretStr | None:
+        url = normalize_proxy_url(value)
+        return SecretStr(url) if url is not None else None
 
 
 @lru_cache
